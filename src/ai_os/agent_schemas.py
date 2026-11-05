@@ -9,6 +9,18 @@ class AgentOut(BaseModel):
     capabilities: list[str]
     requires_approval_for: list[str]
     enabled: bool
+    profile_path: str = ""
+    tools: list[str] = []
+    emoji: str = ""
+    vibe: str = ""
+    source: str = "local"
+
+class AgentProfileOut(BaseModel):
+    id: str
+    name: str
+    department: str
+    profile_path: str
+    profile_markdown: str
 
 class PlanCreate(BaseModel):
     title: str
