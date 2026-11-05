@@ -59,6 +59,12 @@ def claim_next_job(worker_id: str, lease_seconds: int = 120) -> dict | None:
                WHERE status='running' AND locked_at < ? AND attempts < max_attempts""",
             (now_text, expired_before),
         )
+        db.execute(
+            """UPDATE jobs SET status='failed', error='Worker lease expired after maximum attempts',
+               locked_at=NULL, locked_by=NULL, updated_at=?
+               WHERE status='running' AND locked_at < ? AND attempts >= max_attempts""",
+            (now_text, expired_before),
+        )
         row = db.execute(
             """SELECT id FROM jobs WHERE status='queued' AND attempts < max_attempts
                ORDER BY created_at ASC LIMIT 1"""
