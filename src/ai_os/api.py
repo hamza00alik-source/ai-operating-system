@@ -162,6 +162,8 @@ def post_approval(payload: ApprovalCreate):
         return create_approval(payload)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @app.get("/approvals", response_model=list[ApprovalOut])
 def get_approvals():
