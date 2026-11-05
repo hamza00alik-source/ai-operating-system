@@ -7,17 +7,31 @@ from ai_os.service import create_approval, create_task, decide_approval, list_ap
 from ai_os.agent_schemas import AgentOut, PlanCreate, PlanOut
 from ai_os.registry import list_agents
 from ai_os.orchestrator import build_plan
+from ai_os.manual_schemas import WorkPacketCreate, WorkPacketOut, RuntimeStatus
+from ai_os.work_packets import build_work_packet
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
     yield
 
-app = FastAPI(title="AI Operating System", version="0.2.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
+app = FastAPI(title="AI Operating System", version="0.3.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
 
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
+
+@app.get("/runtime", response_model=RuntimeStatus)
+def get_runtime_status():
+    return {
+        "mode": "manual_free_chat",
+        "agent_profiles_available": True,
+        "manual_free_chat_available": True,
+        "model_api_configured": False,
+        "paid_api_calls_enabled": False,
+        "autonomous_execution_enabled": False,
+        "external_actions_enabled": False,
+    }
 
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
@@ -29,6 +43,15 @@ def post_plan(payload: PlanCreate):
         return build_plan(payload.title, payload.description, payload.department)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@app.post("/work-packets", response_model=WorkPacketOut, status_code=201)
+def post_work_packet(payload: WorkPacketCreate):
+    try:
+        return build_work_packet(payload.agent_id, payload.task, payload.context)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @app.post("/tasks", response_model=TaskOut, status_code=201)
 def post_task(payload: TaskCreate):
