@@ -19,6 +19,8 @@ from ai_os.work_packets import build_work_packet
 from ai_os.queue_schemas import JobCreate, JobOut, WorkerRunOut
 from ai_os.queue import enqueue_job, list_jobs
 from ai_os.worker import run_once
+from ai_os.governance import evaluate_action
+from ai_os.governance_schemas import GovernanceEvaluateIn, GovernanceEvaluateOut
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,11 @@ def get_audit_verification():
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
     return [agent.__dict__ for agent in list_agents()]
+
+@app.post("/governance/evaluate", response_model=GovernanceEvaluateOut)
+def post_governance_evaluation(payload: GovernanceEvaluateIn):
+    """Preview central CEO policy; this endpoint does not execute the action."""
+    return evaluate_action(payload.agent_id, payload.action)
 
 @app.post("/plans", response_model=PlanOut, status_code=201)
 def post_plan(payload: PlanCreate):
