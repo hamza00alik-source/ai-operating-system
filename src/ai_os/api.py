@@ -11,8 +11,8 @@ from ai_os.auth import authenticate_request
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
-from ai_os.agent_schemas import AgentOut, PlanCreate, PlanOut
-from ai_os.registry import list_agents
+from ai_os.agent_schemas import AgentOut, AgentProfileOut, PlanCreate, PlanOut
+from ai_os.registry import get_agent, list_agents, load_agent_profile
 from ai_os.orchestrator import build_plan
 from ai_os.manual_schemas import WorkPacketCreate, WorkPacketOut, RuntimeStatus
 from ai_os.work_packets import build_work_packet
@@ -105,7 +105,7 @@ def get_audit_verification():
 def get_agents():
     return [agent.__dict__ for agent in list_agents()]
 
-@app.post("/governance/evaluate", response_model=GovernanceEvaluateOut)
+@app.get("/agents/{agent_id}/profile", response_model=AgentProfileOut)\ndef get_agent_profile(agent_id: str):\n    agent = get_agent(agent_id)\n    if agent is None:\n        raise HTTPException(status_code=404, detail="Agent not found")\n    try:\n        profile = load_agent_profile(agent_id)\n    except FileNotFoundError as exc:\n        raise HTTPException(status_code=503, detail="Agency Agents submodule is not initialized") from exc\n    return {"id": agent.id, "name": agent.name, "department": agent.department,\n            "profile_path": agent.profile_path, "profile_markdown": profile or agent.description}\n\n@app.post("/governance/evaluate", response_model=GovernanceEvaluateOut)
 def post_governance_evaluation(payload: GovernanceEvaluateIn):
     """Preview central CEO policy; this endpoint does not execute the action."""
     return evaluate_action(payload.agent_id, payload.action)
