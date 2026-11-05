@@ -1,6 +1,6 @@
 """FastAPI application."""
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
@@ -9,13 +9,16 @@ from ai_os.registry import list_agents
 from ai_os.orchestrator import build_plan
 from ai_os.manual_schemas import WorkPacketCreate, WorkPacketOut, RuntimeStatus
 from ai_os.work_packets import build_work_packet
+from ai_os.queue_schemas import JobCreate, JobOut, WorkerRunOut
+from ai_os.queue import enqueue_job, list_jobs
+from ai_os.worker import run_once
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
     yield
 
-app = FastAPI(title="AI Operating System", version="0.3.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
+app = FastAPI(title="AI Operating System", version="0.4.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
 
 @app.get("/health")
 def health() -> dict:
@@ -52,6 +55,28 @@ def post_work_packet(payload: WorkPacketCreate):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.post("/jobs", response_model=JobOut, status_code=201)
+def post_job(payload: JobCreate):
+    if payload.job_type == "build_work_packet":
+        required = {"agent_id", "task"}
+        if not required.issubset(payload.payload):
+            raise HTTPException(status_code=422, detail="payload requires agent_id and task")
+        if not isinstance(payload.payload.get("agent_id"), str) or not isinstance(payload.payload.get("task"), str):
+            raise HTTPException(status_code=422, detail="agent_id and task must be strings")
+        if not payload.payload["task"].strip():
+            raise HTTPException(status_code=422, detail="task must not be blank")
+        if not isinstance(payload.payload.get("context", ""), str):
+            raise HTTPException(status_code=422, detail="context must be a string")
+    return enqueue_job(payload)
+
+@app.get("/jobs", response_model=list[JobOut])
+def get_jobs(limit: int = Query(default=100, ge=1, le=500)):
+    return list_jobs(limit)
+
+@app.post("/worker/run-once", response_model=WorkerRunOut)
+def post_worker_run_once():
+    return run_once()
 
 @app.post("/tasks", response_model=TaskOut, status_code=201)
 def post_task(payload: TaskCreate):
