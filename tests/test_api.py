@@ -180,3 +180,8 @@ def test_unknown_actions_fail_closed():
     assert response.status_code == 200
     assert response.json()["decision"] == "blocked_unknown_action"
     assert response.json()["allowed"] is False
+
+def test_approval_inbox_rejects_actions_outside_owner_approval_allowlist():
+    with TestClient(app) as client:
+        response = client.post("/approvals", json={"action": "run_unclassified_tool"})
+    assert response.status_code == 422
