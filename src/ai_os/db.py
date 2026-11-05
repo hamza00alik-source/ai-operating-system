@@ -11,8 +11,10 @@ def _database_path() -> str:
     return path if path == ":memory:" else str(Path(path))
 
 def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(_database_path(), check_same_thread=False)
+    connection = sqlite3.connect(_database_path(), check_same_thread=False, timeout=10)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 10000")
     return connection
 
 def initialize_database() -> None:
@@ -30,4 +32,22 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL, decided_at TEXT,
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
+        CREATE TABLE IF NOT EXISTS jobs (
+            id TEXT PRIMARY KEY,
+            job_type TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed')),
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            idempotency_key TEXT UNIQUE,
+            result_json TEXT,
+            error TEXT,
+            locked_at TEXT,
+            locked_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_jobs_status_created
+            ON jobs(status, created_at);
         """)
