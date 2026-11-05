@@ -75,3 +75,46 @@ def test_approval_cannot_be_decided_twice():
         aid = approval["id"]
         assert client.post(f"/approvals/{aid}/decision", json={"decision":"approved"}).status_code == 200
         assert client.post(f"/approvals/{aid}/decision", json={"decision":"rejected"}).status_code == 409
+
+def test_job_queue_generates_packet_locally():
+    with TestClient(app) as client:
+        queued = client.post("/jobs", json={
+            "job_type": "build_work_packet",
+            "payload": {
+                "agent_id": "product-trend-researcher",
+                "task": "Research international buying demand",
+                "context": "Find evidence of actual purchases."
+            },
+            "idempotency_key": "test-job-packet-001"
+        })
+        assert queued.status_code == 201
+        assert queued.json()["status"] == "queued"
+        result = client.post("/worker/run-once")
+        assert result.status_code == 200
+        assert result.json()["processed"] is True
+        assert result.json()["job"]["status"] == "completed"
+        assert result.json()["job"]["result"]["api_called"] is False
+        assert "Research international buying demand" in result.json()["job"]["result"]["prompt_text"]
+
+def test_job_idempotency_returns_existing_job():
+    body = {
+        "job_type": "build_work_packet",
+        "payload": {"agent_id": "product-trend-researcher", "task": "Test idempotency"},
+        "idempotency_key": "test-job-idempotency-001"
+    }
+    with TestClient(app) as client:
+        first = client.post("/jobs", json=body)
+        second = client.post("/jobs", json=body)
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+
+def test_job_rejects_unknown_type():
+    with TestClient(app) as client:
+        response = client.post("/jobs", json={"job_type": "run_shell", "payload": {}})
+    assert response.status_code == 422
+
+def test_job_rejects_incomplete_payload():
+    with TestClient(app) as client:
+        response = client.post("/jobs", json={"job_type": "build_work_packet", "payload": {"task": "Missing agent"}})
+    assert response.status_code == 422
