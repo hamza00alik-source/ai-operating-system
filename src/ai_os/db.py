@@ -50,4 +50,18 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status_created
             ON jobs(status, created_at);
+        CREATE TABLE IF NOT EXISTS audit_events (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL UNIQUE,
+            timestamp TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            action TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            details_json TEXT NOT NULL,
+            previous_hash TEXT NOT NULL,
+            event_hash TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_timestamp
+            ON audit_events(timestamp);
         """)
