@@ -118,3 +118,30 @@ def test_job_rejects_incomplete_payload():
     with TestClient(app) as client:
         response = client.post("/jobs", json={"job_type": "build_work_packet", "payload": {"task": "Missing agent"}})
     assert response.status_code == 422
+
+def test_owner_token_is_required_when_configured(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_TOKEN", "test-owner-token-" + "x" * 40)
+    with TestClient(app) as client:
+        denied = client.get("/agents")
+        allowed = client.get("/agents", headers={"Authorization": "Bearer " + "test-owner-token-" + "x" * 40})
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+
+def test_production_fails_closed_without_owner_token(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.delenv("AI_OS_API_TOKEN", raising=False)
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/agents").status_code == 503
+
+def test_audit_chain_records_requests_and_verifies():
+    with TestClient(app) as client:
+        assert client.get("/agents").status_code == 200
+        verification = client.get("/audit/verify")
+        events = client.get("/audit?limit=20")
+    assert verification.status_code == 200
+    assert verification.json()["valid"] is True
+    assert verification.json()["checked_events"] >= 2
+    assert events.status_code == 200
+    assert any(event["resource_id"] == "/agents" for event in events.json()["events"])
