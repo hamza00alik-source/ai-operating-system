@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source": {"name": "Agency Agents", "url": "https://github.com/msitarzewski/agency-agents", "license": "MIT", "usage": "Role taxonomy inspiration; runtime and safety controls are independently implemented."},
+  "source": {"name": "Agency Agents", "url": "https://github.com/hamza00alik-source/agency-agents", "license": "MIT", "usage": "Complete pinned specialist profile library; runtime, CEO governance, and safety controls are independently implemented."},
   "agents": [
     {"id":"company-orchestrator","name":"CEO Agent","department":"leadership","description":"Leads the company, delegates and verifies all work, owns every company action, and is the only agent that requests owner approval.","capabilities":["company_leadership","task_decomposition","delegation","quality_review","approval_gateway","progress_synthesis"],"requires_approval_for":["publishing","spending","customer_commitment"],"enabled":true},
     {"id":"product-trend-researcher","name":"Product Trend Researcher","department":"research","description":"Researches customer demand, competitors and market evidence.","capabilities":["market_research","competitor_analysis","source_evaluation"],"requires_approval_for":["external_action"],"enabled":true},
