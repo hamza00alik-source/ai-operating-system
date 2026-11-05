@@ -28,7 +28,7 @@ def test_plan_routes_to_specialist_without_executing():
         response = client.post("/plans", json={"title": "Research customer demand", "description": "Find evidence of willingness to pay.", "department": "research"})
     assert response.status_code == 201
     plan = response.json()
-    assert plan["assigned_agent"]["id"] == "product-trend-researcher"
+    assert plan["assigned_agent"]["id"] == "research-synthesist"
     assert plan["execution_enabled"] is False
     assert "No model" in plan["notice"]
 
