@@ -26,7 +26,8 @@ Open http://127.0.0.1:8000/docs.
 
 ## Current capabilities
 - Create and list work tasks and approval requests.
-- Discover all imported specialists with `GET /agents` (CEO plus 283 Agency Agents profiles).\n- Read a specialist's complete source instructions with `GET /agents/{agent_id}/profile`.\n- Discover the pinned scenario team runbooks with `GET /runbooks` and `GET /runbooks/{slug}`.\n- Generate role-specific work packets that include the complete specialist profile and CEO reporting rules.
+- Discover all imported specialists with `GET /agents` (CEO plus 283 Agency Agents profiles).\n- Read a specialist's complete source instructions with `GET /agents/{agent_id}/profile`.
+- Discover the pinned scenario team runbooks with `GET /runbooks` and `GET /runbooks/{slug}`.\n- Generate role-specific work packets that include the complete specialist profile and CEO reporting rules.
 - Create deterministic plans with `POST /plans`.
 - Check free-first execution settings with `GET /runtime`.
 - Generate ready-to-paste agent prompts with `POST /work-packets`; this makes no model/API call.
