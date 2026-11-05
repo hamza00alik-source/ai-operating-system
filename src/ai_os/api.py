@@ -4,18 +4,31 @@ from fastapi import FastAPI, HTTPException
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
+from ai_os.agent_schemas import AgentOut, PlanCreate, PlanOut
+from ai_os.registry import list_agents
+from ai_os.orchestrator import build_plan
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
     yield
 
-app = FastAPI(title="AI Operating System", version="0.1.0",
-              description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
+app = FastAPI(title="AI Operating System", version="0.2.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
 
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
+
+@app.get("/agents", response_model=list[AgentOut])
+def get_agents():
+    return [agent.__dict__ for agent in list_agents()]
+
+@app.post("/plans", response_model=PlanOut, status_code=201)
+def post_plan(payload: PlanCreate):
+    try:
+        return build_plan(payload.title, payload.description, payload.department)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @app.post("/tasks", response_model=TaskOut, status_code=201)
 def post_task(payload: TaskCreate):
