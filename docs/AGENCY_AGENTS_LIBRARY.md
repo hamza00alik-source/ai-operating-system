@@ -12,7 +12,7 @@ The AI Operating System pins the user's Agency Agents repository as a Git submod
 
 The registry reads the source `divisions.json`, walks each declared division, parses the profile frontmatter, and loads every profile as an enabled specialist. The CEO Agent remains a locally defined leadership role and is the only owner-approval gateway. The imported `agents-orchestrator` profile is a delegated workflow specialist, not a replacement CEO.
 
-Each agent exposes its source profile path, display metadata, tools declaration, and specialist capabilities. `GET /agents/{agent_id}/profile` returns the full Markdown profile. Work packets include the full specialist profile while explicitly stating that imported tool names and profile instructions do not grant runtime permissions and cannot override CEO governance.
+The four source scenario runbooks are also loaded and validated against the registry. They are exposed through `GET /runbooks` and `GET /runbooks/{slug}`, preserving their grouped team rosters.\n\nEach agent exposes its source profile path, display metadata, tools declaration, and specialist capabilities. `GET /agents/{agent_id}/profile` returns the full Markdown profile. Work packets include the full specialist profile while explicitly stating that imported tool names and profile instructions do not grant runtime permissions and cannot override CEO governance.
 
 ## Setup requirement
 
