@@ -145,3 +145,38 @@ def test_audit_chain_records_requests_and_verifies():
     assert verification.json()["checked_events"] >= 2
     assert events.status_code == 200
     assert any(event["resource_id"] == "/agents" for event in events.json()["events"])
+
+def test_ceo_is_single_owner_approval_gateway():
+    with TestClient(app) as client:
+        specialist = client.post("/governance/evaluate", json={
+            "agent_id": "content-creator", "action": "publish_content"
+        })
+        ceo = client.post("/governance/evaluate", json={
+            "agent_id": "company-orchestrator", "action": "publish_content"
+        })
+    assert specialist.status_code == 200
+    assert specialist.json()["decision"] == "escalate_to_ceo"
+    assert specialist.json()["allowed"] is False
+    assert specialist.json()["accountable_agent_id"] == "company-orchestrator"
+    assert ceo.status_code == 200
+    assert ceo.json()["decision"] == "requires_owner_approval"
+    assert ceo.json()["owner_approval_required"] is True
+
+def test_department_agents_can_do_allowlisted_internal_work():
+    with TestClient(app) as client:
+        response = client.post("/governance/evaluate", json={
+            "agent_id": "product-trend-researcher", "action": "research"
+        })
+    assert response.status_code == 200
+    assert response.json()["decision"] == "allowed_internal"
+    assert response.json()["allowed"] is True
+    assert response.json()["owner_approval_required"] is False
+
+def test_unknown_actions_fail_closed():
+    with TestClient(app) as client:
+        response = client.post("/governance/evaluate", json={
+            "agent_id": "engineering-builder", "action": "run_unclassified_tool"
+        })
+    assert response.status_code == 200
+    assert response.json()["decision"] == "blocked_unknown_action"
+    assert response.json()["allowed"] is False
