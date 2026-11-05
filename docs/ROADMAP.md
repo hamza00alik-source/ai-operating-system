@@ -29,12 +29,16 @@ A feature is complete only when tested and its operating limits are documented. 
 
 ## Phase 2 — Agency Agents-based runtime (partially implemented)
 - [x] CEO Agent designated as company leader and single owner-approval gateway (policy layer only)
-- [x] Starter agent catalog and provider-neutral registry
+- [x] Complete pinned Agency Agents library: 283 specialist profiles across 18 divisions
+- [x] Dynamic frontmatter registry with all imported specialists enabled
+- [x] Full profile API and specialist work packets with CEO reporting rules
+- [x] Starter CEO catalogue and provider-neutral registry
 - [x] Exact-department specialist selection
 - [x] Deterministic non-executing plan endpoint
 - [x] No-API manual free-chat work packet endpoint
 - [x] Persistent queue with idempotent enqueue, atomic claim, bounded retries, stale-lease recovery, and one local handler
-- [ ] Import and validate original Agency Agents Markdown profiles and runbooks with license attribution
+- [x] Pin original Agency Agents Markdown profiles as a read-only MIT-licensed Git submodule; retain upstream LICENSE and runbooks
+- [ ] Add automated source-pin drift checks and frontmatter validation in CI
 - [ ] Provider-neutral inference interface with strict local-only/free mode
 - [ ] Task planner with dependency graph, agent assignment, handoffs, and execution records
 - [ ] Background worker and durable scheduler
