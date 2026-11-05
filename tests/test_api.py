@@ -220,9 +220,9 @@ def test_work_packet_includes_full_profile_and_ceo_reporting_rule():
 def test_all_agency_agents_runbooks_are_available_and_resolve_agents():
     with TestClient(app) as client:
         response = client.get("/runbooks")
-    assert response.status_code == 200
-    runbooks = response.json()["runbooks"]
-    assert len(runbooks) >= 4
-    startup = next(item for item in runbooks if item["slug"] == "startup-mvp")
-    assert any("agents-orchestrator" in group["agents"] for group in startup["roster"])
-    assert client.get("/runbooks/incident-response").status_code == 200
+        assert response.status_code == 200
+        runbooks = response.json()["runbooks"]
+        assert len(runbooks) >= 4
+        startup = next(item for item in runbooks if item["slug"] == "startup-mvp")
+        assert any("agents-orchestrator" in group["agents"] for group in startup["roster"])
+        assert client.get("/runbooks/incident-response").status_code == 200
