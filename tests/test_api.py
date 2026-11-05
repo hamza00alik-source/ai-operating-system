@@ -20,7 +20,7 @@ def test_agent_registry_lists_enabled_agents():
         response = client.get("/agents")
     assert response.status_code == 200
     agents = response.json()
-    assert len(agents) >= 8
+    assert len(agents) >= 280
     assert any(agent["id"] == "product-trend-researcher" for agent in agents)
 
 def test_plan_routes_to_specialist_without_executing():
@@ -149,7 +149,7 @@ def test_audit_chain_records_requests_and_verifies():
 def test_ceo_is_single_owner_approval_gateway():
     with TestClient(app) as client:
         specialist = client.post("/governance/evaluate", json={
-            "agent_id": "content-creator", "action": "publish_content"
+            "agent_id": "marketing-content-creator", "action": "publish_content"
         })
         ceo = client.post("/governance/evaluate", json={
             "agent_id": "company-orchestrator", "action": "publish_content"
@@ -175,7 +175,7 @@ def test_department_agents_can_do_allowlisted_internal_work():
 def test_unknown_actions_fail_closed():
     with TestClient(app) as client:
         response = client.post("/governance/evaluate", json={
-            "agent_id": "engineering-builder", "action": "run_unclassified_tool"
+            "agent_id": "engineering-frontend-developer", "action": "run_unclassified_tool"
         })
     assert response.status_code == 200
     assert response.json()["decision"] == "blocked_unknown_action"
@@ -185,3 +185,34 @@ def test_approval_inbox_rejects_actions_outside_owner_approval_allowlist():
     with TestClient(app) as client:
         response = client.post("/approvals", json={"action": "run_unclassified_tool"})
     assert response.status_code == 422
+
+def test_full_agency_agents_library_is_loaded():
+    with TestClient(app) as client:
+        response = client.get("/agents")
+    assert response.status_code == 200
+    agents = response.json()
+    assert len(agents) >= 280
+    assert any(agent["id"] == "agents-orchestrator" for agent in agents)
+    assert any(agent["id"] == "marketing-tiktok-strategist" for agent in agents)
+    assert any(agent["id"] == "engineering-backend-architect" for agent in agents)
+    assert all(agent["enabled"] for agent in agents)
+
+def test_agent_profile_endpoint_returns_source_instructions():
+    with TestClient(app) as client:
+        response = client.get("/agents/marketing-content-creator/profile")
+    assert response.status_code == 200
+    assert "Identity & Role Definition" in response.json()["profile_markdown"]
+    assert response.json()["profile_path"] == "marketing/marketing-content-creator.md"
+
+def test_work_packet_includes_full_profile_and_ceo_reporting_rule():
+    with TestClient(app) as client:
+        response = client.post("/work-packets", json={
+            "agent_id": "marketing-content-creator",
+            "task": "Draft a product launch content plan"
+        })
+    assert response.status_code == 201
+    prompt = response.json()["prompt_text"]
+    assert "FULL SPECIALIST PROFILE" in prompt
+    assert "Identity & Role Definition" in prompt
+    assert "Report progress, findings, blockers, and recommendations to the CEO Agent" in prompt
+    assert "Never contact the owner directly" in prompt
