@@ -1,6 +1,6 @@
 # AI Operating System
 
-A modular, human-supervised foundation for running an AI-powered company.
+A modular, human-supervised foundation for running an AI-powered company, with the complete pinned Agency Agents specialist library (283 profiles across 18 divisions).
 
 > Early development: this is not yet a fully autonomous company. The registry, planning API, and no-API manual work-packet mode are available. Model execution, background workers, ecommerce, and social integrations are not connected.
 
@@ -26,7 +26,7 @@ Open http://127.0.0.1:8000/docs.
 
 ## Current capabilities
 - Create and list work tasks and approval requests.
-- Discover enabled specialists with `GET /agents`.
+- Discover all imported specialists with `GET /agents` (CEO plus 283 Agency Agents profiles).\n- Read a specialist's complete source instructions with `GET /agents/{agent_id}/profile`.\n- Generate role-specific work packets that include the complete specialist profile and CEO reporting rules.
 - Create deterministic plans with `POST /plans`.
 - Check free-first execution settings with `GET /runtime`.
 - Generate ready-to-paste agent prompts with `POST /work-packets`; this makes no model/API call.
