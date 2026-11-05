@@ -1,6 +1,13 @@
 """FastAPI application."""
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+from uuid import uuid4
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+
+from ai_os.audit import append_event, list_events, verify_chain
+from ai_os.auth import authenticate_request
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
@@ -13,12 +20,60 @@ from ai_os.queue_schemas import JobCreate, JobOut, WorkerRunOut
 from ai_os.queue import enqueue_job, list_jobs
 from ai_os.worker import run_once
 
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
     yield
 
-app = FastAPI(title="AI Operating System", version="0.4.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
+app = FastAPI(title="AI Operating System", version="0.5.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
+
+@app.middleware("http")
+async def owner_auth_and_audit(request: Request, call_next):
+    request_id = str(uuid4())
+    auth_response = await authenticate_request(request)
+    if auth_response is not None:
+        auth_response.headers["X-Request-ID"] = request_id
+        try:
+            append_event(
+                getattr(request.state, "actor", "anonymous"),
+                "request_denied", "http_request", request.url.path,
+                {"method": request.method, "status": auth_response.status_code, "request_id": request_id},
+            )
+        except Exception:
+            logger.exception("Could not write denied-request audit event")
+        return auth_response
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        try:
+            append_event(
+                getattr(request.state, "actor", "unknown"),
+                "request_failed", "http_request", request.url.path,
+                {"method": request.method, "status": 500, "request_id": request_id},
+            )
+        except Exception:
+            logger.exception("Could not write failed-request audit event")
+        raise
+
+    response.headers["X-Request-ID"] = request_id
+    if request.url.path != "/health":
+        try:
+            append_event(
+                getattr(request.state, "actor", "unknown"),
+                "request", "http_request", request.url.path,
+                {"method": request.method, "status": response.status_code, "request_id": request_id},
+            )
+        except Exception:
+            logger.exception("Audit write failed after request processing")
+            return JSONResponse(
+                status_code=503,
+                headers={"X-Request-ID": request_id},
+                content={"detail": "Audit storage failed after request processing. Inspect system state before retrying."},
+            )
+    return response
 
 @app.get("/health")
 def health() -> dict:
@@ -35,6 +90,14 @@ def get_runtime_status():
         "autonomous_execution_enabled": False,
         "external_actions_enabled": False,
     }
+
+@app.get("/audit")
+def get_audit_events(limit: int = Query(default=100, ge=1, le=500)):
+    return {"events": list_events(limit)}
+
+@app.get("/audit/verify")
+def get_audit_verification():
+    return verify_chain()
 
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
