@@ -105,7 +105,24 @@ def get_audit_verification():
 def get_agents():
     return [agent.__dict__ for agent in list_agents()]
 
-@app.get("/agents/{agent_id}/profile", response_model=AgentProfileOut)\ndef get_agent_profile(agent_id: str):\n    agent = get_agent(agent_id)\n    if agent is None:\n        raise HTTPException(status_code=404, detail="Agent not found")\n    try:\n        profile = load_agent_profile(agent_id)\n    except FileNotFoundError as exc:\n        raise HTTPException(status_code=503, detail="Agency Agents submodule is not initialized") from exc\n    return {"id": agent.id, "name": agent.name, "department": agent.department,\n            "profile_path": agent.profile_path, "profile_markdown": profile or agent.description}\n\n@app.post("/governance/evaluate", response_model=GovernanceEvaluateOut)
+@app.get("/agents/{agent_id}/profile", response_model=AgentProfileOut)
+def get_agent_profile(agent_id: str):
+    agent = get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    try:
+        profile = load_agent_profile(agent_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail="Agency Agents submodule is not initialized") from exc
+    return {
+        "id": agent.id,
+        "name": agent.name,
+        "department": agent.department,
+        "profile_path": agent.profile_path,
+        "profile_markdown": profile or agent.description,
+    }
+
+@app.post("/governance/evaluate", response_model=GovernanceEvaluateOut)
 def post_governance_evaluation(payload: GovernanceEvaluateIn):
     """Preview central CEO policy; this endpoint does not execute the action."""
     return evaluate_action(payload.agent_id, payload.action)
