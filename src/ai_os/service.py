@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from ai_os.db import connect
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, TaskCreate
+from ai_os.governance import OWNER_APPROVAL_ACTIONS
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -23,6 +24,9 @@ def list_tasks() -> list[dict]:
     return [dict(row) for row in rows]
 
 def create_approval(payload: ApprovalCreate) -> dict:
+    normalized_action = payload.action.strip().lower()
+    if normalized_action not in OWNER_APPROVAL_ACTIONS:
+        raise ValueError("Approval requests are limited to the CEO owner-approval action allowlist")
     if payload.task_id:
         with connect() as db:
             exists = db.execute("SELECT 1 FROM tasks WHERE id=?", (payload.task_id,)).fetchone()
