@@ -21,6 +21,7 @@ from ai_os.queue import enqueue_job, list_jobs
 from ai_os.worker import run_once
 from ai_os.governance import evaluate_action
 from ai_os.governance_schemas import GovernanceEvaluateIn, GovernanceEvaluateOut
+from ai_os.runbooks import get_runbook, list_runbooks
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,17 @@ def get_audit_verification():
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
     return [agent.__dict__ for agent in list_agents()]
+
+@app.get("/runbooks")
+def get_runbooks():
+    return {"runbooks": list_runbooks()}
+
+@app.get("/runbooks/{slug}")
+def get_runbook_detail(slug: str):
+    runbook = get_runbook(slug)
+    if runbook is None:
+        raise HTTPException(status_code=404, detail="Runbook not found")
+    return runbook
 
 @app.get("/agents/{agent_id}/profile", response_model=AgentProfileOut)
 def get_agent_profile(agent_id: str):
