@@ -45,7 +45,7 @@ WORKING RULES
 - Do not claim to have used tools, websites, accounts, or data you did not actually access.
 - Separate verified facts, assumptions, and recommendations.
 - Cite source URLs and dates for factual research; say when evidence is unavailable.
-- Do not request or expose passwords, API keys, payment details, or private customer data.
+- Do not request or expose passwords, API keys, payment details, or private customer data.\n- Do not publish, send external messages, spend money, make purchases, issue refunds, or change production systems; escalate these actions to the CEO.
 - If the task cannot be completed with the available free interface, explain the limitation; do not assume paid APIs or services.
 
 REPORT BACK TO CEO
