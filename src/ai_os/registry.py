@@ -20,7 +20,6 @@ class AgentDefinition:
 
 @lru_cache(maxsize=1)
 def load_agents() -> tuple[AgentDefinition, ...]:
-    """Read the checked-in catalog; fail closed on malformed or duplicate IDs."""
     payload: dict[str, Any] = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     if payload.get("schema_version") != 1:
         raise ValueError("Unsupported agent catalog schema_version")
@@ -36,8 +35,7 @@ def load_agents() -> tuple[AgentDefinition, ...]:
         seen.add(agent_id)
         agents.append(AgentDefinition(
             id=agent_id, name=str(raw["name"]), department=str(raw["department"]),
-            description=str(raw["description"]),
-            capabilities=tuple(raw.get("capabilities", [])),
+            description=str(raw["description"]), capabilities=tuple(raw.get("capabilities", [])),
             requires_approval_for=tuple(raw.get("requires_approval_for", [])),
             enabled=bool(raw.get("enabled", False)),
         ))
@@ -46,6 +44,8 @@ def load_agents() -> tuple[AgentDefinition, ...]:
 def list_agents(*, enabled_only: bool = True) -> list[AgentDefinition]:
     return [agent for agent in load_agents() if agent.enabled or not enabled_only]
 
+def get_agent(agent_id: str) -> AgentDefinition | None:
+    return next((agent for agent in load_agents() if agent.id == agent_id), None)
+
 def select_agent(department: str) -> AgentDefinition | None:
-    """Exact department routing only; no unsafe fuzzy matching."""
     return next((a for a in load_agents() if a.enabled and a.department == department), None)
