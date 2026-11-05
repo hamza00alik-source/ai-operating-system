@@ -7,7 +7,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - No silent fallback to paid providers or anonymous hosted inference.
 - Manual free-chat work packets remain available without any API.
 - Local inference is optional and must be tested on the actual host hardware.
-- Owner approval before publishing, spending, purchases, customer commitments, refunds, or production changes.
+- The CEO agent is accountable for every company action; department agents work under its direction.
+- Only the CEO agent may request owner approval for publishing, spending, purchases, customer commitments, refunds, or production/security changes.
 
 ## Phase 1 — Foundation (partially implemented)
 - [x] FastAPI application and Python package
@@ -18,12 +19,16 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Single-owner API token gate with production fail-closed behavior
 - [x] Append-only SQLite audit trail with SHA-256 chain verification
 - [x] Request IDs and request metadata logging without credentials or request bodies
+- [x] CEO accountability policy, internal-action allowlist, sensitive-action escalation, and fail-closed unknown-action handling
+- [x] Approval inbox restricted to the owner-approval action allowlist
 - [ ] Verify CI run for latest security/audit commit
 - [ ] Secret rotation, rate limiting, and recovery procedures
+- [ ] Authenticated agent identities and runtime-enforced CEO-only approval requests (policy preview exists; this is not yet enforced at real tool boundaries)
 - [ ] Role-based authorization for specialist agents and worker operations
 - [ ] Database backup/restore tests and signed off-host audit checkpoints
 
 ## Phase 2 — Agency Agents-based runtime (partially implemented)
+- [x] CEO Agent designated as company leader and single owner-approval gateway (policy layer only)
 - [x] Starter agent catalog and provider-neutral registry
 - [x] Exact-department specialist selection
 - [x] Deterministic non-executing plan endpoint
