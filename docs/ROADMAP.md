@@ -11,7 +11,7 @@ A feature is complete only when tested and its operating limits are documented. 
 
 ## Phase 1 — Foundation (partially implemented)
 - [x] FastAPI application and Python package
-- [x] SQLite persistence for tasks and approvals
+- [x] SQLite persistence for tasks, approvals, and durable jobs
 - [x] Human decision endpoints
 - [x] Starter API tests authored
 - [x] GitHub Actions test workflow authored
@@ -24,11 +24,12 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Exact-department specialist selection
 - [x] Deterministic non-executing plan endpoint
 - [x] No-API manual free-chat work packet endpoint
+- [x] Persistent queue with idempotent enqueue, atomic claim, bounded retries, stale-lease recovery, and one local handler
 - [ ] Import and validate original Agency Agents Markdown profiles and runbooks with license attribution
 - [ ] Provider-neutral inference interface with strict free-only mode
 - [ ] Task planner with dependency graph, agent assignment, handoffs, and execution records
-- [ ] Timeouts, retries, idempotency, and failure handling
 - [ ] Background worker and durable scheduler
+- [ ] Authentication and authorization before exposing worker operations
 
 ## Phase 3 — Memory, learning, and evaluation
 - [ ] Source-attributed company knowledge store
