@@ -1,13 +1,13 @@
 # Roadmap
 
-A feature is complete only when tested and its operating limits are documented. Agency Agents is the primary source for specialist role definitions and team/runbook patterns. Automaton is a secondary architecture reference only; see [AGENCY_AGENTS_ADOPTION.md](AGENCY_AGENTS_ADOPTION.md) and [AUTOMATON_REFERENCE_ASSESSMENT.md](AUTOMATON_REFERENCE_ASSESSMENT.md).
+A feature is complete only when tested and its operating limits are documented. Agency Agents is the primary source for specialist role definitions and team/runbook patterns. Automaton is a secondary architecture reference only; see [AGENCY_AGENTS_ADOPTION.md](AGENCY_AGENTS_ADOPTION.md) and [AUTOMATON_REFERENCE_ASSESSMENT.md](AUTOMATON_REFERENCE_ASSESSMENT.md). The ten pinned public reference repositories are reviewed weekly; see [REFERENCE_REVIEW_2026-11-06.md](REFERENCE_REVIEW_2026-11-06.md).
 
 ## Non-negotiable architecture requirements
 - Free-first: no paid model API, paid hosting, or paid service by default.
-- No silent fallback to paid providers.
+- No silent fallback to paid providers or anonymous hosted inference.
 - Manual free-chat work packets remain available without any API.
 - Local inference is optional and must be tested on the actual host hardware.
-- Owner approval before publishing, spending, purchases, customer commitments, or production changes.
+- Owner approval before publishing, spending, purchases, customer commitments, refunds, or production changes.
 
 ## Phase 1 — Foundation (partially implemented)
 - [x] FastAPI application and Python package
@@ -15,9 +15,13 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Human decision endpoints
 - [x] Starter API tests authored
 - [x] GitHub Actions test workflow authored
-- [ ] Verify CI run passes
-- [ ] Authentication and role-based authorization
-- [ ] Structured audit log
+- [x] Single-owner API token gate with production fail-closed behavior
+- [x] Append-only SQLite audit trail with SHA-256 chain verification
+- [x] Request IDs and request metadata logging without credentials or request bodies
+- [ ] Verify CI run for latest security/audit commit
+- [ ] Secret rotation, rate limiting, and recovery procedures
+- [ ] Role-based authorization for specialist agents and worker operations
+- [ ] Database backup/restore tests and signed off-host audit checkpoints
 
 ## Phase 2 — Agency Agents-based runtime (partially implemented)
 - [x] Starter agent catalog and provider-neutral registry
@@ -26,10 +30,10 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] No-API manual free-chat work packet endpoint
 - [x] Persistent queue with idempotent enqueue, atomic claim, bounded retries, stale-lease recovery, and one local handler
 - [ ] Import and validate original Agency Agents Markdown profiles and runbooks with license attribution
-- [ ] Provider-neutral inference interface with strict free-only mode
+- [ ] Provider-neutral inference interface with strict local-only/free mode
 - [ ] Task planner with dependency graph, agent assignment, handoffs, and execution records
 - [ ] Background worker and durable scheduler
-- [ ] Authentication and authorization before exposing worker operations
+- [ ] Authentication and authorization for each worker capability
 
 ## Phase 3 — Memory, learning, and evaluation
 - [ ] Source-attributed company knowledge store
@@ -54,8 +58,9 @@ A feature is complete only when tested and its operating limits are documented. 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
 - Automaton: selective patterns for ReAct loops, durable scheduling, task graphs, local workers, model routing, memory, policy enforcement, and auditability.
+- The ten other public repositories: reviewed weekly; adopt only compatible, license-aware patterns. Current review is in [REFERENCE_REVIEW_2026-11-06.md](REFERENCE_REVIEW_2026-11-06.md).
 - Exclude Conway billing/sandbox dependencies, wallets/USDC, x402 payments, autonomous spending, self-replication, unrestricted shell access, and automatic production self-modification.
 
 ## Safety boundaries
 
-No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes. Prompt instructions are not security controls: enforce permissions in the runtime and integration layer.
+No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes. Prompt instructions are not security controls: enforce permissions in the runtime and integration layer. The current token gate is not full RBAC; keep the service local-only until remaining hardening work is complete.
