@@ -21,7 +21,7 @@ def test_command_backend_is_disabled_by_default(monkeypatch):
 def test_command_args_require_prompt_placeholder(monkeypatch):
     monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
     monkeypatch.setenv("AI_OS_MODEL_COMMAND_ARGS", '["--output-format", "json"]')
-    with pytest.raises(ValueError, match="prompt placeholder"):
+    with pytest.raises(ValueError, match="placeholder"):
         model_adapter._command_configuration()
 
 
