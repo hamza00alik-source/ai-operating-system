@@ -9,6 +9,7 @@ class KnowledgeCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=8000)
     category: str = Field(min_length=1, max_length=80)
+    access_scope: Literal["company", "owner_only"] = "company"
     source_url: AnyHttpUrl
     source_title: str = Field(min_length=1, max_length=200)
     source_published_at: datetime | None = None
