@@ -59,3 +59,69 @@ def test_background_worker_executes_dependency_ordered_specialists(monkeypatch):
     assert [step["status"] for step in final["steps"]] == ["completed", "completed"]
     assert all(step["report"]["reported_to"] == "company-orchestrator" for step in final["steps"])
     assert all(step["work_packet"]["api_called"] is False for step in final["steps"])
+
+
+
+def test_blocked_specialist_propagates_to_dependent_steps(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "free-compatible-test-model")
+
+    def blocked_generate(system_prompt, user_prompt):
+        return ({
+            "status": "blocked",
+            "summary": "Research cannot be completed with the available evidence.",
+            "evidence": [],
+            "blockers": ["No verifiable source data was supplied."],
+        }, {"provider": "test", "model": "mock"})
+
+    monkeypatch.setattr("ai_os.agent_runtime.generate_json", blocked_generate)
+    with TestClient(app) as client:
+        created = client.post("/company-runs", json=_run_payload())
+        assert created.status_code == 201, created.text
+        run_id = created.json()["id"]
+
+        first = client.post("/worker/run-once")
+        assert first.status_code == 200, first.text
+        assert first.json()["job"]["status"] == "completed"
+
+        second = client.post("/worker/run-once")
+        assert second.status_code == 200, second.text
+        final = client.get(f"/company-runs/{run_id}").json()
+
+    assert final["status"] == "blocked"
+    assert [step["status"] for step in final["steps"]] == ["blocked", "blocked"]
+    assert final["steps"][1]["report"]["system_generated"] is True
+    assert "research" in final["steps"][1]["report"]["blockers"][0]
+
+
+def test_exhausted_specialist_retries_mark_step_and_run_blocked(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "free-compatible-test-model")
+
+    def failing_generate(system_prompt, user_prompt):
+        raise RuntimeError("simulated inference outage")
+
+    monkeypatch.setattr("ai_os.agent_runtime.generate_json", failing_generate)
+    with TestClient(app) as client:
+        payload = {
+            "title": "Retry exhaustion test",
+            "steps": [
+                {"step_key": "research", "agent_id": "product-trend-researcher",
+                 "task": "Research customer demand"}
+            ],
+        }
+        created = client.post("/company-runs", json=payload)
+        assert created.status_code == 201, created.text
+        run_id = created.json()["id"]
+
+        results = [client.post("/worker/run-once").json() for _ in range(3)]
+        final = client.get(f"/company-runs/{run_id}").json()
+
+    assert [item["job"]["status"] for item in results] == ["queued", "queued", "failed"]
+    assert final["status"] == "blocked"
+    assert final["steps"][0]["status"] == "blocked"
+    assert "exhausted its retry allowance" in final["steps"][0]["report"]["summary"]
