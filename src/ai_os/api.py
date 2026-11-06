@@ -28,7 +28,7 @@ from ai_os.execution_schemas import CompanyRunCreate, CompanyRunOut, StepReportC
 from ai_os.execution import create_company_run, list_company_runs, get_company_run, dispatch_ready_step, submit_step_report
 from ai_os.ceo_schemas import CEOObjectiveCreate, CEOPlanOut
 from ai_os.ceo_brain import create_ceo_plan, get_ceo_plan
-from ai_os.model_adapter import get_model_status
+from ai_os.model_adapter import get_model_status, ModelNotConfigured
 from ai_os.ceo_review import review_company_run
 from ai_os.identity import AgentIdentityError, consume_agent_token
 from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
@@ -41,6 +41,10 @@ from ai_os.improvement_testing import run_proposal_regression_tests, list_propos
 from ai_os.instruction_versions import (
     activate_tested_proposal, get_active_instruction, get_instruction_history,
     rollback_instruction,
+)
+from ai_os.behavior_testing import (
+    FIXTURES as BEHAVIOR_TEST_FIXTURES, get_behavior_test_status,
+    list_behavior_test_runs, run_behavior_regression_test,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,6 +267,48 @@ def post_agent_instruction_rollback(agent_id: str, request: Request):
         {"agent_id": agent_id, "version_number": version["version_number"]},
     )
     return version
+
+
+@app.get("/behavior-tests/status")
+def get_behavior_test_readiness():
+    return {**get_behavior_test_status(), "fixtures": list(BEHAVIOR_TEST_FIXTURES)}
+
+
+@app.post("/improvement-proposals/{proposal_id}/behavior-test", status_code=201)
+def post_improvement_behavior_test(
+    proposal_id: str, request: Request,
+    fixture_id: str = Query(default="source-grounded-research", max_length=80),
+):
+    """Compare baseline and candidate prompts through the explicitly enabled local-only model."""
+    actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required to run model behavior tests.")
+    try:
+        result = run_behavior_regression_test(proposal_id, fixture_id)
+    except ModelNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Improvement proposal not found")
+    append_event(
+        actor, "instruction_behavior_tested", "improvement_proposal", proposal_id,
+        {"test_run_id": result["id"], "fixture_id": fixture_id,
+         "passed": result["passed"], "score_delta": result["score_delta"],
+         "model": result["model"]},
+    )
+    return result
+
+
+@app.get("/improvement-proposals/{proposal_id}/behavior-tests")
+def get_improvement_behavior_tests(
+    proposal_id: str, limit: int = Query(default=20, ge=1, le=100)
+):
+    return list_behavior_test_runs(proposal_id, limit=limit)
 
 
 @app.get("/audit/verify")
