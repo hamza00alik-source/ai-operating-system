@@ -401,7 +401,10 @@ def get_audit_verification():
 @app.post("/knowledge", status_code=201)
 def post_knowledge_candidate(payload: KnowledgeCreate, request: Request):
     """Store source-attributed research as an unreviewed candidate, never as trusted fact."""
-    item = create_knowledge_item(payload, actor=getattr(request.state, "actor", "unknown"))
+    try:
+        item = create_knowledge_item(payload, actor=getattr(request.state, "actor", "unknown"))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     append_event(
         getattr(request.state, "actor", "unknown"),
         "knowledge_candidate_created", "knowledge_item", item["id"],
