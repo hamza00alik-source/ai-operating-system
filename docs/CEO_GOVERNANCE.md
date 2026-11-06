@@ -52,10 +52,10 @@ The internal identity issuer now applies a server-side capability policy: the CE
 
 The new `ai_os.approvals` module provides internal primitives (not HTTP endpoints) for:
 - canonicalizing an allowlisted action and its complete JSON parameters, then hashing that exact scope with SHA-256;
-- creating a pending request only from a signed, run-bound CEO identity with `approval.request`;
+- creating a pending request only from a signed, run-bound CEO identity with `approval.request`, consuming that credential's nonce exactly once;
 - recording an owner decision against the exact action hash, with expiry and a single pending-to-decided transition;
 - atomically consuming an approved request only when action type and every parameter still match, with a unique execution ID and one-time state transition.
 
-Approval requests receive a maximum 15-minute owner-review window after the signed CEO request has been verified; the CEO token itself remains short-lived and is not needed for the owner to finish reviewing an already-created request. Expired requests transition to `expired`; rejected, changed, expired, or already-consumed approvals cannot authorize execution. Parameter JSON is bounded to 16 KB and rejects non-finite values.
+A CEO request token is consumed only after the action has passed canonical validation, and cannot create a second approval request. Approval requests receive a maximum 15-minute owner-review window after the signed CEO request has been verified; the CEO token itself remains short-lived and is not needed for the owner to finish reviewing an already-created request. Expired requests transition to `expired`; rejected, changed, expired, or already-consumed approvals cannot authorize execution. Parameter JSON is bounded to 16 KB and rejects non-finite values.
 
 **This is not an enabled approval or execution workflow.** No HTTP route calls these primitives; the existing `/approvals` inbox remains closed for request creation. The owner-decision primitive must only be called behind a separately verified owner-authenticated endpoint. No adapter currently consumes approvals to publish, message customers, spend money, deploy, or change production. The runtime continues to report external actions and autonomous execution as disabled.
