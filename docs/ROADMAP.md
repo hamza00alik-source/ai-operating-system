@@ -24,7 +24,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Verify CI run for latest security/audit commit
 - [ ] Secret rotation, rate limiting, and recovery procedures
 - [x] Signed CEO-only approval-request ingress, owner-authenticated exact-scope decisions, expiry, audit events, and owner dashboard inbox
-- [ ] General action gateway with execution-time authorization checks and external adapter sandboxing
+- [x] Internal action gateway with adapter registry, exact approval consumption, disabled-by-default switch, and audited outcomes
+- [ ] Production adapter sandboxing, reconciliation, and external-action integration tests
 - [ ] Role-based authorization for specialist agents and worker operations
 - [x] SQLite online backup helper with integrity/schema/audit-chain verification and automated tests
 - [ ] Restore workflow, off-host backup policy, retention, and signed audit checkpoints
@@ -83,7 +84,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide and operator handbook
 
-See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md), and [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for learning, instruction lifecycle, and the company-owned model plan.
+See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md),  [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for the company-owned model plan, and [ACTION_GATEWAY.md](ACTION_GATEWAY.md) for the action execution boundary.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
