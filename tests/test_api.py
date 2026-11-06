@@ -273,14 +273,18 @@ def test_company_run_rejects_cycles_and_unknown_specialists():
         unknown["steps"][0]["agent_id"] = "not-a-real-agent"
         assert client.post("/company-runs", json=unknown).status_code == 422
 
-def test_company_run_report_requires_dispatched_step(monkeypatch):
+def test_company_run_report_requires_dispatched_step_without_burning_token(monkeypatch):
     monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
     with TestClient(app) as client:
         created = client.post("/company-runs", json=_company_run_payload()).json()
-        response = client.post(f"/company-runs/{created['id']}/steps/research/report", json={
-            "status": "completed", "summary": "Cannot report before assignment."
-        }, headers=_agent_report_headers("product-trend-researcher", created["id"]))
-        assert response.status_code == 409
+        headers = _agent_report_headers("product-trend-researcher", created["id"])
+        body = {"status": "completed", "summary": "Cannot report before assignment."}
+        early = client.post(f"/company-runs/{created['id']}/steps/research/report", json=body, headers=headers)
+        assert early.status_code == 409
+        dispatched = client.post(f"/company-runs/{created['id']}/steps/research/dispatch")
+        assert dispatched.status_code == 200
+        accepted = client.post(f"/company-runs/{created['id']}/steps/research/report", json=body, headers=headers)
+        assert accepted.status_code == 200
 
 
 def test_company_step_report_rejects_wrong_agent_and_replayed_token(monkeypatch):
