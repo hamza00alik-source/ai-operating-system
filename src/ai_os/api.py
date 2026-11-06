@@ -32,7 +32,8 @@ from ai_os.model_adapter import get_model_status
 from ai_os.ceo_review import review_company_run
 from ai_os.identity import AgentIdentityError, consume_agent_token
 from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
-from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,\n                            list_knowledge_items, review_knowledge_item)
+from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
+                            list_knowledge_items, review_knowledge_item)
 
 logger = logging.getLogger(__name__)
 
