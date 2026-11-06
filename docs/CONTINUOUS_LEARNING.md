@@ -1,0 +1,30 @@
+# Continuous Learning and Evaluation
+
+## Current capability
+
+The company has a persistent, source-attributed knowledge store. Specialist agents can propose knowledge candidates from URLs present in their task context. New candidates remain untrusted until the owner accepts them. Agents can retrieve only owner-accepted notes, within bounded context limits.
+
+This release adds a deterministic report-evaluation rubric and a small regression dataset. The evaluator checks:
+- JSON-object shape, allowed status, and non-empty summary;
+- evidence and blocker field types;
+- evidence on completed reports and reasons on blocked reports;
+- explicit claims that an agent performed external actions that the current runtime cannot perform.
+
+The fixture dataset is exercised in CI without calling a model provider. It is intended as a stable baseline for future evaluation work.
+
+## What a passing evaluation means
+
+A passing result means only that the report met these structural and explicit safety checks. It does **not** establish factual accuracy, source authenticity, reasoning quality, market demand, or completeness. Those require source-aware and task-specific evaluation datasets, and eventually owner review.
+
+The evaluator is a pure function: it does not call a model, persist scores, alter agent prompts, change policies, or affect production execution. It is not yet connected to an automatic learning loop.
+
+## Next stages
+
+1. Add task-specific datasets with expected evidence and rubric criteria.
+2. Persist evaluation outcomes with the run, specialist, evaluator version, and timestamp.
+3. Track quality trends across repeated tasks and detect regressions.
+4. Let the CEO propose prompt/workflow improvements with evidence and expected impact.
+5. Run candidate changes against the regression suite; keep the current version active on failure.
+6. Require owner approval before adopting changes that affect live behavior.
+
+No self-modification, autonomous policy changes, paid inference, or external actions are enabled by this evaluator.
