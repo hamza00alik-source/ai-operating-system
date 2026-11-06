@@ -11,8 +11,9 @@ are not scheduled until their prerequisites complete.
 
 ## Model requirement and zero-cost default
 
-The worker does not include an AI model. A model endpoint must be deliberately
-configured through the existing provider-neutral OpenAI-compatible adapter.
+The worker does not include an AI model. An inference backend must be deliberately
+configured. The default is the provider-neutral OpenAI-compatible HTTP adapter;
+an optional owner-configured local CLI adapter is also available.
 Nothing is enabled by default, no provider is selected, and there is no silent
 paid fallback. A local inference server can be used without an API key; the
 owner must verify the host can run the chosen model. A hosted endpoint may incur
@@ -20,6 +21,32 @@ charges or have changing free-tier terms, so it must not be assumed free.
 
 The Agency Agents repository supplies role instructions; it does not itself
 supply a free inference engine. A profile alone cannot reason or execute tasks.
+
+## Optional authenticated CLI backend
+
+The CLI backend can invoke an already-authenticated local command without an API
+key. It is opt-in and does not assume that a particular CLI is installed or free.
+For the `agy` command previously used in this project, the argument shape below
+matches the observed prompt-mode invocation; its structured response format has
+not yet been verified against the installed CLI, so a real runtime smoke test is
+still required before relying on it:
+
+```bash
+export AI_OS_MODEL_BACKEND=command
+export AI_OS_MODEL_COMMAND=agy
+export AI_OS_MODEL_COMMAND_ARGS='["-p", "{prompt}", "--output-format", "json"]'
+export AI_OS_MODEL_NAME=agy-cli
+export AI_OS_MODEL_ENABLED=true
+```
+
+The adapter uses an argument array with `shell=False`, a bounded timeout, and
+strict JSON parsing. It never accepts shell command strings from model output.
+However, a CLI may have its own browser, shell, file, or network tools enabled;
+configure and verify a prompt-only/no-tools CLI profile before enabling this
+backend. The operating system cannot sandbox permissions granted by that CLI.
+CLI execution may also use the network and may be subject to the CLI provider's
+terms or quotas. Keep this backend disabled until the CLI's permissions and
+output contract have been checked.
 
 ## Enable the worker
 
