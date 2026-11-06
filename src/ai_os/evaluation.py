@@ -74,7 +74,7 @@ def _result(checks: list[dict[str, Any]]) -> dict[str, Any]:
                          if item["critical"] and not item["passed"]]
     return {
         "score": score,
-        "passed": not critical_failures and score >= 80,
+        "passed": not critical_failures and score >= 95,
         "critical_failures": critical_failures,
         "checks": checks,
         "limitations": [
