@@ -54,7 +54,11 @@ def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
         if row["status"] != "pending":
             raise ValueError("This approval request has already been decided")
         decided_at = _now()
-        db.execute("UPDATE approvals SET status=?, decided_at=? WHERE id=?",
-                   (payload.decision, decided_at, approval_id))
+        cursor = db.execute(
+            "UPDATE approvals SET status=?, decided_at=? WHERE id=? AND status='pending'",
+            (payload.decision, decided_at, approval_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("This approval request has already been decided")
         updated = db.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
     return dict(updated)
