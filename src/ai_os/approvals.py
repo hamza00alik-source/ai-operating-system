@@ -60,7 +60,7 @@ def create_owner_approval_request(
     """Create a pending request only from a signed CEO principal for its run."""
     if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 1 <= ttl_seconds <= MAX_APPROVAL_TTL_SECONDS:
         raise ApprovalSecurityError("Approval lifetime must be between 1 and 900 seconds.")
-    # Validate the proposed action before consuming the one-time CEO credential.
+    # Validate the proposed action and referenced run before consuming the CEO credential.
     _, action_hash = canonical_action(action_type, parameters)
     try:
         principal = consume_agent_token(
@@ -70,6 +70,12 @@ def create_owner_approval_request(
         )
     except AgentIdentityError as exc:
         raise ApprovalSecurityError(str(exc)) from exc
+    with connect() as db:
+        run_exists = db.execute(
+            "SELECT 1 FROM company_runs WHERE id=?", (principal.run_id,)
+        ).fetchone()
+    if not run_exists:
+        raise ApprovalSecurityError("CEO approval request must reference an existing company run.")
     now = int(time.time())
     request = {
         "id": str(uuid4()),
@@ -198,3 +204,27 @@ def consume_owner_approval(
     result = dict(consumed)
     result["parameters"] = json.loads(result.pop("parameters_json"))
     return result
+
+
+def list_owner_approval_requests(*, status: str | None = None, limit: int = 100) -> list[dict]:
+    """Return bounded approval inbox records with decoded exact-scope parameters."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 500:
+        raise ValueError("Approval request limit must be between 1 and 500.")
+    allowed_statuses = {"pending", "approved", "rejected", "consumed", "expired"}
+    if status is not None and status not in allowed_statuses:
+        raise ValueError("Unsupported approval request status.")
+    query = "SELECT * FROM owner_approval_requests"
+    parameters: list[object] = []
+    if status is not None:
+        query += " WHERE status=?"
+        parameters.append(status)
+    query += " ORDER BY created_at DESC,id DESC LIMIT ?"
+    parameters.append(limit)
+    with connect() as db:
+        rows = db.execute(query, parameters).fetchall()
+    results = []
+    for row in rows:
+        item = dict(row)
+        item["parameters"] = json.loads(item.pop("parameters_json"))
+        results.append(item)
+    return results
