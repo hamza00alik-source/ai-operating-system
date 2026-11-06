@@ -22,7 +22,7 @@ def _token(monkeypatch, **overrides):
     values = {
         "agent_id": "marketing-content-creator",
         "run_id": "run-123",
-        "capabilities": ["research.read", "report.submit"],
+        "capabilities": ["step.report"],
     }
     values.update(overrides)
     return issue_agent_token(**values)
@@ -34,11 +34,11 @@ def test_signed_agent_token_round_trip(monkeypatch):
         token,
         expected_agent_id="marketing-content-creator",
         expected_run_id="run-123",
-        required_capability="report.submit",
+        required_capability="step.report",
     )
     assert principal.agent_id == "marketing-content-creator"
     assert principal.run_id == "run-123"
-    assert principal.capabilities == ("report.submit", "research.read")
+    assert principal.capabilities == ("step.report",)
     assert principal.expires_at > principal.issued_at
     assert principal.nonce
 
@@ -72,7 +72,7 @@ def test_agent_token_requires_strong_server_secret(monkeypatch):
         issue_agent_token(
             "marketing-content-creator",
             run_id="run-123",
-            capabilities=["research.read"],
+            capabilities=["step.report"],
         )
 
 
@@ -96,7 +96,7 @@ def test_expired_agent_token_is_rejected(monkeypatch):
     _registered_agent(monkeypatch)
     monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
     monkeypatch.setattr("ai_os.identity.time.time", lambda: 1_800_000_000)
-    token = issue_agent_token("marketing-content-creator", run_id="run-123", capabilities=["research.read"], ttl_seconds=1)
+    token = issue_agent_token("marketing-content-creator", run_id="run-123", capabilities=["step.report"], ttl_seconds=1)
     monkeypatch.setattr("ai_os.identity.time.time", lambda: 1_800_000_002)
     with pytest.raises(AgentIdentityError, match="expired"):
         verify_agent_token(token)
@@ -112,7 +112,7 @@ def test_agent_token_can_only_be_consumed_once(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'identity.db'}")
     initialize_database()
     token = _token(monkeypatch)
-    principal = consume_agent_token(token, expected_run_id="run-123", required_capability="report.submit")
+    principal = consume_agent_token(token, expected_run_id="run-123", required_capability="step.report")
     assert principal.agent_id == "marketing-content-creator"
     with pytest.raises(AgentIdentityError, match="already consumed"):
         consume_agent_token(token, expected_run_id="run-123")
