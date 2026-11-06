@@ -54,7 +54,7 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
-from ai_os.wordpress import WordPressReadOnlyClient
+from ai_os.wordpress import WordPressNotConfigured, WordPressReadError, WordPressReadOnlyClient
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,33 @@ def owner_dashboard():
 def get_wordpress_integration_status():
     """Owner-only configuration status; does not contact the WordPress site."""
     return WordPressReadOnlyClient.status()
+
+@app.get("/integrations/wordpress/posts")
+def get_wordpress_posts(page: int = Query(default=1, ge=1, le=1000),
+                        per_page: int = Query(default=20, ge=1, le=50)):
+    """Owner-only bounded WordPress post inventory; read-only."""
+    try:
+        return {"posts": WordPressReadOnlyClient.from_environment().list_posts(
+            page=page, per_page=per_page
+        )}
+    except WordPressNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except WordPressReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/integrations/wordpress/pages")
+def get_wordpress_pages(page: int = Query(default=1, ge=1, le=1000),
+                        per_page: int = Query(default=20, ge=1, le=50)):
+    """Owner-only bounded WordPress page inventory; read-only."""
+    try:
+        return {"pages": WordPressReadOnlyClient.from_environment().list_pages(
+            page=page, per_page=per_page
+        )}
+    except WordPressNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except WordPressReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 @app.get("/actions/gateway/status")
 def get_action_gateway_readiness():
