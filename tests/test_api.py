@@ -588,3 +588,13 @@ def test_owner_dashboard_exposes_static_improvement_test_action():
     assert "Run static safety checks" in page.text
     assert "testImprovement" in page.text
     assert "does not test model behavior or activate the change" in page.text
+
+
+
+def test_owner_dashboard_loads_and_displays_static_improvement_test_history():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert '"/tests?limit=3"' in page.text
+    assert "Latest static test:" in page.text
+    assert "PASSED" in page.text and "FAILED" in page.text
