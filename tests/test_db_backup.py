@@ -4,7 +4,7 @@ import pytest
 
 from ai_os.audit import append_event
 from ai_os.db import initialize_database
-from ai_os.db_backup import create_database_backup, verify_sqlite_backup
+from ai_os.db_backup import (create_database_backup, restore_database_backup, verify_sqlite_backup)
 
 
 def test_backup_is_consistent_and_contains_application_data(tmp_path, monkeypatch):
@@ -75,3 +75,33 @@ def test_backup_verification_detects_audit_chain_tampering(tmp_path, monkeypatch
     assert result["integrity"] == ["ok"]
     assert result["audit_chain_valid"] is False
     assert result["valid"] is False
+
+
+def test_restore_requires_explicit_overwrite_and_verifies_before_replacement(tmp_path, monkeypatch):
+    database = tmp_path / "live.sqlite3"
+    backup = tmp_path / "snapshot.sqlite3"
+    target = tmp_path / "restore.sqlite3"
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{database}")
+    initialize_database()
+    append_event("test-owner", "restore_test", "test", "restore-1", {"safe": True})
+    create_database_backup(backup)
+    target.write_text("existing target")
+
+    with pytest.raises(FileExistsError, match="overwrite=True"):
+        restore_database_backup(backup, destination=target)
+
+    restored = restore_database_backup(backup, destination=target, overwrite=True)
+    assert restored["restored"] is True
+    assert restored["verification"]["valid"] is True
+    assert verify_sqlite_backup(target)["valid"] is True
+
+
+def test_restore_rejects_invalid_backup_without_touching_target(tmp_path):
+    invalid = tmp_path / "invalid.sqlite3"
+    target = tmp_path / "target.sqlite3"
+    invalid.write_text("not a database")
+    target.write_text("keep me")
+
+    with pytest.raises(sqlite3.DatabaseError):
+        restore_database_backup(invalid, destination=target, overwrite=True)
+    assert target.read_text() == "keep me"
