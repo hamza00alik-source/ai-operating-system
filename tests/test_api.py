@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from ai_os.api import app
+from ai_os.identity import issue_agent_token
 
 def test_health():
     with TestClient(app) as client:
@@ -213,6 +214,15 @@ def test_all_agency_agents_runbooks_are_available_and_resolve_agents():
         assert any("agents-orchestrator" in group["agents"] for group in startup["roster"])
         assert client.get("/runbooks/incident-response").status_code == 200
 
+def _agent_report_headers(agent_id: str, run_id: str):
+    return {
+        "X-AI-Agent-Token": issue_agent_token(
+            agent_id,
+            run_id=run_id,
+            capabilities=["step.report"],
+        )
+    }
+
 def _company_run_payload():
     return {
         "title": "Validate a product opportunity",
@@ -240,14 +250,14 @@ def test_company_run_persists_and_dispatches_only_ready_steps():
         report = client.post(f"/company-runs/{run['id']}/steps/research/report", json={
             "status": "completed", "summary": "Found verified demand signals.",
             "evidence": ["https://example.com/source"]
-        })
+        }, headers=_agent_report_headers("product-trend-researcher", run["id"]))
         assert report.status_code == 200
         second = client.post(f"/company-runs/{run['id']}/steps/strategy/dispatch")
         assert second.status_code == 200
         assert "CEO Agent" in second.json()["work_packet"]["prompt_text"]
         report2 = client.post(f"/company-runs/{run['id']}/steps/strategy/report", json={
             "status": "completed", "summary": "Opportunity recommendation ready."
-        })
+        }, headers=_agent_report_headers("business-strategist", run["id"]))
         assert report2.status_code == 200
         final = client.get(f"/company-runs/{run['id']}")
         assert final.status_code == 200
@@ -265,10 +275,40 @@ def test_company_run_rejects_cycles_and_unknown_specialists():
 def test_company_run_report_requires_dispatched_step():
     with TestClient(app) as client:
         created = client.post("/company-runs", json=_company_run_payload()).json()
+        monkeypatch = None
         response = client.post(f"/company-runs/{created['id']}/steps/research/report", json={
             "status": "completed", "summary": "Cannot report before assignment."
         })
-        assert response.status_code == 409
+        assert response.status_code == 401
+
+
+def test_company_step_report_rejects_wrong_agent_and_replayed_token(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    with TestClient(app) as client:
+        created = client.post("/company-runs", json=_company_run_payload()).json()
+        run_id = created["id"]
+        client.post(f"/company-runs/{run_id}/steps/research/dispatch")
+        wrong_agent = _agent_report_headers("business-strategist", run_id)
+        body = {"status": "completed", "summary": "Spoofed report"}
+        denied = client.post(f"/company-runs/{run_id}/steps/research/report", json=body, headers=wrong_agent)
+        assert denied.status_code == 403
+        valid_headers = _agent_report_headers("product-trend-researcher", run_id)
+        accepted = client.post(f"/company-runs/{run_id}/steps/research/report", json=body, headers=valid_headers)
+        assert accepted.status_code == 200
+        replay = client.post(f"/company-runs/{run_id}/steps/research/report", json=body, headers=valid_headers)
+        assert replay.status_code == 403
+
+def test_company_step_report_rejects_token_for_another_run(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    with TestClient(app) as client:
+        first = client.post("/company-runs", json=_company_run_payload()).json()
+        second = client.post("/company-runs", json=_company_run_payload()).json()
+        client.post(f"/company-runs/{first['id']}/steps/research/dispatch")
+        headers = _agent_report_headers("product-trend-researcher", second["id"])
+        response = client.post(f"/company-runs/{first['id']}/steps/research/report", json={
+            "status": "completed", "summary": "Wrong run"
+        }, headers=headers)
+        assert response.status_code == 403
 
 
 def test_ceo_brain_creates_persisted_company_plan():
