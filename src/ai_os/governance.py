@@ -21,7 +21,7 @@ OWNER_APPROVAL_ACTIONS = {
     "customer_commitment", "issue_refund", "spend_money",
     "purchase_service", "paid_promotion", "production_change",
     "deploy_public_service", "change_security_permissions",
-    "modify_financial_settings", "create_paid_subscription", "create_website_draft",
+    "modify_financial_settings", "create_paid_subscription", "create_website_draft", "create_product_draft",
 }
 
 def evaluate_action(agent_id: str, action: str) -> dict:
