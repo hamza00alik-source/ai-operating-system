@@ -110,6 +110,7 @@ def initialize_database() -> None:
             title TEXT NOT NULL,
             content TEXT NOT NULL,
             category TEXT NOT NULL,
+            access_scope TEXT NOT NULL DEFAULT 'company' CHECK(access_scope IN ('company','owner_only')),
             source_url TEXT NOT NULL,
             source_title TEXT NOT NULL,
             source_published_at TEXT,
@@ -277,3 +278,6 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL
         );
         """)
+        knowledge_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_items)")}
+        if "access_scope" not in knowledge_columns:
+            connection.execute("ALTER TABLE knowledge_items ADD COLUMN access_scope TEXT NOT NULL DEFAULT 'company'")
