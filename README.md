@@ -43,9 +43,9 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 - Persist task, company-run, report, queue, knowledge, and evaluation records in SQLite.
 - Inspect per-agent evaluation history and cautious sample-gated quality trends.
 - Draft evidence-linked CEO improvement proposals; owner approval is required for testing, followed by a separate explicit owner-token activation action.
-- Run static instruction-contract checks for owner-approved proposals, then explicitly activate the exact passing addendum through the owner dashboard; activation is versioned, audited, and rollback-capable. Static checks are not model-behavior benchmarks.
+- Run static instruction-contract checks and optional local-only baseline-vs-candidate behavior regression tests for owner-approved proposals, then explicitly activate the exact passing addendum through the owner dashboard; activation is versioned, audited, and rollback-capable. No remote model endpoint or API key is allowed for behavior testing.
 
-See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, [docs/INSTRUCTION_VERSIONING.md](docs/INSTRUCTION_VERSIONING.md) for controlled improvement and rollback, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
+See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, [docs/INSTRUCTION_VERSIONING.md](docs/INSTRUCTION_VERSIONING.md) for controlled improvement and rollback, [docs/BEHAVIOR_TESTING.md](docs/BEHAVIOR_TESTING.md) for optional local regression tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
 
 Approval records are workflow primitives, not a security sandbox. Do not connect production credentials until authentication, authorization, audit logging, and integration safeguards exist.
 
