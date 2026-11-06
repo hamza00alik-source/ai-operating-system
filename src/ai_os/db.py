@@ -248,4 +248,32 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_instruction_behavior_tests_proposal_created
             ON instruction_behavior_test_runs(proposal_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS model_training_examples (
+            id TEXT PRIMARY KEY,
+            task_family TEXT NOT NULL,
+            system_prompt TEXT NOT NULL,
+            user_input TEXT NOT NULL,
+            ideal_response TEXT NOT NULL,
+            source_refs_json TEXT NOT NULL,
+            rights_confirmed INTEGER NOT NULL CHECK(rights_confirmed IN (0,1)),
+            privacy_reviewed INTEGER NOT NULL CHECK(privacy_reviewed IN (0,1)),
+            status TEXT NOT NULL CHECK(status IN ('candidate','accepted','rejected')),
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            review_note TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_model_training_examples_status_family
+            ON model_training_examples(status, task_family, created_at);
+        CREATE TABLE IF NOT EXISTS training_dataset_exports (
+            id TEXT PRIMARY KEY,
+            version_number INTEGER NOT NULL UNIQUE CHECK(version_number >= 1),
+            dataset_sha256 TEXT NOT NULL,
+            example_count INTEGER NOT NULL CHECK(example_count >= 1),
+            task_family_counts_json TEXT NOT NULL,
+            example_ids_json TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         """)
