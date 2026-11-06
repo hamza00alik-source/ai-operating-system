@@ -90,3 +90,16 @@ lease policy.
 - Owner approval primitives are not yet wired to external execution.
 - Use one worker process initially. Multiple workers require a later concurrency
   and recovery review.
+
+
+## Failed work and dependency propagation
+
+A specialist report with `status=blocked` is retained for the CEO. Pending
+downstream steps that depend on that blocked step are marked blocked with a
+system-generated explanation; they are not silently left pending. Independent
+workstreams remain eligible to run. When a specialist job exhausts its durable
+queue retry allowance, the worker marks the assigned step blocked and applies
+the same dependency propagation. A company run becomes `blocked` only after
+all its steps are terminal and at least one step is blocked; otherwise it stays
+active while independent work remains. These transitions are covered by
+mocked runtime tests and do not require a live model provider.
