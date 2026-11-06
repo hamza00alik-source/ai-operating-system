@@ -2,7 +2,7 @@
 
 A modular, human-supervised foundation for running an AI-powered company, with the complete pinned Agency Agents specialist library (283 profiles across 18 divisions).
 
-> Early development: this is not yet a fully autonomous company. The registry, planning API, and no-API manual work-packet mode are available. Model execution, background workers, ecommerce, and social integrations are not connected.
+> Early development: the repository now includes a model-backed specialist worker runtime, but it is disabled by default and requires an explicitly configured compatible model endpoint. It is not a fully autonomous company; ecommerce, social integrations, and external actions remain disconnected.
 
 ## Principles
 - Free-first: no paid model API is required for the current workflow.
@@ -37,19 +37,24 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 - Create deterministic plans with `POST /plans`.
 - Check free-first execution settings with `GET /runtime`.
 - Generate ready-to-paste agent prompts with `POST /work-packets`; this makes no model/API call.
-- Persist task and approval records in SQLite.
+- Execute dependency-ready specialist steps through a durable worker queue when an owner-configured model endpoint is explicitly enabled.
+- Run a persistent worker process with `python -m ai_os.worker_service`; see [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
+- Persist task, company-run, report, and queue records in SQLite.
 
 See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
 
 Approval records are workflow primitives, not a security sandbox. Do not connect production credentials until authentication, authorization, audit logging, and integration safeguards exist.
 
 
-## Phase 3: optional model-backed CEO review
+## Optional model-backed specialist and CEO execution
 
 - Provider-neutral OpenAI-compatible chat-completions adapter; no provider SDK or vendor is selected.
 - Model execution is disabled unless `AI_OS_MODEL_ENABLED=true`, `AI_OS_MODEL_BASE_URL`, and `AI_OS_MODEL_NAME` are configured.
 - Remote endpoints must use HTTPS; localhost model servers may use HTTP. API keys are read only from environment variables.
 - `GET /models/status` checks readiness without contacting a provider.
+- `POST /worker/run-once` schedules ready company-run steps and executes one durable job; the persistent worker uses the same queue.
+- `python -m ai_os.worker_service` runs a separate polling worker process. It refuses to start unless model execution is enabled and configured.
+- Specialists receive their full role profile, execute one bounded internal task through the configured model, and submit authenticated reports to the CEO in dependency order.
 - `POST /ceo/review/{run_id}` sends completed specialist reports to the configured model and stores its structured CEO review. It performs no actions.
 - Reports are treated as untrusted input. Recommendations cannot dispatch agents, create approvals, publish, spend, or contact customers.
 - Free-tier quotas, privacy, retention, and terms vary. No provider is enabled by default.
