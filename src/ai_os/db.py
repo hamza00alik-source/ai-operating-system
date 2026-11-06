@@ -105,6 +105,26 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_audit_timestamp
             ON audit_events(timestamp);
+        CREATE TABLE IF NOT EXISTS knowledge_items (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            category TEXT NOT NULL,
+            source_url TEXT NOT NULL,
+            source_title TEXT NOT NULL,
+            source_published_at TEXT,
+            source_accessed_at TEXT NOT NULL,
+            confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL CHECK(status IN ('candidate','accepted','rejected')),
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            review_note TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_status_category
+            ON knowledge_items(status, category, created_at);
         CREATE TABLE IF NOT EXISTS consumed_agent_nonces (
             nonce TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
