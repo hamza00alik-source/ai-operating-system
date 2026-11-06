@@ -42,3 +42,8 @@ Use HTTPS when exposing the service beyond a trusted local environment. Do not d
 ## Verification
 
 The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, owner-token protection, candidate review controls, the model-status endpoint, and per-agent progress and auto-refresh features.
+
+
+## Backup limitation
+
+SQLite backup creation and integrity verification are available as an explicit local helper (`ai_os.db_backup.create_database_backup`). The dashboard does not schedule backups, upload them off-host, or restore databases. Backups contain private company data and must be stored with restricted access. Stop all application writers before any manual restore operation.
