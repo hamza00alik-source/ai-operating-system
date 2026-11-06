@@ -145,6 +145,13 @@ def run_behavior_regression_test(proposal_id: str, fixture_id: str) -> dict | No
         return None
     if proposal["status"] != "approved_for_testing":
         raise ValueError("Proposal must be owner-approved for testing.")
+    with connect() as db:
+        activated = db.execute(
+            "SELECT id FROM agent_instruction_versions WHERE source_proposal_id=? LIMIT 1",
+            (proposal_id,),
+        ).fetchone()
+    if activated:
+        raise ValueError("An activated proposal cannot be behavior-tested again; draft a new proposal.")
     candidate = proposal["proposed_change"]
     if not isinstance(candidate, str) or not candidate.strip() or len(candidate) > MAX_CANDIDATE_CHARS:
         raise ValueError("Candidate instruction text is empty or exceeds the configured limit.")
