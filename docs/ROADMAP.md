@@ -58,6 +58,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Retrieval with company/user access boundaries
 - [x] Deterministic specialist-report evaluation rubric and CI regression fixtures (structure/safety signals only)
 - [x] Persisted evaluation history and sample-gated quality trend API/dashboard
+- [x] Owner-reviewed training-example candidates with rights/privacy attestations and one-time review
+- [x] Private accepted-only versioned JSONL dataset exports with SHA-256 manifests
 - [ ] Task-specific evidence and factuality evaluation datasets
 - [ ] Daily research/learning proposals with evidence and source links
 - [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing
