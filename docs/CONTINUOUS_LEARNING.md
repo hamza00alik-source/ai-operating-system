@@ -16,7 +16,7 @@ The fixture dataset is exercised in CI without calling a model provider. It is i
 
 A passing result means only that the report met these structural and explicit safety checks. It does **not** establish factual accuracy, source authenticity, reasoning quality, market demand, or completeness. Those require source-aware and task-specific evaluation datasets, and eventually owner review.
 
-The evaluator is a pure function: it does not call a model, persist scores, alter agent prompts, change policies, or affect production execution. It is not yet connected to an automatic learning loop.
+The evaluator itself remains a pure, provider-free function. Each model-backed specialist execution now stores its evaluation in SQLite, linked to the exact company run, step, and agent, with evaluator version, score, pass/fail result, individual checks, limitations, and timestamp. The owner-protected `GET /evaluations` endpoint returns bounded history and a summary; optional `agent_id` and `run_id` filters are supported. Evaluation records are included in the verified SQLite backup schema.
 
 ## Next stages
 
