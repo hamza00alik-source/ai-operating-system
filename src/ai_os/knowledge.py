@@ -66,14 +66,6 @@ def create_knowledge_item(payload: KnowledgeCreate, *, actor: str) -> dict:
         "review_note": None,
     }
     with connect() as db:
-        duplicates = db.execute(
-            """SELECT id, content FROM knowledge_items
-               WHERE source_url=? AND lower(title)=?""",
-            (item["source_url"], item["title"].lower()),
-        ).fetchall()
-        normalized_content = _normalize_text(item["content"])
-        if any(_normalize_text(row["content"]) == normalized_content for row in duplicates):
-            raise ValueError("An identical knowledge item already exists for this source and title.")
         db.execute(
             """INSERT INTO knowledge_items
             (id,title,content,category,source_url,source_title,source_published_at,
@@ -178,6 +170,19 @@ def retrieve_accepted_knowledge(query: str, *, limit: int = 5,
             item["created_at"], item, freshness_label,
         ))
     ranked.sort(key=lambda entry: entry[:4], reverse=True)
+    deduplicated = []
+    seen_fingerprints = set()
+    for entry in ranked:
+        item = entry[4]
+        fingerprint = (
+            item["source_url"].lower(),
+            _normalize_text(item["title"]),
+            _normalize_text(item["content"]),
+        )
+        if fingerprint in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fingerprint)
+        deduplicated.append(entry)
     return [
         {
             **item,
@@ -190,5 +195,5 @@ def retrieve_accepted_knowledge(query: str, *, limit: int = 5,
             },
         }
         for keyword_matches, freshness_score, _, _, item, freshness_label
-        in ranked[:max(0, min(limit, 20))]
+        in deduplicated[:max(0, min(limit, 20))]
     ]
