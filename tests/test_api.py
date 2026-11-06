@@ -63,18 +63,13 @@ def test_task_and_approval_flow():
         task = client.post("/tasks", json={"title":"Research demand","department":"research"})
         assert task.status_code == 201
         approval = client.post("/approvals", json={"task_id": task.json()["id"], "action":"publish_content"})
-        assert approval.status_code == 201
-        aid = approval.json()["id"]
-        decision = client.post(f"/approvals/{aid}/decision", json={"decision":"rejected"})
-        assert decision.status_code == 200
-        assert decision.json()["status"] == "rejected"
+        assert approval.status_code == 403
+        assert "trusted CEO runtime identity" in approval.json()["detail"]
 
 def test_approval_cannot_be_decided_twice():
     with TestClient(app) as client:
-        approval = client.post("/approvals", json={"action":"spend_money"}).json()
-        aid = approval["id"]
-        assert client.post(f"/approvals/{aid}/decision", json={"decision":"approved"}).status_code == 200
-        assert client.post(f"/approvals/{aid}/decision", json={"decision":"rejected"}).status_code == 409
+        approval = client.post("/approvals", json={"action":"spend_money"})
+        assert approval.status_code == 403
 
 def test_job_queue_generates_packet_locally():
     with TestClient(app) as client:
@@ -169,7 +164,7 @@ def test_unknown_actions_fail_closed():
 def test_approval_inbox_rejects_actions_outside_owner_approval_allowlist():
     with TestClient(app) as client:
         response = client.post("/approvals", json={"action": "run_unclassified_tool"})
-    assert response.status_code == 422
+    assert response.status_code == 403
 
 def test_full_agency_agents_library_is_loaded():
     with TestClient(app) as client:
