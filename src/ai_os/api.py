@@ -37,6 +37,7 @@ from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
                             list_knowledge_items, review_knowledge_item)
 from ai_os.improvement import (draft_improvement_proposals, list_improvement_proposals,
                                review_improvement_proposal)
+from ai_os.improvement_testing import run_proposal_regression_tests, list_proposal_test_runs
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,28 @@ def post_improvement_proposal_review(proposal_id: str, payload: dict, request: R
     append_event(actor, "improvement_proposal_reviewed", "improvement_proposal",
                  proposal_id, {"decision": decision})
     return proposal
+
+
+@app.post("/improvement-proposals/{proposal_id}/test", status_code=201)
+def post_improvement_proposal_test(proposal_id: str, request: Request):
+    """Run static contract checks for an owner-approved candidate; never activate it."""
+    try:
+        result = run_proposal_regression_tests(proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Improvement proposal not found")
+    actor = getattr(request.state, "actor", "unknown")
+    append_event(actor, "improvement_proposal_tested", "improvement_proposal",
+                 proposal_id, {"test_run_id": result["id"], "passed": result["passed"]})
+    return result
+
+
+@app.get("/improvement-proposals/{proposal_id}/tests")
+def get_improvement_proposal_tests(
+    proposal_id: str, limit: int = Query(default=20, ge=1, le=100)
+):
+    return list_proposal_test_runs(proposal_id, limit=limit)
 
 
 @app.get("/audit/verify")
