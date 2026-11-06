@@ -2,7 +2,7 @@
 
 ## Current capability
 
-The company has a persistent, source-attributed knowledge store. Specialist agents can propose knowledge candidates from URLs present in their task context. New candidates remain untrusted until the owner accepts them. Agents can retrieve only owner-accepted notes, within bounded context limits.
+The company has a persistent, source-attributed knowledge store. Specialist agents can propose knowledge candidates from URLs present in their task context. New candidates remain untrusted until the owner accepts them. Agents can retrieve only owner-accepted notes, within bounded context limits. Retrieval removes exact duplicates by normalized source URL, title, and content; publication-date freshness is used only as a tie-breaker and is explicitly labeled a heuristic. Retrieval remains lexical rather than semantic.
 
 This release adds a deterministic report-evaluation rubric and a small regression dataset. The evaluator checks:
 - JSON-object shape, allowed status, and non-empty summary;
@@ -22,7 +22,7 @@ The evaluator itself remains a pure, provider-free function. Each model-backed s
 
 ## Next stages
 
-1. Add task-specific datasets with expected evidence and rubric criteria.
+1. Add semantic retrieval/embeddings and task-specific datasets with expected evidence and rubric criteria.
 2. Persist evaluation outcomes with the run, specialist, evaluator version, and timestamp.
 3. Track quality trends across repeated tasks and detect regressions. The owner API and dashboard now compare the latest five evaluations with the previous five per agent; fewer than ten evaluations produce no signal. Signals are provisional because task difficulty is not recorded or normalized.
 4. Let the CEO propose prompt/workflow improvements with evidence and expected impact. The current deterministic proposal generator drafts suggestions only after the same known rubric check fails at least twice for an agent in the recent evaluation sample. Owners can approve a proposal for testing or reject it; approval does not adopt or activate the change.
