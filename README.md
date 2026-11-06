@@ -27,7 +27,7 @@ uvicorn ai_os.api:app --reload
 
 Open http://127.0.0.1:8000/docs.
 
-Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. Enter the configured `AI_OS_API_TOKEN`; the dashboard reads agent, run, job, approval, runtime, and audit data from the protected API. The dashboard shell itself is public, but its data APIs still require owner authentication.
+Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [docs/OWNER_DASHBOARD.md](docs/OWNER_DASHBOARD.md) for dashboard behavior, data definitions, security, and limitations. Enter the configured `AI_OS_API_TOKEN`; the dashboard reads agent, run, job, approval, runtime, and audit data from the protected API. The dashboard shell itself is public, but its data APIs still require owner authentication.
 
 ## Current capabilities
 - Create and list work tasks and approval requests.
