@@ -29,10 +29,10 @@ FIXTURES = {
             "Do not infer facts that are not stated."
         ),
         "context": (
-            "Source title: Example Official Product Changelog\\n"
-            "Publication date: 2026-10-29\\n"
-            "URL: https://example.test/official-product-changelog\\n"
-            "Source fact: The example product added an export option for CSV reports.\\n"
+            "Source title: Example Official Product Changelog\n"
+            "Publication date: 2026-10-29\n"
+            "URL: https://example.test/official-product-changelog\n"
+            "Source fact: The example product added an export option for CSV reports.\n"
             "This is synthetic test material, not a real-world factual source."
         ),
         "required_evidence": "https://example.test/official-product-changelog",
