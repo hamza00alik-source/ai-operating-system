@@ -41,6 +41,7 @@ Use HTTPS when exposing the service beyond a trusted local environment. Do not d
 - Progress reflects stored workflow records, not live model tokens, CPU activity, or independent agent heartbeats.
 - Agent profile count is not the count of active agents.
 - Owner decisions are explicit, one-time, exact-scope, expiry-bound, and audit-logged. Approval does not trigger an external action; no store, social, payment, messaging, or deployment executor is connected.
+- Training exports are returned only through owner-authenticated APIs and must remain private. The basic sensitive-text scan is not a complete PII detector or legal review.
 - Model execution is disabled by default. Ecommerce, social publishing, spending, customer commitments, and other external actions remain disconnected and require separate implementation and owner approval.
 
 ## Verification
