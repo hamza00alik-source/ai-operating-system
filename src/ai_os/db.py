@@ -189,7 +189,7 @@ def initialize_database() -> None:
         CREATE TABLE IF NOT EXISTS improvement_test_runs (
             id TEXT PRIMARY KEY,
             proposal_id TEXT NOT NULL,
-            baseline_policy_version TEXT NOT NULL,
+            screening_policy_version TEXT NOT NULL,
             candidate_sha256 TEXT NOT NULL,
             passed INTEGER NOT NULL CHECK(passed IN (0,1)),
             checks_json TEXT NOT NULL,
