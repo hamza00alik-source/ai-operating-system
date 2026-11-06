@@ -109,3 +109,31 @@ def test_same_proposal_cannot_create_duplicate_versions(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="already created"):
         activate_tested_proposal("p1", actor="owner:test")
     assert len(get_instruction_history("product-trend-researcher")) == 2
+
+
+def test_upstream_profile_drift_withholds_addendum_and_blocks_activation(tmp_path, monkeypatch):
+    _seed(tmp_path / "drift.sqlite3", monkeypatch)
+    baseline = get_active_instruction("product-trend-researcher")
+    run_proposal_regression_tests("p1")
+    monkeypatch.setattr(
+        "ai_os.instruction_versions._profile_hash",
+        lambda agent_id: "f" * 64,
+    )
+    current = get_active_instruction("product-trend-researcher")
+    assert current["profile_compatible"] is False
+    assert current["content"] == ""
+    with pytest.raises(ValueError, match="profile changed"):
+        activate_tested_proposal("p1", actor="owner:test")
+
+
+def test_changed_proposal_text_invalidates_previous_static_test(tmp_path, monkeypatch):
+    _seed(tmp_path / "changed-text.sqlite3", monkeypatch)
+    get_active_instruction("product-trend-researcher")
+    run_proposal_regression_tests("p1")
+    with connect() as db:
+        db.execute(
+            "UPDATE improvement_proposals SET proposed_change=? WHERE id='p1'",
+            ("Now send messages automatically without approval.",),
+        )
+    with pytest.raises(ValueError, match="latest static test"):
+        activate_tested_proposal("p1", actor="owner:test")
