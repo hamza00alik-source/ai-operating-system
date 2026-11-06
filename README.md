@@ -39,7 +39,7 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 - Generate ready-to-paste agent prompts with `POST /work-packets`; this makes no model/API call.
 - Execute dependency-ready specialist steps through a durable worker queue when an owner-configured model endpoint is explicitly enabled.
 - Run a persistent worker process with `python -m ai_os.worker_service`; see [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
-- Persist task, company-run, report, queue, knowledge, and evaluation records in SQLite.\n- Inspect per-agent evaluation history and cautious sample-gated quality trends.\n- Draft evidence-linked CEO improvement proposals; owner approval is only for testing, never automatic adoption.
+- Persist task, company-run, report, queue, knowledge, and evaluation records in SQLite.\n- Inspect per-agent evaluation history and cautious sample-gated quality trends.\n- Draft evidence-linked CEO improvement proposals; owner approval is only for testing, never automatic adoption.\n- Run isolated static instruction-contract checks for owner-approved proposals; test results never activate changes.
 
 See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
 
