@@ -48,11 +48,16 @@ def get_model_status() -> dict:
         executable = os.getenv("AI_OS_MODEL_COMMAND", "").strip()
         try:
             _command_configuration()
-            configured = bool(executable and shutil.which(executable))
+            tools_disabled_confirmed = _truthy("AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED")
+            configured = bool(executable and shutil.which(executable) and tools_disabled_confirmed)
         except (ModelNotConfigured, ValueError):
             configured = False
         reason = "ready" if enabled and configured else (
-            "disabled_by_default" if not enabled else "missing_or_unavailable_command"
+            "disabled_by_default" if not enabled else (
+                "confirm_cli_no_tools" if executable and shutil.which(executable)
+                and not _truthy("AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED")
+                else "missing_or_unavailable_command"
+            )
         )
         return {
             "enabled": enabled and configured,
@@ -61,6 +66,7 @@ def get_model_status() -> dict:
             "provider": os.getenv("AI_OS_MODEL_PROVIDER", "local_cli").strip() or "local_cli",
             "model": model or "cli_managed",
             "command_present": bool(executable),
+            "no_tools_confirmed": _truthy("AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED"),
             "api_key_present": False,
             "reason": reason,
             "makes_network_request": False,
