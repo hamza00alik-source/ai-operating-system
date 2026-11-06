@@ -20,12 +20,12 @@ def _make_library(root: Path) -> Path:
             agent_id = f"agent-{division_index:02d}-{profile_index:02d}"
             ids.append(agent_id)
             (directory / f"{agent_id}.md").write_text(
-                f"---\\nname: Agent {agent_id}\\ndescription: Test specialist\\n---\\n\\n# {agent_id}\\n",
+                f"---\nname: Agent {agent_id}\ndescription: Test specialist\n---\n\n# {agent_id}\n",
                 encoding="utf-8",
             )
     docs = library / "strategy" / "runbooks"
     docs.mkdir(parents=True)
-    (docs / "demo.md").write_text("# Demo runbook\\n", encoding="utf-8")
+    (docs / "demo.md").write_text("# Demo runbook\n", encoding="utf-8")
     (library / "strategy" / "runbooks.json").write_text(
         json.dumps({"runbooks": [{
             "slug": "demo",
@@ -46,7 +46,7 @@ def test_agent_library_validator_rejects_missing_frontmatter_and_unknown_runbook
     root = _make_library(tmp_path)
     library = root / "vendor" / "agency-agents"
     profile = next((library / "division-00").glob("*.md"))
-    profile.write_text("# Missing metadata\\n", encoding="utf-8")
+    profile.write_text("# Missing metadata\n", encoding="utf-8")
     runbooks = library / "strategy" / "runbooks.json"
     payload = json.loads(runbooks.read_text(encoding="utf-8"))
     payload["runbooks"][0]["roster"][0]["agents"] = ["not-a-real-agent"]
