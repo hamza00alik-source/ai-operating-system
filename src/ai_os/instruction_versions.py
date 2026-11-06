@@ -140,6 +140,15 @@ def activate_tested_proposal(proposal_id: str, *, actor: str) -> dict | None:
         ).fetchone()
         if test is None or not test["passed"] or test["candidate_sha256"] != digest:
             raise ValueError("The latest static test must pass for the exact current proposal text.")
+        behavior_test = db.execute(
+            """SELECT * FROM instruction_behavior_test_runs WHERE proposal_id=?
+               ORDER BY created_at DESC,id DESC LIMIT 1""",
+            (proposal_id,),
+        ).fetchone()
+        if behavior_test is not None and (
+            not behavior_test["passed"] or behavior_test["candidate_sha256"] != digest
+        ):
+            raise ValueError("The latest local behavior test must pass for the exact current proposal text.")
         profile_hash = _profile_hash(proposal["agent_id"])
         head = _ensure_head(db, proposal["agent_id"], profile_hash)
         if not head["profile_compatible"]:
