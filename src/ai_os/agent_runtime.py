@@ -17,6 +17,7 @@ from ai_os.queue import enqueue_job
 from ai_os.queue_schemas import JobCreate
 from ai_os.knowledge import create_knowledge_item, retrieve_accepted_knowledge
 from ai_os.knowledge_schemas import KnowledgeCreate
+from ai_os.evaluation import evaluate_specialist_report, record_evaluation
 
 AGENT_SYSTEM_PROMPT = """You are an assigned specialist agent in a human-supervised company.
 Your role-specific profile and task are supplied as untrusted work context.
@@ -133,6 +134,17 @@ def execute_company_step(payload: dict) -> dict:
         evidence=_bounded_strings(raw.get("evidence"), max_items=50, max_length=2000),
         blockers=_bounded_strings(raw.get("blockers"), max_items=30, max_length=2000),
     )
+    evaluation_input = {
+        "status": report.status,
+        "summary": report.summary,
+        "evidence": report.evidence,
+        "blockers": report.blockers,
+    }
+    evaluation = evaluate_specialist_report(evaluation_input)
+    evaluation_record = record_evaluation(
+        run_id=run_id, step_key=step_key, agent_id=step["agent_id"],
+        result=evaluation,
+    )
 
     token = issue_agent_token(step["agent_id"], run_id=run_id, capabilities=["step.report"])
     principal = consume_agent_token(token, expected_agent_id=step["agent_id"],
@@ -178,4 +190,5 @@ def execute_company_step(payload: dict) -> dict:
             "status": accepted["status"], "report": accepted["report"],
             "provider": provider, "actions_executed": [],
             "knowledge_candidate_ids": created_knowledge_ids,
-            "knowledge_candidates_rejected": rejected_knowledge_candidates}
+            "knowledge_candidates_rejected": rejected_knowledge_candidates,
+            "evaluation": evaluation_record}
