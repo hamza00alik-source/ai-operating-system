@@ -19,7 +19,7 @@ def _decode(row) -> dict:
 
 def _normalize_text(value: str) -> str:
     import re
-    return " ".join(re.findall(r"\\w+", value.lower()))
+    return " ".join(re.findall(r"\w+", value.lower()))
 
 
 def _freshness(source_published_at: str | None, *, now: datetime) -> tuple[float, str]:
