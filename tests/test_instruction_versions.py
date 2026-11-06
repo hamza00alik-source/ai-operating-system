@@ -81,7 +81,6 @@ def test_proposal_rejected_cannot_activate(tmp_path, monkeypatch):
     with connect() as db:
         db.execute("UPDATE improvement_proposals SET status='rejected' WHERE id='p1'")
     get_active_instruction("product-trend-researcher")
-    run_proposal_regression_tests("p1") if False else None
     with pytest.raises(ValueError, match="owner-approved"):
         activate_tested_proposal("p1", actor="owner:test")
 
