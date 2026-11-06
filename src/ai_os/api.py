@@ -215,6 +215,8 @@ def get_improvement_proposal_tests(
 def post_improvement_proposal_activate(proposal_id: str, request: Request):
     """Owner-authenticated activation of the exact proposal text after a passing static screen."""
     actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required to activate agent instructions.")
     try:
         version = activate_tested_proposal(proposal_id, actor=actor)
     except ValueError as exc:
@@ -248,6 +250,8 @@ def get_agent_instruction_history(agent_id: str, limit: int = Query(default=30, 
 @app.post("/agents/{agent_id}/instructions/rollback")
 def post_agent_instruction_rollback(agent_id: str, request: Request):
     actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required to roll back agent instructions.")
     try:
         version = rollback_instruction(agent_id, actor=actor)
     except LookupError as exc:
