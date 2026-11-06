@@ -17,6 +17,7 @@ from ai_os.approvals import (ApprovalSecurityError, create_owner_approval_reques
                              decide_owner_approval, list_owner_approval_requests)
 from ai_os.action_gateway import ActionGatewayError, execute_approved_action
 from ai_os.wordpress_actions import register_wordpress_draft_adapter
+from ai_os.woocommerce_actions import register_woocommerce_draft_adapter
 from ai_os.agent_schemas import AgentOut, AgentProfileOut, PlanCreate, PlanOut
 from ai_os.registry import get_agent, list_agents, load_agent_profile
 from ai_os.orchestrator import build_plan
@@ -64,6 +65,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):
     initialize_database()
     register_wordpress_draft_adapter()
+    register_woocommerce_draft_adapter()
     yield
 
 app = FastAPI(title="AI Operating System", version="0.6.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
