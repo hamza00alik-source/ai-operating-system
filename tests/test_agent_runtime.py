@@ -125,3 +125,34 @@ def test_exhausted_specialist_retries_mark_step_and_run_blocked(monkeypatch):
     assert final["status"] == "blocked"
     assert final["steps"][0]["status"] == "blocked"
     assert "exhausted its retry allowance" in final["steps"][0]["report"]["summary"]
+
+
+
+def test_blocked_dependencies_reconcile_even_when_model_is_disabled(monkeypatch):
+    from ai_os.agent_runtime import schedule_ready_steps
+    from ai_os.execution import submit_step_report
+    from ai_os.execution_schemas import StepReportCreate
+
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "false")
+    with TestClient(app) as client:
+        created = client.post("/company-runs", json=_run_payload())
+        assert created.status_code == 201, created.text
+        run_id = created.json()["id"]
+        dispatched = client.post(f"/company-runs/{run_id}/steps/research/dispatch")
+        assert dispatched.status_code == 200
+        submit_step_report(
+            run_id,
+            "research",
+            StepReportCreate(
+                status="blocked",
+                summary="Research was blocked.",
+                blockers=["Missing verified evidence."],
+            ),
+        )
+
+        outcome = schedule_ready_steps()
+        final = client.get(f"/company-runs/{run_id}").json()
+
+    assert outcome["model_enabled"] is False
+    assert final["status"] == "blocked"
+    assert [step["status"] for step in final["steps"]] == ["blocked", "blocked"]
