@@ -23,7 +23,7 @@ def _now() -> str:
 
 
 def _check_training_text(payload: TrainingExampleCreate) -> None:
-    for field in (payload.system_prompt, payload.user_input, payload.ideal_response):
+    for field in (payload.system_prompt, payload.user_input, payload.ideal_response, *payload.source_refs):
         if any(pattern.search(field) for pattern in _SENSITIVE_PATTERNS):
             raise ValueError(
                 "Training text appears to contain a credential or personal email address; remove it before storing."
