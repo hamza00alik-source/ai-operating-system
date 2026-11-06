@@ -415,3 +415,28 @@ def test_owner_dashboard_includes_agent_progress_and_refresh_features():
     assert "setInterval" in page.text
     assert model_status.status_code == 200
     assert model_status.json()["makes_network_request"] is False
+
+
+
+def test_evaluation_history_endpoint_requires_owner_token_when_configured(monkeypatch):
+    token = "test-owner-token-" + "x" * 40
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
+    with TestClient(app) as client:
+        denied = client.get("/evaluations")
+        allowed = client.get("/evaluations", headers={"Authorization": "Bearer " + token})
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json()["summary"]["total"] == 0
+    assert allowed.json()["evaluations"] == []
+
+
+def test_owner_dashboard_displays_evaluation_history():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert "Agent quality & learning" in page.text
+    assert 'api("/evaluations?limit=30")' in page.text
+    assert "evaluationSummary" in page.text
+    assert "evaluator_version" in page.text
+    assert "scores do not verify truth" in page.text
