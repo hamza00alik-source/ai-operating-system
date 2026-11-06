@@ -54,6 +54,7 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
+from ai_os.wordpress import WordPressReadOnlyClient
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,11 @@ def owner_dashboard():
     """Serve the owner UI shell; all data APIs remain protected by owner authentication."""
     dashboard_path = Path(__file__).with_name("dashboard.html")
     return HTMLResponse(dashboard_path.read_text(encoding="utf-8"))
+
+@app.get("/integrations/wordpress/status")
+def get_wordpress_integration_status():
+    """Owner-only configuration status; does not contact the WordPress site."""
+    return WordPressReadOnlyClient.status()
 
 @app.get("/actions/gateway/status")
 def get_action_gateway_readiness():
