@@ -36,3 +36,14 @@ Open http://127.0.0.1:8000/docs.
 See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
 
 Approval records are workflow primitives, not a security sandbox. Do not connect production credentials until authentication, authorization, audit logging, and integration safeguards exist.
+
+
+## Phase 3: optional model-backed CEO review
+
+- Provider-neutral OpenAI-compatible chat-completions adapter; no provider SDK or vendor is selected.
+- Model execution is disabled unless `AI_OS_MODEL_ENABLED=true`, `AI_OS_MODEL_BASE_URL`, and `AI_OS_MODEL_NAME` are configured.
+- Remote endpoints must use HTTPS; localhost model servers may use HTTP. API keys are read only from environment variables.
+- `GET /models/status` checks readiness without contacting a provider.
+- `POST /ceo/review/{run_id}` sends completed specialist reports to the configured model and stores its structured CEO review. It performs no actions.
+- Reports are treated as untrusted input. Recommendations cannot dispatch agents, create approvals, publish, spend, or contact customers.
+- Free-tier quotas, privacy, retention, and terms vary. No provider is enabled by default.

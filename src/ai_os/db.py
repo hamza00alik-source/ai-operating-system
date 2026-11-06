@@ -85,6 +85,12 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL,
             FOREIGN KEY(run_id) REFERENCES company_runs(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS ceo_reviews (
+            id TEXT PRIMARY KEY, run_id TEXT NOT NULL, provider TEXT NOT NULL,
+            model TEXT NOT NULL, review_json TEXT NOT NULL, created_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES company_runs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_ceo_reviews_run_created ON ceo_reviews(run_id, created_at);
         CREATE TABLE IF NOT EXISTS audit_events (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
             id TEXT NOT NULL UNIQUE,

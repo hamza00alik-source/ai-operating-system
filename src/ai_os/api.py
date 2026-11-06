@@ -26,6 +26,8 @@ from ai_os.execution_schemas import CompanyRunCreate, CompanyRunOut, StepReportC
 from ai_os.execution import create_company_run, list_company_runs, get_company_run, dispatch_ready_step, submit_step_report
 from ai_os.ceo_schemas import CEOObjectiveCreate, CEOPlanOut
 from ai_os.ceo_brain import create_ceo_plan, get_ceo_plan
+from ai_os.model_adapter import get_model_status
+from ai_os.ceo_review import review_company_run
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,8 @@ def get_runtime_status():
         "paid_api_calls_enabled": False,
         "autonomous_execution_enabled": False,
         "external_actions_enabled": False,
+        "model_execution_enabled": get_model_status()["enabled"],
+        "model_provider_configured": get_model_status()["configured"],
     }
 
 @app.get("/audit")
@@ -165,6 +169,21 @@ def post_ceo_plan(payload: CEOObjectiveCreate):
     try:
         return create_ceo_plan(payload)
     except LookupError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.get("/models/status")
+def get_model_runtime_status():
+    return get_model_status()
+
+@app.post("/ceo/review/{run_id}")
+def post_ceo_review(run_id: str):
+    try:
+        return review_company_run(run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
