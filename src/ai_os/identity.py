@@ -17,6 +17,13 @@ AUDIENCE = "ai-os-internal-agent"
 MAX_TOKEN_TTL_SECONDS = 300
 CLOCK_SKEW_SECONDS = 30
 MAX_CAPABILITIES = 20
+CEO_AGENT_ID = "company-orchestrator"
+
+# Runtime capabilities are granted by server policy, never by a caller's request.
+AGENT_CAPABILITY_POLICY = {
+    CEO_AGENT_ID: frozenset({"approval.request"}),
+    "*": frozenset({"step.report"}),
+}
 
 
 class AgentIdentityError(ValueError):
@@ -84,6 +91,9 @@ def issue_agent_token(
     registered = get_agent(agent_id)
     if registered is None or not registered.enabled:
         raise AgentIdentityError("Only enabled server-registered agents may receive identities.")
+    allowed = AGENT_CAPABILITY_POLICY.get(agent_id, AGENT_CAPABILITY_POLICY["*"])
+    if not set(normalized).issubset(allowed):
+        raise AgentIdentityError("Requested capability is not granted to this agent by server policy.")
 
     now = int(time.time())
     claims = {
@@ -139,6 +149,15 @@ def verify_agent_token(
         or claims.get("aud") != AUDIENCE
     ):
         raise AgentIdentityError("Invalid agent identity claims.")
+
+    allowed = AGENT_CAPABILITY_POLICY.get(agent_id, AGENT_CAPABILITY_POLICY["*"])
+    if not set(capabilities).issubset(allowed):
+        raise AgentIdentityError("Token contains a capability not granted by server policy.")
+
+    from ai_os.registry import get_agent
+    registered = get_agent(agent_id)
+    if registered is None or not registered.enabled:
+        raise AgentIdentityError("Agent is no longer registered and enabled.")
 
     now = int(time.time())
     if issued_at > now + CLOCK_SKEW_SECONDS:
