@@ -32,7 +32,7 @@ from ai_os.model_adapter import get_model_status
 from ai_os.ceo_review import review_company_run
 from ai_os.identity import AgentIdentityError, consume_agent_token
 from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
-from ai_os.evaluation import list_evaluations, evaluation_summary
+from ai_os.evaluation import list_evaluations, evaluation_summary, evaluation_trends
 from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
                             list_knowledge_items, review_knowledge_item)
 
@@ -129,6 +129,14 @@ def get_agent_evaluations(
         "summary": evaluation_summary(agent_id=agent_id),
         "evaluations": list_evaluations(limit=limit, agent_id=agent_id, run_id=run_id),
     }
+
+@app.get("/evaluations/trends")
+def get_agent_evaluation_trends(
+    agent_id: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=20, ge=2, le=100),
+):
+    return evaluation_trends(agent_id=agent_id, limit=limit)
+
 
 @app.get("/audit/verify")
 def get_audit_verification():
