@@ -18,7 +18,11 @@ The existing CEO planner can create coordinated workstreams for discovery, marke
 
 **Important limitation:** this repository does not yet contain a verified web-search/browser research provider. A specialist model cannot truthfully claim it checked current web sources merely because it received a research task. Daily external research is not complete until a source provider is configured, source URLs and publication dates are retained, retrieval failures are surfaced, and factuality/evidence tests are in place.
 
-Until then, use the owner dashboard to review queued runs and source-attributed knowledge candidates. Do not configure a cron job that labels model-only summaries as verified web research.
+Until then, use the owner dashboard to review queued runs and source-attributed knowledge candidates. The repository includes an idempotent internal review command:
+
+    0 8 * * * cd /opt/ai-operating-system && .venv/bin/python scripts/create_daily_ceo_review.py
+
+This creates at most one CEO-coordinated internal review plan per UTC date and queues ready steps only when model execution is enabled. It reviews persisted records; it is not external web research. Install the schedule only on a persistent host with the service environment loaded. Do not rely on Cloud Shell for unattended daily execution.
 
 ## Model execution and worker supervision
 
