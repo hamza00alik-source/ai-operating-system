@@ -63,6 +63,10 @@ def test_instruction_activation_does_not_happen_automatically_after_test(tmp_pat
         after = client.get("/agents/product-trend-researcher/instructions").json()
         assert after["active_version_id"] == before["active_version_id"]
         assert after["version_number"] == 1
+        denied_activation = client.post("/improvement-proposals/api-instruction-proposal/activate")
+        denied_rollback = client.post("/agents/product-trend-researcher/instructions/rollback")
+        assert denied_activation.status_code == 403
+        assert denied_rollback.status_code == 403
 
 
 def test_unknown_agent_instruction_endpoints_return_404(tmp_path, monkeypatch):
