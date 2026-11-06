@@ -176,3 +176,59 @@ def evaluation_summary(*, agent_id: str | None = None) -> dict[str, Any]:
             "Small samples and changing task difficulty make comparisons provisional.",
         ],
     }
+
+
+
+def evaluation_trends(*, agent_id: str | None = None, limit: int = 20) -> dict[str, Any]:
+    """Compare recent and prior report scores; small or difficulty-mixed samples stay provisional."""
+    bounded_limit = max(2, min(int(limit), 100))
+    clauses, values = [], []
+    if agent_id:
+        clauses.append("agent_id=?")
+        values.append(agent_id)
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT agent_id,score,passed,created_at FROM agent_evaluations"
+            + where + " ORDER BY created_at DESC,id DESC LIMIT ?",
+            (*values, bounded_limit),
+        ).fetchall()
+    by_agent: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_agent.setdefault(row["agent_id"], []).append(dict(row))
+    trends = []
+    for current_agent, records in sorted(by_agent.items()):
+        chronological = list(reversed(records))
+        sample = len(chronological)
+        result: dict[str, Any] = {
+            "agent_id": current_agent,
+            "sample_size": sample,
+            "recent_count": 0,
+            "previous_count": 0,
+            "recent_average": None,
+            "previous_average": None,
+            "delta": None,
+            "signal": "insufficient_data",
+            "limitations": [
+                "At least five evaluations in each comparison window are required.",
+                "Task difficulty is not recorded or normalized; any signal is provisional.",
+                "The rubric measures report structure and explicit safety signals, not factual accuracy.",
+            ],
+        }
+        if sample >= 10:
+            previous = chronological[-10:-5]
+            recent = chronological[-5:]
+            recent_avg = round(sum(item["score"] for item in recent) / 5, 1)
+            previous_avg = round(sum(item["score"] for item in previous) / 5, 1)
+            delta = round(recent_avg - previous_avg, 1)
+            result.update({
+                "recent_count": 5,
+                "previous_count": 5,
+                "recent_average": recent_avg,
+                "previous_average": previous_avg,
+                "delta": delta,
+                "signal": "provisional_regression" if delta <= -5
+                    else "provisional_improvement" if delta >= 5 else "no_clear_change",
+            })
+        trends.append(result)
+    return {"limit": bounded_limit, "trends": trends}
