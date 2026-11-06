@@ -71,8 +71,10 @@ def test_instruction_activation_does_not_happen_automatically_after_test(tmp_pat
 
 def test_unknown_agent_instruction_endpoints_return_404(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'instruction-unknown.sqlite3'}")
-    monkeypatch.delenv("AI_OS_API_TOKEN", raising=False)
-    monkeypatch.setenv("AI_OS_ENV", "development")
+    token = "owner-unknown-agent-token-" + "x" * 40
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
+    monkeypatch.setenv("AI_OS_ENV", "production")
     with TestClient(app) as client:
-        assert client.get("/agents/not-a-real-agent/instructions").status_code == 404
-        assert client.post("/agents/not-a-real-agent/instructions/rollback").status_code == 404
+        headers = {"Authorization": "Bearer " + token}
+        assert client.get("/agents/not-a-real-agent/instructions", headers=headers).status_code == 404
+        assert client.post("/agents/not-a-real-agent/instructions/rollback", headers=headers).status_code == 404
