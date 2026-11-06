@@ -49,6 +49,7 @@ def create_knowledge_item(payload: KnowledgeCreate, *, actor: str) -> dict:
         "title": payload.title,
         "content": payload.content,
         "category": payload.category.lower(),
+        "access_scope": payload.access_scope,
         "source_url": str(payload.source_url),
         "source_title": payload.source_title,
         "source_published_at": (
@@ -68,10 +69,10 @@ def create_knowledge_item(payload: KnowledgeCreate, *, actor: str) -> dict:
     with connect() as db:
         db.execute(
             """INSERT INTO knowledge_items
-            (id,title,content,category,source_url,source_title,source_published_at,
+            (id,title,content,category,access_scope,source_url,source_title,source_published_at,
              source_accessed_at,confidence,tags_json,status,created_by,created_at,
              reviewed_by,reviewed_at,review_note)
-            VALUES (:id,:title,:content,:category,:source_url,:source_title,
+            VALUES (:id,:title,:content,:category,:access_scope,:source_url,:source_title,
                     :source_published_at,:source_accessed_at,:confidence,:tags_json,
                     :status,:created_by,:created_at,:reviewed_by,:reviewed_at,:review_note)""",
             item,
@@ -150,7 +151,8 @@ def retrieve_accepted_knowledge(query: str, *, limit: int = 5,
     }
     if not terms:
         return []
-    accepted = list_knowledge_items(status="accepted", limit=500)
+    accepted = [item for item in list_knowledge_items(status="accepted", limit=500)
+                if item.get("access_scope", "company") == "company"]
     now = datetime.now(timezone.utc)
     ranked = []
     for item in accepted:
