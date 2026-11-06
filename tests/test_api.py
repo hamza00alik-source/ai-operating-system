@@ -301,7 +301,7 @@ def test_company_step_report_rejects_wrong_agent_and_replayed_token(monkeypatch)
         accepted = client.post(f"/company-runs/{run_id}/steps/research/report", json=body, headers=valid_headers)
         assert accepted.status_code == 200
         replay = client.post(f"/company-runs/{run_id}/steps/research/report", json=body, headers=valid_headers)
-        assert replay.status_code == 403
+        assert replay.status_code == 409
 
 def test_company_step_report_rejects_token_for_another_run(monkeypatch):
     monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
