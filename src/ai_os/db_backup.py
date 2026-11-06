@@ -3,11 +3,13 @@
 These helpers are intentionally not exposed as HTTP endpoints. Operators must
 stop application writers before copying a backup off-host or restoring it.
 """
+import json
 import os
 import sqlite3
 import tempfile
 from pathlib import Path
 
+from ai_os.audit import GENESIS, _event_hash
 from ai_os.db import _database_path
 
 
@@ -27,20 +29,47 @@ def verify_sqlite_backup(backup_path: str | Path) -> dict:
     if not path.is_file():
         raise FileNotFoundError("Backup file does not exist.")
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+        db.row_factory = sqlite3.Row
         integrity = [row[0] for row in db.execute("PRAGMA integrity_check")]
         tables = {
             row[0] for row in db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             )
         }
-    required = {"tasks", "jobs", "company_runs", "company_run_steps",
-                "audit_events", "knowledge_items"}
-    missing = sorted(required - tables)
+        required = {"tasks", "jobs", "company_runs", "company_run_steps",
+                    "audit_events", "knowledge_items"}
+        missing = sorted(required - tables)
+        audit_valid = False
+        audit_checked = 0
+        if "audit_events" in tables:
+            previous_hash = GENESIS
+            audit_valid = True
+            rows = db.execute(
+                """SELECT id,timestamp,actor,action,resource_type,resource_id,
+                          details_json,previous_hash,event_hash
+                   FROM audit_events ORDER BY sequence ASC"""
+            )
+            for index, row in enumerate(rows, start=1):
+                event = {
+                    "id": row["id"], "timestamp": row["timestamp"],
+                    "actor": row["actor"], "action": row["action"],
+                    "resource_type": row["resource_type"],
+                    "resource_id": row["resource_id"],
+                    "details": json.loads(row["details_json"]),
+                }
+                if (row["previous_hash"] != previous_hash or
+                        row["event_hash"] != _event_hash(previous_hash, event)):
+                    audit_valid = False
+                    break
+                previous_hash = row["event_hash"]
+                audit_checked = index
     return {
-        "valid": integrity == ["ok"] and not missing,
+        "valid": integrity == ["ok"] and not missing and audit_valid,
         "integrity": integrity,
         "missing_tables": missing,
         "tables_checked": len(tables),
+        "audit_chain_valid": audit_valid,
+        "audit_events_checked": audit_checked,
     }
 
 
