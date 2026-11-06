@@ -4,7 +4,7 @@
 
 Agency Agents Markdown profiles remain pinned, read-only source material. The OS adds a separate, versioned instruction addendum per specialist; it never edits upstream profiles. The addendum is inserted into specialist work packets after the role profile and before the OS governance block. The CEO/owner governance block remains higher priority.
 
-Each agent receives an immutable baseline version (v1) bound to the SHA-256 hash of its upstream profile. An active head points to one immutable version. Activating a change creates a new version with its own content hash, parent version, source proposal, actor, and timestamp. Existing versions are never edited or deleted.
+Each agent receives a deterministic empty baseline snapshot (v1) bound to the SHA-256 hash of its upstream profile. The baseline is materialized as an immutable SQLite row when the first addendum is activated, avoiding database writes during ordinary work-packet creation. An active head points to one immutable version. Activating a change creates a new version with its own content hash, parent version, source proposal, actor, and timestamp. Existing versions are never edited or deleted.
 
 ## Adoption flow
 
