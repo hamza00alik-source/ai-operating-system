@@ -216,6 +216,9 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_agent_instruction_versions_agent_version
             ON agent_instruction_versions(agent_id, version_number DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_instruction_versions_source_proposal
+            ON agent_instruction_versions(source_proposal_id)
+            WHERE source_proposal_id IS NOT NULL;
         CREATE TABLE IF NOT EXISTS agent_instruction_heads (
             agent_id TEXT PRIMARY KEY,
             active_version_id TEXT NOT NULL,
