@@ -16,7 +16,7 @@ def test_command_backend_is_disabled_by_default(monkeypatch):
     status = model_adapter.get_model_status()
     assert status["configured"] is False
     assert status["enabled"] is False
-    assert status["reason"] == "confirm_cli_no_tools"
+    assert status["reason"] == "disabled_by_default"
     assert status["backend"] == "command"
     assert status["execution_may_use_network"] is True
 
@@ -86,3 +86,16 @@ def test_cli_backend_rejects_nonzero_exit_without_exposing_stderr(monkeypatch):
     )
     with pytest.raises(RuntimeError, match="stderr was not exposed"):
         model_adapter.generate_json("system", "task")
+
+
+def test_cli_backend_requires_no_tools_attestation_even_when_enabled(monkeypatch):
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "command")
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND_ARGS", '["-p", "{prompt}", "--output-format", "json"]')
+    monkeypatch.delenv("AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED", raising=False)
+    monkeypatch.setattr(model_adapter.shutil, "which", lambda value: "/usr/bin/agy")
+    status = model_adapter.get_model_status()
+    assert status["configured"] is False
+    assert status["enabled"] is False
+    assert status["reason"] == "confirm_cli_no_tools"
