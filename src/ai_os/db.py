@@ -105,4 +105,13 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_audit_timestamp
             ON audit_events(timestamp);
+        CREATE TABLE IF NOT EXISTS consumed_agent_nonces (
+            nonce TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            consumed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_consumed_agent_nonces_expiry
+            ON consumed_agent_nonces(expires_at);
         """)
