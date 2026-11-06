@@ -5,6 +5,7 @@ import pytest
 from ai_os.woocommerce import (
     WooCommerceNotConfigured,
     WooCommerceReadOnlyClient,
+    WooCommerceWriteDisabled,
 )
 
 
@@ -69,3 +70,56 @@ def test_woocommerce_product_and_order_results_are_minimized(monkeypatch):
     assert all(call[0].get_method() == "GET" for call in calls)
     assert "consumer-secret" not in calls[0][0].headers.get("Authorization", "")
     assert WooCommerceReadOnlyClient.status()["writes_enabled"] is False
+
+
+
+def test_woocommerce_draft_creation_requires_flags_and_forces_draft(monkeypatch):
+    client = WooCommerceReadOnlyClient(
+        "https://shop.example/wp-json/wc/v3", "consumer-key", "consumer-secret"
+    )
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "false")
+    with pytest.raises(WooCommerceWriteDisabled):
+        client.create_product_draft(name="Asset", description="Digital item", regular_price="5.00")
+
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "true")
+    calls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return json.dumps({
+                "id": 77, "name": "Asset", "status": "draft",
+                "permalink": "https://shop.example/?post=77",
+            }).encode()
+
+    def fake_open(request, timeout):
+        calls.append(request)
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    result = client.create_product_draft(
+        name="Asset", description="Digital item", regular_price="5.00"
+    )
+    assert result["id"] == 77
+    assert result["status"] == "draft"
+    assert calls[0].get_method() == "POST"
+    body = json.loads(calls[0].data.decode())
+    assert body["status"] == "draft"
+    assert body["regular_price"] == "5.00"
+
+
+@pytest.mark.parametrize("price", ["-1.00", "NaN", "Infinity", "not-a-price"])
+def test_woocommerce_draft_creation_rejects_invalid_price(monkeypatch, price):
+    client = WooCommerceReadOnlyClient(
+        "https://shop.example/wp-json/wc/v3", "consumer-key", "consumer-secret"
+    )
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "true")
+    with pytest.raises(ValueError):
+        client.create_product_draft(name="Asset", description="", regular_price=price)
