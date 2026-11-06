@@ -44,3 +44,18 @@ This remains a security foundation, not an enabled autonomous execution system. 
 The company-run step-report endpoint now requires an `X-AI-Agent-Token` header. It resolves the assigned agent from the persisted run step, then verifies the token against that exact agent ID, run ID, and the `step.report` capability before atomically consuming its nonce. Missing tokens are rejected, wrong-agent/wrong-run tokens are rejected, and a consumed token cannot be replayed. The endpoint records a separate audit event under the verified agent identity after a report is accepted.
 
 This is a narrow authenticated reporting boundary only. There is still no runtime component that mints tokens for real model workers, no autonomous model execution loop, and no general tool authorization gateway. The worker does not yet execute AI tasks. The approval API remains closed until a trusted CEO runtime, exact action-parameter binding, one-time approval consumption, and execution-time revalidation exist. No external action is enabled by this change.
+
+
+## Exact-scope owner approval foundation
+
+The internal identity issuer now applies a server-side capability policy: the CEO may receive only `approval.request`; enabled specialist agents may receive only `step.report`. Verification repeats the policy check and confirms the agent remains enabled. A caller cannot request arbitrary capabilities by supplying a string to the issuer.
+
+The new `ai_os.approvals` module provides internal primitives (not HTTP endpoints) for:
+- canonicalizing an allowlisted action and its complete JSON parameters, then hashing that exact scope with SHA-256;
+- creating a pending request only from a signed, run-bound CEO identity with `approval.request`;
+- recording an owner decision against the exact action hash, with expiry and a single pending-to-decided transition;
+- atomically consuming an approved request only when action type and every parameter still match, with a unique execution ID and one-time state transition.
+
+Approval expiry is capped by both the CEO token expiry and a maximum 15-minute window. Expired requests transition to `expired`; rejected, changed, expired, or already-consumed approvals cannot authorize execution. Parameter JSON is bounded to 16 KB and rejects non-finite values.
+
+**This is not an enabled approval or execution workflow.** No HTTP route calls these primitives; the existing `/approvals` inbox remains closed for request creation. The owner-decision primitive must only be called behind a separately verified owner-authenticated endpoint. No adapter currently consumes approvals to publish, message customers, spend money, deploy, or change production. The runtime continues to report external actions and autonomous execution as disabled.
