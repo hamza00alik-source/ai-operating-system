@@ -12,7 +12,7 @@ The responsive owner dashboard is served by the FastAPI application at `/dashboa
 - Worker queue: local packet-builder and specialist execution jobs from `GET /jobs`.
 - Owner approvals: recorded approval requests from `GET /approvals`. This panel is informational; the trusted CEO approval-request gateway remains closed until server-verified CEO identity is available.
 - Agent quality and learning: recent persisted evaluations from `GET /evaluations`, including basic average score, pass/fail counts, evaluator version, and per-agent run/step history. Scores are structural/safety signals only, not truth or business-outcome measurements.
-- CEO improvement proposals: owner can approve a candidate for testing or reject it. Approved candidates expose a static safety-check action; results are stored in test history and never activate instructions.
+- CEO improvement proposals: owner can approve a candidate for testing or reject it. Approved candidates expose a static safety-check action. After a passing screen, a configured owner token is required to activate the exact tested text as a new immutable instruction version. The dashboard shows active version and offers rollback to its parent version; all activation/rollback events are audited.
 - Research review inbox: agent-proposed and manually entered candidates from \`GET /knowledge?status=candidate\`; the owner can open the source and accept or reject each candidate. No agent can approve its own research.
 - Recent audit activity: meaningful audit events from \`GET /audit\`; routine read-request events are filtered to keep the feed useful.
 - Runtime safeguards and model readiness: `GET /runtime` and `GET /models/status`.
@@ -36,6 +36,8 @@ Use HTTPS when exposing the service beyond a trusted local environment. Do not d
 ## Current limitations
 
 - The worker can execute bounded specialist analysis only when an inference engine is explicitly configured; it is not a fleet of 283 independent model instances.
+- Instruction addenda are versioned separately from pinned Agency Agents profiles and are subordinate to OS governance. A changed upstream profile hash causes active addenda to be withheld until reviewed.
+- Static candidate screening is not a model-behavior benchmark. Owner activation is an explicit controlled rollout, not evidence that model quality improved.
 - Progress reflects stored workflow records, not live model tokens, CPU activity, or independent agent heartbeats.
 - Agent profile count is not the count of active agents.
 - Approval records can be inspected, but this dashboard does not make approval decisions or trigger external actions.
@@ -43,7 +45,7 @@ Use HTTPS when exposing the service beyond a trusted local environment. Do not d
 
 ## Verification
 
-The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, owner-token protection, candidate review controls, the model-status endpoint, evaluation history authentication, trend API/dashboard wiring, improvement proposal generation/review, static improvement-test history, owner authorization, and the non-adoption boundary.
+The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, owner-token protection, candidate review controls, the model-status endpoint, evaluation history authentication, trend API/dashboard wiring, improvement proposal generation/review, static improvement-test history, owner-token-gated instruction activation, version history, rollback, and the no-automatic-activation boundary.
 
 
 ## Backup limitation
