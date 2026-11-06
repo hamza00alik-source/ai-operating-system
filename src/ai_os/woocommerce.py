@@ -19,6 +19,14 @@ class WooCommerceReadError(RuntimeError):
     pass
 
 
+class WooCommerceWriteDisabled(RuntimeError):
+    pass
+
+
+class WooCommerceWriteError(RuntimeError):
+    pass
+
+
 class WooCommerceReadOnlyClient:
     def __init__(self, base_url: str, consumer_key: str, consumer_secret: str,
                  *, timeout: int = 15):
@@ -49,11 +57,19 @@ class WooCommerceReadOnlyClient:
             "AI_OS_WOOCOMMERCE_CONSUMER_KEY",
             "AI_OS_WOOCOMMERCE_CONSUMER_SECRET",
         ))
+        draft_writes = (
+            configured
+            and os.getenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "false").strip().lower() == "true"
+            and os.getenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "false").strip().lower() == "true"
+        )
         return {
             "configured": configured,
-            "mode": "read_only",
-            "capabilities": ["product_catalog_read", "order_status_read"],
-            "writes_enabled": False,
+            "mode": "read_only_with_optional_approved_drafts",
+            "capabilities": ["product_catalog_read", "order_status_read"] + (
+                ["create_unpublished_product_draft"] if draft_writes else []
+            ),
+            "writes_enabled": draft_writes,
+            "published_writes_enabled": False,
             "customer_data_exposed": False,
         }
 
@@ -105,3 +121,63 @@ class WooCommerceReadOnlyClient:
         rows = self._get("orders", params)
         allowed = ("id", "status", "date_created", "currency", "total")
         return [{key: row.get(key) for key in allowed} for row in rows]
+
+    def create_product_draft(self, *, name: str, description: str, regular_price: str) -> dict:
+        """Create a WooCommerce product draft only; publishing is never allowed."""
+        if (
+            os.getenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "false").strip().lower() != "true"
+            or os.getenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "false").strip().lower() != "true"
+        ):
+            raise WooCommerceWriteDisabled("WooCommerce draft writes require both explicit feature flags.")
+        if not isinstance(name, str) or not name.strip() or len(name) > 200:
+            raise ValueError("Product name must contain 1 to 200 characters.")
+        if not isinstance(description, str) or len(description.encode("utf-8")) > 12000:
+            raise ValueError("Product description must not exceed 12,000 UTF-8 bytes.")
+        if not isinstance(regular_price, str) or len(regular_price) > 16:
+            raise ValueError("Product price must be a short decimal string.")
+        from decimal import Decimal, InvalidOperation
+        try:
+            price = Decimal(regular_price)
+        except InvalidOperation as exc:
+            raise ValueError("Product price must be a valid non-negative decimal.") from exc
+        if not price.is_finite() or price < 0:
+            raise ValueError("Product price must be a valid non-negative decimal.")
+        payload = json.dumps({
+            "name": name.strip(),
+            "description": description,
+            "regular_price": format(price, "f"),
+            "status": "draft",
+        }, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        url = urllib.parse.urljoin(self.base_url, "products")
+        request = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Authorization": self.authorization,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "ai-operating-system-approved-product-draft/1.0",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                raw = response.read(2000001)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise WooCommerceWriteError(
+                "WooCommerce product draft creation failed; inspect the store and audit trail before retrying."
+            ) from exc
+        if len(raw) > 2000000:
+            raise WooCommerceWriteError("WooCommerce draft response exceeded the 2 MB safety limit.")
+        try:
+            result = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise WooCommerceWriteError("WooCommerce returned invalid JSON after draft creation.") from exc
+        if not isinstance(result, dict) or result.get("status") != "draft":
+            raise WooCommerceWriteError("WooCommerce did not confirm an unpublished product draft; inspect the store before retrying.")
+        return {
+            "id": result.get("id"),
+            "status": result.get("status"),
+            "name": result.get("name"),
+            "permalink": result.get("permalink"),
+        }
