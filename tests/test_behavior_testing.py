@@ -130,7 +130,7 @@ def test_behavior_result_is_stale_after_another_proposal_changes_active_baseline
     monkeypatch.setattr(
         behavior_testing, "generate_json",
         lambda *args: ({
-            "status":"completed","summary":"Source fact","evidence":["https://example.test/official-product-changelog"],
+            "status":"completed","summary":"Source fact","evidence":["https://example.test/official-product-changelog (2026-10-29)"],
             "blockers":[],
         }, {"backend":"openai_compatible","model":"local-test-model"}),
     )
