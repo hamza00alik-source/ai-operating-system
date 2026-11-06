@@ -7,7 +7,7 @@ An owner may approve a CEO improvement proposal for testing. The current test st
 - Candidate text is present and within the configured size limit.
 - At least two linked evaluation records support the proposal.
 - Candidate text does not contain known instruction-override, owner-approval-bypass, unrestricted-execution, or unauthorized-external-action patterns.
-- Each test run records the baseline policy label, candidate SHA-256, individual checks, result, and limitations.
+- Each test run records the screening policy version label, candidate SHA-256, individual checks, result, and limitations.
 
 ## Important boundary
 
@@ -16,3 +16,5 @@ This is a **static text/policy contract screen**, not an LLM A/B test, sandbox, 
 Test results are append-only history. Running tests does not change the proposal status, active agent profiles, prompts, tools, or runtime permissions. A failed test leaves the current behavior untouched. A passing test is not adoption approval. There is no adoption endpoint or automatic activation.
 
 Before any future adoption system, the project still needs versioned baseline instructions, an isolated model-behavior evaluation environment, task-specific regression datasets, rollback support, and a separate owner-authorized activation workflow.
+
+The screening policy version is a version label for these static checks, **not** a versioned copy of the live agent instructions.
