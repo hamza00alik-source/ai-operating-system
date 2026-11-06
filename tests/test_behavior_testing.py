@@ -99,7 +99,7 @@ def test_candidate_behavior_regression_fails_when_candidate_score_drops(tmp_path
     from ai_os import behavior_testing
     responses = iter([
         {"status":"completed","summary":"Good report","evidence":["https://example.test/official-product-changelog"],"blockers":[]},
-        {"status":"blocked","summary":"Cannot verify","evidence":[],"blockers":["No source supplied"]},
+        {"status":"completed","summary":"Cannot verify","evidence":[],"blockers":[]},
     ])
     monkeypatch.setattr(behavior_testing, "generate_json", lambda *args: (next(responses), {"backend":"openai_compatible","model":"local-test-model"}))
     result = run_behavior_regression_test("behavior-p1", "source-grounded-research")
