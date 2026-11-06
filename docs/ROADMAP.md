@@ -64,7 +64,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Owner-reviewed training-example candidates with rights/privacy attestations and one-time review
 - [x] Private accepted-only versioned JSONL dataset exports with SHA-256 manifests
 - [ ] Task-specific evidence and factuality evaluation datasets
-- [ ] Daily research/learning proposals with evidence and source links
+- [x] Idempotent daily internal CEO review-plan generator and scheduler command (persisted company data only)\n- [ ] Daily external research/learning proposals with verified search sources, evidence links, and publication dates
 - [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing
 - [x] Isolated static text/policy screen for owner-approved candidate instructions with persisted test results (not a model-behavior test)
 - [x] Immutable per-agent instruction addendum versions bound to upstream profile hashes
