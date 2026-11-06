@@ -15,7 +15,7 @@ def _make_library(root: Path) -> Path:
     for division_index, division in enumerate(divisions):
         directory = library / division
         directory.mkdir()
-        count = 13 if division_index == 17 else 16
+        count = 28 if division_index == 17 else 15
         for profile_index in range(count):
             agent_id = f"agent-{division_index:02d}-{profile_index:02d}"
             ids.append(agent_id)
