@@ -48,7 +48,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Broader role-based authorization for future worker tools and integrations
 
 ## Phase 3 — Memory, learning, and evaluation
-- [ ] Source-attributed company knowledge store
+- [x] Source-attributed company knowledge candidates with owner review and audit trail
+- [ ] Semantic retrieval, deduplication, freshness scoring, and evidence-aware prompt context
 - [ ] Retrieval with company/user access boundaries
 - [ ] Evaluation datasets and regression checks for agent outputs
 - [ ] Daily research/learning proposals with evidence and source links
