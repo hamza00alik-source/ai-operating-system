@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 def _frontmatter(markdown: str) -> dict[str, str]:
-    match = re.match(r"^---\\s*\\n(.*?)\\n---\\s*(?:\\n|$)", markdown, re.DOTALL)
+    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", markdown, re.DOTALL)
     if not match:
         return {}
     values: dict[str, str] = {}
