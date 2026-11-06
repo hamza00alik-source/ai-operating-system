@@ -41,7 +41,6 @@ def test_cli_backend_uses_argv_without_shell_and_parses_output(monkeypatch):
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
     monkeypatch.setenv("AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED", "true")
-    monkeypatch.setenv("AI_OS_MODEL_COMMAND_ARGS", '["-p", "{prompt}", "--output-format", "json"]')
     monkeypatch.setenv(
         "AI_OS_MODEL_COMMAND_ARGS",
         json.dumps(["-p", "{prompt}", "--output-format", "json"]),
