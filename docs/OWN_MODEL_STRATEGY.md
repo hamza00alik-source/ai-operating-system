@@ -29,6 +29,8 @@ Use the existing accepted-knowledge store as the initial company memory. Improve
 
 ### Stage 3 — Build a high-quality training corpus
 
+The first private corpus workflow is now implemented: owner-authenticated APIs create candidate examples, require rights/privacy attestations, screen for a few obvious credential/email patterns, and require a separate one-time owner acceptance. Accepted examples can be exported as versioned JSONL with a SHA-256 manifest. Exports are private API responses and are not committed to Git. This basic scan is not a complete privacy or legal review.
+
 Create owner-reviewed examples from:
 - accepted source-grounded research and corrections;
 - successful specialist reports with evidence;
@@ -68,6 +70,17 @@ The current starting environment is zero-budget and Android-first. It is suitabl
 
 ## Current status
 
-- Available now: accepted knowledge candidates, specialist reports, persisted evaluations, versioned instructions, deterministic regression checks, provider-neutral model adapter.
-- Not yet implemented: curated training-example review, dataset export/versioning, semantic retrieval, fine-tuning pipeline, owned model registry/weights, model promotion and rollback.
+- Available now: accepted knowledge candidates, specialist reports, persisted evaluations, versioned instructions, deterministic regression checks, provider-neutral model adapter, owner-reviewed training examples, and deterministic private JSONL dataset exports.
+- Not yet implemented: automatic example proposal from verified outcomes, semantic retrieval, dataset quality scoring and richer privacy/rights review, fine-tuning pipeline, owned model registry/weights, model promotion and rollback.
 - No model has been trained by this repository. No third-party provider is required by the architecture, but an actual self-hosted model must still be selected, downloaded, configured, and tested before the system can run without an external inference service.
+
+
+## Training data API
+
+- `POST /training-examples` creates a candidate after the owner confirms rights and privacy review.
+- `GET /training-examples?status=candidate` lists candidate examples.
+- `POST /training-examples/{id}/review` accepts or rejects a candidate once.
+- `POST /training-datasets/export` exports accepted examples only and records a version, example IDs, task-family counts, and SHA-256 hash.
+- `GET /training-datasets/exports` lists export manifests without returning dataset content.
+
+All routes require the owner API token. The export endpoint returns JSONL content to the owner; store it privately and never commit it to the public repository. The export operation does not invoke training or inference.
