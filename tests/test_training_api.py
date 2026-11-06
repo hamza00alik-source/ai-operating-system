@@ -61,3 +61,14 @@ def test_training_candidate_requires_rights_privacy_and_owner_auth(tmp_path, mon
         invalid["rights_confirmed"] = False
         rejected = client.post("/training-examples", json=invalid, headers=headers)
         assert rejected.status_code == 422
+
+
+def test_owner_dashboard_exposes_training_data_review_and_export_controls():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert 'api("/training-examples?status=candidate&limit=20")' in page.text
+    assert "Save training candidate" in page.text
+    assert "Accept for training" in page.text
+    assert "Export accepted dataset" in page.text
+    assert "This export does not train a model." in page.text
