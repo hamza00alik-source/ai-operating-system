@@ -41,7 +41,7 @@ Use HTTPS when exposing the service beyond a trusted local environment. Do not d
 
 ## Verification
 
-The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, owner-token protection, candidate review controls, the model-status endpoint, evaluation history authentication, and dashboard display of quality/evaluation history.
+The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, owner-token protection, candidate review controls, the model-status endpoint, evaluation history authentication, trend API/dashboard wiring, improvement proposal generation/review, and the non-adoption boundary.
 
 
 ## Backup limitation
