@@ -84,3 +84,18 @@ def test_proposal_rejected_cannot_activate(tmp_path, monkeypatch):
     run_proposal_regression_tests("p1") if False else None
     with pytest.raises(ValueError, match="owner-approved"):
         activate_tested_proposal("p1", actor="owner:test")
+
+
+def test_active_addendum_is_in_work_packet_but_governance_remains_after_it(tmp_path, monkeypatch):
+    _seed(tmp_path / "packet.sqlite3", monkeypatch)
+    get_active_instruction("product-trend-researcher")
+    run_proposal_regression_tests("p1")
+    activate_tested_proposal("p1", actor="owner:test")
+    from ai_os.work_packets import build_work_packet
+    packet = build_work_packet("product-trend-researcher", "Research a market.")
+    prompt = packet["prompt_text"]
+    addendum = prompt.index("OWNER-APPROVED ACTIVE INSTRUCTION ADDENDUM")
+    governance = prompt.index("COMPANY GOVERNANCE — HIGHEST PRIORITY")
+    assert "Require source dates" in prompt
+    assert addendum < governance
+    assert "Never contact the owner directly" in prompt[governance:]
