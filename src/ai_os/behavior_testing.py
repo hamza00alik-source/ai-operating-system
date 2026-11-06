@@ -55,7 +55,7 @@ def get_behavior_test_status() -> dict:
     model = get_model_status()
     base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
     parsed = urllib.parse.urlparse(base_url)
-    local = parsed.hostname in {"localhost", "127.0.0.1", "::1"} and parsed.scheme in {"http", "https"}
+    local = (parsed.hostname in {"localhost", "127.0.0.1", "::1"} and parsed.scheme in {"http", "https"} and not parsed.username and not parsed.password)
     no_key = not os.getenv("AI_OS_MODEL_API_KEY", "").strip()
     backend_ok = model.get("backend") == "openai_compatible"
     ready = bool(enabled and model.get("enabled") and local and no_key and backend_ok)
