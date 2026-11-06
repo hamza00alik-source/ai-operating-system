@@ -12,7 +12,8 @@ The responsive owner dashboard is served by the FastAPI application at `/dashboa
 - Worker queue: local packet-builder and specialist execution jobs from `GET /jobs`.
 - Owner approvals: recorded approval requests from `GET /approvals`. This panel is informational; the trusted CEO approval-request gateway remains closed until server-verified CEO identity is available.
 - Agent quality and learning: recent persisted evaluations from `GET /evaluations`, including basic average score, pass/fail counts, evaluator version, and per-agent run/step history. Scores are structural/safety signals only, not truth or business-outcome measurements.
-- CEO improvement proposals: owner can approve a candidate for testing or reject it. Approved candidates expose a static safety-check action; results are stored in test history and never activate instructions.\n- Research review inbox: agent-proposed and manually entered candidates from \`GET /knowledge?status=candidate\`; the owner can open the source and accept or reject each candidate. No agent can approve its own research.
+- CEO improvement proposals: owner can approve a candidate for testing or reject it. Approved candidates expose a static safety-check action; results are stored in test history and never activate instructions.
+- Research review inbox: agent-proposed and manually entered candidates from \`GET /knowledge?status=candidate\`; the owner can open the source and accept or reject each candidate. No agent can approve its own research.
 - Recent audit activity: meaningful audit events from \`GET /audit\`; routine read-request events are filtered to keep the feed useful.
 - Runtime safeguards and model readiness: `GET /runtime` and `GET /models/status`.
 
