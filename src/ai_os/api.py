@@ -239,6 +239,8 @@ def post_company_step_report(
     step = next((item for item in run["steps"] if item["step_key"] == step_key), None)
     if step is None:
         raise HTTPException(status_code=404, detail="Company run step not found")
+    if step["status"] != "assigned":
+        raise HTTPException(status_code=409, detail="A report can be submitted only for an assigned step.")
     try:
         principal = consume_agent_token(
             agent_token,
