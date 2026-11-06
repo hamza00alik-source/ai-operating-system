@@ -93,7 +93,9 @@ def test_agent_retrieval_returns_only_relevant_owner_accepted_items():
     from ai_os.knowledge import retrieve_accepted_knowledge
 
     with TestClient(app) as client:
-        candidate = client.post("/knowledge", json=_candidate_payload()).json()
+        candidate_payload = _candidate_payload()
+        candidate_payload["title"] = "zzquantumtoken gaming research"
+        candidate = client.post("/knowledge", json=candidate_payload).json()
         client.post(
             f"/knowledge/{candidate['id']}/review",
             json={"decision": "accepted", "note": "Checked by owner."},
@@ -111,7 +113,6 @@ def test_agent_retrieval_returns_only_relevant_owner_accepted_items():
         client.post("/knowledge", json=unreviewed_payload)
 
     # A unique query avoids unrelated accepted records created by other tests.
-    candidate["title"] = "zzquantumtoken gaming research"
     retrieved = retrieve_accepted_knowledge("zzquantumtoken")
     assert [item["id"] for item in retrieved] == [candidate["id"]]
     assert retrieved[0]["status"] == "accepted"
