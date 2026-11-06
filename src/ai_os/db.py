@@ -199,4 +199,27 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_improvement_test_runs_proposal_created
             ON improvement_test_runs(proposal_id, created_at);
+        CREATE TABLE IF NOT EXISTS agent_instruction_versions (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            version_number INTEGER NOT NULL CHECK(version_number >= 1),
+            content TEXT NOT NULL,
+            content_sha256 TEXT NOT NULL,
+            base_profile_sha256 TEXT NOT NULL,
+            parent_version_id TEXT,
+            source_proposal_id TEXT,
+            created_at TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            UNIQUE(agent_id, version_number),
+            FOREIGN KEY(parent_version_id) REFERENCES agent_instruction_versions(id),
+            FOREIGN KEY(source_proposal_id) REFERENCES improvement_proposals(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_instruction_versions_agent_version
+            ON agent_instruction_versions(agent_id, version_number DESC);
+        CREATE TABLE IF NOT EXISTS agent_instruction_heads (
+            agent_id TEXT PRIMARY KEY,
+            active_version_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(active_version_id) REFERENCES agent_instruction_versions(id)
+        );
         """)
