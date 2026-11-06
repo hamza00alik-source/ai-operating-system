@@ -15,6 +15,8 @@ from ai_os.approval_schemas import CEOApprovalRequestCreate, OwnerApprovalDecisi
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
 from ai_os.approvals import (ApprovalSecurityError, create_owner_approval_request,
                              decide_owner_approval, list_owner_approval_requests)
+from ai_os.action_gateway import ActionGatewayError, execute_approved_action
+from ai_os.wordpress_actions import register_wordpress_draft_adapter
 from ai_os.agent_schemas import AgentOut, AgentProfileOut, PlanCreate, PlanOut
 from ai_os.registry import get_agent, list_agents, load_agent_profile
 from ai_os.orchestrator import build_plan
@@ -61,6 +63,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    register_wordpress_draft_adapter()
     yield
 
 app = FastAPI(title="AI Operating System", version="0.6.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
@@ -729,6 +732,31 @@ def post_owner_approval_decision(
         {"decision": payload.decision, "action_hash": approval["action_hash"]},
     )
     return approval
+
+
+@app.post("/owner/approval-requests/{approval_id}/execute")
+def post_execute_owner_approved_action(approval_id: str, request: Request):
+    """Execute an already-approved exact-scope action through a trusted adapter."""
+    if getattr(request.state, "actor", "unknown") != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required.")
+    approvals = list_owner_approval_requests(status="approved", limit=500)
+    approval = next((item for item in approvals if item["id"] == approval_id), None)
+    if approval is None:
+        raise HTTPException(status_code=409, detail="No unexpired approved action was found.")
+    try:
+        result = execute_approved_action(
+            approval_id,
+            action_type=approval["action_type"],
+            parameters=approval["parameters"],
+            execution_id=str(uuid4()),
+        )
+    except ActionGatewayError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    append_event(
+        "owner", "owner_approved_action_executed", "owner_approval_request",
+        approval_id, {"action_type": approval["action_type"], "execution_id": result["execution_id"]},
+    )
+    return result
 
 
 @app.post("/approvals", response_model=ApprovalOut, status_code=201)
