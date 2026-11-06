@@ -96,9 +96,7 @@ def execute_company_step(payload: dict) -> dict:
     raw, provider = generate_json(
         AGENT_SYSTEM_PROMPT,
         step["work_packet"]["prompt_text"] +
-        "
-
-Return the required JSON report now. The CEO is the recipient; "
+        "\n\nReturn the required JSON report now. The CEO is the recipient; "
         "do not execute or claim any external action.",
     )
     if not isinstance(raw, dict):
