@@ -440,3 +440,21 @@ def test_owner_dashboard_displays_evaluation_history():
     assert "evaluationSummary" in page.text
     assert "evaluator_version" in page.text
     assert "scores do not verify truth" in page.text
+
+
+
+def test_evaluation_trends_endpoint_returns_sample_gated_result():
+    with TestClient(app) as client:
+        response = client.get("/evaluations/trends?limit=20")
+    assert response.status_code == 200
+    assert response.json()["limit"] == 20
+    assert response.json()["trends"] == []
+
+
+def test_owner_dashboard_loads_and_displays_evaluation_trends():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert 'api("/evaluations/trends?limit=100")' in page.text
+    assert "evaluationTrends" in page.text
+    assert "provisional regression" in page.text or "signal.replaceAll" in page.text
