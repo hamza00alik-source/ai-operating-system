@@ -114,7 +114,7 @@ def test_woocommerce_draft_creation_requires_flags_and_forces_draft(monkeypatch)
     assert body["regular_price"] == "5.00"
 
 
-@pytest.mark.parametrize("price", ["-1.00", "NaN", "Infinity", "not-a-price"])
+@pytest.mark.parametrize("price", ["-1.00", "NaN", "Infinity", "not-a-price", "1e100"])
 def test_woocommerce_draft_creation_rejects_invalid_price(monkeypatch, price):
     client = WooCommerceReadOnlyClient(
         "https://shop.example/wp-json/wc/v3", "consumer-key", "consumer-secret"
