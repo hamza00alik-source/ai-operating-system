@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from ai_os.db import connect
 from ai_os.governance import CEO_AGENT_ID, OWNER_APPROVAL_ACTIONS
-from ai_os.identity import AgentIdentityError, consume_agent_token
+from ai_os.identity import AgentIdentityError, consume_agent_token, verify_agent_token
 
 MAX_APPROVAL_TTL_SECONDS = 900
 MAX_PARAMETERS_BYTES = 16_384
@@ -63,7 +63,7 @@ def create_owner_approval_request(
     # Validate the proposed action and referenced run before consuming the CEO credential.
     _, action_hash = canonical_action(action_type, parameters)
     try:
-        principal = consume_agent_token(
+        preview = verify_agent_token(
             ceo_token,
             expected_agent_id=CEO_AGENT_ID,
             required_capability="approval.request",
@@ -72,10 +72,19 @@ def create_owner_approval_request(
         raise ApprovalSecurityError(str(exc)) from exc
     with connect() as db:
         run_exists = db.execute(
-            "SELECT 1 FROM company_runs WHERE id=?", (principal.run_id,)
+            "SELECT 1 FROM company_runs WHERE id=?", (preview.run_id,)
         ).fetchone()
     if not run_exists:
         raise ApprovalSecurityError("CEO approval request must reference an existing company run.")
+    try:
+        principal = consume_agent_token(
+            ceo_token,
+            expected_agent_id=CEO_AGENT_ID,
+            expected_run_id=preview.run_id,
+            required_capability="approval.request",
+        )
+    except AgentIdentityError as exc:
+        raise ApprovalSecurityError(str(exc)) from exc
     now = int(time.time())
     request = {
         "id": str(uuid4()),
