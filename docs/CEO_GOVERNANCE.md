@@ -27,7 +27,7 @@ An unregistered/disabled agent is blocked. An action not explicitly classified a
 
 ## Important implementation boundary
 
-The current repository has a single-owner API token and deterministic planning/queue primitives. This governance module is a policy evaluator, not proof of autonomous AI execution or a secure multi-agent identity system. The current API's `/governance/evaluate` route is a policy-preview endpoint protected by the existing owner API gate; it does not authenticate a real agent identity. The current worker does not invoke AI models or external tools. As a fail-closed safeguard, `POST /approvals` rejects owner-token requests with HTTP 403 until a trusted CEO runtime identity exists. This deliberately means no approval request can currently be created through the API. A future execution runtime must pass authenticated agent identity to this policy at every tool boundary, make the CEO the only component allowed to create owner-approval requests, bind approvals to exact action parameters, and re-check approval immediately before execution.
+The repository has a single-owner API token gate, signed internal agent identities, and deterministic planning/queue primitives. The `/governance/evaluate` route remains a policy-preview endpoint; it does not itself authorize a tool call. The legacy `POST /approvals` route remains closed to owner-token callers. The new `POST /ceo/approval-requests` route accepts only a signed CEO identity with the `approval.request` capability, while owner inbox and decision routes require the owner API token. This is a narrow approval workflow, not proof of autonomous AI execution or a secure general-purpose tool system.
 
 ## Owner control
 
