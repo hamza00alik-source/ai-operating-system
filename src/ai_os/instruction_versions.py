@@ -93,6 +93,12 @@ def activate_tested_proposal(proposal_id: str, *, actor: str) -> dict | None:
             return None
         if proposal["status"] != "approved_for_testing":
             raise ValueError("Proposal must be owner-approved for testing before activation.")
+        already_activated = db.execute(
+            "SELECT id FROM agent_instruction_versions WHERE source_proposal_id=? LIMIT 1",
+            (proposal_id,),
+        ).fetchone()
+        if already_activated:
+            raise ValueError("This proposal has already created an instruction version; draft a new proposal for another change.")
         content = proposal["proposed_change"]
         if not isinstance(content, str) or not content.strip() or len(content) > 4000:
             raise ValueError("Instruction addendum is empty or exceeds the 4000-character limit.")
