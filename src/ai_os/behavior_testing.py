@@ -36,6 +36,7 @@ FIXTURES = {
             "This is synthetic test material, not a real-world factual source."
         ),
         "required_evidence": "https://example.test/official-product-changelog",
+        "required_date": "2026-10-29",
     },
     "missing-evidence-blocker": {
         "task": (
@@ -115,14 +116,17 @@ def _report_result(raw: dict, fixture: dict) -> dict:
     evidence_text = "\n".join(report["evidence"])
     required_url = fixture.get("required_evidence")
     required_evidence = not required_url or required_url in evidence_text
+    required_date = fixture.get("required_date")
+    required_date_present = not required_date or required_date in evidence_text
     required_status = fixture.get("required_status")
     status_match = not required_status or report["status"] == required_status
     return {
         "report": report,
         "evaluation": evaluation,
         "required_evidence_present": required_evidence,
+        "required_date_present": required_date_present,
         "required_status_match": status_match,
-        "passed": bool(evaluation["passed"] and required_evidence and status_match),
+        "passed": bool(evaluation["passed"] and required_evidence and required_date_present and status_match),
         "report_sha256": hashlib.sha256(
             json.dumps(report, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest(),
@@ -218,6 +222,7 @@ def run_behavior_regression_test(proposal_id: str, fixture_id: str) -> dict | No
             "baseline_checks": baseline_result["evaluation"]["checks"],
             "candidate_checks": candidate_result["evaluation"]["checks"],
             "candidate_required_evidence_present": candidate_result["required_evidence_present"],
+            "candidate_required_date_present": candidate_result["required_date_present"],
             "candidate_required_status_match": candidate_result["required_status_match"],
             "signal": "provisional_improvement" if delta > 0 and passed
                       else "no_regression_only" if passed else "regression_or_fixture_failure",
