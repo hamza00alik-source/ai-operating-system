@@ -172,4 +172,4 @@ def execute_company_step(payload: dict) -> dict:
             "status": accepted["status"], "report": accepted["report"],
             "provider": provider, "actions_executed": [],
             "knowledge_candidate_ids": created_knowledge_ids,
-            "knowledge_candidates_rejected": rejected_knowledge_candidates
+            "knowledge_candidates_rejected": rejected_knowledge_candidates}
