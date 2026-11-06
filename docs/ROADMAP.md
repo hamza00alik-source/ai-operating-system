@@ -23,7 +23,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Approval inbox restricted to the owner-approval action allowlist
 - [ ] Verify CI run for latest security/audit commit
 - [ ] Secret rotation, rate limiting, and recovery procedures
-- [ ] Authenticated agent identities and runtime-enforced CEO-only approval requests (policy preview exists; this is not yet enforced at real tool boundaries)
+- [x] Signed CEO-only approval-request ingress, owner-authenticated exact-scope decisions, expiry, audit events, and owner dashboard inbox
+- [ ] General action gateway with execution-time authorization checks and external adapter sandboxing
 - [ ] Role-based authorization for specialist agents and worker operations
 - [x] SQLite online backup helper with integrity/schema/audit-chain verification and automated tests
 - [ ] Restore workflow, off-host backup policy, retention, and signed audit checkpoints
@@ -82,7 +83,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide and operator handbook
 
-See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), and [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md) for the current learning, instruction lifecycle, and limitations.
+See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md), and [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for learning, instruction lifecycle, and the company-owned model plan.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
