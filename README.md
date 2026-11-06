@@ -42,7 +42,7 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 - Run a persistent worker process with `python -m ai_os.worker_service`; see [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
 - Persist task, company-run, report, queue, knowledge, and evaluation records in SQLite.
 - Inspect per-agent evaluation history and cautious sample-gated quality trends.
-- Draft evidence-linked CEO improvement proposals; owner approval is only for testing, never automatic adoption.
+- Draft evidence-linked CEO improvement proposals; owner approval is required for testing, followed by a separate explicit owner-token activation action.
 - Run static instruction-contract checks for owner-approved proposals, then explicitly activate the exact passing addendum through the owner dashboard; activation is versioned, audited, and rollback-capable. Static checks are not model-behavior benchmarks.
 
 See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, [docs/INSTRUCTION_VERSIONING.md](docs/INSTRUCTION_VERSIONING.md) for controlled improvement and rollback, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
