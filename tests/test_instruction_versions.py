@@ -99,3 +99,13 @@ def test_active_addendum_is_in_work_packet_but_governance_remains_after_it(tmp_p
     assert "Require source dates" in prompt
     assert addendum < governance
     assert "Never contact the owner directly" in prompt[governance:]
+
+
+def test_same_proposal_cannot_create_duplicate_versions(tmp_path, monkeypatch):
+    _seed(tmp_path / "duplicate.sqlite3", monkeypatch)
+    get_active_instruction("product-trend-researcher")
+    run_proposal_regression_tests("p1")
+    activate_tested_proposal("p1", actor="owner:test")
+    with pytest.raises(ValueError, match="already created"):
+        activate_tested_proposal("p1", actor="owner:test")
+    assert len(get_instruction_history("product-trend-researcher")) == 2
