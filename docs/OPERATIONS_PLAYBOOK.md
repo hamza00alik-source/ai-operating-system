@@ -90,3 +90,13 @@ Set these only on the private runtime host (never commit them):
 - `AI_OS_WORDPRESS_APPLICATION_PASSWORD`
 
 Use a dedicated least-privilege WordPress account. The connector has no write methods, but WordPress Application Passwords inherit the account's permissions; create a read-only account or otherwise restrict the account before connecting. The API status is configuration metadata only and does not prove that the live site is reachable. No credentials are configured by this repository change.
+
+
+
+## Owner-approved WordPress page drafts
+
+The WordPress connector can optionally create a new **unpublished page draft** after the CEO submits an exact-scope request and the owner approves its action hash. The owner must then explicitly execute the approved request. The adapter always sends `status=draft`; it has no publish, update-existing-page, delete, media, theme, plugin, user, or settings operation.
+
+This capability is disabled by default. To enable it on a private host only, configure the WordPress Application Password for a dedicated account and set both `AI_OS_EXTERNAL_ACTIONS_ENABLED=true` and `AI_OS_WORDPRESS_DRAFT_WRITES_ENABLED=true`. Do not enable either flag until the site is connected and the dedicated account's permissions have been checked. Credentials must never be committed to Git. The owner-only execution endpoint is `POST /owner/approval-requests/{approval_id}/execute`; it accepts no action parameters and executes only the exact, unexpired, previously approved request. The approval is consumed once before adapter execution; after an adapter error, inspect WordPress and the audit trail before any retry.
+
+The feature has not been connected to a live WordPress site. Keep both flags false until the owner intentionally configures and tests the private runtime.
