@@ -186,4 +186,17 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_improvement_proposals_status_created
             ON improvement_proposals(status, created_at);
+        CREATE TABLE IF NOT EXISTS improvement_test_runs (
+            id TEXT PRIMARY KEY,
+            proposal_id TEXT NOT NULL,
+            baseline_policy_version TEXT NOT NULL,
+            candidate_sha256 TEXT NOT NULL,
+            passed INTEGER NOT NULL CHECK(passed IN (0,1)),
+            checks_json TEXT NOT NULL,
+            limitations_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(proposal_id) REFERENCES improvement_proposals(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_improvement_test_runs_proposal_created
+            ON improvement_test_runs(proposal_id, created_at);
         """)
