@@ -6,6 +6,7 @@ from ai_os.action_gateway import (
     ActionGatewayError,
     clear_action_adapters_for_tests,
     execute_approved_action,
+    get_action_gateway_status,
     register_action_adapter,
 )
 from ai_os.approvals import create_owner_approval_request, decide_owner_approval
@@ -128,3 +129,16 @@ def test_adapter_failure_consumes_approval_and_records_failure(gateway_db, monke
     assert _status(approval["id"]) == "consumed"
     actions = [event["action"] for event in list_events(50)]
     assert "approved_action_execution_failed" in actions
+
+
+def test_gateway_readiness_requires_explicit_flag_and_registered_adapter(gateway_db, monkeypatch):
+    assert get_action_gateway_status()["enabled"] is False
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    assert get_action_gateway_status()["enabled"] is False
+    register_action_adapter(
+        "publish_product", adapter_id="test-status-adapter",
+        adapter=lambda parameters, execution_id: {"dry_run": True},
+    )
+    status = get_action_gateway_status()
+    assert status["enabled"] is True
+    assert status["registered_actions"] == ["publish_product"]
