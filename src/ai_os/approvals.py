@@ -69,7 +69,7 @@ def create_owner_approval_request(
     except AgentIdentityError as exc:
         raise ApprovalSecurityError(str(exc)) from exc
 
-    canonical_json, action_hash = canonical_action(action_type, parameters)
+    _, action_hash = canonical_action(action_type, parameters)
     now = int(time.time())
     request = {
         "id": str(uuid4()),
@@ -80,14 +80,12 @@ def create_owner_approval_request(
         "action_hash": action_hash,
         "status": "pending",
         "created_at": _now_iso(),
-        "expires_at": min(principal.expires_at, now + ttl_seconds),
+        "expires_at": now + ttl_seconds,
         "decided_at": None,
         "decision": None,
         "consumed_at": None,
         "execution_id": None,
     }
-    if request["expires_at"] <= now:
-        raise ApprovalSecurityError("CEO identity expires before the approval request can be created.")
     with connect() as db:
         db.execute(
             """INSERT INTO owner_approval_requests
