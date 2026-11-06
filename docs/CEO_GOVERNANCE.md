@@ -58,4 +58,13 @@ The new `ai_os.approvals` module provides internal primitives (not HTTP endpoint
 
 A CEO request token is consumed only after the action has passed canonical validation, and cannot create a second approval request. Approval requests receive a maximum 15-minute owner-review window after the signed CEO request has been verified; the CEO token itself remains short-lived and is not needed for the owner to finish reviewing an already-created request. Expired requests transition to `expired`; rejected, changed, expired, or already-consumed approvals cannot authorize execution. Parameter JSON is bounded to 16 KB and rejects non-finite values.
 
-**This is not an enabled approval or execution workflow.** No HTTP route calls these primitives; the existing `/approvals` inbox remains closed for request creation. The owner-decision primitive must only be called behind a separately verified owner-authenticated endpoint. No adapter currently consumes approvals to publish, message customers, spend money, deploy, or change production. The runtime continues to report external actions and autonomous execution as disabled.
+**The HTTP approval workflow is now enabled, but external execution is not.** `POST /ceo/approval-requests` verifies and consumes a signed CEO token, requires an existing company run, and accepts only the owner-approval action allowlist. `GET /owner/approval-requests` and `POST /owner/approval-requests/{id}/decision` remain behind owner authentication. The owner decision must include the exact SHA-256 action hash shown in the inbox. Requests expire after at most 15 minutes, and creation/decisions are audit-logged. The old `/approvals` route remains closed to caller-claimed CEO identity. `consume_owner_approval` is still an internal server-side primitive only; there is no adapter or route that consumes an approval to publish, message customers, spend, deploy, or change production. External actions remain disabled.
+
+
+## HTTP CEO-to-owner approval workflow
+
+- CEO ingress: `POST /ceo/approval-requests` with `X-AI-Agent-Token`; only the signed `company-orchestrator` identity with `approval.request` is accepted. The token is one-use and bound to an existing company run.
+- Owner inbox: `GET /owner/approval-requests` is protected by the owner bearer token and returns the exact action parameters, expiry, and SHA-256 scope hash.
+- Owner decision: `POST /owner/approval-requests/{id}/decision` requires the owner token and exact displayed hash, and supports one irreversible approve/reject decision.
+- Expired requests are marked expired. Action parameters are bounded and reject credential-like field names; integration connection IDs should be used instead of access credentials.
+- Approval is not execution. A future adapter must re-check the exact approved action immediately before acting, consume it once, and record the execution result. No such external adapter is enabled today.
