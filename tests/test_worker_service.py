@@ -27,7 +27,7 @@ def test_worker_loop_recovers_after_transient_scheduler_failure():
     )
 
     assert calls["errors"] == [("OSError", 2)]
-    assert calls["sleep"] == [2]
+    assert calls["sleep"] == [2, 2]
     assert calls["schedule"] == 2
     assert calls["run"] == 1
 
