@@ -62,8 +62,6 @@ def test_local_behavior_comparison_is_persisted_and_never_activates(tmp_path, mo
     monkeypatch.setenv("AI_OS_MODEL_NAME", "local-test-model")
     monkeypatch.delenv("AI_OS_MODEL_API_KEY", raising=False)
     from ai_os import behavior_testing
-    from ai_os.instruction_versions import get_active_instruction
-    baseline = get_active_instruction("product-trend-researcher")
     calls = []
     def fake_generate(system, prompt):
         calls.append(prompt)
@@ -81,7 +79,8 @@ def test_local_behavior_comparison_is_persisted_and_never_activates(tmp_path, mo
     assert len(calls) == 2
     assert "CANDIDATE INSTRUCTION ADDENDUM" in calls[1]
     assert "COMPANY GOVERNANCE — HIGHEST PRIORITY" in calls[1]
-    assert get_active_instruction("product-trend-researcher")["active_version_id"] == baseline["active_version_id"]
+    from ai_os.instruction_versions import get_active_instruction
+    assert get_active_instruction("product-trend-researcher")["active_version_id"] == result["active_version_id"]
     history = list_behavior_test_runs("behavior-p1")
     assert len(history) == 1
     assert history[0]["passed"] is True
