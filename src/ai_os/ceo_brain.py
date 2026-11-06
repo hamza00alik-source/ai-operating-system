@@ -44,7 +44,7 @@ OPTIONAL_ROLES = {
         "reason": "Financial planning keywords were found in the objective or context.",
     },
     "security": {
-        "terms": ("security", "privacy", "credential", "authentication", "access control", "token", "compliance", "data protection"),
+        "terms": ("security", "secure", "privacy", "credential", "authentication", "access control", "token", "compliance", "data protection"),
         "role": ("security_review", "security-architect", "Review data handling, permissions, secrets, threat exposure, and minimum security controls. Do not change production permissions or credentials."),
         "reason": "Security/privacy keywords were found in the objective or context.",
     },
