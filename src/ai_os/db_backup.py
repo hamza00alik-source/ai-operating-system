@@ -37,7 +37,7 @@ def verify_sqlite_backup(backup_path: str | Path) -> dict:
             )
         }
         required = {"tasks", "jobs", "company_runs", "company_run_steps",
-                    "audit_events", "knowledge_items", "agent_evaluations", "improvement_proposals", "improvement_test_runs",
+                    "audit_events", "owner_approval_requests", "knowledge_items", "agent_evaluations", "improvement_proposals", "improvement_test_runs",
                     "agent_instruction_versions", "agent_instruction_heads",
                     "instruction_behavior_test_runs"}
         missing = sorted(required - tables)
