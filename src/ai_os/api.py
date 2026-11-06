@@ -38,6 +38,10 @@ from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
 from ai_os.improvement import (draft_improvement_proposals, list_improvement_proposals,
                                review_improvement_proposal)
 from ai_os.improvement_testing import run_proposal_regression_tests, list_proposal_test_runs
+from ai_os.instruction_versions import (
+    activate_tested_proposal, get_active_instruction, get_instruction_history,
+    rollback_instruction,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +209,56 @@ def get_improvement_proposal_tests(
     proposal_id: str, limit: int = Query(default=20, ge=1, le=100)
 ):
     return list_proposal_test_runs(proposal_id, limit=limit)
+
+
+@app.post("/improvement-proposals/{proposal_id}/activate", status_code=201)
+def post_improvement_proposal_activate(proposal_id: str, request: Request):
+    """Owner-authenticated activation of the exact proposal text after a passing static screen."""
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        version = activate_tested_proposal(proposal_id, actor=actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if version is None:
+        raise HTTPException(status_code=404, detail="Improvement proposal not found")
+    append_event(
+        actor, "agent_instruction_activated", "agent_instruction_version", version["id"],
+        {"agent_id": version["agent_id"], "version_number": version["version_number"],
+         "proposal_id": proposal_id, "content_sha256": version["content_sha256"]},
+    )
+    return version
+
+
+@app.get("/agents/{agent_id}/instructions")
+def get_agent_active_instructions(agent_id: str):
+    try:
+        return get_active_instruction(agent_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/agents/{agent_id}/instructions/history")
+def get_agent_instruction_history(agent_id: str, limit: int = Query(default=30, ge=1, le=100)):
+    try:
+        return get_instruction_history(agent_id, limit=limit)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/agents/{agent_id}/instructions/rollback")
+def post_agent_instruction_rollback(agent_id: str, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        version = rollback_instruction(agent_id, actor=actor)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    append_event(
+        actor, "agent_instruction_rolled_back", "agent_instruction_version", version["id"],
+        {"agent_id": agent_id, "version_number": version["version_number"]},
+    )
+    return version
 
 
 @app.get("/audit/verify")
