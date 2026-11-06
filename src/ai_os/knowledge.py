@@ -107,3 +107,34 @@ def review_knowledge_item(
             "SELECT * FROM knowledge_items WHERE id=?", (item_id,)
         ).fetchone()
     return _decode(updated)
+
+
+def retrieve_accepted_knowledge(query: str, *, limit: int = 5,
+                                max_content_chars: int = 1200) -> list[dict]:
+    """Return a small keyword-ranked context set from owner-accepted records only.
+
+    This is deliberately lexical and local: no embeddings, external calls, or
+    candidate/rejected records. Retrieved text remains untrusted reference data.
+    """
+    import re
+
+    terms = {
+        term for term in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", query.lower())
+        if term not in {"the", "and", "for", "with", "from", "that", "this"}
+    }
+    accepted = list_knowledge_items(status="accepted", limit=500)
+    ranked = []
+    for item in accepted:
+        haystack = " ".join([
+            item["title"], item["content"], item["category"],
+            item["source_title"], " ".join(item["tags"]),
+        ]).lower()
+        item_terms = set(re.findall(r"[a-z0-9][a-z0-9_-]{2,}", haystack))
+        score = len(terms & item_terms)
+        if score:
+            ranked.append((score, item["created_at"], item))
+    ranked.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+    return [
+        {**item, "content": item["content"][:max_content_chars]}
+        for _, _, item in ranked[:max(0, min(limit, 20))]
+    ]
