@@ -3,8 +3,15 @@
 These checks measure report structure and explicit safety signals. They do not
 prove factual accuracy, source validity, or model reasoning quality.
 """
+import json
 import re
+from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
+
+from ai_os.db import connect
+
+EVALUATOR_VERSION = "1.0.0"
 
 _ACTION_CLAIM = re.compile(
     r"\b(i|we)\s+(have\s+)?(published|sent|purchased|paid|refunded|deployed|"
@@ -80,5 +87,92 @@ def _result(checks: list[dict[str, Any]]) -> dict[str, Any]:
         "limitations": [
             "A passing score checks report structure and explicit safety signals only.",
             "It does not verify factual accuracy, source authenticity, or completeness of research.",
+        ],
+    }
+
+
+
+def record_evaluation(*, run_id: str, step_key: str, agent_id: str,
+                      result: dict[str, Any]) -> dict[str, Any]:
+    """Persist one immutable evaluation result for an executed specialist step."""
+    record = {
+        "id": str(uuid4()),
+        "run_id": run_id,
+        "step_key": step_key,
+        "agent_id": agent_id,
+        "evaluator_version": EVALUATOR_VERSION,
+        "score": int(result["score"]),
+        "passed": bool(result["passed"]),
+        "critical_failures_json": json.dumps(result["critical_failures"], separators=(",", ":")),
+        "checks_json": json.dumps(result["checks"], separators=(",", ":")),
+        "limitations_json": json.dumps(result["limitations"], separators=(",", ":")),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with connect() as db:
+        db.execute(
+            """INSERT INTO agent_evaluations
+            (id,run_id,step_key,agent_id,evaluator_version,score,passed,
+             critical_failures_json,checks_json,limitations_json,created_at)
+            VALUES (:id,:run_id,:step_key,:agent_id,:evaluator_version,:score,:passed,
+                    :critical_failures_json,:checks_json,:limitations_json,:created_at)""",
+            record,
+        )
+    return _decode_evaluation(record)
+
+
+def _decode_evaluation(row) -> dict[str, Any]:
+    item = dict(row)
+    item["passed"] = bool(item["passed"])
+    item["critical_failures"] = json.loads(item.pop("critical_failures_json"))
+    item["checks"] = json.loads(item.pop("checks_json"))
+    item["limitations"] = json.loads(item.pop("limitations_json"))
+    return item
+
+
+def list_evaluations(*, limit: int = 100, agent_id: str | None = None,
+                     run_id: str | None = None) -> list[dict[str, Any]]:
+    """List immutable evaluation history, newest first, with bounded filters."""
+    clauses, values = [], []
+    if agent_id:
+        clauses.append("agent_id=?")
+        values.append(agent_id)
+    if run_id:
+        clauses.append("run_id=?")
+        values.append(run_id)
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    bounded_limit = max(1, min(int(limit), 500))
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM agent_evaluations" + where
+            + " ORDER BY created_at DESC, id DESC LIMIT ?",
+            (*values, bounded_limit),
+        ).fetchall()
+    return [_decode_evaluation(row) for row in rows]
+
+
+def evaluation_summary(*, agent_id: str | None = None) -> dict[str, Any]:
+    """Summarize persisted results without implying statistical significance."""
+    where = " WHERE agent_id=?" if agent_id else ""
+    values = (agent_id,) if agent_id else ()
+    with connect() as db:
+        row = db.execute(
+            "SELECT COUNT(*) AS total, COALESCE(AVG(score),0) AS average_score, "
+            "COALESCE(SUM(passed),0) AS passed_count, "
+            "MIN(created_at) AS first_evaluation, MAX(created_at) AS last_evaluation "
+            "FROM agent_evaluations" + where,
+            values,
+        ).fetchone()
+    total = int(row["total"])
+    return {
+        "agent_id": agent_id,
+        "total": total,
+        "average_score": round(float(row["average_score"]), 1),
+        "passed_count": int(row["passed_count"]),
+        "failed_count": total - int(row["passed_count"]),
+        "first_evaluation": row["first_evaluation"],
+        "last_evaluation": row["last_evaluation"],
+        "limitations": [
+            "Scores reflect the deterministic report rubric, not factual accuracy or business outcomes.",
+            "Small samples and changing task difficulty make comparisons provisional.",
         ],
     }
