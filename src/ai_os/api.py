@@ -49,6 +49,10 @@ from ai_os.behavior_testing import (
     FIXTURES as BEHAVIOR_TEST_FIXTURES, get_behavior_test_status,
     list_behavior_test_runs, run_behavior_regression_test,
 )
+from ai_os.training_schemas import TrainingExampleCreate, TrainingExampleReview, TrainingDatasetExportRequest
+from ai_os.training_data import (create_training_example, list_training_examples,
+                                 review_training_example, export_training_dataset,
+                                 list_training_dataset_exports)
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +316,75 @@ def get_improvement_behavior_tests(
     proposal_id: str, limit: int = Query(default=20, ge=1, le=100)
 ):
     return list_behavior_test_runs(proposal_id, limit=limit)
+
+
+@app.post("/training-examples", status_code=201)
+def post_training_example(payload: TrainingExampleCreate, request: Request):
+    """Store an owner-attested candidate; accepted examples require a separate review."""
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        item = create_training_example(payload, actor=actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        actor, "model_training_example_created", "model_training_example", item["id"],
+        {"task_family": item["task_family"], "status": item["status"],
+         "source_count": len(item["source_refs"])},
+    )
+    return item
+
+
+@app.get("/training-examples")
+def get_training_examples(
+    status: str | None = Query(default=None, pattern=r"^(candidate|accepted|rejected)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    return list_training_examples(status=status, limit=limit)
+
+
+@app.post("/training-examples/{example_id}/review")
+def post_training_example_review(
+    example_id: str, payload: TrainingExampleReview, request: Request
+):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        item = review_training_example(example_id, payload, actor=actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Training example not found")
+    append_event(
+        actor, "model_training_example_reviewed", "model_training_example", example_id,
+        {"decision": payload.decision, "task_family": item["task_family"]},
+    )
+    return item
+
+
+@app.post("/training-datasets/export", status_code=201)
+def post_training_dataset_export(
+    payload: TrainingDatasetExportRequest, request: Request
+):
+    """Export only owner-accepted examples; this endpoint does not train a model."""
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        result = export_training_dataset(actor=actor, limit=payload.limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    append_event(
+        actor, "model_training_dataset_exported", "training_dataset_export",
+        result["export_id"],
+        {"version_number": result["version_number"],
+         "dataset_sha256": result["dataset_sha256"],
+         "example_count": result["example_count"]},
+    )
+    return result
+
+
+@app.get("/training-datasets/exports")
+def get_training_dataset_exports(
+    limit: int = Query(default=50, ge=1, le=200)
+):
+    return list_training_dataset_exports(limit=limit)
 
 
 @app.get("/audit/verify")
