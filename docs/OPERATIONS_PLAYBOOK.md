@@ -100,3 +100,13 @@ The WordPress connector can optionally create a new **unpublished page draft** a
 This capability is disabled by default. To enable it on a private host only, configure the WordPress Application Password for a dedicated account and set both `AI_OS_EXTERNAL_ACTIONS_ENABLED=true` and `AI_OS_WORDPRESS_DRAFT_WRITES_ENABLED=true`. Do not enable either flag until the site is connected and the dedicated account's permissions have been checked. Credentials must never be committed to Git. The owner-only execution endpoint is `POST /owner/approval-requests/{approval_id}/execute`; it accepts no action parameters and executes only the exact, unexpired, previously approved request. The approval is consumed once before adapter execution; after an adapter error, inspect WordPress and the audit trail before any retry.
 
 The feature has not been connected to a live WordPress site. Keep both flags false until the owner intentionally configures and tests the private runtime.
+
+
+
+## Owner-approved WooCommerce product drafts
+
+The WooCommerce connector can optionally create a new unpublished product draft after the CEO submits an exact-scope approval request, the owner approves its action hash, and the owner explicitly executes it from the dashboard. The adapter accepts only `name`, `description`, and `regular_price`, forces `status=draft`, and has no publish, update, delete, order, refund, payment, or settings write operation.
+
+To enable on a private host, set `AI_OS_EXTERNAL_ACTIONS_ENABLED=true` and `AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED=true` after configuring WooCommerce API credentials for a dedicated account. Keep both flags false by default and never commit credentials. The execution route accepts no caller-supplied product fields; it reads the exact previously approved parameters from the approval record. After an adapter error, inspect WooCommerce and the audit trail before retrying.
+
+No live store is connected by this repository change. These flags remain false in the example configuration.
