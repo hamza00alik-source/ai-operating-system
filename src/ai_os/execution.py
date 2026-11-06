@@ -141,6 +141,97 @@ def dispatch_ready_step(run_id: str, step_key: str) -> dict:
         ).fetchone()
         return _decode_step(updated)
 
+
+def propagate_blocked_steps(run_id: str) -> int:
+    """Block pending descendants of failed steps and finalize the run state."""
+    blocked_count = 0
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        run = db.execute("SELECT * FROM company_runs WHERE id=?", (run_id,)).fetchone()
+        if run is None:
+            raise LookupError("Company run not found")
+        while True:
+            rows = db.execute(
+                "SELECT step_key,depends_on_json,status FROM company_run_steps WHERE run_id=?",
+                (run_id,),
+            ).fetchall()
+            states = {row["step_key"]: row["status"] for row in rows}
+            newly_blocked = []
+            for row in rows:
+                if row["status"] != "pending":
+                    continue
+                failed_dependencies = [
+                    key for key in json.loads(row["depends_on_json"])
+                    if states.get(key) == "blocked"
+                ]
+                if failed_dependencies:
+                    newly_blocked.append((row["step_key"], failed_dependencies))
+            if not newly_blocked:
+                break
+            now = _now()
+            for step_key, failed_dependencies in newly_blocked:
+                report = {
+                    "status": "blocked",
+                    "summary": "This step was not run because a required dependency was blocked.",
+                    "evidence": [],
+                    "blockers": [
+                        "Blocked dependency: " + ", ".join(failed_dependencies)
+                    ],
+                    "reported_to": CEO_AGENT_ID,
+                    "system_generated": True,
+                }
+                changed = db.execute(
+                    """UPDATE company_run_steps SET status='blocked',report_json=?,updated_at=?
+                       WHERE run_id=? AND step_key=? AND status='pending'""",
+                    (json.dumps(report, separators=(",", ":")), now, run_id, step_key),
+                ).rowcount
+                blocked_count += changed
+        counts = db.execute(
+            """SELECT
+                 SUM(CASE WHEN status NOT IN ('completed','blocked') THEN 1 ELSE 0 END) AS remaining,
+                 SUM(CASE WHEN status='blocked' THEN 1 ELSE 0 END) AS blocked,
+                 SUM(CASE WHEN status IN ('assigned','completed','blocked') THEN 1 ELSE 0 END) AS started
+               FROM company_run_steps WHERE run_id=?""",
+            (run_id,),
+        ).fetchone()
+        if counts["remaining"] == 0:
+            run_status = "blocked" if counts["blocked"] else "completed"
+        else:
+            run_status = "running" if counts["started"] else "queued"
+        db.execute(
+            "UPDATE company_runs SET status=?,updated_at=? WHERE id=?",
+            (run_status, _now(), run_id),
+        )
+    return blocked_count
+
+
+def mark_company_step_blocked(run_id: str, step_key: str, reason: str) -> bool:
+    """Mark an assigned step blocked after its durable job exhausts retries."""
+    report = {
+        "status": "blocked",
+        "summary": "The specialist job exhausted its retry allowance and was stopped.",
+        "evidence": [],
+        "blockers": [reason.strip()[:1000] or "Worker retry limit reached."],
+        "reported_to": CEO_AGENT_ID,
+        "system_generated": True,
+    }
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        now = _now()
+        changed = db.execute(
+            """UPDATE company_run_steps SET status='blocked',report_json=?,updated_at=?
+               WHERE run_id=? AND step_key=? AND status='assigned'""",
+            (json.dumps(report, separators=(",", ":")), now, run_id, step_key),
+        ).rowcount
+        if changed:
+            db.execute(
+                "UPDATE company_runs SET status='running',updated_at=? WHERE id=?",
+                (now, run_id),
+            )
+    if changed:
+        propagate_blocked_steps(run_id)
+    return bool(changed)
+
 def submit_step_report(run_id: str, step_key: str, payload: StepReportCreate) -> dict:
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
