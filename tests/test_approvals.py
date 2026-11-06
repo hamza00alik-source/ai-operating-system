@@ -20,6 +20,13 @@ def approval_db(monkeypatch, tmp_path):
         lambda agent_id: SimpleNamespace(id=agent_id, enabled=True),
     )
     initialize_database()
+    from ai_os.db import connect
+    with connect() as db:
+        db.execute(
+            """INSERT INTO company_runs(id,title,description,status,created_at,updated_at)
+               VALUES ('run-approval-1','Approval test run','Test','running',
+                       '2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')"""
+        )
 
 
 def _ceo_token(run_id="run-approval-1"):
@@ -174,3 +181,11 @@ def test_expired_approval_is_marked_expired_and_cannot_be_consumed(approval_db, 
             "SELECT status FROM owner_approval_requests WHERE id=?", (request["id"],)
         ).fetchone()
     assert row["status"] == "expired"
+
+
+def test_ceo_request_requires_existing_run_before_consuming_token(approval_db):
+    token = _ceo_token(run_id="missing-run")
+    with pytest.raises(ApprovalSecurityError, match="existing company run"):
+        _request(token)
+    with pytest.raises(ApprovalSecurityError, match="existing company run"):
+        _request(token)
