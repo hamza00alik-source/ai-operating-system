@@ -6,6 +6,7 @@ from an owner-authenticated handler, and consume_owner_approval is not an
 external-action executor.
 """
 import hashlib
+import hmac
 import json
 import time
 from datetime import datetime, timezone
@@ -111,6 +112,7 @@ def decide_owner_approval(
     if decision not in {"approved", "rejected"}:
         raise ApprovalSecurityError("Owner decision must be approved or rejected.")
     now = int(time.time())
+    expired = False
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
@@ -125,20 +127,25 @@ def decide_owner_approval(
                 "UPDATE owner_approval_requests SET status='expired' WHERE id=? AND status='pending'",
                 (approval_id,),
             )
-            raise ApprovalSecurityError("Approval request has expired.")
-        if not isinstance(action_hash, str) or not hashlib.sha256(action_hash.encode()).digest() == hashlib.sha256(row["action_hash"].encode()).digest():
+            expired = True
+        if not expired and (not isinstance(action_hash, str) or not hmac.compare_digest(action_hash, row["action_hash"])):
             raise ApprovalSecurityError("Owner decision must reference the exact action hash shown for approval.")
-        decided_at = _now_iso()
-        cursor = db.execute(
-            """UPDATE owner_approval_requests SET status=?,decision=?,decided_at=?
-               WHERE id=? AND status='pending' AND action_hash=?""",
-            (decision, decision, decided_at, approval_id, action_hash),
-        )
-        if cursor.rowcount != 1:
-            raise ApprovalSecurityError("Approval changed concurrently; reload and review it.")
-        updated = db.execute(
-            "SELECT * FROM owner_approval_requests WHERE id=?", (approval_id,)
-        ).fetchone()
+        if expired:
+            updated = None
+        else:
+            decided_at = _now_iso()
+            cursor = db.execute(
+                """UPDATE owner_approval_requests SET status=?,decision=?,decided_at=?
+                   WHERE id=? AND status='pending' AND action_hash=?""",
+                (decision, decision, decided_at, approval_id, action_hash),
+            )
+            if cursor.rowcount != 1:
+                raise ApprovalSecurityError("Approval changed concurrently; reload and review it.")
+            updated = db.execute(
+                "SELECT * FROM owner_approval_requests WHERE id=?", (approval_id,)
+            ).fetchone()
+    if expired:
+        raise ApprovalSecurityError("Approval request has expired.")
     result = dict(updated)
     result["parameters"] = json.loads(result.pop("parameters_json"))
     return result
@@ -156,6 +163,7 @@ def consume_owner_approval(
         raise ApprovalSecurityError("A valid execution ID is required.")
     _, supplied_hash = canonical_action(action_type, parameters)
     now = int(time.time())
+    expired = False
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
@@ -170,20 +178,25 @@ def consume_owner_approval(
                 "UPDATE owner_approval_requests SET status='expired' WHERE id=? AND status='approved'",
                 (approval_id,),
             )
-            raise ApprovalSecurityError("Approval request has expired.")
-        if row["action_hash"] != supplied_hash:
+            expired = True
+        if not expired and not hmac.compare_digest(row["action_hash"], supplied_hash):
             raise ApprovalSecurityError("Execution parameters do not match the approved action.")
-        cursor = db.execute(
-            """UPDATE owner_approval_requests
-               SET status='consumed',consumed_at=?,execution_id=?
-               WHERE id=? AND status='approved' AND action_hash=? AND expires_at>?""",
-            (_now_iso(), execution_id, approval_id, supplied_hash, now),
-        )
-        if cursor.rowcount != 1:
-            raise ApprovalSecurityError("Approval could not be consumed; it may have expired or been used.")
-        consumed = db.execute(
-            "SELECT * FROM owner_approval_requests WHERE id=?", (approval_id,)
-        ).fetchone()
+        if expired:
+            consumed = None
+        else:
+            cursor = db.execute(
+                """UPDATE owner_approval_requests
+                   SET status='consumed',consumed_at=?,execution_id=?
+                   WHERE id=? AND status='approved' AND action_hash=? AND expires_at>?""",
+                (_now_iso(), execution_id, approval_id, supplied_hash, now),
+            )
+            if cursor.rowcount != 1:
+                raise ApprovalSecurityError("Approval could not be consumed; it may have expired or been used.")
+            consumed = db.execute(
+                "SELECT * FROM owner_approval_requests WHERE id=?", (approval_id,)
+            ).fetchone()
+    if expired:
+        raise ApprovalSecurityError("Approval request has expired.")
     result = dict(consumed)
     result["parameters"] = json.loads(result.pop("parameters_json"))
     return result
