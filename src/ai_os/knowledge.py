@@ -17,6 +17,31 @@ def _decode(row) -> dict:
     return item
 
 
+def _normalize_text(value: str) -> str:
+    import re
+    return " ".join(re.findall(r"\\w+", value.lower()))
+
+
+def _freshness(source_published_at: str | None, *, now: datetime) -> tuple[float, str]:
+    """Return an explicitly heuristic freshness signal; never validate source truth."""
+    if not source_published_at:
+        return 0.5, "unknown"
+    try:
+        published = datetime.fromisoformat(source_published_at.replace("Z", "+00:00"))
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return 0.5, "unknown"
+    age_days = max(0.0, (now - published).total_seconds() / 86400)
+    if age_days <= 30:
+        return 1.0, "fresh"
+    if age_days <= 180:
+        return 0.8, "recent"
+    if age_days <= 365:
+        return 0.6, "aging"
+    return 0.3, "stale"
+
+
 def create_knowledge_item(payload: KnowledgeCreate, *, actor: str) -> dict:
     now = _now()
     item = {
@@ -41,6 +66,14 @@ def create_knowledge_item(payload: KnowledgeCreate, *, actor: str) -> dict:
         "review_note": None,
     }
     with connect() as db:
+        duplicates = db.execute(
+            """SELECT id, content FROM knowledge_items
+               WHERE source_url=? AND lower(title)=?""",
+            (item["source_url"], item["title"].lower()),
+        ).fetchall()
+        normalized_content = _normalize_text(item["content"])
+        if any(_normalize_text(row["content"]) == normalized_content for row in duplicates):
+            raise ValueError("An identical knowledge item already exists for this source and title.")
         db.execute(
             """INSERT INTO knowledge_items
             (id,title,content,category,source_url,source_title,source_published_at,
@@ -111,10 +144,11 @@ def review_knowledge_item(
 
 def retrieve_accepted_knowledge(query: str, *, limit: int = 5,
                                 max_content_chars: int = 1200) -> list[dict]:
-    """Return a small keyword-ranked context set from owner-accepted records only.
+    """Return keyword-ranked owner-accepted notes with a cautious freshness tie-breaker.
 
-    This is deliberately lexical and local: no embeddings, external calls, or
-    candidate/rejected records. Retrieved text remains untrusted reference data.
+    Retrieval is local and lexical. Publication-date freshness is a heuristic,
+    not source verification or a calibrated truth score. Undated items receive
+    a neutral freshness value and remain eligible.
     """
     import re
 
@@ -122,7 +156,10 @@ def retrieve_accepted_knowledge(query: str, *, limit: int = 5,
         term for term in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", query.lower())
         if term not in {"the", "and", "for", "with", "from", "that", "this"}
     }
+    if not terms:
+        return []
     accepted = list_knowledge_items(status="accepted", limit=500)
+    now = datetime.now(timezone.utc)
     ranked = []
     for item in accepted:
         haystack = " ".join([
@@ -130,11 +167,28 @@ def retrieve_accepted_knowledge(query: str, *, limit: int = 5,
             item["source_title"], " ".join(item["tags"]),
         ]).lower()
         item_terms = set(re.findall(r"[a-z0-9][a-z0-9_-]{2,}", haystack))
-        score = len(terms & item_terms)
-        if score:
-            ranked.append((score, item["created_at"], item))
-    ranked.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+        keyword_matches = len(terms & item_terms)
+        if not keyword_matches:
+            continue
+        freshness_score, freshness_label = _freshness(
+            item.get("source_published_at"), now=now
+        )
+        ranked.append((
+            keyword_matches, freshness_score, item["confidence"],
+            item["created_at"], item, freshness_label,
+        ))
+    ranked.sort(key=lambda entry: entry[:4], reverse=True)
     return [
-        {**item, "content": item["content"][:max_content_chars]}
-        for _, _, item in ranked[:max(0, min(limit, 20))]
+        {
+            **item,
+            "content": item["content"][:max_content_chars],
+            "retrieval_metadata": {
+                "keyword_matches": keyword_matches,
+                "freshness": freshness_label,
+                "freshness_score": freshness_score,
+                "freshness_is_heuristic": True,
+            },
+        }
+        for keyword_matches, freshness_score, _, _, item, freshness_label
+        in ranked[:max(0, min(limit, 20))]
     ]
