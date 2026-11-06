@@ -47,7 +47,11 @@ def validate_library(root: Path, *, check_git_pin: bool = False) -> list[str]:
 
     actual_divisions = {
         path.name for path in library.iterdir()
-        if path.is_dir() and any(path.rglob("*.md"))
+        if path.is_dir() and any(
+            _frontmatter(profile.read_text(encoding="utf-8")).get("name")
+            and _frontmatter(profile.read_text(encoding="utf-8")).get("description")
+            for profile in path.rglob("*.md")
+        )
     }
     expected_divisions = set(divisions)
     if actual_divisions != expected_divisions:
