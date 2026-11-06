@@ -407,6 +407,8 @@ def test_owner_dashboard_includes_agent_progress_and_refresh_features():
     assert 'api("/audit?limit=30")' in page.text
     assert 'api("/models/status")' in page.text
     assert "Queued work" in page.text
+    assert "Last recorded activity" in page.text
+    assert "steps complete" in page.text
     assert "setInterval" in page.text
     assert model_status.status_code == 200
     assert model_status.json()["makes_network_request"] is False
