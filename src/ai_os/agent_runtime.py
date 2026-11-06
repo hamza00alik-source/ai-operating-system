@@ -5,6 +5,7 @@ existing provider-neutral model adapter. Agents have no tools or external-action
 permissions; they return reports to the CEO only.
 """
 import json
+import re
 from pydantic import ValidationError
 from ai_os.audit import append_event
 from ai_os.execution import (dispatch_ready_step, get_company_run, list_company_runs,
@@ -137,6 +138,10 @@ def execute_company_step(payload: dict) -> dict:
     principal = consume_agent_token(token, expected_agent_id=step["agent_id"],
                                     expected_run_id=run_id, required_capability="step.report")
     accepted = submit_step_report(run_id, step_key, report)
+    available_source_urls = {
+        match.rstrip(".,;:!?").rstrip("/")
+        for match in re.findall(r"""https?://[^\s<>()\[\]{}"']+""", full_prompt)
+    }
     created_knowledge_ids = []
     rejected_knowledge_candidates = 0
     candidates = raw.get("knowledge_candidates", [])
@@ -150,7 +155,8 @@ def execute_company_step(payload: dict) -> dict:
             except ValidationError:
                 rejected_knowledge_candidates += 1
                 continue
-            if str(knowledge_payload.source_url) not in full_prompt:
+            candidate_source_url = str(knowledge_payload.source_url).rstrip("/")
+            if candidate_source_url not in available_source_urls:
                 rejected_knowledge_candidates += 1
                 continue
             item = create_knowledge_item(
