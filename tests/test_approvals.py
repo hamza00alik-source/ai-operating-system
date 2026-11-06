@@ -187,5 +187,11 @@ def test_ceo_request_requires_existing_run_before_consuming_token(approval_db):
     token = _ceo_token(run_id="missing-run")
     with pytest.raises(ApprovalSecurityError, match="existing company run"):
         _request(token)
-    with pytest.raises(ApprovalSecurityError, match="existing company run"):
-        _request(token)
+    from ai_os.db import connect
+    with connect() as db:
+        db.execute(
+            """INSERT INTO company_runs(id,title,description,status,created_at,updated_at)
+               VALUES ('missing-run','Later-created run','Test','running',
+                       '2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')"""
+        )
+    assert _request(token)["status"] == "pending"
