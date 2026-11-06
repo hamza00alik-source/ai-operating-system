@@ -31,6 +31,8 @@ from ai_os.ceo_brain import create_ceo_plan, get_ceo_plan
 from ai_os.model_adapter import get_model_status
 from ai_os.ceo_review import review_company_run
 from ai_os.identity import AgentIdentityError, consume_agent_token
+from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
+from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,\n                            list_knowledge_items, review_knowledge_item)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +120,52 @@ def get_audit_events(limit: int = Query(default=100, ge=1, le=500)):
 @app.get("/audit/verify")
 def get_audit_verification():
     return verify_chain()
+
+
+
+@app.post("/knowledge", status_code=201)
+def post_knowledge_candidate(payload: KnowledgeCreate, request: Request):
+    """Store source-attributed research as an unreviewed candidate, never as trusted fact."""
+    item = create_knowledge_item(payload, actor=getattr(request.state, "actor", "unknown"))
+    append_event(
+        getattr(request.state, "actor", "unknown"),
+        "knowledge_candidate_created", "knowledge_item", item["id"],
+        {"category": item["category"], "source_url": item["source_url"]},
+    )
+    return item
+
+
+@app.get("/knowledge")
+def get_knowledge_candidates(
+    status: str | None = Query(default=None, pattern=r"^(candidate|accepted|rejected)$"),
+    category: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    return list_knowledge_items(limit=limit, status=status, category=category)
+
+
+@app.get("/knowledge/{item_id}")
+def get_knowledge_detail(item_id: str):
+    item = get_knowledge_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Knowledge item not found")
+    return item
+
+
+@app.post("/knowledge/{item_id}/review")
+def post_knowledge_review(item_id: str, payload: KnowledgeReview, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        item = review_knowledge_item(item_id, payload, actor=actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Knowledge item not found")
+    append_event(
+        actor, "knowledge_candidate_reviewed", "knowledge_item", item_id,
+        {"decision": payload.decision},
+    )
+    return item
 
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
