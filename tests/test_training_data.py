@@ -83,10 +83,6 @@ def test_training_candidates_require_rights_and_privacy_attestations(training_db
 
 
 def test_training_candidate_rejects_obvious_personal_email_or_secret(training_db):
-    candidate = create_training_example(
-        _payload(user_input="Use this customer email: person@example.com"),
-        actor="owner",
-    )
     # Schema validation is not a privacy scan; the storage layer rejects the content.
     with pytest.raises(ValueError, match="credential or personal email"):
         create_training_example(
