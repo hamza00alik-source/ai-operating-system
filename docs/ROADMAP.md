@@ -55,7 +55,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Semantic retrieval, deduplication, and freshness scoring
 - [ ] Retrieval with company/user access boundaries
 - [x] Deterministic specialist-report evaluation rubric and CI regression fixtures (structure/safety signals only)\n- [ ] Persisted evaluation history and quality trend tracking\n- [ ] Task-specific evidence and factuality evaluation datasets
-- [ ] Daily research/learning proposals with evidence and source links\n- [ ] CEO-generated improvement proposals validated against evaluation baselines
+- [ ] Daily research/learning proposals with evidence and source links\n- [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing\n- [ ] Isolated candidate-instruction regression harness and owner-approved adoption workflow
 - [ ] Human approval for changes to prompts, policies, and production behavior
 
 ## Phase 4 — Business operations
@@ -66,7 +66,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Payment-status verification only; no autonomous money movement
 
 ## Phase 5 — Operations and release
-- [x] Read-only owner dashboard for agent, run, queue, approval, audit, and model status
+- [x] Owner dashboard for agent, run, queue, approval, audit, model, evaluation trends, and improvement proposal review
 - [ ] Broader role-based access and operational dashboard hardening
 - [ ] Deployment profiles, backups, monitoring, and alerting
 - [ ] Security review and end-to-end tests
