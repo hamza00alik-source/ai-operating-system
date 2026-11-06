@@ -77,6 +77,8 @@ A feature is complete only when tested and its operating limits are documented. 
 
 ## Phase 4 — Business operations
 - [x] Read-only WooCommerce product catalog and minimized order-status connector
+- [x] Read-only WordPress posts/pages inventory connector with HTTPS, bounded pagination, minimized metadata, and GET-only tests
+- [ ] Owner-approved WordPress page/post updates through the exact-scope action gateway
 - [ ] Owner-approved WooCommerce write operations, order fulfillment, and reconciliation
 - [ ] Social platform content planning and draft generation
 - [ ] Human approval before any external publishing
