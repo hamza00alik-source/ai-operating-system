@@ -16,7 +16,6 @@ from ai_os.db import connect
 from ai_os.evaluation import evaluate_specialist_report
 from ai_os.improvement_testing import MAX_CANDIDATE_CHARS
 from ai_os.instruction_versions import get_active_instruction
-from ai_os.improvement_testing import SCREENING_POLICY_VERSION
 from ai_os.improvement import list_improvement_proposals
 from ai_os.model_adapter import ModelNotConfigured, generate_json, get_model_status
 from ai_os.registry import get_agent
@@ -55,16 +54,16 @@ def get_behavior_test_status() -> dict:
     model = get_model_status()
     base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
     parsed = urllib.parse.urlparse(base_url)
-    local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    local = parsed.hostname in {"localhost", "127.0.0.1", "::1"} and parsed.scheme in {"http", "https"}
     no_key = not os.getenv("AI_OS_MODEL_API_KEY", "").strip()
     backend_ok = model.get("backend") == "openai_compatible"
     ready = bool(enabled and model.get("enabled") and local and no_key and backend_ok)
     if not enabled:
         reason = "behavior_test_opt_in_disabled"
-    elif not model.get("enabled"):
-        reason = "model_backend_not_enabled_or_configured"
     elif not backend_ok:
         reason = "only_openai_compatible_local_http_backend_is_allowed"
+    elif not model.get("enabled"):
+        reason = "model_backend_not_enabled_or_configured"
     elif not local:
         reason = "remote_model_endpoints_are_not_allowed"
     elif not no_key:
