@@ -35,9 +35,15 @@ The audit log records candidate creation and review decisions.
 ## Current limitations
 
 - No autonomous web crawler or browser is connected.
-- No model automatically writes to the store yet; agent reports remain in their
-  run records until a separately authorized ingestion workflow is implemented.
-- There is no semantic search, deduplication, source freshness scoring, or
-  retrieval-augmented prompt injection yet.
+- Specialist agents may propose up to five knowledge candidates from a model
+  report. Candidates are stored as `candidate` and never auto-accepted.
+- A candidate is stored only when its exact source URL already appears in the
+  supplied task or accepted-reference context. This reduces invented-link risk
+  but does not prove the URL or claim is genuine; an owner must inspect it.
+- Agents retrieve up to five keyword-matched, owner-accepted notes. Candidate
+  and rejected records are excluded. Retrieved text is bounded and marked as
+  untrusted reference data in the prompt.
+- Retrieval is lexical, not semantic. There is no deduplication or freshness
+  scoring yet. Source fetching and verification are not implemented.
 - The SQLite database is local runtime state and needs a backup/restore plan
   before production use.
