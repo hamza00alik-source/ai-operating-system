@@ -5,7 +5,7 @@ existing provider-neutral model adapter. Agents have no tools or external-action
 permissions; they return reports to the CEO only.
 """
 from ai_os.audit import append_event
-from ai_os.execution import dispatch_ready_step, get_company_run, list_company_runs, submit_step_report
+from ai_os.execution import (dispatch_ready_step, get_company_run, list_company_runs,\n                             propagate_blocked_steps, submit_step_report)
 from ai_os.execution_schemas import StepReportCreate
 from ai_os.identity import consume_agent_token, issue_agent_token
 from ai_os.model_adapter import generate_json, get_model_status, ModelNotConfigured
@@ -34,7 +34,11 @@ def schedule_ready_steps(*, limit: int = 20) -> dict:
                 "reason": "Model execution is disabled or not configured; no work was dispatched."}
 
     scheduled = []
-    for run in list_company_runs(limit=200):
+    for listed_run in list_company_runs(limit=200):
+        propagate_blocked_steps(listed_run["id"])
+        run = get_company_run(listed_run["id"])
+        if run is None:
+            continue
         for step in run["steps"]:
             if len(scheduled) >= limit:
                 break
