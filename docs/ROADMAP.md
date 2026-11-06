@@ -41,7 +41,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] No-API manual free-chat work packet endpoint
 - [x] Persistent queue with idempotent enqueue, atomic claim, bounded retries, stale-lease recovery, and one local handler
 - [x] Pin original Agency Agents Markdown profiles as a read-only MIT-licensed Git submodule; retain upstream LICENSE and runbooks
-- [ ] Add automated source-pin drift checks and frontmatter validation in CI
+- [x] Add automated source-pin drift checks and frontmatter validation in CI (18 divisions, 283 profiles, runbook references, and Git submodule pin; GitHub Actions passing)
 - [x] Provider-neutral, opt-in OpenAI-compatible inference adapter (local endpoints permitted; no provider enabled by default)
 - [x] Task planner with dependency graph, agent assignment, handoffs, and execution records
 - [x] Durable scheduler and persistent worker process for bounded specialist execution
