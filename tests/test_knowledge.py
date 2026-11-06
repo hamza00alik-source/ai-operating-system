@@ -87,3 +87,29 @@ def test_knowledge_endpoints_require_owner_token_when_configured(monkeypatch):
         allowed = client.get("/knowledge", headers={"Authorization": "Bearer " + token})
     assert denied.status_code == 401
     assert allowed.status_code == 200
+
+
+def test_agent_retrieval_returns_only_relevant_owner_accepted_items():
+    from ai_os.knowledge import retrieve_accepted_knowledge
+
+    with TestClient(app) as client:
+        candidate = client.post("/knowledge", json=_candidate_payload()).json()
+        client.post(
+            f"/knowledge/{candidate['id']}/review",
+            json={"decision": "accepted", "note": "Checked by owner."},
+        )
+        rejected_payload = _candidate_payload()
+        rejected_payload["title"] = "Rejected unrelated market note"
+        rejected_payload["content"] = "Unrelated content about office furniture."
+        rejected = client.post("/knowledge", json=rejected_payload).json()
+        client.post(
+            f"/knowledge/{rejected['id']}/review",
+            json={"decision": "rejected", "note": "Not relevant."},
+        )
+        unreviewed_payload = _candidate_payload()
+        unreviewed_payload["title"] = "Pending gaming market note"
+        client.post("/knowledge", json=unreviewed_payload)
+
+    retrieved = retrieve_accepted_knowledge("gaming downloadable digital products")
+    assert [item["id"] for item in retrieved] == [candidate["id"]]
+    assert retrieved[0]["status"] == "accepted"
