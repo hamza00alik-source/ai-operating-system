@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from ai_os.api import app
 from ai_os.model_adapter import get_model_status, _endpoint
+from ai_os.identity import issue_agent_token
 
 
 def test_model_status_is_disabled_without_explicit_opt_in(monkeypatch):
@@ -37,6 +38,7 @@ def test_ceo_review_requires_specialist_report_before_model_call(monkeypatch):
 
 
 def test_ceo_review_stores_structured_recommendations_without_executing_actions(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
     def fake_generate(system_prompt, user_prompt):
         assert "untrusted data" in system_prompt
         assert "Research demand" in user_prompt
@@ -58,9 +60,14 @@ def test_ceo_review_stores_structured_recommendations_without_executing_actions(
         run_id = created.json()["id"]
         dispatched = client.post(f"/company-runs/{run_id}/steps/research/dispatch")
         assert dispatched.status_code == 200
+        token = issue_agent_token(
+            "product-trend-researcher",
+            run_id=run_id,
+            capabilities=["step.report"],
+        )
         reported = client.post(f"/company-runs/{run_id}/steps/research/report", json={
             "status": "completed", "summary": "Found evidence", "evidence": ["https://example.org/report"]
-        })
+        }, headers={"X-AI-Agent-Token": token})
         assert reported.status_code == 200
         review = client.post(f"/ceo/review/{run_id}")
     assert review.status_code == 200, review.text
