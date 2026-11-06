@@ -28,7 +28,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Production adapter sandboxing, reconciliation, and external-action integration tests
 - [ ] Role-based authorization for specialist agents and worker operations
 - [x] SQLite online backup helper with integrity/schema/audit-chain verification and automated tests
-- [ ] Restore workflow, off-host backup policy, retention, and signed audit checkpoints
+- [x] Verified atomic SQLite restore helper with explicit overwrite acknowledgement and tests
+- [ ] Off-host encrypted backup policy, retention automation, and signed external audit checkpoints
 
 ## Phase 2 — Agency Agents-based runtime (partially implemented)
 - [x] CEO Agent designated as company leader and single owner-approval gateway (policy layer only)
@@ -40,6 +41,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Deterministic non-executing plan endpoint
 - [x] No-API manual free-chat work packet endpoint
 - [x] Persistent queue with idempotent enqueue, atomic claim, bounded retries, stale-lease recovery, and one local handler
+- [x] Process-level worker recovery loop with bounded exponential backoff (host/process supervision still required)
 - [x] Pin original Agency Agents Markdown profiles as a read-only MIT-licensed Git submodule; retain upstream LICENSE and runbooks
 - [x] Add automated source-pin drift checks and frontmatter validation in CI (18 divisions, 283 profiles, runbook references, and Git submodule pin; GitHub Actions passing)
 - [x] Provider-neutral, opt-in OpenAI-compatible inference adapter (local endpoints permitted; no provider enabled by default)
@@ -56,7 +58,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Agent-proposed knowledge candidates with source-context URL gate and owner review
 - [ ] Semantic retrieval with embeddings (still lexical and provider-free)
 - [x] Exact knowledge deduplication and publication-date freshness tie-breaker (heuristic only)
-- [ ] Retrieval with company/user access boundaries
+- [x] Explicit company vs owner-only knowledge scope; agent retrieval excludes owner-only records (single-owner deployment; full user/role RBAC remains pending)
 - [x] Deterministic specialist-report evaluation rubric and CI regression fixtures (structure/safety signals only)
 - [x] Persisted evaluation history and sample-gated quality trend API/dashboard
 - [x] Owner-reviewed training-example candidates with rights/privacy attestations and one-time review
@@ -74,7 +76,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Owner-approved changes to core security policies and production behavior
 
 ## Phase 4 — Business operations
-- [ ] WooCommerce integration
+- [x] Read-only WooCommerce product catalog and minimized order-status connector
+- [ ] Owner-approved WooCommerce write operations, order fulfillment, and reconciliation
 - [ ] Social platform content planning and draft generation
 - [ ] Human approval before any external publishing
 - [ ] Customer support inbox and response drafts
@@ -86,9 +89,10 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Deployment profiles, backups, monitoring, and alerting
 - [ ] Security review and end-to-end tests
 - [x] Beginner-friendly Google Cloud Shell smoke-test setup guide (model and external actions remain disabled by default)
-- [ ] Full operator handbook and production deployment guide
+- [x] Operator playbook covering daily coordination limits, model execution, worker supervision, WooCommerce read-only setup, backup/restore, and release gates
+- [ ] Production deployment guide with a verified persistent host, TLS, monitoring, and rollback
 
-See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md),  [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for the company-owned model plan, and [ACTION_GATEWAY.md](ACTION_GATEWAY.md) for the action execution boundary.
+See [OPERATIONS_PLAYBOOK.md](OPERATIONS_PLAYBOOK.md), [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md),  [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for the company-owned model plan, and [ACTION_GATEWAY.md](ACTION_GATEWAY.md) for the action execution boundary.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
