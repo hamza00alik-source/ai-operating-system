@@ -15,6 +15,11 @@ def test_runtime_explicitly_disables_paid_and_autonomous_execution():
     assert response.json()["paid_api_calls_enabled"] is False
     assert response.json()["autonomous_execution_enabled"] is False
     assert response.json()["external_actions_enabled"] is False
+    with TestClient(app) as client:
+        gateway = client.get("/actions/gateway/status")
+    assert gateway.status_code == 200
+    assert gateway.json()["enabled"] is False
+    assert gateway.json()["adapter_count"] == 0
 
 def test_agent_registry_lists_enabled_agents():
     with TestClient(app) as client:
