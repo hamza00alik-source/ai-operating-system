@@ -10,7 +10,7 @@ The responsive owner dashboard is served by the FastAPI application at `/dashboa
 - Last recorded activity: newest `updated_at` timestamp among the agent's tracked run steps.
 - Company runs: persisted run status and completed-step counts from `GET /company-runs`.
 - Worker queue: local packet-builder and specialist execution jobs from `GET /jobs`.
-- Owner approvals: recorded approval requests from `GET /approvals`. This panel is informational; the trusted CEO approval-request gateway remains closed until server-verified CEO identity is available.
+- Owner approvals: signed CEO requests from `GET /owner/approval-requests`. Pending requests show exact parameters, expiry, and the SHA-256 action hash. The owner can approve or reject once; the API requires the same hash shown in the inbox. A decision records authorization only and does not execute the external action.
 - Agent quality and learning: recent persisted evaluations from `GET /evaluations`, including basic average score, pass/fail counts, evaluator version, and per-agent run/step history. Scores are structural/safety signals only, not truth or business-outcome measurements.
 - CEO improvement proposals: owner can approve a candidate for testing or reject it. Approved candidates expose a static safety-check action. If a local behavior-test backend is configured, the owner can compare baseline and candidate prompts against fixed fixtures. If a behavior test is run, its latest result must pass for the exact candidate and same active baseline before activation. A configured owner token is required to activate the exact tested text as a new immutable instruction version. The dashboard shows active version and offers rollback to its parent version; all activation/rollback events are audited.
 - Research review inbox: agent-proposed and manually entered candidates from \`GET /knowledge?status=candidate\`; the owner can open the source and accept or reject each candidate. No agent can approve its own research.
@@ -40,7 +40,7 @@ Use HTTPS when exposing the service beyond a trusted local environment. Do not d
 - Static candidate screening is not a model-behavior benchmark. Optional local behavior tests are limited regression signals, not proof of factual accuracy or general improvement. Owner activation is always explicit.
 - Progress reflects stored workflow records, not live model tokens, CPU activity, or independent agent heartbeats.
 - Agent profile count is not the count of active agents.
-- Approval records can be inspected, but this dashboard does not make approval decisions or trigger external actions.
+- Owner decisions are explicit, one-time, exact-scope, expiry-bound, and audit-logged. Approval does not trigger an external action; no store, social, payment, messaging, or deployment executor is connected.
 - Model execution is disabled by default. Ecommerce, social publishing, spending, customer commitments, and other external actions remain disconnected and require separate implementation and owner approval.
 
 ## Verification
