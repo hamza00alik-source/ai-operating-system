@@ -156,3 +156,62 @@ def test_blocked_dependencies_reconcile_even_when_model_is_disabled(monkeypatch)
     assert outcome["model_enabled"] is False
     assert final["status"] == "blocked"
     assert [step["status"] for step in final["steps"]] == ["blocked", "blocked"]
+
+
+def test_agent_creates_only_unreviewed_candidates_from_supplied_source_urls(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "free-compatible-test-model")
+    source_url = "https://example.com/verified-in-task"
+    def fake_generate(system_prompt, user_prompt):
+        assert source_url in user_prompt
+        return ({
+            "status": "completed",
+            "summary": "Reviewed supplied research context.",
+            "evidence": ["The task included the cited source URL."],
+            "blockers": [],
+            "knowledge_candidates": [
+                {
+                    "title": "Candidate from supplied source",
+                    "content": "A concise factual note for owner review.",
+                    "category": "market_research",
+                    "source_url": source_url,
+                    "source_title": "Research supplied in task",
+                    "confidence": 0.7,
+                    "tags": ["market", "research"],
+                },
+                {
+                    "title": "Unverified invented source",
+                    "content": "This must not be stored.",
+                    "category": "market_research",
+                    "source_url": "https://invented.example/not-in-context",
+                    "source_title": "Unverified",
+                    "confidence": 0.9,
+                    "tags": ["invented"],
+                },
+            ],
+        }, {"provider": "test", "model": "mock"})
+
+    monkeypatch.setattr("ai_os.agent_runtime.generate_json", fake_generate)
+    with TestClient(app) as client:
+        created = client.post("/company-runs", json={
+            "title": "Knowledge integration test",
+            "description": f"Analyze this source: {source_url}",
+            "steps": [{
+                "step_key": "research",
+                "agent_id": "product-trend-researcher",
+                "task": "Summarize the supplied source.",
+            }],
+        })
+        assert created.status_code == 201, created.text
+        result = client.post("/worker/run-once")
+        assert result.status_code == 200, result.text
+        assert result.json()["job"]["status"] == "completed"
+        candidates = client.get("/knowledge", params={"status": "candidate"}).json()
+
+    stored = [item for item in candidates if item["title"] == "Candidate from supplied source"]
+    assert len(stored) == 1
+    assert stored[0]["status"] == "candidate"
+    assert stored[0]["created_by"] == "agent:product-trend-researcher"
+    assert not any(item["title"] == "Unverified invented source" for item in candidates)
