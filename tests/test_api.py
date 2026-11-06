@@ -371,3 +371,25 @@ def test_owner_api_token_cannot_impersonate_ceo_for_approval_request(monkeypatch
             headers={"Authorization": "Bearer " + token},
         )
     assert response.status_code == 403
+
+
+def test_owner_dashboard_shell_is_available_but_data_api_remains_protected(monkeypatch):
+    token = "test-owner-token-" + "x" * 40
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+        denied = client.get("/agents")
+        allowed = client.get("/agents", headers={"Authorization": "Bearer " + token})
+    assert page.status_code == 200
+    assert "Owner dashboard" in page.text
+    assert "Agent directory" in page.text
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+
+
+def test_dashboard_is_backed_by_persisted_run_and_job_api():
+    with TestClient(app) as client:
+        assert client.get("/company-runs").status_code == 200
+        assert client.get("/jobs").status_code == 200
+        assert client.get("/runtime").json()["external_actions_enabled"] is False
