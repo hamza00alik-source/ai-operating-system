@@ -43,7 +43,11 @@ The audit log records candidate creation and review decisions.
 - Agents retrieve up to five keyword-matched, owner-accepted notes. Candidate
   and rejected records are excluded. Retrieved text is bounded and marked as
   untrusted reference data in the prompt.
-- Retrieval is lexical, not semantic. There is no deduplication or freshness
-  scoring yet. Source fetching and verification are not implemented.
+- Retrieval removes exact duplicates by normalized source URL, title, and
+  content. When otherwise-relevant records compete, publication-date freshness
+  is a tie-breaker; undated sources receive a neutral value. The returned
+  retrieval metadata labels this as a heuristic, not source verification.
+- Retrieval remains lexical, not semantic. No embeddings or external calls are
+  used. Source fetching and verification are not implemented.
 - The SQLite database is local runtime state and needs a backup/restore plan
   before production use.
