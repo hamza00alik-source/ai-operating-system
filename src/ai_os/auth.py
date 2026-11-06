@@ -5,7 +5,7 @@ import secrets
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-PUBLIC_PATHS = {"/health"}
+PUBLIC_PATHS = {"/health", "/dashboard"}
 
 async def authenticate_request(request: Request):
     """Require a configured owner token; fail closed for production misconfiguration."""
