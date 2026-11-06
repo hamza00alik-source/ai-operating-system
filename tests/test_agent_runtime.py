@@ -202,6 +202,7 @@ def test_agent_creates_only_unreviewed_candidates_from_supplied_source_urls(monk
                 "step_key": "research",
                 "agent_id": "product-trend-researcher",
                 "task": "Summarize the supplied source.",
+                "context": f"Source URL: {source_url}",
             }],
         })
         assert created.status_code == 201, created.text
