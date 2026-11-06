@@ -29,6 +29,10 @@ class TrainingExampleCreate(BaseModel):
 
     @model_validator(mode="after")
     def require_owner_attestations(self):
+        if not self.task_family.strip():
+            raise ValueError("Task family must not be blank.")
+        if not self.system_prompt.strip() or not self.user_input.strip() or not self.ideal_response.strip():
+            raise ValueError("Training prompt, input, and ideal response must not be blank.")
         if not self.rights_confirmed or not self.privacy_reviewed:
             raise ValueError("Rights and privacy review must both be confirmed before a training candidate is stored.")
         return self
