@@ -84,7 +84,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Broader role-based access and operational dashboard hardening
 - [ ] Deployment profiles, backups, monitoring, and alerting
 - [ ] Security review and end-to-end tests
-- [ ] Beginner-friendly setup guide and operator handbook
+- [x] Beginner-friendly Google Cloud Shell smoke-test setup guide (model and external actions remain disabled by default)
+- [ ] Full operator handbook and production deployment guide
 
 See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md),  [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for the company-owned model plan, and [ACTION_GATEWAY.md](ACTION_GATEWAY.md) for the action execution boundary.
 
