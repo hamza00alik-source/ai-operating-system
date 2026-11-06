@@ -114,4 +114,21 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_consumed_agent_nonces_expiry
             ON consumed_agent_nonces(expires_at);
+        CREATE TABLE IF NOT EXISTS owner_approval_requests (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            parameters_json TEXT NOT NULL,
+            action_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected','consumed','expired')),
+            created_at TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            decided_at TEXT,
+            decision TEXT,
+            consumed_at TEXT,
+            execution_id TEXT UNIQUE
+        );
+        CREATE INDEX IF NOT EXISTS idx_owner_approval_status_expiry
+            ON owner_approval_requests(status, expires_at);
         """)
