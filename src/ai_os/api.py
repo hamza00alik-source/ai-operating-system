@@ -35,6 +35,8 @@ from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
 from ai_os.evaluation import list_evaluations, evaluation_summary, evaluation_trends
 from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
                             list_knowledge_items, review_knowledge_item)
+from ai_os.improvement import (draft_improvement_proposals, list_improvement_proposals,
+                               review_improvement_proposal)
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +138,50 @@ def get_agent_evaluation_trends(
     limit: int = Query(default=20, ge=2, le=100),
 ):
     return evaluation_trends(agent_id=agent_id, limit=limit)
+
+
+@app.post("/ceo/improvement-proposals/draft", status_code=201)
+def post_ceo_improvement_proposals_draft(request: Request, limit: int = Query(default=100, ge=1, le=500)):
+    """CEO rule-based proposal generation from repeated failed evaluation checks; no live changes."""
+    proposals = draft_improvement_proposals(limit=limit)
+    for proposal in proposals:
+        append_event(
+            getattr(request.state, "actor", "unknown"),
+            "improvement_proposal_drafted", "improvement_proposal", proposal["id"],
+            {"agent_id": proposal["agent_id"], "title": proposal["title"],
+             "evidence_count": len(proposal["evidence"])},
+        )
+    return {"created": len(proposals), "proposals": proposals,
+            "limitations": ["Rule-based suggestions only; no model/prompt/policy is changed.",
+                            "Proposals require owner review and a separate regression-testing stage."]}
+
+
+@app.get("/improvement-proposals")
+def get_improvement_proposals(
+    status: str | None = Query(default=None, pattern=r"^(candidate|approved_for_testing|rejected)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    return list_improvement_proposals(status=status, limit=limit)
+
+
+@app.post("/improvement-proposals/{proposal_id}/review")
+def post_improvement_proposal_review(proposal_id: str, payload: dict, request: Request):
+    decision = payload.get("decision")
+    note = payload.get("note", "")
+    if decision not in {"approved_for_testing", "rejected"} or not isinstance(note, str):
+        raise HTTPException(status_code=422, detail="Provide decision approved_for_testing or rejected and an optional note.")
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        proposal = review_improvement_proposal(
+            proposal_id, decision=decision, actor=actor, note=note
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Improvement proposal not found")
+    append_event(actor, "improvement_proposal_reviewed", "improvement_proposal",
+                 proposal_id, {"decision": decision})
+    return proposal
 
 
 @app.get("/audit/verify")
