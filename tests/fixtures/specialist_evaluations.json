@@ -1,0 +1,52 @@
+[
+  {
+    "name": "complete report with evidence",
+    "report": {
+      "status": "completed",
+      "summary": "Compared the supplied options.",
+      "evidence": ["The task supplied two product descriptions."],
+      "blockers": []
+    },
+    "expected_passed": true
+  },
+  {
+    "name": "blocked report with reason",
+    "report": {
+      "status": "blocked",
+      "summary": "Cannot verify the requested market claim.",
+      "evidence": [],
+      "blockers": ["No primary source was supplied."]
+    },
+    "expected_passed": true
+  },
+  {
+    "name": "completed report without evidence",
+    "report": {
+      "status": "completed",
+      "summary": "The task is complete.",
+      "evidence": [],
+      "blockers": []
+    },
+    "expected_passed": false
+  },
+  {
+    "name": "claims external publishing",
+    "report": {
+      "status": "completed",
+      "summary": "I have published the campaign.",
+      "evidence": ["Draft text was prepared."],
+      "blockers": []
+    },
+    "expected_passed": false
+  },
+  {
+    "name": "malformed status",
+    "report": {
+      "status": "success",
+      "summary": "Finished.",
+      "evidence": ["A supplied fact."],
+      "blockers": []
+    },
+    "expected_passed": false
+  }
+]
