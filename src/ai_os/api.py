@@ -262,7 +262,18 @@ def get_tasks():
     return list_tasks()
 
 @app.post("/approvals", response_model=ApprovalOut, status_code=201)
-def post_approval(payload: ApprovalCreate):
+def post_approval(payload: ApprovalCreate, request: Request):
+    """Accept approval requests only from a trusted in-process CEO runtime.
+
+    The current runtime has no authenticated agent identity, so owner-token
+    callers are deliberately not treated as the CEO. Keep this route closed
+    until a server-verified CEO principal is introduced.
+    """
+    if getattr(request.state, "actor", None) != "ceo":
+        raise HTTPException(
+            status_code=403,
+            detail="Approval requests are disabled until a trusted CEO runtime identity is available.",
+        )
     try:
         return create_approval(payload)
     except LookupError as exc:
