@@ -46,12 +46,7 @@ def validate_library(root: Path, *, check_git_pin: bool = False) -> list[str]:
         return ["divisions.json must contain a non-empty divisions object"]
 
     actual_divisions = {
-        path.name for path in library.iterdir()
-        if path.is_dir() and any(
-            _frontmatter(profile.read_text(encoding="utf-8")).get("name")
-            and _frontmatter(profile.read_text(encoding="utf-8")).get("description")
-            for profile in path.rglob("*.md")
-        )
+        name for name in expected_divisions if (library / name).is_dir()
     }
     expected_divisions = set(divisions)
     if actual_divisions != expected_divisions:
