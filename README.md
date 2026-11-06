@@ -58,3 +58,11 @@ Approval records are workflow primitives, not a security sandbox. Do not connect
 - `POST /ceo/review/{run_id}` sends completed specialist reports to the configured model and stores its structured CEO review. It performs no actions.
 - Reports are treated as untrusted input. Recommendations cannot dispatch agents, create approvals, publish, spend, or contact customers.
 - Free-tier quotas, privacy, retention, and terms vary. No provider is enabled by default.
+
+
+### Company knowledge and research provenance
+
+Source-attributed research can be stored as a candidate, reviewed by the owner,
+and retained with its source metadata and audit history. The API does not
+automatically verify sources or promote agent output to trusted knowledge.
+See [docs/KNOWLEDGE_STORE.md](docs/KNOWLEDGE_STORE.md).
