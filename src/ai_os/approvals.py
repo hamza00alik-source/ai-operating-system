@@ -34,6 +34,19 @@ def canonical_action(action_type: str, parameters: dict) -> tuple[str, str]:
         raise ApprovalSecurityError("Action is not in the owner-approval allowlist.")
     if not isinstance(parameters, dict):
         raise ApprovalSecurityError("Action parameters must be a JSON object.")
+
+    forbidden_fragments = ("password", "secret", "token", "api_key", "authorization",
+                           "credential", "private_key", "access_key")
+    def reject_credential_fields(value):
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                if isinstance(key, str) and any(fragment in key.lower() for fragment in forbidden_fragments):
+                    raise ApprovalSecurityError("Approval parameters must reference connection IDs, never credentials or secrets.")
+                reject_credential_fields(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                reject_credential_fields(nested)
+    reject_credential_fields(parameters)
     try:
         encoded = json.dumps(
             {"action_type": action_type.strip().lower(), "parameters": parameters},
@@ -230,6 +243,13 @@ def list_owner_approval_requests(*, status: str | None = None, limit: int = 100)
     query += " ORDER BY created_at DESC,id DESC LIMIT ?"
     parameters.append(limit)
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        now = int(time.time())
+        db.execute(
+            """UPDATE owner_approval_requests SET status='expired'
+               WHERE status IN ('pending','approved') AND expires_at<=?""",
+            (now,),
+        )
         rows = db.execute(query, parameters).fetchall()
     results = []
     for row in rows:
