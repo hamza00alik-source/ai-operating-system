@@ -32,6 +32,7 @@ from ai_os.model_adapter import get_model_status
 from ai_os.ceo_review import review_company_run
 from ai_os.identity import AgentIdentityError, consume_agent_token
 from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
+from ai_os.evaluation import list_evaluations, evaluation_summary
 from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
                             list_knowledge_items, review_knowledge_item)
 
@@ -117,6 +118,17 @@ def get_runtime_status():
 @app.get("/audit")
 def get_audit_events(limit: int = Query(default=100, ge=1, le=500)):
     return {"events": list_events(limit)}
+
+@app.get("/evaluations")
+def get_agent_evaluations(
+    limit: int = Query(default=100, ge=1, le=500),
+    agent_id: str | None = Query(default=None, max_length=120),
+    run_id: str | None = Query(default=None, max_length=120),
+):
+    return {
+        "summary": evaluation_summary(agent_id=agent_id),
+        "evaluations": list_evaluations(limit=limit, agent_id=agent_id, run_id=run_id),
+    }
 
 @app.get("/audit/verify")
 def get_audit_verification():
