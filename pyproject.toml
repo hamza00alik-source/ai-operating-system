@@ -22,4 +22,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-\n[tool.setuptools.package-data]\nai_os = ["dashboard.html"]\n
+
+[tool.setuptools.package-data]
+ai_os = ["dashboard.html"]
