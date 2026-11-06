@@ -45,10 +45,10 @@ def validate_library(root: Path, *, check_git_pin: bool = False) -> list[str]:
     if not isinstance(divisions, dict) or not divisions:
         return ["divisions.json must contain a non-empty divisions object"]
 
+    expected_divisions = set(divisions)
     actual_divisions = {
         name for name in expected_divisions if (library / name).is_dir()
     }
-    expected_divisions = set(divisions)
     if actual_divisions != expected_divisions:
         errors.append(
             "Division directory mismatch: "
