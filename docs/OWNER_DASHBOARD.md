@@ -24,7 +24,7 @@ For local development, generate a token and export it before starting Uvicorn:
 
 ```bash
 export AI_OS_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-printf 'Owner token: %s\\n' "$AI_OS_API_TOKEN"
+printf 'Owner token: %s\n' "$AI_OS_API_TOKEN"
 uvicorn ai_os.api:app --reload
 ```
 
