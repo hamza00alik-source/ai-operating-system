@@ -1,7 +1,8 @@
 """Durable worker for local jobs and model-backed specialist steps."""
 from uuid import uuid4
 
-from ai_os.agent_runtime import execute_company_step\nfrom ai_os.execution import mark_company_step_blocked
+from ai_os.agent_runtime import execute_company_step
+from ai_os.execution import mark_company_step_blocked
 from ai_os.queue import claim_next_job, fail_job, finish_job
 from ai_os.work_packets import build_work_packet
 
