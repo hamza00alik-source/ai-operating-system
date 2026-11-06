@@ -39,10 +39,11 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Persistent queue with idempotent enqueue, atomic claim, bounded retries, stale-lease recovery, and one local handler
 - [x] Pin original Agency Agents Markdown profiles as a read-only MIT-licensed Git submodule; retain upstream LICENSE and runbooks
 - [ ] Add automated source-pin drift checks and frontmatter validation in CI
-- [ ] Provider-neutral inference interface with strict local-only/free mode
-- [ ] Task planner with dependency graph, agent assignment, handoffs, and execution records
-- [ ] Background worker and durable scheduler
-- [ ] Authentication and authorization for each worker capability
+- [x] Provider-neutral, opt-in OpenAI-compatible inference adapter (local endpoints permitted; no provider enabled by default)
+- [x] Task planner with dependency graph, agent assignment, handoffs, and execution records
+- [x] Durable scheduler and persistent worker process for bounded specialist execution
+- [x] Signed, run-bound specialist report capability and authenticated report acceptance
+- [ ] Broader role-based authorization for future worker tools and integrations
 
 ## Phase 3 — Memory, learning, and evaluation
 - [ ] Source-attributed company knowledge store
