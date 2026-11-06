@@ -458,3 +458,68 @@ def test_owner_dashboard_loads_and_displays_evaluation_trends():
     assert 'api("/evaluations/trends?limit=100")' in page.text
     assert "evaluationTrends" in page.text
     assert "provisional regression" in page.text or "signal.replaceAll" in page.text
+
+
+
+def test_ceo_improvement_proposal_draft_and_owner_review_are_audited(tmp_path, monkeypatch):
+    from ai_os.db import connect, initialize_database
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'api-proposals.sqlite3'}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO company_runs (id,title,description,status,created_at,updated_at) "
+            "VALUES ('api-proposal-run','API proposal','','running','2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')"
+        )
+        for index in range(2):
+            db.execute(
+                """INSERT INTO company_run_steps
+                (run_id,step_key,agent_id,task,context,depends_on_json,status,position,created_at,updated_at)
+                VALUES ('api-proposal-run',?,'researcher','Task','','[]','completed',?,
+                        '2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')""",
+                (f"step-{index}", index),
+            )
+            db.execute(
+                """INSERT INTO agent_evaluations
+                (id,run_id,step_key,agent_id,evaluator_version,score,passed,
+                 critical_failures_json,checks_json,limitations_json,created_at)
+                VALUES (?, 'api-proposal-run', ?, 'researcher','1.0.0',75,0,'[]',
+                        '[{"key":"completed_has_evidence","passed":false,"weight":15}]',
+                        '[]',?)""",
+                (f"api-eval-{index}", f"step-{index}", f"2026-11-06T00:00:0{index}Z"),
+            )
+    with TestClient(app) as client:
+        drafted = client.post("/ceo/improvement-proposals/draft")
+        assert drafted.status_code == 201, drafted.text
+        proposal = drafted.json()["proposals"][0]
+        assert proposal["status"] == "candidate"
+        reviewed = client.post(
+            f"/improvement-proposals/{proposal['id']}/review",
+            json={"decision": "approved_for_testing", "note": "Test before any adoption."},
+        )
+        assert reviewed.status_code == 200
+        assert reviewed.json()["status"] == "approved_for_testing"
+        assert reviewed.json()["status"] != "adopted"
+        assert client.get("/audit/verify").json()["valid"] is True
+
+
+def test_improvement_proposal_routes_require_owner_token_when_configured(monkeypatch):
+    token = "test-owner-token-" + "x" * 40
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
+    with TestClient(app) as client:
+        denied = client.get("/improvement-proposals")
+        allowed = client.get("/improvement-proposals", headers={"Authorization": "Bearer " + token})
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+
+
+def test_owner_dashboard_wires_improvement_proposal_review():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert "CEO improvement proposals" in page.text
+    assert 'api("/improvement-proposals?limit=50")' in page.text
+    assert "generateImprovements" in page.text
+    assert "Approve for testing" in page.text
+    assert "never auto-adopted" in page.text
