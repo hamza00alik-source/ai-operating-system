@@ -5,6 +5,7 @@ import pytest
 from ai_os.wordpress import (
     WordPressNotConfigured,
     WordPressReadOnlyClient,
+    WordPressWriteDisabled,
 )
 
 
@@ -76,3 +77,52 @@ def test_wordpress_rejects_unknown_resource():
     client = WordPressReadOnlyClient("https://site.example", "owner", "app-pass")
     with pytest.raises(ValueError):
         client._get("users")
+
+
+
+def test_wordpress_draft_creation_requires_both_flags_and_forces_draft(monkeypatch):
+    import json
+
+    client = WordPressReadOnlyClient("https://site.example", "owner", "app-pass")
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WORDPRESS_DRAFT_WRITES_ENABLED", "false")
+    with pytest.raises(WordPressWriteDisabled):
+        client.create_page_draft(title="About", content="<p>Draft</p>")
+
+    monkeypatch.setenv("AI_OS_WORDPRESS_DRAFT_WRITES_ENABLED", "true")
+    calls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return json.dumps({
+                "id": 88, "status": "draft", "link": "https://site.example/?page_id=88",
+                "title": {"rendered": "About"},
+            }).encode()
+
+    def fake_open(request, timeout):
+        calls.append(request)
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    result = client.create_page_draft(title="About", content="<p>Draft</p>")
+    assert result["id"] == 88
+    assert result["status"] == "draft"
+    assert calls[0].get_method() == "POST"
+    body = json.loads(calls[0].data.decode())
+    assert body["status"] == "draft"
+    assert body["title"] == "About"
+    assert "content" in body
+
+
+def test_wordpress_draft_creation_rejects_oversized_content(monkeypatch):
+    client = WordPressReadOnlyClient("https://site.example", "owner", "app-pass")
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WORDPRESS_DRAFT_WRITES_ENABLED", "true")
+    with pytest.raises(ValueError, match="12,000"):
+        client.create_page_draft(title="About", content="x" * 12001)
