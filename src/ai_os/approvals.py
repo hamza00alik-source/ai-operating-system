@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from ai_os.db import connect
 from ai_os.governance import CEO_AGENT_ID, OWNER_APPROVAL_ACTIONS
-from ai_os.identity import AgentIdentityError, verify_agent_token
+from ai_os.identity import AgentIdentityError, consume_agent_token
 
 MAX_APPROVAL_TTL_SECONDS = 900
 MAX_PARAMETERS_BYTES = 16_384
@@ -60,16 +60,16 @@ def create_owner_approval_request(
     """Create a pending request only from a signed CEO principal for its run."""
     if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 1 <= ttl_seconds <= MAX_APPROVAL_TTL_SECONDS:
         raise ApprovalSecurityError("Approval lifetime must be between 1 and 900 seconds.")
+    # Validate the proposed action before consuming the one-time CEO credential.
+    _, action_hash = canonical_action(action_type, parameters)
     try:
-        principal = verify_agent_token(
+        principal = consume_agent_token(
             ceo_token,
             expected_agent_id=CEO_AGENT_ID,
             required_capability="approval.request",
         )
     except AgentIdentityError as exc:
         raise ApprovalSecurityError(str(exc)) from exc
-
-    _, action_hash = canonical_action(action_type, parameters)
     now = int(time.time())
     request = {
         "id": str(uuid4()),
