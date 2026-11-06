@@ -49,7 +49,9 @@ A feature is complete only when tested and its operating limits are documented. 
 
 ## Phase 3 — Memory, learning, and evaluation
 - [x] Source-attributed company knowledge candidates with owner review and audit trail
-- [x] Bounded keyword retrieval of owner-accepted knowledge with source context\n- [x] Agent-proposed knowledge candidates with source-context URL gate and owner review\n- [ ] Semantic retrieval, deduplication, and freshness scoring
+- [x] Bounded keyword retrieval of owner-accepted knowledge with source context
+- [x] Agent-proposed knowledge candidates with source-context URL gate and owner review
+- [ ] Semantic retrieval, deduplication, and freshness scoring
 - [ ] Retrieval with company/user access boundaries
 - [ ] Evaluation datasets and regression checks for agent outputs
 - [ ] Daily research/learning proposals with evidence and source links
