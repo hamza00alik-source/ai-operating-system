@@ -5,7 +5,8 @@ existing provider-neutral model adapter. Agents have no tools or external-action
 permissions; they return reports to the CEO only.
 """
 from ai_os.audit import append_event
-from ai_os.execution import (dispatch_ready_step, get_company_run, list_company_runs,\n                             propagate_blocked_steps, submit_step_report)
+from ai_os.execution import (dispatch_ready_step, get_company_run, list_company_runs,
+                             propagate_blocked_steps, submit_step_report)
 from ai_os.execution_schemas import StepReportCreate
 from ai_os.identity import consume_agent_token, issue_agent_token
 from ai_os.model_adapter import generate_json, get_model_status, ModelNotConfigured
@@ -95,7 +96,9 @@ def execute_company_step(payload: dict) -> dict:
     raw, provider = generate_json(
         AGENT_SYSTEM_PROMPT,
         step["work_packet"]["prompt_text"] +
-        "\n\nReturn the required JSON report now. The CEO is the recipient; "
+        "
+
+Return the required JSON report now. The CEO is the recipient; "
         "do not execute or claim any external action.",
     )
     if not isinstance(raw, dict):
