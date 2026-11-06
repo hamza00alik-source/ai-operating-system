@@ -523,3 +523,68 @@ def test_owner_dashboard_wires_improvement_proposal_review():
     assert "generateImprovements" in page.text
     assert "Approve for testing" in page.text
     assert "never auto-adopted" in page.text
+
+
+
+def _seed_api_improvement_proposal(db_path, monkeypatch, *, status="approved_for_testing"):
+    import json
+    from ai_os.db import connect, initialize_database
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{db_path}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            """INSERT INTO improvement_proposals
+            (id,agent_id,title,problem,evidence_json,proposed_change,expected_impact,status,created_at)
+            VALUES ('test-api-proposal','researcher','Evidence quality','Repeated failures',?,
+                    'Require task-relevant evidence before marking a step completed.',
+                    'Improve evidence completeness.',?,'2026-11-06T00:00:00Z')""",
+            (json.dumps([{"evaluation_id":"eval-1"},{"evaluation_id":"eval-2"}]), status),
+        )
+
+
+def test_improvement_test_endpoint_records_result_without_adopting(tmp_path, monkeypatch):
+    _seed_api_improvement_proposal(tmp_path / "test-api.sqlite3", monkeypatch)
+    with TestClient(app) as client:
+        response = client.post("/improvement-proposals/test-api-proposal/test")
+        proposal = client.get("/improvement-proposals").json()[0]
+        history = client.get("/improvement-proposals/test-api-proposal/tests").json()
+        audit = client.get("/audit/verify").json()
+    assert response.status_code == 201, response.text
+    assert response.json()["passed"] is True
+    assert proposal["status"] == "approved_for_testing"
+    assert len(history) == 1
+    assert audit["valid"] is True
+
+
+def test_improvement_test_endpoint_rejects_unapproved_proposal(tmp_path, monkeypatch):
+    _seed_api_improvement_proposal(
+        tmp_path / "test-unapproved.sqlite3", monkeypatch, status="candidate"
+    )
+    with TestClient(app) as client:
+        response = client.post("/improvement-proposals/test-api-proposal/test")
+    assert response.status_code == 409
+
+
+def test_improvement_test_routes_require_owner_token_when_configured(tmp_path, monkeypatch):
+    token = "test-owner-token-" + "x" * 40
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
+    _seed_api_improvement_proposal(tmp_path / "test-auth.sqlite3", monkeypatch)
+    with TestClient(app) as client:
+        denied = client.get("/improvement-proposals/test-api-proposal/tests")
+        allowed = client.get(
+            "/improvement-proposals/test-api-proposal/tests",
+            headers={"Authorization": "Bearer " + token},
+        )
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+
+
+def test_owner_dashboard_exposes_static_improvement_test_action():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert "Run static safety checks" in page.text
+    assert "testImprovement" in page.text
+    assert "does not test model behavior or activate the change" in page.text
