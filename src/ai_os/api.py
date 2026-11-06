@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from ai_os.audit import append_event, list_events, verify_chain
@@ -28,6 +28,7 @@ from ai_os.ceo_schemas import CEOObjectiveCreate, CEOPlanOut
 from ai_os.ceo_brain import create_ceo_plan, get_ceo_plan
 from ai_os.model_adapter import get_model_status
 from ai_os.ceo_review import review_company_run
+from ai_os.identity import AgentIdentityError, consume_agent_token
 
 logger = logging.getLogger(__name__)
 
@@ -223,9 +224,40 @@ def post_company_step_dispatch(run_id: str, step_key: str):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 @app.post("/company-runs/{run_id}/steps/{step_key}/report", response_model=StepOut)
-def post_company_step_report(run_id: str, step_key: str, payload: StepReportCreate):
+def post_company_step_report(
+    run_id: str,
+    step_key: str,
+    payload: StepReportCreate,
+    agent_token: str | None = Header(default=None, alias="X-AI-Agent-Token"),
+):
+    """Accept a step report only from the specialist assigned to this run step."""
+    if not agent_token:
+        raise HTTPException(status_code=401, detail="A signed internal agent token is required.")
+    run = get_company_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Company run not found")
+    step = next((item for item in run["steps"] if item["step_key"] == step_key), None)
+    if step is None:
+        raise HTTPException(status_code=404, detail="Company run step not found")
     try:
-        return submit_step_report(run_id, step_key, payload)
+        principal = consume_agent_token(
+            agent_token,
+            expected_agent_id=step["agent_id"],
+            expected_run_id=run_id,
+            required_capability="step.report",
+        )
+    except AgentIdentityError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    try:
+        result = submit_step_report(run_id, step_key, payload)
+        append_event(
+            f"agent:{principal.agent_id}",
+            "company_step_reported",
+            "company_run_step",
+            f"{run_id}:{step_key}",
+            {"run_id": run_id, "step_key": step_key, "status": payload.status},
+        )
+        return result
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
