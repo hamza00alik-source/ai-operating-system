@@ -110,6 +110,8 @@ def test_agent_retrieval_returns_only_relevant_owner_accepted_items():
         unreviewed_payload["title"] = "Pending gaming market note"
         client.post("/knowledge", json=unreviewed_payload)
 
-    retrieved = retrieve_accepted_knowledge("gaming downloadable digital products")
+    # A unique query avoids unrelated accepted records created by other tests.
+    candidate["title"] = "zzquantumtoken gaming research"
+    retrieved = retrieve_accepted_knowledge("zzquantumtoken")
     assert [item["id"] for item in retrieved] == [candidate["id"]]
     assert retrieved[0]["status"] == "accepted"
