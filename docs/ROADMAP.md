@@ -60,8 +60,12 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Daily research/learning proposals with evidence and source links
 - [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing
 - [x] Isolated static text/policy screen for owner-approved candidate instructions with persisted test results (not a model-behavior test)
-- [ ] Versioned live instruction baselines, isolated model-behavior regression, rollback, and separate owner-authorized adoption workflow
-- [ ] Human approval for changes to prompts, policies, and production behavior
+- [x] Immutable per-agent instruction addendum versions bound to upstream profile hashes
+- [x] Owner-authenticated activation only after a passing static screen of the exact candidate text
+- [x] Audited rollback to the prior immutable instruction version
+- [ ] Isolated baseline-vs-candidate model-behavior regression with task-specific datasets
+- [x] Human approval before activating agent instruction addenda
+- [ ] Owner-approved changes to core security policies and production behavior
 
 ## Phase 4 — Business operations
 - [ ] WooCommerce integration
@@ -77,7 +81,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide and operator handbook
 
-See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md) for the current learning/evaluation implementation and its limits.
+See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md) and [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md) for the current learning, instruction lifecycle, and limitations.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
