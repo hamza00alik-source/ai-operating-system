@@ -46,7 +46,11 @@ def get_model_status() -> dict:
     model = os.getenv("AI_OS_MODEL_NAME", "").strip()
     if backend == "command":
         executable = os.getenv("AI_OS_MODEL_COMMAND", "").strip()
-        configured = bool(executable and shutil.which(executable))
+        try:
+            _command_configuration()
+            configured = bool(executable and shutil.which(executable))
+        except (ModelNotConfigured, ValueError):
+            configured = False
         reason = "ready" if enabled and configured else (
             "disabled_by_default" if not enabled else "missing_or_unavailable_command"
         )
