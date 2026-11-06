@@ -265,3 +265,46 @@ def test_company_run_report_requires_dispatched_step():
             "status": "completed", "summary": "Cannot report before assignment."
         })
         assert response.status_code == 409
+
+
+def test_ceo_brain_creates_persisted_company_plan():
+    with TestClient(app) as client:
+        response = client.post("/ceo/plan", json={
+            "objective": "Launch an international digital product business with a WordPress store and organic marketing",
+            "context": "Zero budget. No cold outreach."
+        })
+        assert response.status_code == 201, response.text
+        plan = response.json()
+        assert plan["planning_mode"] == "deterministic_rules_v1"
+        assert plan["accountable_agent_id"] == "company-orchestrator"
+        assert plan["run"]["accountable_agent_id"] == "company-orchestrator"
+        assert len(plan["run"]["steps"]) >= 10
+        keys = {step["step_key"] for step in plan["run"]["steps"]}
+        assert {"discover", "validate_market", "define_offer", "growth_plan", "content_drafts", "quality_gate", "build_solution"} <= keys
+        assert any(item["agent_id"] == "engineering-backend-architect" for item in plan["decision_log"])
+        assert all(step["status"] == "pending" for step in plan["run"]["steps"])
+        assert any("no AI model was invoked" in item for item in plan["limitations"])
+
+def test_ceo_brain_plan_is_retrievable():
+    with TestClient(app) as client:
+        created = client.post("/ceo/plan", json={"objective": "Build an organic content business for international customers"})
+        assert created.status_code == 201
+        run_id = created.json()["run_id"]
+        fetched = client.get(f"/ceo/plans/{run_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["run_id"] == run_id
+    assert fetched.json()["planning_mode"] == "deterministic_rules_v1"
+
+def test_ceo_brain_adds_design_finance_and_security_workstreams_when_relevant():
+    with TestClient(app) as client:
+        response = client.post("/ceo/plan", json={
+            "objective": "Create a secure 3D character asset business with pricing, payments, and brand design"
+        })
+    assert response.status_code == 201, response.text
+    keys = {step["step_key"] for step in response.json()["run"]["steps"]}
+    assert {"design_direction", "unit_economics", "security_review"} <= keys
+
+def test_ceo_brain_rejects_blank_or_too_short_objective():
+    with TestClient(app) as client:
+        response = client.post("/ceo/plan", json={"objective": "   "})
+    assert response.status_code == 422

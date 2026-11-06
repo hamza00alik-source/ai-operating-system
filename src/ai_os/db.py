@@ -76,6 +76,15 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_company_run_steps_status
             ON company_run_steps(run_id, status, position);
+        CREATE TABLE IF NOT EXISTS ceo_plan_metadata (
+            run_id TEXT PRIMARY KEY,
+            objective TEXT NOT NULL,
+            planning_mode TEXT NOT NULL,
+            selected_workstreams_json TEXT NOT NULL,
+            decision_log_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES company_runs(id) ON DELETE CASCADE
+        );
         CREATE TABLE IF NOT EXISTS audit_events (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
             id TEXT NOT NULL UNIQUE,

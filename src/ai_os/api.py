@@ -24,6 +24,8 @@ from ai_os.governance_schemas import GovernanceEvaluateIn, GovernanceEvaluateOut
 from ai_os.runbooks import get_runbook, list_runbooks
 from ai_os.execution_schemas import CompanyRunCreate, CompanyRunOut, StepReportCreate, StepOut
 from ai_os.execution import create_company_run, list_company_runs, get_company_run, dispatch_ready_step, submit_step_report
+from ai_os.ceo_schemas import CEOObjectiveCreate, CEOPlanOut
+from ai_os.ceo_brain import create_ceo_plan, get_ceo_plan
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +158,23 @@ def post_work_packet(payload: WorkPacketCreate):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.post("/ceo/plan", response_model=CEOPlanOut, status_code=201)
+def post_ceo_plan(payload: CEOObjectiveCreate):
+    """CEO decomposes an objective into a persistent, reviewable company run."""
+    try:
+        return create_ceo_plan(payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.get("/ceo/plans/{run_id}", response_model=CEOPlanOut)
+def get_ceo_plan_detail(run_id: str):
+    plan = get_ceo_plan(run_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="CEO plan not found")
+    return plan
 
 @app.post("/company-runs", response_model=CompanyRunOut, status_code=201)
 def post_company_run(payload: CompanyRunCreate):
