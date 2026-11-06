@@ -30,7 +30,7 @@ Open http://127.0.0.1:8000/docs.
 Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [docs/OWNER_DASHBOARD.md](docs/OWNER_DASHBOARD.md) for dashboard behavior, data definitions, security, and limitations. Enter the configured `AI_OS_API_TOKEN`; the dashboard reads agent, run, job, approval, runtime, and audit data from the protected API. The dashboard shell itself is public, but its data APIs still require owner authentication.
 
 ## Current capabilities
-- Create and list work tasks and approval requests.
+- Create and list work tasks. The signed CEO approval ingress (`POST /ceo/approval-requests`) creates exact-scope requests; the owner-only inbox and decision API expose one-time approve/reject controls. Approval does not execute an external action.
 - Discover all imported specialists with `GET /agents` (CEO plus 283 Agency Agents profiles).
 - Read a specialist's complete source instructions with `GET /agents/{agent_id}/profile`.
 - Discover the pinned scenario team runbooks with `GET /runbooks` and `GET /runbooks/{slug}`.
@@ -45,9 +45,9 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 - Draft evidence-linked CEO improvement proposals; owner approval is required for testing, followed by a separate explicit owner-token activation action.
 - Run static instruction-contract checks and optional local-only baseline-vs-candidate behavior regression tests for owner-approved proposals, then explicitly activate the exact passing addendum through the owner dashboard; activation is versioned, audited, and rollback-capable. No remote model endpoint or API key is allowed for behavior testing.
 
-See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, [docs/INSTRUCTION_VERSIONING.md](docs/INSTRUCTION_VERSIONING.md) for controlled improvement and rollback, [docs/BEHAVIOR_TESTING.md](docs/BEHAVIOR_TESTING.md) for optional local regression tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
+See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, [docs/INSTRUCTION_VERSIONING.md](docs/INSTRUCTION_VERSIONING.md) for controlled improvement and rollback, [docs/BEHAVIOR_TESTING.md](docs/BEHAVIOR_TESTING.md) for optional local regression tests, [docs/OWN_MODEL_STRATEGY.md](docs/OWN_MODEL_STRATEGY.md) for the company-owned model plan, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
 
-Approval records are workflow primitives, not a security sandbox. Do not connect production credentials until authentication, authorization, audit logging, and integration safeguards exist.
+Approval is a server-enforced workflow, not an execution sandbox. No external adapter currently consumes approvals to publish, message customers, spend, deploy, or change production. Keep production integrations disconnected until a separately reviewed execution adapter is implemented.
 
 
 ## Optional model-backed specialist and CEO execution
