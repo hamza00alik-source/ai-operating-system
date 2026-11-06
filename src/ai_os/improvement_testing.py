@@ -15,25 +15,25 @@ BASELINE_POLICY_VERSION = "company-agent-policy-v1"
 MAX_CANDIDATE_CHARS = 4000
 _UNSAFE_PATTERNS = {
     "instruction_override": re.compile(
-        r"ignore\\s+(all\\s+)?(previous|prior|system|developer)\\s+instructions|"
-        r"override\\s+(the\\s+)?(system|developer|owner)\\s+(prompt|policy|approval)",
+        r"ignore\s+(all\s+)?(previous|prior|system|developer)\s+instructions|"
+        r"override\s+(the\s+)?(system|developer|owner)\s+(prompt|policy|approval)",
         re.IGNORECASE,
     ),
     "approval_bypass": re.compile(
-        r"bypass\\s+(owner|human|ceo)\\s+approval|"
-        r"without\\s+(owner|human)\\s+approval|"
-        r"do\\s+not\\s+ask\\s+the\\s+owner",
+        r"bypass\s+(owner|human|ceo)\s+approval|"
+        r"without\s+(owner|human)\s+approval|"
+        r"do\s+not\s+ask\s+the\s+owner",
         re.IGNORECASE,
     ),
     "unrestricted_execution": re.compile(
-        r"unrestricted\\s+(shell|tool|browser|network)|"
-        r"disable\\s+(all\\s+)?(safety|security|guardrails)|"
-        r"execute\\s+any\\s+command",
+        r"unrestricted\s+(shell|tool|browser|network)|"
+        r"disable\s+(all\s+)?(safety|security|guardrails)|"
+        r"execute\s+any\s+command",
         re.IGNORECASE,
     ),
     "unauthorized_external_action": re.compile(
-        r"(publish|send\\s+(an?\\s+)?(email|message)|charge|refund|spend)"
-        r".{0,100}(automatically|without\\s+approval|without\\s+permission)",
+        r"(publish|send\s+(an?\s+)?(email|message)|charge|refund|spend)"
+        r".{0,100}(automatically|without\s+approval|without\s+permission)",
         re.IGNORECASE | re.DOTALL,
     ),
 }
