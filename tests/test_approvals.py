@@ -5,6 +5,7 @@ from ai_os.approvals import (
     consume_owner_approval,
     create_owner_approval_request,
     decide_owner_approval,
+    list_owner_approval_requests,
 )
 from ai_os.db import initialize_database
 from ai_os.identity import issue_agent_token
@@ -195,3 +196,21 @@ def test_ceo_request_requires_existing_run_before_consuming_token(approval_db):
                        '2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')"""
         )
     assert _request(token)["status"] == "pending"
+
+
+def test_approval_parameters_cannot_contain_credentials(approval_db):
+    with pytest.raises(ApprovalSecurityError, match="never credentials"):
+        create_owner_approval_request(
+            _ceo_token(),
+            action_type="publish_product",
+            parameters={"product_id": "draft-123", "api_key": "do-not-store"},
+        )
+
+
+def test_inbox_marks_expired_pending_requests(approval_db, monkeypatch):
+    request = _request()
+    monkeypatch.setattr("ai_os.approvals.time.time", lambda: request["expires_at"] + 1)
+    listed = list_owner_approval_requests(status="expired")
+    assert len(listed) == 1
+    assert listed[0]["id"] == request["id"]
+    assert listed[0]["status"] == "expired"
