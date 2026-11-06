@@ -116,3 +116,37 @@ def test_agent_token_can_only_be_consumed_once(monkeypatch, tmp_path):
     assert principal.agent_id == "marketing-content-creator"
     with pytest.raises(AgentIdentityError, match="already consumed"):
         consume_agent_token(token, expected_run_id="run-123")
+
+
+
+def test_capabilities_are_server_policy_limited(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    _registered_agent(monkeypatch)
+    with pytest.raises(AgentIdentityError, match="not granted"):
+        issue_agent_token(
+            "marketing-content-creator",
+            run_id="run-123",
+            capabilities=["approval.request"],
+        )
+    with pytest.raises(AgentIdentityError, match="not granted"):
+        issue_agent_token(
+            "company-orchestrator",
+            run_id="run-123",
+            capabilities=["step.report"],
+        )
+
+
+def test_ceo_can_receive_only_approval_request_capability(monkeypatch):
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    _registered_agent(monkeypatch)
+    token = issue_agent_token(
+        "company-orchestrator",
+        run_id="run-123",
+        capabilities=["approval.request"],
+    )
+    principal = verify_agent_token(
+        token,
+        expected_agent_id="company-orchestrator",
+        required_capability="approval.request",
+    )
+    assert principal.capabilities == ("approval.request",)
