@@ -1,8 +1,8 @@
-"""Schemas for persistent, zero-API worker jobs."""
+"""Schemas for persistent agent worker jobs."""
 from typing import Literal
 from pydantic import BaseModel, Field
 
-JobType = Literal["build_work_packet"]
+JobType = Literal["build_work_packet", "execute_company_step"]
 JobStatus = Literal["queued", "running", "completed", "failed"]
 
 class JobCreate(BaseModel):
