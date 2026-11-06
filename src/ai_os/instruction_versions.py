@@ -115,6 +115,7 @@ def get_instruction_history(agent_id: str, *, limit: int = 30) -> list[dict]:
 def activate_tested_proposal(proposal_id: str, *, actor: str) -> dict | None:
     """Activate a proposal only after owner-authenticated call and a matching passing test."""
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
         proposal = db.execute(
             "SELECT * FROM improvement_proposals WHERE id=?", (proposal_id,)
         ).fetchone()
@@ -176,6 +177,7 @@ def rollback_instruction(agent_id: str, *, actor: str) -> dict | None:
     """Move the active pointer to the immutable parent version; never delete history."""
     profile_hash = _profile_hash(agent_id)
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
         head = _ensure_head(db, agent_id, profile_hash)
         if not head["profile_compatible"]:
             raise ValueError("Upstream specialist profile changed; rollback requires baseline review.")
