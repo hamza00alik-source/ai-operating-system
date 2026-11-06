@@ -32,3 +32,11 @@ The current repository has a single-owner API token and deterministic planning/q
 ## Owner control
 
 No agent may bypass the CEO gateway. No approval may be inferred from a prior approval for a different action, a changed amount/target, or a different publication. Approval is specific, auditable, and one-time unless a narrowly scoped recurring authorization is later designed and explicitly approved.
+
+## Signed internal agent identity foundation
+
+The repository now includes `ai_os.identity`, a server-side HMAC-SHA256 identity primitive. It issues short-lived (maximum five-minute) signed tokens and verifies signature, audience, issue/expiry times, nonce presence, and an optional expected agent ID. The signing key must be supplied through `AI_OS_AGENT_SIGNING_KEY` with at least 32 characters.
+
+This is a foundation, not an enabled execution identity system. There is no public token-issuance endpoint, no HTTP route currently trusts these tokens, and no agent runtime currently mints or consumes them. Only trusted server code may call the issuer after resolving the agent from the server-side registry. Tokens must never be placed in prompts, work packets, client responses, or logs.
+
+The nonce is currently an identity claim, not a replay-prevention store. Before a token can authorize a sensitive operation, the runtime must add one-time nonce consumption/replay protection, bind the principal to a specific run and permitted capability, enforce the CEO-only approval boundary, and verify the approval's exact parameter hash immediately before execution. The approval API remains closed until that complete boundary exists.
