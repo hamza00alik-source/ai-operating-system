@@ -4,7 +4,7 @@ import pytest
 
 from ai_os.db import connect, initialize_database
 from ai_os.improvement_testing import (
-    BASELINE_POLICY_VERSION,
+    SCREENING_POLICY_VERSION,
     list_proposal_test_runs,
     run_proposal_regression_tests,
 )
@@ -28,7 +28,7 @@ def test_approved_candidate_passes_static_policy_contract_and_is_persisted(tmp_p
     _seed_proposal(tmp_path / "pass.sqlite3", monkeypatch)
     result = run_proposal_regression_tests("proposal-1")
     assert result["passed"] is True
-    assert result["baseline_policy_version"] == BASELINE_POLICY_VERSION
+    assert result["screening_policy_version"] == SCREENING_POLICY_VERSION
     assert result["candidate_sha256"]
     assert all(check["passed"] for check in result["checks"])
     assert "no model was invoked" in " ".join(result["limitations"])
