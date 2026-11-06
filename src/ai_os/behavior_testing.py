@@ -15,7 +15,7 @@ from ai_os.agent_runtime import AGENT_SYSTEM_PROMPT
 from ai_os.db import connect
 from ai_os.evaluation import evaluate_specialist_report
 from ai_os.improvement_testing import MAX_CANDIDATE_CHARS
-from ai_os.instruction_versions import get_active_instruction
+from ai_os.instruction_versions import get_active_instruction, _ensure_head, _profile_hash
 from ai_os.improvement import list_improvement_proposals
 from ai_os.model_adapter import ModelNotConfigured, generate_json, get_model_status
 from ai_os.registry import get_agent
@@ -174,6 +174,10 @@ def run_behavior_regression_test(proposal_id: str, fixture_id: str) -> dict | No
     agent = get_agent(proposal["agent_id"])
     if agent is None:
         raise LookupError("Proposal references an unknown agent.")
+    profile_hash = _profile_hash(agent.id)
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        _ensure_head(db, agent.id, profile_hash)
     active = get_active_instruction(agent.id)
     if not active["profile_compatible"]:
         raise ValueError("Upstream specialist profile changed; review the instruction baseline first.")
