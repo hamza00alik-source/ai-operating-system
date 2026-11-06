@@ -144,3 +144,13 @@ def test_ceo_ingress_does_not_consume_token_for_missing_run(tmp_path, monkeypatc
         )
         assert retried.status_code == 201
         assert client.get("/owner/approval-requests", headers=owner).status_code == 200
+
+
+def test_owner_dashboard_shows_exact_scope_approval_controls():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert 'api("/owner/approval-requests?limit=50")' in page.text
+    assert "Approve exact action" in page.text
+    assert "Reject" in page.text
+    assert "This records approval only; it does not execute the external action." in page.text
