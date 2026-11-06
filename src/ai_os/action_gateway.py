@@ -46,6 +46,20 @@ def clear_action_adapters_for_tests() -> None:
     _ADAPTERS.clear()
 
 
+def get_action_gateway_status() -> dict:
+    """Report effective execution readiness without exposing adapter callables."""
+    configured = sorted(_ADAPTERS)
+    enabled = os.getenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "false").strip().lower() == "true"
+    return {
+        "enabled": bool(enabled and configured),
+        "flag_enabled": enabled,
+        "adapter_count": len(configured),
+        "registered_actions": configured,
+        "external_actions_available": False,
+        "note": "No production adapter is registered by default; external actions remain unavailable.",
+    }
+
+
 def execute_approved_action(
     approval_id: str,
     *,
