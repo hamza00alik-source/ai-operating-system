@@ -70,7 +70,7 @@ See [docs/KNOWLEDGE_STORE.md](docs/KNOWLEDGE_STORE.md).
 
 ## SQLite backups
 
-The project includes a local SQLite snapshot helper. It uses SQLite's online backup API, verifies the snapshot with `PRAGMA integrity_check`, checks for core application tables, and atomically replaces the destination file only after verification.
+The project includes a local SQLite snapshot helper. It uses SQLite's online backup API, verifies the snapshot with `PRAGMA integrity_check`, checks core application tables, verifies the SHA-256 audit chain, and atomically replaces the destination file only after verification.
 
 Example from the repository root:
 
