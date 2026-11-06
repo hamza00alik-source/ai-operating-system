@@ -142,10 +142,13 @@ class WooCommerceReadOnlyClient:
             raise ValueError("Product price must be a valid non-negative decimal.") from exc
         if not price.is_finite() or price < 0:
             raise ValueError("Product price must be a valid non-negative decimal.")
+        normalized_price = format(price, "f")
+        if len(normalized_price) > 12:
+            raise ValueError("Product price exceeds the supported 12-character amount limit.")
         payload = json.dumps({
             "name": name.strip(),
             "description": description,
-            "regular_price": format(price, "f"),
+            "regular_price": normalized_price,
             "status": "draft",
         }, ensure_ascii=False, allow_nan=False).encode("utf-8")
         url = urllib.parse.urljoin(self.base_url, "products")
