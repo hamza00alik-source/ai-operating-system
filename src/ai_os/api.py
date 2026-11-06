@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from pathlib import Path
 
 from ai_os.audit import append_event, list_events, verify_chain
 from ai_os.auth import authenticate_request
@@ -84,6 +85,12 @@ async def owner_auth_and_audit(request: Request, call_next):
                 content={"detail": "Audit storage failed after request processing. Inspect system state before retrying."},
             )
     return response
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def owner_dashboard():
+    """Serve the owner UI shell; all data APIs remain protected by owner authentication."""
+    dashboard_path = Path(__file__).with_name("dashboard.html")
+    return HTMLResponse(dashboard_path.read_text(encoding="utf-8"))
 
 @app.get("/health")
 def health() -> dict:
