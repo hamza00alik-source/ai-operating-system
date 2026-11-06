@@ -53,6 +53,7 @@ from ai_os.training_schemas import TrainingExampleCreate, TrainingExampleReview,
 from ai_os.training_data import (create_training_example, list_training_examples,
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
+from ai_os.action_gateway import get_action_gateway_status
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,10 @@ def owner_dashboard():
     dashboard_path = Path(__file__).with_name("dashboard.html")
     return HTMLResponse(dashboard_path.read_text(encoding="utf-8"))
 
+@app.get("/actions/gateway/status")
+def get_action_gateway_readiness():
+    return get_action_gateway_status()
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
@@ -128,7 +133,7 @@ def get_runtime_status():
         "model_api_configured": False,
         "paid_api_calls_enabled": False,
         "autonomous_execution_enabled": False,
-        "external_actions_enabled": False,
+        "external_actions_enabled": get_action_gateway_status()["enabled"],
         "model_execution_enabled": get_model_status()["enabled"],
         "model_provider_configured": get_model_status()["configured"],
     }
