@@ -21,7 +21,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 # Configure a strong owner token before opening the dashboard.
 export AI_OS_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-printf 'Owner token: %s\\n' "$AI_OS_API_TOKEN"
+printf 'Owner token: %s\n' "$AI_OS_API_TOKEN"
 uvicorn ai_os.api:app --reload
 ```
 
