@@ -153,6 +153,8 @@ def activate_tested_proposal(proposal_id: str, *, actor: str) -> dict | None:
         head = _ensure_head(db, proposal["agent_id"], profile_hash)
         if not head["profile_compatible"]:
             raise ValueError("Upstream specialist profile changed; review the baseline before activation.")
+        if behavior_test is not None and behavior_test["active_version_id"] != head["active_version_id"]:
+            raise ValueError("The active instruction baseline changed after behavior testing; rerun the local behavior test.")
         next_number = db.execute(
             "SELECT COALESCE(MAX(version_number),0)+1 FROM agent_instruction_versions WHERE agent_id=?",
             (proposal["agent_id"],),
