@@ -58,7 +58,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Persisted evaluation history and sample-gated quality trend API/dashboard
 - [ ] Task-specific evidence and factuality evaluation datasets
 - [ ] Daily research/learning proposals with evidence and source links
-- [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing\n- [x] Isolated static text/policy screen for owner-approved candidate instructions with persisted test results (not a model-behavior test)
+- [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing
+- [x] Isolated static text/policy screen for owner-approved candidate instructions with persisted test results (not a model-behavior test)
 - [ ] Versioned live instruction baselines, isolated model-behavior regression, rollback, and separate owner-authorized adoption workflow
 - [ ] Human approval for changes to prompts, policies, and production behavior
 
