@@ -21,6 +21,12 @@ def test_daily_ceo_review_is_idempotent_for_utc_date(monkeypatch, capsys):
         run_id = "daily-review-test-run"
         with connect() as db:
             db.execute(
+                """INSERT INTO company_runs
+                   (id,title,description,status,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?)""",
+                (run_id, "Daily review test", "", "queued", "2026-11-06T12:00:00Z", "2026-11-06T12:00:00Z"),
+            )
+            db.execute(
                 """INSERT INTO ceo_plan_metadata
                    (run_id,objective,planning_mode,selected_workstreams_json,
                     decision_log_json,created_at)
