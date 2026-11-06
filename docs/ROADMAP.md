@@ -63,7 +63,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Immutable per-agent instruction addendum versions bound to upstream profile hashes
 - [x] Owner-authenticated activation only after a passing static screen of the exact candidate text
 - [x] Audited rollback to the prior immutable instruction version
-- [ ] Isolated baseline-vs-candidate model-behavior regression with task-specific datasets
+- [x] Optional local-only baseline-vs-candidate model behavior regression harness with fixed fixtures, persisted results, and owner-token API (limited regression signal)
+- [ ] Broader task-specific quality, factuality, and domain regression datasets
 - [x] Human approval before activating agent instruction addenda
 - [ ] Owner-approved changes to core security policies and production behavior
 
@@ -81,7 +82,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide and operator handbook
 
-See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md) and [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md) for the current learning, instruction lifecycle, and limitations.
+See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), and [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md) for the current learning, instruction lifecycle, and limitations.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
