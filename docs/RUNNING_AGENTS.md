@@ -36,6 +36,8 @@ export AI_OS_MODEL_BACKEND=command
 export AI_OS_MODEL_COMMAND=agy
 export AI_OS_MODEL_COMMAND_ARGS='["-p", "{prompt}", "--output-format", "json"]'
 export AI_OS_MODEL_NAME=agy-cli
+# Explicitly attest that this CLI profile has no shell/browser/file/action tools.
+export AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED=true
 export AI_OS_MODEL_ENABLED=true
 ```
 
@@ -43,7 +45,9 @@ The adapter uses an argument array with `shell=False`, a bounded timeout, and
 strict JSON parsing. It never accepts shell command strings from model output.
 However, a CLI may have its own browser, shell, file, or network tools enabled;
 configure and verify a prompt-only/no-tools CLI profile before enabling this
-backend. The operating system cannot sandbox permissions granted by that CLI.
+backend, then explicitly set `AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED=true`.
+This is an owner attestation, not an independent sandbox or technical proof.
+The operating system cannot sandbox permissions granted by that CLI.
 CLI execution may also use the network and may be subject to the CLI provider's
 terms or quotas. Keep this backend disabled until the CLI's permissions and
 output contract have been checked.
