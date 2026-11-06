@@ -88,3 +88,14 @@ def test_failed_behavior_test_blocks_activation(tmp_path, monkeypatch):
         blocked = client.post("/improvement-proposals/behavior-api-p1/activate", headers=headers)
         assert blocked.status_code == 409
         assert "behavior test must pass" in blocked.json()["detail"]
+
+
+def test_owner_dashboard_exposes_local_behavior_test_readiness_and_controls():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert 'api("/behavior-tests/status")' in page.text
+    assert "Run local model behavior test" in page.text
+    assert "Activate tested version" in page.text
+    assert "Rollback agent instructions" in page.text
+    assert "testBehavior" in page.text
