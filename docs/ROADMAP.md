@@ -25,7 +25,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Secret rotation, rate limiting, and recovery procedures
 - [ ] Authenticated agent identities and runtime-enforced CEO-only approval requests (policy preview exists; this is not yet enforced at real tool boundaries)
 - [ ] Role-based authorization for specialist agents and worker operations
-- [ ] Database backup/restore tests and signed off-host audit checkpoints
+- [x] SQLite online backup helper with integrity/schema verification and automated tests
+- [ ] Restore workflow, off-host backup policy, retention, and signed audit checkpoints
 
 ## Phase 2 — Agency Agents-based runtime (partially implemented)
 - [x] CEO Agent designated as company leader and single owner-approval gateway (policy layer only)
