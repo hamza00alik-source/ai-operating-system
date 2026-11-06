@@ -71,6 +71,15 @@ def test_approval_cannot_be_decided_twice():
         approval = client.post("/approvals", json={"action":"spend_money"})
         assert approval.status_code == 403
 
+def test_caller_cannot_claim_ceo_identity_in_approval_payload():
+    with TestClient(app) as client:
+        response = client.post("/approvals", json={
+            "action": "publish_content",
+            "details": "Attempted owner approval",
+            "agent_id": "company-orchestrator",
+        })
+    assert response.status_code == 403
+
 def test_job_queue_generates_packet_locally():
     with TestClient(app) as client:
         queued = client.post("/jobs", json={
