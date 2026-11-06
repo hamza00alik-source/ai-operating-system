@@ -424,7 +424,7 @@ def test_evaluation_history_endpoint_requires_owner_token_when_configured(monkey
     monkeypatch.setenv("AI_OS_API_TOKEN", token)
     with TestClient(app) as client:
         denied = client.get("/evaluations")
-        allowed = client.get("/evaluations", headers={"Authorization": "Bearer " + token})
+        allowed = client.get("/evaluations?agent_id=agent-that-does-not-exist", headers={"Authorization": "Bearer " + token})
     assert denied.status_code == 401
     assert allowed.status_code == 200
     assert allowed.json()["summary"]["total"] == 0
@@ -445,7 +445,7 @@ def test_owner_dashboard_displays_evaluation_history():
 
 def test_evaluation_trends_endpoint_returns_sample_gated_result():
     with TestClient(app) as client:
-        response = client.get("/evaluations/trends?limit=20")
+        response = client.get("/evaluations/trends?agent_id=agent-that-does-not-exist&limit=20")
     assert response.status_code == 200
     assert response.json()["limit"] == 20
     assert response.json()["trends"] == []
