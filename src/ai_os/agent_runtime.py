@@ -30,13 +30,15 @@ return status=blocked and explain the blocker. Do not invent URLs or claim sourc
 def schedule_ready_steps(*, limit: int = 20) -> dict:
     """Queue each dependency-ready specialist step once, only when inference is enabled."""
     status = get_model_status()
+    runs = list_company_runs(limit=200)
+    for listed_run in runs:
+        propagate_blocked_steps(listed_run["id"])
     if not status["enabled"]:
         return {"scheduled": 0, "model_enabled": False,
-                "reason": "Model execution is disabled or not configured; no work was dispatched."}
+                "reason": "Model execution is disabled or not configured; no work was dispatched. Blocked dependencies were reconciled."}
 
     scheduled = []
-    for listed_run in list_company_runs(limit=200):
-        propagate_blocked_steps(listed_run["id"])
+    for listed_run in runs:
         run = get_company_run(listed_run["id"])
         if run is None:
             continue
