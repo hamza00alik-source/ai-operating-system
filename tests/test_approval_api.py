@@ -224,3 +224,68 @@ def test_owner_executes_only_an_approved_wordpress_page_draft(tmp_path, monkeypa
             f"/owner/approval-requests/{approval['id']}/execute", headers=owner
         )
         assert repeated.status_code == 409
+
+
+
+def test_owner_executes_only_an_approved_woocommerce_product_draft(tmp_path, monkeypatch):
+    clear_action_adapters_for_tests()
+    owner = _setup(monkeypatch, tmp_path)
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_URL", "https://shop.example/wp-json/wc/v3")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_CONSUMER_KEY", "consumer-key")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_CONSUMER_SECRET", "consumer-secret")
+
+    import json
+    calls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return json.dumps({
+                "id": 771, "name": "Digital asset", "status": "draft",
+                "permalink": "https://shop.example/?post=771",
+            }).encode()
+
+    def fake_open(request, timeout):
+        calls.append(request)
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    body = {
+        "action_type": "create_product_draft",
+        "parameters": {
+            "name": "Digital asset",
+            "description": "A digital download",
+            "regular_price": "4.99",
+        },
+    }
+    with TestClient(app) as client:
+        created = client.post(
+            "/ceo/approval-requests", json=body,
+            headers={"X-AI-Agent-Token": _ceo_token()},
+        )
+        assert created.status_code == 201
+        approval = created.json()
+        approved = client.post(
+            f"/owner/approval-requests/{approval['id']}/decision",
+            json={"decision": "approved", "action_hash": approval["action_hash"]},
+            headers=owner,
+        )
+        assert approved.status_code == 200
+        executed = client.post(
+            f"/owner/approval-requests/{approval['id']}/execute", headers=owner
+        )
+        assert executed.status_code == 200
+        assert executed.json()["result"]["draft_product"]["status"] == "draft"
+        assert calls[0].get_method() == "POST"
+        assert json.loads(calls[0].data.decode())["status"] == "draft"
+        repeated = client.post(
+            f"/owner/approval-requests/{approval['id']}/execute", headers=owner
+        )
+        assert repeated.status_code == 409
