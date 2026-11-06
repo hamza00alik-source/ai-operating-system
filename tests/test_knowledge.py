@@ -116,3 +116,46 @@ def test_agent_retrieval_returns_only_relevant_owner_accepted_items():
     retrieved = retrieve_accepted_knowledge("zzquantumtoken")
     assert [item["id"] for item in retrieved] == [candidate["id"]]
     assert retrieved[0]["status"] == "accepted"
+
+
+def test_knowledge_retrieval_deduplicates_and_prefers_fresher_source():
+    from ai_os.knowledge import retrieve_accepted_knowledge
+
+    older_payload = {
+        "title": "zzdeduplicatedsignal buyer demand",
+        "content": "The zzdeduplicatedsignal shows buyers seeking downloadable products.",
+        "category": "market_research",
+        "source_url": "https://example.com/research/zzdeduplicatedsignal",
+        "source_title": "Older buyer research",
+        "source_published_at": "2024-01-01T00:00:00Z",
+        "confidence": 0.9,
+        "tags": ["zzdeduplicatedsignal"],
+    }
+    newer_payload = {
+        **older_payload,
+        "source_title": "Newer buyer research",
+        "source_published_at": "2026-10-20T00:00:00Z",
+        "confidence": 0.6,
+    }
+
+    with TestClient(app) as client:
+        older = client.post("/knowledge", json=older_payload)
+        newer = client.post("/knowledge", json=newer_payload)
+        assert older.status_code == 201, older.text
+        assert newer.status_code == 201, newer.text
+        for item in (older.json(), newer.json()):
+            reviewed = client.post(
+                f"/knowledge/{item['id']}/review",
+                json={"decision": "accepted", "note": "Source inspected."},
+            )
+            assert reviewed.status_code == 200, reviewed.text
+
+    retrieved = retrieve_accepted_knowledge("zzdeduplicatedsignal buyer")
+    matching = [
+        item for item in retrieved
+        if item["source_url"].endswith("/zzdeduplicatedsignal")
+    ]
+    assert len(matching) == 1
+    assert matching[0]["source_title"] == "Newer buyer research"
+    assert matching[0]["retrieval_metadata"]["freshness"] == "fresh"
+    assert matching[0]["retrieval_metadata"]["freshness_is_heuristic"] is True
