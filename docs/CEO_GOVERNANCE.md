@@ -56,6 +56,6 @@ The new `ai_os.approvals` module provides internal primitives (not HTTP endpoint
 - recording an owner decision against the exact action hash, with expiry and a single pending-to-decided transition;
 - atomically consuming an approved request only when action type and every parameter still match, with a unique execution ID and one-time state transition.
 
-Approval expiry is capped by both the CEO token expiry and a maximum 15-minute window. Expired requests transition to `expired`; rejected, changed, expired, or already-consumed approvals cannot authorize execution. Parameter JSON is bounded to 16 KB and rejects non-finite values.
+Approval requests receive a maximum 15-minute owner-review window after the signed CEO request has been verified; the CEO token itself remains short-lived and is not needed for the owner to finish reviewing an already-created request. Expired requests transition to `expired`; rejected, changed, expired, or already-consumed approvals cannot authorize execution. Parameter JSON is bounded to 16 KB and rejects non-finite values.
 
 **This is not an enabled approval or execution workflow.** No HTTP route calls these primitives; the existing `/approvals` inbox remains closed for request creation. The owner-decision primitive must only be called behind a separately verified owner-authenticated endpoint. No adapter currently consumes approvals to publish, message customers, spend money, deploy, or change production. The runtime continues to report external actions and autonomous execution as disabled.
