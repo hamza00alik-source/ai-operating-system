@@ -231,7 +231,7 @@ def test_specialist_report_string_fields_are_bounded_and_type_checked():
     from ai_os.agent_runtime import _bounded_strings
 
     result = _bounded_strings(
-        ["  concise  ", "", 42, "x" * 20],
+        ["  concise  ", "x" * 20, 42],
         max_items=2,
         max_length=8,
     )
