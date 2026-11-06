@@ -53,6 +53,15 @@ def test_ceo_can_create_exact_scope_pending_approval(approval_db):
     assert len(request["action_hash"]) == 64
 
 
+
+def test_ceo_approval_request_token_is_single_use(approval_db):
+    token = _ceo_token()
+    first = _request(token)
+    assert first["status"] == "pending"
+    with pytest.raises(ApprovalSecurityError, match="already consumed"):
+        _request(token)
+
+
 def test_specialist_cannot_create_owner_approval(approval_db):
     token = issue_agent_token(
         "marketing-content-creator",
