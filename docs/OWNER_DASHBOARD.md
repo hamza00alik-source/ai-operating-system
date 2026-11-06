@@ -1,6 +1,6 @@
 # Owner dashboard
 
-The responsive owner dashboard is served by the FastAPI application at `/dashboard`. It is a read-only operational view; it does not start agents, dispatch work, approve actions, or execute external operations.
+The responsive owner dashboard is served by the FastAPI application at `/dashboard`. It is an operational view with an owner-controlled research review inbox; it does not start agents, dispatch work, or execute external operations.
 
 ## What it displays
 
@@ -9,9 +9,10 @@ The responsive owner dashboard is served by the FastAPI application at `/dashboa
 - Progress percentage: completed steps divided by all tracked steps for that agent. Agents with no tracked steps show 0% and an idle state.
 - Last recorded activity: newest `updated_at` timestamp among the agent's tracked run steps.
 - Company runs: persisted run status and completed-step counts from `GET /company-runs`.
-- Worker queue: local packet-builder jobs from `GET /jobs`.
+- Worker queue: local packet-builder and specialist execution jobs from `GET /jobs`.
 - Owner approvals: recorded approval requests from `GET /approvals`. This panel is informational; the trusted CEO approval-request gateway remains closed until server-verified CEO identity is available.
-- Recent audit activity: meaningful audit events from `GET /audit`; routine read-request events are filtered to keep the feed useful.
+- Research review inbox: agent-proposed and manually entered candidates from \`GET /knowledge?status=candidate\`; the owner can open the source and accept or reject each candidate. No agent can approve its own research.
+- Recent audit activity: meaningful audit events from \`GET /audit\`; routine read-request events are filtered to keep the feed useful.
 - Runtime safeguards and model readiness: `GET /runtime` and `GET /models/status`.
 
 The dashboard refreshes automatically every 30 seconds while its browser tab is visible. The Refresh button can also be used at any time.
@@ -32,12 +33,12 @@ Use HTTPS when exposing the service beyond a trusted local environment. Do not d
 
 ## Current limitations
 
-- The current worker creates local work packets; it is not a persistent fleet of autonomous AI workers.
+- The worker can execute bounded specialist analysis only when an inference engine is explicitly configured; it is not a fleet of 283 independent model instances.
 - Progress reflects stored workflow records, not live model tokens, CPU activity, or independent agent heartbeats.
 - Agent profile count is not the count of active agents.
 - Approval records can be inspected, but this dashboard does not make approval decisions or trigger external actions.
-- Model execution, autonomous execution, ecommerce, social publishing, spending, and other external actions remain disabled unless separately implemented and authorized.
+- Model execution is disabled by default. Ecommerce, social publishing, spending, customer commitments, and other external actions remain disconnected and require separate implementation and owner approval.
 
 ## Verification
 
-The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, the model-status endpoint, and the presence of per-agent progress and auto-refresh features.
+The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, owner-token protection, candidate review controls, the model-status endpoint, and per-agent progress and auto-refresh features.
