@@ -54,8 +54,12 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Agent-proposed knowledge candidates with source-context URL gate and owner review
 - [ ] Semantic retrieval, deduplication, and freshness scoring
 - [ ] Retrieval with company/user access boundaries
-- [x] Deterministic specialist-report evaluation rubric and CI regression fixtures (structure/safety signals only)\n- [ ] Persisted evaluation history and quality trend tracking\n- [ ] Task-specific evidence and factuality evaluation datasets
-- [ ] Daily research/learning proposals with evidence and source links\n- [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing\n- [ ] Isolated candidate-instruction regression harness and owner-approved adoption workflow
+- [x] Deterministic specialist-report evaluation rubric and CI regression fixtures (structure/safety signals only)
+- [x] Persisted evaluation history and sample-gated quality trend API/dashboard
+- [ ] Task-specific evidence and factuality evaluation datasets
+- [ ] Daily research/learning proposals with evidence and source links
+- [x] Rule-based CEO improvement proposals linked to repeated failed evaluation checks; owner review required before testing\n- [x] Isolated static text/policy screen for owner-approved candidate instructions with persisted test results (not a model-behavior test)
+- [ ] Versioned live instruction baselines, isolated model-behavior regression, rollback, and separate owner-authorized adoption workflow
 - [ ] Human approval for changes to prompts, policies, and production behavior
 
 ## Phase 4 — Business operations
@@ -72,7 +76,9 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide and operator handbook
 
-See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md) for the current learning/evaluation implementation and its limits.\n\n## Reference decisions
+See [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md) for the current learning/evaluation implementation and its limits.
+
+## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
 - Automaton: selective patterns for ReAct loops, durable scheduling, task graphs, local workers, model routing, memory, policy enforcement, and auditability.
 - The ten other public repositories: reviewed weekly; adopt only compatible, license-aware patterns. Current review is in [REFERENCE_REVIEW_2026-11-06.md](REFERENCE_REVIEW_2026-11-06.md).
