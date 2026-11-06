@@ -9,6 +9,7 @@ from ai_os import model_adapter
 def test_command_backend_is_disabled_by_default(monkeypatch):
     monkeypatch.setenv("AI_OS_MODEL_BACKEND", "command")
     monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND_ARGS", '["-p", "{prompt}", "--output-format", "json"]')
     monkeypatch.delenv("AI_OS_MODEL_ENABLED", raising=False)
     monkeypatch.setattr(model_adapter.shutil, "which", lambda value: "/usr/bin/agy")
     status = model_adapter.get_model_status()
@@ -36,6 +37,7 @@ def test_cli_backend_uses_argv_without_shell_and_parses_output(monkeypatch):
     monkeypatch.setenv("AI_OS_MODEL_BACKEND", "command")
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND_ARGS", '["-p", "{prompt}", "--output-format", "json"]')
     monkeypatch.setenv(
         "AI_OS_MODEL_COMMAND_ARGS",
         json.dumps(["-p", "{prompt}", "--output-format", "json"]),
@@ -72,6 +74,7 @@ def test_cli_backend_rejects_nonzero_exit_without_exposing_stderr(monkeypatch):
     monkeypatch.setenv("AI_OS_MODEL_BACKEND", "command")
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND_ARGS", '["-p", "{prompt}", "--output-format", "json"]')
     monkeypatch.setattr(model_adapter.shutil, "which", lambda value: "/usr/bin/agy")
     monkeypatch.setattr(
         model_adapter.subprocess, "run",
