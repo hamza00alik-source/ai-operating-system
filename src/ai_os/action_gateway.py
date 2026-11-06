@@ -37,7 +37,10 @@ def register_action_adapter(
     if not callable(adapter):
         raise ActionGatewayError("A callable server-owned adapter is required.")
     if normalized in _ADAPTERS:
-        raise ActionGatewayError("An adapter is already registered for this action.")
+        existing_id, _ = _ADAPTERS[normalized]
+        if existing_id == adapter_id.strip():
+            return
+        raise ActionGatewayError("A different adapter is already registered for this action.")
     _ADAPTERS[normalized] = (adapter_id.strip(), adapter)
 
 
