@@ -41,7 +41,7 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 - Execute dependency-ready specialist steps through a durable worker queue when an owner-configured model endpoint is explicitly enabled.
 - Run a persistent worker process with `python -m ai_os.worker_service`; see [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
 - Persist task, company-run, report, queue, knowledge, evaluation, and owner-reviewed training-example records in SQLite.
-- Curate owner-reviewed model training examples and export accepted-only, versioned JSONL datasets with SHA-256 manifests; this does not train a model.
+- Curate owner-reviewed model training examples in the dashboard and export accepted-only, versioned private JSONL datasets with SHA-256 manifests; this does not train a model.
 - Inspect per-agent evaluation history and cautious sample-gated quality trends.
 - Draft evidence-linked CEO improvement proposals; owner approval is required for testing, followed by a separate explicit owner-token activation action.
 - Run static instruction-contract checks and optional local-only baseline-vs-candidate behavior regression tests for owner-approved proposals, then explicitly activate the exact passing addendum through the owner dashboard; activation is versioned, audited, and rollback-capable. No remote model endpoint or API key is allowed for behavior testing.
