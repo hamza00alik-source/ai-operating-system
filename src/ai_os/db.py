@@ -170,4 +170,20 @@ def initialize_database() -> None:
             ON agent_evaluations(agent_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_agent_evaluations_run_created
             ON agent_evaluations(run_id, created_at);
+        CREATE TABLE IF NOT EXISTS improvement_proposals (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            problem TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            proposed_change TEXT NOT NULL,
+            expected_impact TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('candidate','approved_for_testing','rejected')),
+            created_at TEXT NOT NULL,
+            reviewed_at TEXT,
+            reviewed_by TEXT,
+            review_note TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_improvement_proposals_status_created
+            ON improvement_proposals(status, created_at);
         """)
