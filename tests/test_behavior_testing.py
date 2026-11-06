@@ -105,3 +105,37 @@ def test_candidate_behavior_regression_fails_when_candidate_score_drops(tmp_path
     result = run_behavior_regression_test("behavior-p1", "source-grounded-research")
     assert result["passed"] is False
     assert result["score_delta"] < 0
+
+
+def test_behavior_result_is_stale_after_another_proposal_changes_active_baseline(tmp_path, monkeypatch):
+    _seed(tmp_path / "behavior-stale.sqlite3", monkeypatch)
+    with connect() as db:
+        db.execute(
+            """INSERT INTO improvement_proposals
+               (id,agent_id,title,problem,evidence_json,proposed_change,expected_impact,status,created_at)
+               VALUES ('behavior-p2','product-trend-researcher','Second change','Another issue',?,
+                       'Require concise summaries and list missing source evidence.',
+                       'Improve summaries','approved_for_testing','2026-11-06T00:00:01Z')""",
+            (json.dumps([{"evaluation_id":"e3"},{"evaluation_id":"e4"}]),),
+        )
+    run_proposal_regression_tests("behavior-p1")
+    run_proposal_regression_tests("behavior-p2")
+    monkeypatch.setenv("AI_OS_BEHAVIOR_TEST_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "http://localhost:8000/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "local-test-model")
+    monkeypatch.delenv("AI_OS_MODEL_API_KEY", raising=False)
+    from ai_os import behavior_testing
+    from ai_os.instruction_versions import activate_tested_proposal
+    monkeypatch.setattr(
+        behavior_testing, "generate_json",
+        lambda *args: ({
+            "status":"completed","summary":"Source fact","evidence":["https://example.test/official-product-changelog"],
+            "blockers":[],
+        }, {"backend":"openai_compatible","model":"local-test-model"}),
+    )
+    run_behavior_regression_test("behavior-p1", "source-grounded-research")
+    activate_tested_proposal("behavior-p2", actor="owner:test")
+    with pytest.raises(ValueError, match="baseline changed"):
+        activate_tested_proposal("behavior-p1", actor="owner:test")
