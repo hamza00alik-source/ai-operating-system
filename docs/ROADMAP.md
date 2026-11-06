@@ -42,6 +42,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Provider-neutral, opt-in OpenAI-compatible inference adapter (local endpoints permitted; no provider enabled by default)
 - [x] Task planner with dependency graph, agent assignment, handoffs, and execution records
 - [x] Durable scheduler and persistent worker process for bounded specialist execution
+- [x] Blocked dependency propagation and terminal run-state reconciliation
+- [x] Specialist step finalization when durable retries are exhausted
 - [x] Signed, run-bound specialist report capability and authenticated report acceptance
 - [ ] Broader role-based authorization for future worker tools and integrations
 
@@ -60,7 +62,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Payment-status verification only; no autonomous money movement
 
 ## Phase 5 — Operations and release
-- [ ] Dashboard and role-based access
+- [x] Read-only owner dashboard for agent, run, queue, approval, audit, and model status
+- [ ] Broader role-based access and operational dashboard hardening
 - [ ] Deployment profiles, backups, monitoring, and alerting
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide and operator handbook
