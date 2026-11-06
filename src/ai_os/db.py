@@ -225,4 +225,27 @@ def initialize_database() -> None:
             updated_at TEXT NOT NULL,
             FOREIGN KEY(active_version_id) REFERENCES agent_instruction_versions(id)
         );
+        CREATE TABLE IF NOT EXISTS instruction_behavior_test_runs (
+            id TEXT PRIMARY KEY,
+            proposal_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            fixture_id TEXT NOT NULL,
+            model TEXT NOT NULL,
+            active_version_id TEXT NOT NULL,
+            candidate_sha256 TEXT NOT NULL,
+            baseline_report_sha256 TEXT NOT NULL,
+            candidate_report_sha256 TEXT NOT NULL,
+            baseline_score INTEGER NOT NULL CHECK(baseline_score >= 0 AND baseline_score <= 100),
+            candidate_score INTEGER NOT NULL CHECK(candidate_score >= 0 AND candidate_score <= 100),
+            score_delta INTEGER NOT NULL,
+            baseline_passed INTEGER NOT NULL CHECK(baseline_passed IN (0,1)),
+            candidate_passed INTEGER NOT NULL CHECK(candidate_passed IN (0,1)),
+            no_regression INTEGER NOT NULL CHECK(no_regression IN (0,1)),
+            passed INTEGER NOT NULL CHECK(passed IN (0,1)),
+            details_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(proposal_id) REFERENCES improvement_proposals(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_instruction_behavior_tests_proposal_created
+            ON instruction_behavior_test_runs(proposal_id, created_at DESC);
         """)
