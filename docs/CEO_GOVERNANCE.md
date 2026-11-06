@@ -39,11 +39,11 @@ The repository includes `ai_os.identity`, a server-side HMAC-SHA256 identity pri
 
 Verification checks the signature, audience, issue/expiry times, run binding, and optional required capability. `consume_agent_token` additionally records the token nonce in SQLite under a unique constraint; concurrent or subsequent replay attempts fail closed. The database stores the consumed nonce, agent, run, and expiry. Expired nonce rows may be pruned operationally; pruning is not required for replay safety because nonce uniqueness is retained until rows are removed.
 
-This remains a security foundation, not an enabled autonomous execution system. There is no public token-issuance endpoint, no HTTP route currently trusts these tokens, and the worker still does not invoke AI models or external tools. Only trusted server code may call the issuer after resolving an enabled agent from the registry. Tokens must never be placed in prompts, work packets, client responses, or logs.
+This remains a security foundation, not an enabled autonomous external-action system. There is no public token-issuance endpoint. The specialist report route and the exact CEO approval ingress verify signed tokens; only trusted server code may mint them after resolving an enabled agent from the registry. Tokens must never be placed in prompts, work packets, client responses, or logs.
 
 The company-run step-report endpoint now requires an `X-AI-Agent-Token` header. It resolves the assigned agent from the persisted run step, then verifies the token against that exact agent ID, run ID, and the `step.report` capability before atomically consuming its nonce. Missing tokens are rejected, wrong-agent/wrong-run tokens are rejected, and a consumed token cannot be replayed. The endpoint records a separate audit event under the verified agent identity after a report is accepted.
 
-This is a narrow authenticated reporting boundary only. There is still no runtime component that mints tokens for real model workers, no autonomous model execution loop, and no general tool authorization gateway. The worker does not yet execute AI tasks. The approval API remains closed until a trusted CEO runtime, exact action-parameter binding, one-time approval consumption, and execution-time revalidation exist. No external action is enabled by this change.
+This is a narrow authenticated reporting boundary only. The model-backed specialist worker executes bounded analysis tasks, but there is still no general tool authorization gateway or external-action adapter. No external action is enabled.
 
 
 ## Exact-scope owner approval foundation
