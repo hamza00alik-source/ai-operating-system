@@ -16,13 +16,13 @@ The fixture dataset is exercised in CI without calling a model provider. It is i
 
 A passing result means only that the report met these structural and explicit safety checks. It does **not** establish factual accuracy, source authenticity, reasoning quality, market demand, or completeness. Those require source-aware and task-specific evaluation datasets, and eventually owner review.
 
-The evaluator itself remains a pure, provider-free function. Each model-backed specialist execution now stores its evaluation in SQLite, linked to the exact company run, step, and agent, with evaluator version, score, pass/fail result, individual checks, limitations, and timestamp. The owner-protected `GET /evaluations` endpoint returns bounded history and a summary; optional `agent_id` and `run_id` filters are supported. Evaluation records are included in the verified SQLite backup schema.
+Trend labels are deliberately cautious (`provisional_regression`, `provisional_improvement`, `no_clear_change`, or `insufficient_data`). A score change of at least five points sets a provisional signal; it does not automatically diagnose agent quality or trigger a change.\n\nThe evaluator itself remains a pure, provider-free function. Each model-backed specialist execution now stores its evaluation in SQLite, linked to the exact company run, step, and agent, with evaluator version, score, pass/fail result, individual checks, limitations, and timestamp. The owner-protected `GET /evaluations` endpoint returns bounded history and a summary; optional `agent_id` and `run_id` filters are supported. Evaluation records are included in the verified SQLite backup schema.
 
 ## Next stages
 
 1. Add task-specific datasets with expected evidence and rubric criteria.
 2. Persist evaluation outcomes with the run, specialist, evaluator version, and timestamp.
-3. Track quality trends across repeated tasks and detect regressions.
+3. Track quality trends across repeated tasks and detect regressions. The owner API and dashboard now compare the latest five evaluations with the previous five per agent; fewer than ten evaluations produce no signal. Signals are provisional because task difficulty is not recorded or normalized.
 4. Let the CEO propose prompt/workflow improvements with evidence and expected impact.
 5. Run candidate changes against the regression suite; keep the current version active on failure.
 6. Require owner approval before adopting changes that affect live behavior.
