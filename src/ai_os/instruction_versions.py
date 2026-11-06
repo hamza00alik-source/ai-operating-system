@@ -25,6 +25,31 @@ def _profile_hash(agent_id: str) -> str:
     return hashlib.sha256(profile.encode("utf-8")).hexdigest()
 
 
+def _baseline_snapshot(agent_id: str, profile_hash: str) -> dict:
+    """Describe the implicit empty baseline without writing during ordinary task dispatch."""
+    baseline_id = "baseline:" + hashlib.sha256(
+        (agent_id + ":" + profile_hash).encode("utf-8")
+    ).hexdigest()
+    return {
+        "agent_id": agent_id, "active_version_id": baseline_id, "version_number": 1,
+        "content": "", "content_sha256": hashlib.sha256(b"").hexdigest(),
+        "base_profile_sha256": profile_hash, "created_at": None,
+        "source_proposal_id": None, "profile_compatible": True,
+        "created_by": "system:baseline",
+    }
+
+
+def _read_head(db, agent_id: str):
+    return db.execute(
+        """SELECT h.agent_id,h.active_version_id,v.version_number,v.content,
+                  v.content_sha256,v.base_profile_sha256,v.created_at,v.source_proposal_id
+           FROM agent_instruction_heads h
+           JOIN agent_instruction_versions v ON v.id=h.active_version_id
+           WHERE h.agent_id=?""",
+        (agent_id,),
+    ).fetchone()
+
+
 def _ensure_head(db, agent_id: str, profile_hash: str) -> dict:
     head = db.execute(
         """SELECT h.agent_id,h.active_version_id,v.version_number,v.content,
@@ -63,7 +88,9 @@ def get_active_instruction(agent_id: str) -> dict:
     """Return the active addendum, failing closed if its upstream profile drifted."""
     profile_hash = _profile_hash(agent_id)
     with connect() as db:
-        head = _ensure_head(db, agent_id, profile_hash)
+        row = _read_head(db, agent_id)
+    head = dict(row) if row is not None else _baseline_snapshot(agent_id, profile_hash)
+    head["profile_compatible"] = head["base_profile_sha256"] == profile_hash
     if not head["profile_compatible"]:
         return {**head, "content": "", "notice": "Upstream profile changed; active addendum withheld pending owner review."}
     return {**head, "notice": "Versioned owner-approved addendum; OS governance always takes precedence."}
@@ -80,6 +107,9 @@ def get_instruction_history(agent_id: str, *, limit: int = 30) -> list[dict]:
                WHERE v.agent_id=? ORDER BY v.version_number DESC LIMIT ?""",
             (agent_id, bounded),
         ).fetchall()
+    if not rows:
+        return [{**_baseline_snapshot(agent_id, _profile_hash(agent_id)),
+                 "parent_version_id": None, "active": True}]
     return [{**dict(row), "active": bool(row["active"])} for row in rows]
 
 
