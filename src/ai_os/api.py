@@ -11,7 +11,10 @@ from ai_os.audit import append_event, list_events, verify_chain
 from ai_os.auth import authenticate_request
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
+from ai_os.approval_schemas import CEOApprovalRequestCreate, OwnerApprovalDecision
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
+from ai_os.approvals import (ApprovalSecurityError, create_owner_approval_request,
+                             decide_owner_approval, list_owner_approval_requests)
 from ai_os.agent_schemas import AgentOut, AgentProfileOut, PlanCreate, PlanOut
 from ai_os.registry import get_agent, list_agents, load_agent_profile
 from ai_os.orchestrator import build_plan
@@ -551,6 +554,71 @@ def post_task(payload: TaskCreate):
 @app.get("/tasks", response_model=list[TaskOut])
 def get_tasks():
     return list_tasks()
+
+@app.post("/ceo/approval-requests", status_code=201)
+def post_ceo_owner_approval_request(
+    payload: CEOApprovalRequestCreate,
+    agent_token: str | None = Header(default=None, alias="X-AI-Agent-Token"),
+):
+    """Accept an exact-scope approval request only from a signed CEO identity."""
+    if not agent_token:
+        raise HTTPException(status_code=401, detail="A signed CEO agent token is required.")
+    try:
+        approval = create_owner_approval_request(
+            agent_token,
+            action_type=payload.action_type,
+            parameters=payload.parameters,
+            ttl_seconds=payload.ttl_seconds,
+        )
+    except ApprovalSecurityError as exc:
+        message = str(exc)
+        status_code = 409 if "existing company run" in message else 403
+        raise HTTPException(status_code=status_code, detail=message) from exc
+    append_event(
+        "agent:company-orchestrator", "owner_approval_requested",
+        "owner_approval_request", approval["id"],
+        {"run_id": approval["run_id"], "action_type": approval["action_type"],
+         "action_hash": approval["action_hash"], "expires_at": approval["expires_at"]},
+    )
+    return approval
+
+
+@app.get("/owner/approval-requests")
+def get_owner_approval_requests(
+    status: str | None = Query(
+        default=None,
+        pattern=r"^(pending|approved|rejected|consumed|expired)$",
+    ),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    """Owner-only inbox for exact-scope CEO requests."""
+    return list_owner_approval_requests(status=status, limit=limit)
+
+
+@app.post("/owner/approval-requests/{approval_id}/decision")
+def post_owner_approval_decision(
+    approval_id: str, payload: OwnerApprovalDecision, request: Request
+):
+    """Record an explicit owner decision against the exact displayed action hash."""
+    actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required.")
+    try:
+        approval = decide_owner_approval(
+            approval_id,
+            action_hash=payload.action_hash,
+            decision=payload.decision,
+        )
+    except ApprovalSecurityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if approval is None:
+        raise HTTPException(status_code=404, detail="Owner approval request not found.")
+    append_event(
+        actor, "owner_approval_decided", "owner_approval_request", approval_id,
+        {"decision": payload.decision, "action_hash": approval["action_hash"]},
+    )
+    return approval
+
 
 @app.post("/approvals", response_model=ApprovalOut, status_code=201)
 def post_approval(payload: ApprovalCreate, request: Request):
