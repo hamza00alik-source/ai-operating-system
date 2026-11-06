@@ -66,3 +66,16 @@ Source-attributed research can be stored as a candidate, reviewed by the owner,
 and retained with its source metadata and audit history. The API does not
 automatically verify sources or promote agent output to trusted knowledge.
 See [docs/KNOWLEDGE_STORE.md](docs/KNOWLEDGE_STORE.md).
+
+
+## SQLite backups
+
+The project includes a local SQLite snapshot helper. It uses SQLite's online backup API, verifies the snapshot with `PRAGMA integrity_check`, checks for core application tables, and atomically replaces the destination file only after verification.
+
+Example from the repository root:
+
+```bash
+python -c "from ai_os.db_backup import create_database_backup; print(create_database_backup('./backups/ai-os.sqlite3'))"
+```
+
+Keep backups outside the live database path and protect them as sensitive company data. Copy verified backups to a separate, access-controlled location. The helper does not upload, encrypt, schedule, or retain backups automatically. Do not restore or replace a live database while application workers are active.
