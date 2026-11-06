@@ -357,3 +357,17 @@ def test_ceo_brain_rejects_blank_or_too_short_objective():
     with TestClient(app) as client:
         response = client.post("/ceo/plan", json={"objective": "   "})
     assert response.status_code == 422
+
+
+
+def test_owner_api_token_cannot_impersonate_ceo_for_approval_request(monkeypatch):
+    token = "test-owner-token-" + "x" * 40
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
+    with TestClient(app) as client:
+        response = client.post(
+            "/approvals",
+            json={"action": "publish_product", "details": "Attempt to bypass CEO identity"},
+            headers={"Authorization": "Bearer " + token},
+        )
+    assert response.status_code == 403
