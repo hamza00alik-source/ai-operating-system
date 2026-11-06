@@ -5,7 +5,6 @@ OS governance, versioned in SQLite, and activated only through an owner-authenti
 API after a passing static screen. History rows are immutable; rollback moves a head.
 """
 import hashlib
-import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
