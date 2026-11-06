@@ -77,3 +77,16 @@ Do not expose the service to the public internet until all of the following are 
 - End-to-end deployment and rollback test.
 
 The current single-owner token gate is not full RBAC. Keep the application local-only until the release gates are met.
+
+
+## WordPress site inventory (read-only)
+
+The optional WordPress connector uses HTTPS and a WordPress Application Password supplied through environment variables. It reads bounded page/post metadata only; it does not expose users or implement content, media, plugin, theme, or settings writes.
+
+Set these only on the private runtime host (never commit them):
+
+- `AI_OS_WORDPRESS_URL`
+- `AI_OS_WORDPRESS_USERNAME`
+- `AI_OS_WORDPRESS_APPLICATION_PASSWORD`
+
+Use a dedicated least-privilege WordPress account. The connector has no write methods, but WordPress Application Passwords inherit the account's permissions; create a read-only account or otherwise restrict the account before connecting. The API status is configuration metadata only and does not prove that the live site is reachable. No credentials are configured by this repository change.
