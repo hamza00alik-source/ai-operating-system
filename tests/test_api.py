@@ -393,3 +393,20 @@ def test_dashboard_is_backed_by_persisted_run_and_job_api():
         assert client.get("/company-runs").status_code == 200
         assert client.get("/jobs").status_code == 200
         assert client.get("/runtime").json()["external_actions_enabled"] is False
+
+
+def test_owner_dashboard_includes_agent_progress_and_refresh_features():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+        model_status = client.get("/models/status")
+    assert page.status_code == 200
+    assert 'api("/agents")' in page.text
+    assert 'api("/company-runs?limit=100")' in page.text
+    assert 'api("/jobs?limit=100")' in page.text
+    assert 'api("/approvals")' in page.text
+    assert 'api("/audit?limit=30")' in page.text
+    assert 'api("/models/status")' in page.text
+    assert "Queued work" in page.text
+    assert "setInterval" in page.text
+    assert model_status.status_code == 200
+    assert model_status.json()["makes_network_request"] is False
