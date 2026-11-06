@@ -118,11 +118,14 @@ def test_evaluation_trends_compare_equal_windows_and_label_difficulty_caveat(tmp
                 (f"step-{index}", index),
             )
     for index in range(10):
-        record_evaluation(
+        saved = record_evaluation(
             run_id="trend-run", step_key=f"step-{index}", agent_id="researcher",
             result={"score": 100 if index < 5 else 80, "passed": index < 5,
                     "critical_failures": [], "checks": [], "limitations": []},
         )
+        with connect() as db:
+            db.execute("UPDATE agent_evaluations SET created_at=? WHERE id=?",
+                       (f"2026-11-06T00:00:{index:02d}Z", saved["id"]))
     trend = evaluation_trends(agent_id="researcher")["trends"][0]
     assert trend["sample_size"] == 10
     assert trend["previous_average"] == 100
