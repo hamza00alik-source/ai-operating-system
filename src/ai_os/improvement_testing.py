@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from ai_os.db import connect
 
-BASELINE_POLICY_VERSION = "company-agent-policy-v1"
+SCREENING_POLICY_VERSION = "company-agent-policy-v1"
 MAX_CANDIDATE_CHARS = 4000
 _UNSAFE_PATTERNS = {
     "instruction_override": re.compile(
@@ -63,7 +63,7 @@ def run_proposal_regression_tests(proposal_id: str) -> dict | None:
         result = {
             "id": str(uuid4()),
             "proposal_id": proposal_id,
-            "baseline_policy_version": BASELINE_POLICY_VERSION,
+            "screening_policy_version": SCREENING_POLICY_VERSION,
             "candidate_sha256": digest,
             "passed": passed,
             "checks_json": json.dumps(checks, separators=(",", ":")),
@@ -76,9 +76,9 @@ def run_proposal_regression_tests(proposal_id: str) -> dict | None:
         }
         db.execute(
             """INSERT INTO improvement_test_runs
-            (id,proposal_id,baseline_policy_version,candidate_sha256,passed,
+            (id,proposal_id,screening_policy_version,candidate_sha256,passed,
              checks_json,limitations_json,created_at)
-            VALUES (:id,:proposal_id,:baseline_policy_version,:candidate_sha256,
+            VALUES (:id,:proposal_id,:screening_policy_version,:candidate_sha256,
                     :passed,:checks_json,:limitations_json,:created_at)""",
             {**result, "passed": int(passed)},
         )
