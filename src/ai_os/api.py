@@ -20,6 +20,7 @@ from ai_os.work_packets import build_work_packet
 from ai_os.queue_schemas import JobCreate, JobOut, WorkerRunOut
 from ai_os.queue import enqueue_job, list_jobs
 from ai_os.worker import run_once
+from ai_os.agent_runtime import schedule_ready_steps
 from ai_os.governance import evaluate_action
 from ai_os.governance_schemas import GovernanceEvaluateIn, GovernanceEvaluateOut
 from ai_os.runbooks import get_runbook, list_runbooks
@@ -284,6 +285,12 @@ def post_job(payload: JobCreate):
             raise HTTPException(status_code=422, detail="task must not be blank")
         if not isinstance(payload.payload.get("context", ""), str):
             raise HTTPException(status_code=422, detail="context must be a string")
+    elif payload.job_type == "execute_company_step":
+        if set(payload.payload) != {"run_id", "step_key"} or not all(
+            isinstance(payload.payload.get(key), str) and payload.payload[key].strip()
+            for key in ("run_id", "step_key")
+        ):
+            raise HTTPException(status_code=422, detail="payload requires only run_id and step_key")
     return enqueue_job(payload)
 
 @app.get("/jobs", response_model=list[JobOut])
@@ -292,6 +299,7 @@ def get_jobs(limit: int = Query(default=100, ge=1, le=500)):
 
 @app.post("/worker/run-once", response_model=WorkerRunOut)
 def post_worker_run_once():
+    schedule_ready_steps()
     return run_once()
 
 @app.post("/tasks", response_model=TaskOut, status_code=201)
