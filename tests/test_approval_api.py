@@ -155,6 +155,8 @@ def test_owner_dashboard_shows_exact_scope_approval_controls():
     assert "Approve exact action" in page.text
     assert "Reject" in page.text
     assert "This records approval only; it does not execute the external action." in page.text
+    assert "Execute approved draft" in page.text
+    assert '/owner/approval-requests/"+encodeURIComponent(id)+"/execute' in page.text
 
 
 
