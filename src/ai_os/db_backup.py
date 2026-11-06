@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import shutil
 from pathlib import Path
 
 from ai_os.audit import GENESIS, _event_hash
@@ -104,6 +105,60 @@ def create_database_backup(destination: str | Path) -> dict:
             "path": str(target),
             "size_bytes": target.stat().st_size,
             "verification": verification,
+        }
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def restore_database_backup(
+    backup_path: str | Path,
+    *,
+    destination: str | Path | None = None,
+    overwrite: bool = False,
+) -> dict:
+    """Restore a verified snapshot atomically; caller must stop all database writers.
+
+    Existing targets require an explicit overwrite=True acknowledgement. The
+    candidate copy is verified before replacement and never restored in place.
+    """
+    source = Path(backup_path).expanduser().resolve()
+    verification = verify_sqlite_backup(source)
+    if not verification["valid"]:
+        raise RuntimeError("Refusing to restore an invalid or incomplete SQLite backup.")
+    if destination is None:
+        raw = _database_path()
+        if raw == ":memory:":
+            raise ValueError("An in-memory database cannot be restored.")
+        target = Path(raw).expanduser().resolve()
+    else:
+        target = Path(destination).expanduser().resolve()
+    if source == target:
+        raise ValueError("Restore source and destination must differ.")
+    if target.exists() and not overwrite:
+        raise FileExistsError(
+            "Restore target already exists; pass overwrite=True after stopping the application."
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.restore.", suffix=".tmp", dir=target.parent
+    )
+    os.close(fd)
+    temporary = Path(temporary_name)
+    try:
+        shutil.copyfile(source, temporary)
+        candidate = verify_sqlite_backup(temporary)
+        if not candidate["valid"]:
+            raise RuntimeError("Restore candidate failed verification; target was not changed.")
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        return {
+            "restored": True,
+            "path": str(target),
+            "verification": candidate,
+            "operator_must_restart_service": True,
+            "writers_must_be_stopped": True,
         }
     finally:
         if temporary.exists():
