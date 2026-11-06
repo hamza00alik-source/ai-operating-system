@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from ai_os.api import app
 from ai_os.db import connect
 from ai_os.identity import issue_agent_token
+from ai_os.action_gateway import clear_action_adapters_for_tests
 
 
 def _setup(monkeypatch, tmp_path):
@@ -154,3 +155,70 @@ def test_owner_dashboard_shows_exact_scope_approval_controls():
     assert "Approve exact action" in page.text
     assert "Reject" in page.text
     assert "This records approval only; it does not execute the external action." in page.text
+
+
+
+def test_owner_executes_only_an_approved_wordpress_page_draft(tmp_path, monkeypatch):
+    clear_action_adapters_for_tests()
+    owner = _setup(monkeypatch, tmp_path)
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WORDPRESS_DRAFT_WRITES_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_WORDPRESS_URL", "https://site.example")
+    monkeypatch.setenv("AI_OS_WORDPRESS_USERNAME", "owner")
+    monkeypatch.setenv("AI_OS_WORDPRESS_APPLICATION_PASSWORD", "application-password")
+
+    import json
+    calls = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return json.dumps({
+                "id": 902, "status": "draft",
+                "link": "https://site.example/?page_id=902",
+                "title": {"rendered": "Owner-approved draft"},
+            }).encode()
+
+    def fake_open(request, timeout):
+        calls.append(request)
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    body = {
+        "action_type": "create_website_draft",
+        "parameters": {"title": "Owner-approved draft", "content": "<p>Reviewed content</p>"},
+    }
+    with TestClient(app) as client:
+        created = client.post(
+            "/ceo/approval-requests", json=body,
+            headers={"X-AI-Agent-Token": _ceo_token()},
+        )
+        assert created.status_code == 201
+        approval = created.json()
+        approved = client.post(
+            f"/owner/approval-requests/{approval['id']}/decision",
+            json={"decision": "approved", "action_hash": approval["action_hash"]},
+            headers=owner,
+        )
+        assert approved.status_code == 200
+
+        unauthorized = client.post(f"/owner/approval-requests/{approval['id']}/execute")
+        assert unauthorized.status_code == 401
+
+        executed = client.post(
+            f"/owner/approval-requests/{approval['id']}/execute", headers=owner
+        )
+        assert executed.status_code == 200
+        assert executed.json()["result"]["draft_page"]["status"] == "draft"
+        assert calls[0].get_method() == "POST"
+        assert json.loads(calls[0].data.decode())["status"] == "draft"
+
+        repeated = client.post(
+            f"/owner/approval-requests/{approval['id']}/execute", headers=owner
+        )
+        assert repeated.status_code == 409
