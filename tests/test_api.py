@@ -80,11 +80,7 @@ def test_job_queue_generates_packet_locally():
     with TestClient(app) as client:
         queued = client.post("/jobs", json={
             "job_type": "build_work_packet",
-            "payload": {
-                "agent_id": "product-trend-researcher",
-                "task": "Research international buying demand",
-                "context": "Find evidence of actual purchases."
-            },
+            "payload": {"agent_id": "product-trend-researcher", "task": "Research international buying demand", "context": "Find evidence of actual purchases."},
             "idempotency_key": "test-job-packet-001"
         })
         assert queued.status_code == 201
@@ -97,11 +93,7 @@ def test_job_queue_generates_packet_locally():
         assert "Research international buying demand" in result.json()["job"]["result"]["prompt_text"]
 
 def test_job_idempotency_returns_existing_job():
-    body = {
-        "job_type": "build_work_packet",
-        "payload": {"agent_id": "product-trend-researcher", "task": "Test idempotency"},
-        "idempotency_key": "test-job-idempotency-001"
-    }
+    body = {"job_type": "build_work_packet", "payload": {"agent_id": "product-trend-researcher", "task": "Test idempotency"}, "idempotency_key": "test-job-idempotency-001"}
     with TestClient(app) as client:
         first = client.post("/jobs", json=body)
         second = client.post("/jobs", json=body)
@@ -121,10 +113,11 @@ def test_job_rejects_incomplete_payload():
 
 def test_owner_token_is_required_when_configured(monkeypatch):
     monkeypatch.setenv("AI_OS_ENV", "development")
-    monkeypatch.setenv("AI_OS_API_TOKEN", "test-owner-token-" + "x" * 40)
+    token = "test-owner-token-" + "x" * 40
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
     with TestClient(app) as client:
         denied = client.get("/agents")
-        allowed = client.get("/agents", headers={"Authorization": "Bearer " + "test-owner-token-" + "x" * 40})
+        allowed = client.get("/agents", headers={"Authorization": "Bearer " + token})
     assert denied.status_code == 401
     assert allowed.status_code == 200
 
@@ -148,12 +141,8 @@ def test_audit_chain_records_requests_and_verifies():
 
 def test_ceo_is_single_owner_approval_gateway():
     with TestClient(app) as client:
-        specialist = client.post("/governance/evaluate", json={
-            "agent_id": "marketing-content-creator", "action": "publish_content"
-        })
-        ceo = client.post("/governance/evaluate", json={
-            "agent_id": "company-orchestrator", "action": "publish_content"
-        })
+        specialist = client.post("/governance/evaluate", json={"agent_id": "marketing-content-creator", "action": "publish_content"})
+        ceo = client.post("/governance/evaluate", json={"agent_id": "company-orchestrator", "action": "publish_content"})
     assert specialist.status_code == 200
     assert specialist.json()["decision"] == "escalate_to_ceo"
     assert specialist.json()["allowed"] is False
@@ -164,9 +153,7 @@ def test_ceo_is_single_owner_approval_gateway():
 
 def test_department_agents_can_do_allowlisted_internal_work():
     with TestClient(app) as client:
-        response = client.post("/governance/evaluate", json={
-            "agent_id": "product-trend-researcher", "action": "research"
-        })
+        response = client.post("/governance/evaluate", json={"agent_id": "product-trend-researcher", "action": "research"})
     assert response.status_code == 200
     assert response.json()["decision"] == "allowed_internal"
     assert response.json()["allowed"] is True
@@ -174,9 +161,7 @@ def test_department_agents_can_do_allowlisted_internal_work():
 
 def test_unknown_actions_fail_closed():
     with TestClient(app) as client:
-        response = client.post("/governance/evaluate", json={
-            "agent_id": "engineering-frontend-developer", "action": "run_unclassified_tool"
-        })
+        response = client.post("/governance/evaluate", json={"agent_id": "engineering-frontend-developer", "action": "run_unclassified_tool"})
     assert response.status_code == 200
     assert response.json()["decision"] == "blocked_unknown_action"
     assert response.json()["allowed"] is False
@@ -206,10 +191,7 @@ def test_agent_profile_endpoint_returns_source_instructions():
 
 def test_work_packet_includes_full_profile_and_ceo_reporting_rule():
     with TestClient(app) as client:
-        response = client.post("/work-packets", json={
-            "agent_id": "marketing-content-creator",
-            "task": "Draft a product launch content plan"
-        })
+        response = client.post("/work-packets", json={"agent_id": "marketing-content-creator", "task": "Draft a product launch content plan"})
     assert response.status_code == 201
     prompt = response.json()["prompt_text"]
     assert "FULL SPECIALIST PROFILE" in prompt
@@ -226,3 +208,60 @@ def test_all_agency_agents_runbooks_are_available_and_resolve_agents():
         startup = next(item for item in runbooks if item["slug"] == "startup-mvp")
         assert any("agents-orchestrator" in group["agents"] for group in startup["roster"])
         assert client.get("/runbooks/incident-response").status_code == 200
+
+def _company_run_payload():
+    return {
+        "title": "Validate a product opportunity",
+        "description": "CEO coordinates research then strategy.",
+        "steps": [
+            {"step_key": "research", "agent_id": "product-trend-researcher", "task": "Research current buyer demand"},
+            {"step_key": "strategy", "agent_id": "business-strategist", "task": "Recommend a product", "depends_on": ["research"]}
+        ]
+    }
+
+def test_company_run_persists_and_dispatches_only_ready_steps():
+    with TestClient(app) as client:
+        created = client.post("/company-runs", json=_company_run_payload())
+        assert created.status_code == 201, created.text
+        run = created.json()
+        assert run["status"] == "queued"
+        assert run["accountable_agent_id"] == "company-orchestrator"
+        assert len(run["steps"]) == 2
+        blocked = client.post(f"/company-runs/{run['id']}/steps/strategy/dispatch")
+        assert blocked.status_code == 409
+        first = client.post(f"/company-runs/{run['id']}/steps/research/dispatch")
+        assert first.status_code == 200
+        assert first.json()["status"] == "assigned"
+        assert first.json()["work_packet"]["api_called"] is False
+        report = client.post(f"/company-runs/{run['id']}/steps/research/report", json={
+            "status": "completed", "summary": "Found verified demand signals.",
+            "evidence": ["https://example.com/source"]
+        })
+        assert report.status_code == 200
+        second = client.post(f"/company-runs/{run['id']}/steps/strategy/dispatch")
+        assert second.status_code == 200
+        assert "CEO Agent" in second.json()["work_packet"]["prompt_text"]
+        report2 = client.post(f"/company-runs/{run['id']}/steps/strategy/report", json={
+            "status": "completed", "summary": "Opportunity recommendation ready."
+        })
+        assert report2.status_code == 200
+        final = client.get(f"/company-runs/{run['id']}")
+        assert final.status_code == 200
+        assert final.json()["status"] == "completed"
+
+def test_company_run_rejects_cycles_and_unknown_specialists():
+    with TestClient(app) as client:
+        cyclic = _company_run_payload()
+        cyclic["steps"][0]["depends_on"] = ["strategy"]
+        assert client.post("/company-runs", json=cyclic).status_code == 422
+        unknown = _company_run_payload()
+        unknown["steps"][0]["agent_id"] = "not-a-real-agent"
+        assert client.post("/company-runs", json=unknown).status_code == 422
+
+def test_company_run_report_requires_dispatched_step():
+    with TestClient(app) as client:
+        created = client.post("/company-runs", json=_company_run_payload()).json()
+        response = client.post(f"/company-runs/{created['id']}/steps/research/report", json={
+            "status": "completed", "summary": "Cannot report before assignment."
+        })
+        assert response.status_code == 409

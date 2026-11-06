@@ -50,6 +50,32 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status_created
             ON jobs(status, created_at);
+        CREATE TABLE IF NOT EXISTS company_runs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL CHECK(status IN ('queued','running','completed','blocked')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS company_run_steps (
+            run_id TEXT NOT NULL,
+            step_key TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            task TEXT NOT NULL,
+            context TEXT NOT NULL DEFAULT '',
+            depends_on_json TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL CHECK(status IN ('pending','assigned','completed','blocked')),
+            position INTEGER NOT NULL,
+            work_packet_json TEXT,
+            report_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(run_id, step_key),
+            FOREIGN KEY(run_id) REFERENCES company_runs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_company_run_steps_status
+            ON company_run_steps(run_id, status, position);
         CREATE TABLE IF NOT EXISTS audit_events (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT,
             id TEXT NOT NULL UNIQUE,

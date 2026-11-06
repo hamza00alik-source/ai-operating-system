@@ -22,6 +22,8 @@ from ai_os.worker import run_once
 from ai_os.governance import evaluate_action
 from ai_os.governance_schemas import GovernanceEvaluateIn, GovernanceEvaluateOut
 from ai_os.runbooks import get_runbook, list_runbooks
+from ai_os.execution_schemas import CompanyRunCreate, CompanyRunOut, StepReportCreate, StepOut
+from ai_os.execution import create_company_run, list_company_runs, get_company_run, dispatch_ready_step, submit_step_report
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ async def lifespan(_: FastAPI):
     initialize_database()
     yield
 
-app = FastAPI(title="AI Operating System", version="0.5.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
+app = FastAPI(title="AI Operating System", version="0.6.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
 
 @app.middleware("http")
 async def owner_auth_and_audit(request: Request, call_next):
@@ -154,6 +156,42 @@ def post_work_packet(payload: WorkPacketCreate):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.post("/company-runs", response_model=CompanyRunOut, status_code=201)
+def post_company_run(payload: CompanyRunCreate):
+    try:
+        return create_company_run(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.get("/company-runs", response_model=list[CompanyRunOut])
+def get_company_runs(limit: int = Query(default=100, ge=1, le=500)):
+    return list_company_runs(limit)
+
+@app.get("/company-runs/{run_id}", response_model=CompanyRunOut)
+def get_company_run_detail(run_id: str):
+    run = get_company_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Company run not found")
+    return run
+
+@app.post("/company-runs/{run_id}/steps/{step_key}/dispatch", response_model=StepOut)
+def post_company_step_dispatch(run_id: str, step_key: str):
+    try:
+        return dispatch_ready_step(run_id, step_key)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+@app.post("/company-runs/{run_id}/steps/{step_key}/report", response_model=StepOut)
+def post_company_step_report(run_id: str, step_key: str, payload: StepReportCreate):
+    try:
+        return submit_step_report(run_id, step_key, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 @app.post("/jobs", response_model=JobOut, status_code=201)
 def post_job(payload: JobCreate):
