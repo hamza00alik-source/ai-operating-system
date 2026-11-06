@@ -403,7 +403,7 @@ def test_owner_dashboard_includes_agent_progress_and_refresh_features():
     assert 'api("/agents")' in page.text
     assert 'api("/company-runs?limit=100")' in page.text
     assert 'api("/jobs?limit=100")' in page.text
-    assert 'api("/approvals")' in page.text
+    assert 'api("/owner/approval-requests?limit=50")' in page.text
     assert 'api("/knowledge?status=candidate&limit=30")' in page.text
     assert "Research review inbox" in page.text
     assert "reviewKnowledge" in page.text
