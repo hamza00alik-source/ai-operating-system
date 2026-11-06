@@ -1,0 +1,43 @@
+# Company Knowledge Store
+
+The knowledge store is a persistent runtime database feature. It does not place
+company research, private customer data, or strategy records in the public Git
+repository.
+
+## Evidence lifecycle
+
+1. Create a candidate with a title, factual note, category, source URL, source
+   title, optional publication date, confidence estimate, and tags.
+2. The system records when the source was entered and who entered it.
+3. Every new item starts with `status=candidate`.
+4. An owner-authenticated reviewer can accept or reject a candidate once, with
+   an optional review note.
+5. Accepted and rejected records are immutable through this API; a new
+   correction should be recorded as a new candidate with its own provenance.
+
+The API never fetches or verifies the source URL. A source link is provenance,
+not proof that the claim is true. Confidence is an explicitly supplied estimate,
+not a calibrated probability. Reviewers must inspect the source independently
+before accepting a claim.
+
+## API
+
+- `POST /knowledge` — create a candidate.
+- `GET /knowledge?status=candidate&category=market_research&limit=100` — list
+  candidates or reviewed records.
+- `GET /knowledge/{item_id}` — retrieve one record.
+- `POST /knowledge/{item_id}/review` — accept or reject a candidate.
+
+All endpoints are protected by the existing owner authentication middleware.
+The dashboard shell being public does not make these data endpoints public.
+The audit log records candidate creation and review decisions.
+
+## Current limitations
+
+- No autonomous web crawler or browser is connected.
+- No model automatically writes to the store yet; agent reports remain in their
+  run records until a separately authorized ingestion workflow is implemented.
+- There is no semantic search, deduplication, source freshness scoring, or
+  retrieval-augmented prompt injection yet.
+- The SQLite database is local runtime state and needs a backup/restore plan
+  before production use.
