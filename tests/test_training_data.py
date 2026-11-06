@@ -89,3 +89,8 @@ def test_training_candidate_rejects_obvious_personal_email_or_secret(training_db
             _payload(user_input="Use this customer email: person@example.com"),
             actor="owner",
         )
+    with pytest.raises(ValueError, match="credential or personal email"):
+        create_training_example(
+            _payload(source_refs=["https://example.test/source?contact=person@example.com"]),
+            actor="owner",
+        )
