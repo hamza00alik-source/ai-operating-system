@@ -55,8 +55,8 @@ def get_action_gateway_status() -> dict:
         "flag_enabled": enabled,
         "adapter_count": len(configured),
         "registered_actions": configured,
-        "external_actions_available": False,
-        "note": "No production adapter is registered by default; external actions remain unavailable.",
+        "external_actions_available": bool(enabled and configured),
+        "note": "Readiness requires both the explicit enable flag and a server-registered adapter.",
     }
 
 
