@@ -113,7 +113,10 @@ def test_same_proposal_cannot_create_duplicate_versions(tmp_path, monkeypatch):
 
 def test_upstream_profile_drift_withholds_addendum_and_blocks_activation(tmp_path, monkeypatch):
     _seed(tmp_path / "drift.sqlite3", monkeypatch)
-    baseline = get_active_instruction("product-trend-researcher")
+    get_active_instruction("product-trend-researcher")
+    from ai_os.instruction_versions import _ensure_head, _profile_hash
+    with connect() as db:
+        _ensure_head(db, "product-trend-researcher", _profile_hash("product-trend-researcher"))
     run_proposal_regression_tests("p1")
     monkeypatch.setattr(
         "ai_os.instruction_versions._profile_hash",
