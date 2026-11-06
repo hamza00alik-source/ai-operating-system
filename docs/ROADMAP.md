@@ -54,7 +54,8 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Source-attributed company knowledge candidates with owner review and audit trail
 - [x] Bounded keyword retrieval of owner-accepted knowledge with source context
 - [x] Agent-proposed knowledge candidates with source-context URL gate and owner review
-- [ ] Semantic retrieval, deduplication, and freshness scoring
+- [ ] Semantic retrieval with embeddings (still lexical and provider-free)
+- [x] Exact knowledge deduplication and publication-date freshness tie-breaker (heuristic only)
 - [ ] Retrieval with company/user access boundaries
 - [x] Deterministic specialist-report evaluation rubric and CI regression fixtures (structure/safety signals only)
 - [x] Persisted evaluation history and sample-gated quality trend API/dashboard
