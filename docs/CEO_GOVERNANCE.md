@@ -68,3 +68,8 @@ A CEO request token is consumed only after the action has passed canonical valid
 - Owner decision: `POST /owner/approval-requests/{id}/decision` requires the owner token and exact displayed hash, and supports one irreversible approve/reject decision.
 - Expired requests are marked expired. Action parameters are bounded and reject credential-like field names; integration connection IDs should be used instead of access credentials.
 - Approval is not execution. A future adapter must re-check the exact approved action immediately before acting, consume it once, and record the execution result. No such external adapter is enabled today.
+
+
+## Server-side action gateway
+
+The internal `ai_os.action_gateway` module adds a trusted adapter registry and execution-time approval consumption. It refuses execution unless `AI_OS_EXTERNAL_ACTIONS_ENABLED=true`, checks for a registered server-owned adapter before consuming approval, verifies the exact approved parameters, consumes the approval once, and audits adapter start/completion/failure. It is not exposed as an HTTP route. No production adapters are registered, the flag defaults to false, and no external action is currently executable. An adapter failure leaves the approval consumed and requires manual reconciliation; automatic retries are intentionally prohibited. See [ACTION_GATEWAY.md](ACTION_GATEWAY.md).
