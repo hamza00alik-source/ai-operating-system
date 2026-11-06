@@ -33,13 +33,17 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 - Create and list work tasks and approval requests.
 - Discover all imported specialists with `GET /agents` (CEO plus 283 Agency Agents profiles).
 - Read a specialist's complete source instructions with `GET /agents/{agent_id}/profile`.
-- Discover the pinned scenario team runbooks with `GET /runbooks` and `GET /runbooks/{slug}`.\n- Generate role-specific work packets that include the complete specialist profile and CEO reporting rules.
+- Discover the pinned scenario team runbooks with `GET /runbooks` and `GET /runbooks/{slug}`.
+- Generate role-specific work packets that include the complete specialist profile and CEO reporting rules.
 - Create deterministic plans with `POST /plans`.
 - Check free-first execution settings with `GET /runtime`.
 - Generate ready-to-paste agent prompts with `POST /work-packets`; this makes no model/API call.
 - Execute dependency-ready specialist steps through a durable worker queue when an owner-configured model endpoint is explicitly enabled.
 - Run a persistent worker process with `python -m ai_os.worker_service`; see [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
-- Persist task, company-run, report, queue, knowledge, and evaluation records in SQLite.\n- Inspect per-agent evaluation history and cautious sample-gated quality trends.\n- Draft evidence-linked CEO improvement proposals; owner approval is only for testing, never automatic adoption.\n- Run isolated static instruction-contract checks for owner-approved proposals; test results never activate changes.
+- Persist task, company-run, report, queue, knowledge, and evaluation records in SQLite.
+- Inspect per-agent evaluation history and cautious sample-gated quality trends.
+- Draft evidence-linked CEO improvement proposals; owner approval is only for testing, never automatic adoption.
+- Run isolated static instruction-contract checks for owner-approved proposals; test results never activate changes.
 
 See [docs/FREE_FIRST_EXECUTION.md](docs/FREE_FIRST_EXECUTION.md) for the no-API workflow, [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) for registry and planning, [docs/AGENCY_AGENTS_ADOPTION.md](docs/AGENCY_AGENTS_ADOPTION.md) for source adoption, and [docs/ROADMAP.md](docs/ROADMAP.md) for the implementation sequence.
 
