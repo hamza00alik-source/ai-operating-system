@@ -95,3 +95,64 @@ def test_evaluation_history_rejects_unknown_run_step(tmp_path, monkeypatch):
         record_evaluation(
             run_id="missing", step_key="missing", agent_id="researcher", result=result
         )
+
+
+
+def test_evaluation_trends_compare_equal_windows_and_label_difficulty_caveat(tmp_path, monkeypatch):
+    from ai_os.db import connect, initialize_database
+    from ai_os.evaluation import record_evaluation, evaluation_trends
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'trends.sqlite3'}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO company_runs (id,title,description,status,created_at,updated_at) "
+            "VALUES ('trend-run','Trend test','','running','2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')"
+        )
+        for index in range(10):
+            db.execute(
+                """INSERT INTO company_run_steps
+                (run_id,step_key,agent_id,task,context,depends_on_json,status,position,created_at,updated_at)
+                VALUES ('trend-run',?,'researcher','Task','','[]','completed',?,
+                        '2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')""",
+                (f"step-{index}", index),
+            )
+    for index in range(10):
+        record_evaluation(
+            run_id="trend-run", step_key=f"step-{index}", agent_id="researcher",
+            result={"score": 100 if index < 5 else 80, "passed": index < 5,
+                    "critical_failures": [], "checks": [], "limitations": []},
+        )
+    trend = evaluation_trends(agent_id="researcher")["trends"][0]
+    assert trend["sample_size"] == 10
+    assert trend["previous_average"] == 100
+    assert trend["recent_average"] == 80
+    assert trend["delta"] == -20
+    assert trend["signal"] == "provisional_regression"
+    assert any("difficulty" in note for note in trend["limitations"])
+
+
+def test_evaluation_trends_require_minimum_sample(tmp_path, monkeypatch):
+    from ai_os.db import connect, initialize_database
+    from ai_os.evaluation import record_evaluation, evaluation_trends
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'small-trends.sqlite3'}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO company_runs (id,title,description,status,created_at,updated_at) "
+            "VALUES ('small-run','Small trend','','running','2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')"
+        )
+        db.execute(
+            """INSERT INTO company_run_steps
+            (run_id,step_key,agent_id,task,context,depends_on_json,status,position,created_at,updated_at)
+            VALUES ('small-run','one','researcher','Task','','[]','completed',1,
+                    '2026-11-06T00:00:00Z','2026-11-06T00:00:00Z')"""
+        )
+    record_evaluation(
+        run_id="small-run", step_key="one", agent_id="researcher",
+        result={"score": 100, "passed": True, "critical_failures": [], "checks": [], "limitations": []},
+    )
+    trend = evaluation_trends(agent_id="researcher")["trends"][0]
+    assert trend["signal"] == "insufficient_data"
+    assert trend["delta"] is None
