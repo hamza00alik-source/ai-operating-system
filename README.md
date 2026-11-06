@@ -50,7 +50,7 @@ Approval records are workflow primitives, not a security sandbox. Do not connect
 
 - Provider-neutral OpenAI-compatible chat-completions adapter plus an optional owner-configured local CLI backend; neither is selected by default.
 - Model execution is disabled by default. The HTTP backend requires `AI_OS_MODEL_ENABLED=true`, `AI_OS_MODEL_BASE_URL`, and `AI_OS_MODEL_NAME`; the optional CLI backend requires `AI_OS_MODEL_BACKEND=command`, an executable, and a JSON argv template.
-- Remote HTTP endpoints must use HTTPS; localhost model servers may use HTTP. API keys are read only from environment variables. CLI execution uses `shell=False` but inherits the CLI's own permissions; verify a prompt-only/no-tools CLI profile before enabling it. See [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
+- Remote HTTP endpoints must use HTTPS; localhost model servers may use HTTP. API keys are read only from environment variables. CLI execution uses `shell=False` but inherits the CLI's own permissions; verify a prompt-only/no-tools CLI profile and set `AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED=true` before enabling it. See [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
 - `GET /models/status` checks readiness without contacting a provider.
 - `POST /worker/run-once` schedules ready company-run steps and executes one durable job; the persistent worker uses the same queue.
 - `python -m ai_os.worker_service` runs a separate polling worker process. It refuses to start unless model execution is enabled and configured.
