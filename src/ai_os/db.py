@@ -151,4 +151,23 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_owner_approval_status_expiry
             ON owner_approval_requests(status, expires_at);
+        CREATE TABLE IF NOT EXISTS agent_evaluations (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_key TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            evaluator_version TEXT NOT NULL,
+            score INTEGER NOT NULL CHECK(score >= 0 AND score <= 100),
+            passed INTEGER NOT NULL CHECK(passed IN (0,1)),
+            critical_failures_json TEXT NOT NULL,
+            checks_json TEXT NOT NULL,
+            limitations_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(run_id, step_key) REFERENCES company_run_steps(run_id, step_key)
+                ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_evaluations_agent_created
+            ON agent_evaluations(agent_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_agent_evaluations_run_created
+            ON agent_evaluations(run_id, created_at);
         """)
