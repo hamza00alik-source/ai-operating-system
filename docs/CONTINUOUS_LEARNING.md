@@ -23,8 +23,8 @@ Trend labels are deliberately cautious (`provisional_regression`, `provisional_i
 1. Add task-specific datasets with expected evidence and rubric criteria.
 2. Persist evaluation outcomes with the run, specialist, evaluator version, and timestamp.
 3. Track quality trends across repeated tasks and detect regressions. The owner API and dashboard now compare the latest five evaluations with the previous five per agent; fewer than ten evaluations produce no signal. Signals are provisional because task difficulty is not recorded or normalized.
-4. Let the CEO propose prompt/workflow improvements with evidence and expected impact.
+4. Let the CEO propose prompt/workflow improvements with evidence and expected impact. The current deterministic proposal generator drafts suggestions only after the same known rubric check fails at least twice for an agent in the recent evaluation sample. Owners can approve a proposal for testing or reject it; approval does not adopt or activate the change.
 5. Run candidate changes against the regression suite; keep the current version active on failure.
 6. Require owner approval before adopting changes that affect live behavior.
 
-No self-modification, autonomous policy changes, paid inference, or external actions are enabled by this evaluator.
+No self-modification, autonomous policy changes, paid inference, or external actions are enabled by this evaluator. Proposal generation is rule-based and advisory. The proposal lifecycle currently ends at `approved_for_testing`; an isolated candidate-instruction test harness and a separate owner-authorized adoption workflow are still future work.
