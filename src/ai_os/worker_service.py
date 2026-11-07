@@ -13,6 +13,7 @@ from collections.abc import Callable
 from ai_os.agent_runtime import schedule_ready_steps
 from ai_os.model_adapter import get_model_status
 from ai_os.worker import run_once
+from ai_os.db import initialize_database
 from ai_os.worker_control import get_worker_desired_state, heartbeat_worker
 
 logger = logging.getLogger("ai_os.worker_service")
@@ -66,6 +67,7 @@ def run_worker_loop(
 
 
 def main() -> None:
+    initialize_database()
     status = get_model_status()
     try:
         interval = int(os.getenv("AI_OS_WORKER_POLL_SECONDS", "3"))
