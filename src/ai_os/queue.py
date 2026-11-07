@@ -112,13 +112,15 @@ def claim_next_job(
 def finish_job(job_id: str, worker_id: str, result: dict) -> dict | None:
     now = _now()
     with connect() as db:
-        db.execute(
+        changed = db.execute(
             """UPDATE jobs SET status='completed', result_json=?, error=NULL,
                locked_at=NULL, locked_by=NULL, completed_at=?, updated_at=?
                WHERE id=? AND status='running' AND locked_by=?""",
             (json.dumps(result, separators=(",", ":"), sort_keys=True), now, now,
              job_id, worker_id),
-        )
+        ).rowcount
+        if changed != 1:
+            return None
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(row) if row else None
 
@@ -126,13 +128,15 @@ def finish_job(job_id: str, worker_id: str, result: dict) -> dict | None:
 def fail_job(job_id: str, worker_id: str, error: str) -> dict | None:
     now = _now()
     with connect() as db:
-        db.execute(
+        changed = db.execute(
             """UPDATE jobs SET status=CASE WHEN attempts >= max_attempts
                     THEN 'failed' ELSE 'queued' END,
                error=?, locked_at=NULL, locked_by=NULL, updated_at=?
                WHERE id=? AND status='running' AND locked_by=?""",
             (error[:2000], now, job_id, worker_id),
-        )
+        ).rowcount
+        if changed != 1:
+            return None
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(row) if row else None
 
