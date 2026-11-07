@@ -16,12 +16,12 @@ def test_control_plane_seeds_profile_catalog_and_distinguishes_live_runtime():
     assert "not proof of live worker processes" in status.json()["notice"]
     assert agents.status_code == 200
     assert any(item["agent_id"] == "company-orchestrator" for item in agents.json()["agents"])
-    assert any(item["agent_id"] == "product-trend-researcher" for item in agents.json()["agents"])
+    assert any(item["agent_id"] == "research-synthesist" for item in agents.json()["agents"])
 
 
 def test_control_plane_agent_detail_includes_ceo_reporting_relationship():
     with TestClient(app) as client:
-        response = client.get("/control-plane/agents/product-trend-researcher")
+        response = client.get("/control-plane/agents/research-synthesist")
 
     assert response.status_code == 200
     assert response.json()["department"] == "research"
@@ -35,11 +35,11 @@ def test_control_plane_agent_detail_includes_ceo_reporting_relationship():
 def test_control_plane_agent_can_be_disabled_and_reenabled():
     with TestClient(app) as client:
         disabled = client.patch(
-            "/control-plane/agents/product-trend-researcher",
+            "/control-plane/agents/research-synthesist",
             json={"enabled": False},
         )
         enabled = client.patch(
-            "/control-plane/agents/product-trend-researcher",
+            "/control-plane/agents/research-synthesist",
             json={"enabled": True},
         )
 
