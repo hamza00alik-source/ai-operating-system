@@ -8,16 +8,16 @@ from collections import Counter
 from ai_os.departments import get_department, list_departments
 from ai_os.execution import list_company_runs
 from ai_os.queue import list_jobs
-from ai_os.registry import get_agent, list_agents
+from ai_os.control_plane import get_effective_agent, list_effective_agents
 from ai_os.department_coordination import list_department_plans_for_runs
 
 
 def _department_agent_ids(department: dict) -> set[str]:
-    manager = get_agent(department["manager_agent_id"])
+    manager = get_effective_agent(department["manager_agent_id"])
     if manager is None:
         return set()
     return {
-        agent.id for agent in list_agents()
+        agent.id for agent in list_effective_agents()
         if agent.department == manager.department
     } | {manager.id}
 
