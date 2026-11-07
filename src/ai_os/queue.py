@@ -96,15 +96,16 @@ def finish_job(job_id: str, worker_id: str, result: dict) -> dict | None:
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(row) if row else None
 
-def fail_job(job_id: str, worker_id: str, error: str) -> dict | None:
+def fail_job(job_id: str, worker_id: str, error: str, *, retry: bool = True) -> dict | None:
+    """Fail a claimed job; non-retryable provider quota errors can stop immediately."""
     now = _now()
     with connect() as db:
         db.execute(
-            """UPDATE jobs SET status=CASE WHEN attempts >= max_attempts
+            """UPDATE jobs SET status=CASE WHEN ? = 0 OR attempts >= max_attempts
                     THEN 'failed' ELSE 'queued' END,
                error=?, locked_at=NULL, locked_by=NULL, updated_at=?
                WHERE id=? AND status='running' AND locked_by=?""",
-            (error[:2000], now, job_id, worker_id),
+            (1 if retry else 0, error[:2000], now, job_id, worker_id),
         )
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(row) if row else None
