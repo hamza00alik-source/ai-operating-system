@@ -6,8 +6,10 @@ from uuid import uuid4
 from ai_os.db import connect
 from ai_os.queue_schemas import JobCreate
 
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
 
 def _decode(row) -> dict:
     item = dict(row)
@@ -16,6 +18,7 @@ def _decode(row) -> dict:
     del item["payload_json"]
     del item["result_json"]
     return item
+
 
 def enqueue_job(payload: JobCreate) -> dict:
     now = _now()
@@ -39,6 +42,7 @@ def enqueue_job(payload: JobCreate) -> dict:
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(row)
 
+
 def list_jobs(limit: int = 100) -> list[dict]:
     with connect() as db:
         rows = db.execute(
@@ -46,8 +50,25 @@ def list_jobs(limit: int = 100) -> list[dict]:
         ).fetchall()
     return [_decode(row) for row in rows]
 
-def claim_next_job(worker_id: str, lease_seconds: int = 120) -> dict | None:
-    """Claim one queued or retryable job; SQLite IMMEDIATE serializes claimers."""
+
+def claim_next_job(
+    worker_id: str,
+    lease_seconds: int = 120,
+    allowed_job_types: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> dict | None:
+    """Claim one eligible queued/retryable job; SQLite IMMEDIATE serializes claimers.
+
+    When allowed_job_types is supplied, jobs outside that allowlist remain queued.
+    This lets a worker continue safe local tasks while model-backed execution is
+    disabled, without consuming and retrying specialist inference jobs.
+    """
+    if allowed_job_types is not None:
+        allowed = sorted({item for item in allowed_job_types if isinstance(item, str) and item})
+        if not allowed:
+            return None
+    else:
+        allowed = None
+
     now = datetime.now(timezone.utc)
     now_text = now.isoformat()
     expired_before = (now - timedelta(seconds=lease_seconds)).isoformat()
@@ -65,10 +86,14 @@ def claim_next_job(worker_id: str, lease_seconds: int = 120) -> dict | None:
                WHERE status='running' AND locked_at < ? AND attempts >= max_attempts""",
             (now_text, expired_before),
         )
-        row = db.execute(
-            """SELECT id FROM jobs WHERE status='queued' AND attempts < max_attempts
-               ORDER BY created_at ASC LIMIT 1"""
-        ).fetchone()
+        query = """SELECT id FROM jobs WHERE status='queued' AND attempts < max_attempts"""
+        parameters: list = []
+        if allowed is not None:
+            placeholders = ",".join("?" for _ in allowed)
+            query += f" AND job_type IN ({placeholders})"
+            parameters.extend(allowed)
+        query += " ORDER BY created_at ASC LIMIT 1"
+        row = db.execute(query, parameters).fetchone()
         if row is None:
             return None
         job_id = row["id"]
@@ -83,6 +108,7 @@ def claim_next_job(worker_id: str, lease_seconds: int = 120) -> dict | None:
         claimed = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(claimed)
 
+
 def finish_job(job_id: str, worker_id: str, result: dict) -> dict | None:
     now = _now()
     with connect() as db:
@@ -95,6 +121,7 @@ def finish_job(job_id: str, worker_id: str, result: dict) -> dict | None:
         )
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(row) if row else None
+
 
 def fail_job(job_id: str, worker_id: str, error: str) -> dict | None:
     now = _now()
