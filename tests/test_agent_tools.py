@@ -148,3 +148,30 @@ def test_specialist_tool_loop_enforces_call_limit(monkeypatch):
         agent_runtime._generate_specialist_response(
             "research-synthesist", "system", "task", max_tool_calls=2
         )
+
+
+
+def test_specialist_tool_loop_does_not_retry_provider_failures(monkeypatch):
+    from ai_os import agent_runtime
+
+    calls = []
+    def fail_once(*_):
+        calls.append("call")
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "true")
+    monkeypatch.setattr(agent_runtime, "generate_json", fail_once)
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        agent_runtime._generate_specialist_response(
+            "research-synthesist", "system", "task"
+        )
+    assert calls == ["call"]
+
+
+def test_specialist_tool_loop_hard_caps_configured_call_budget(monkeypatch):
+    from ai_os import agent_runtime
+
+    with pytest.raises(ValueError, match="zero to three"):
+        agent_runtime._generate_specialist_response(
+            "research-synthesist", "system", "task", max_tool_calls=4
+        )
