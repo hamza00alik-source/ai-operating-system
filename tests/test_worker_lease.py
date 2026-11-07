@@ -4,11 +4,17 @@ def test_worker_discards_result_when_lease_is_lost(monkeypatch):
     calls = {"finish": 0, "handler": 0}
 
     class FakeEvent:
+        def __init__(self):
+            self.value = False
+
         def set(self):
-            pass
+            self.value = True
+
+        def is_set(self):
+            return self.value
 
         def wait(self, _seconds):
-            return False
+            return self.value
 
     class FakeThread:
         def __init__(self, target, **kwargs):
@@ -55,6 +61,9 @@ def test_worker_does_not_report_success_if_finish_rejects_ownership(monkeypatch)
     class FakeEvent:
         def set(self):
             pass
+
+        def is_set(self):
+            return False
 
         def wait(self, _seconds):
             return True
