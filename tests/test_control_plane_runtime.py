@@ -131,3 +131,20 @@ def test_control_plane_overview_counts_runtime_instances():
 
     assert overview.status_code == 200
     assert overview.json()["runtime_instances_registered"] >= 1
+
+
+def test_runtime_without_recent_heartbeat_is_reported_stale():
+    from ai_os.db import connect
+
+    with TestClient(app) as client:
+        created = _register_worker(client)
+        runtime_id = created["runtime"]["runtime_id"]
+        with connect() as db:
+            db.execute(
+                "UPDATE control_plane_runtime_instances SET last_heartbeat_at=? WHERE runtime_id=?",
+                ("2000-01-01T00:00:00+00:00", runtime_id),
+            )
+        response = client.get(f"/control-plane/runtimes/{runtime_id}")
+
+    assert response.status_code == 200
+    assert response.json()["health"] == "stale"
