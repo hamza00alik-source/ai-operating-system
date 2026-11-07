@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import base64
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, field_validator
@@ -166,3 +167,303 @@ def get_storefront_status():
 def create_listing_packet(request: ListingPacketRequest):
     """Create a local listing draft only; never contacts or publishes to a channel."""
     return build_listing_packet(request)
+
+
+# Local canonical catalog, idempotent order ledger, and fulfillment review queue.
+import hashlib
+import hmac
+import json
+from datetime import datetime, timezone
+from uuid import uuid4
+
+from fastapi import Header, HTTPException, Request
+from ai_os.db import connect
+
+
+def initialize_commerce_storage() -> None:
+    with connect() as db:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS commerce_products (
+            id TEXT PRIMARY KEY,
+            sku TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            product_type TEXT NOT NULL,
+            files_json TEXT NOT NULL DEFAULT '[]',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            base_price TEXT,
+            currency TEXT,
+            status TEXT NOT NULL CHECK(status IN ('draft','approved','archived')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS commerce_listings (
+            id TEXT PRIMARY KEY,
+            product_id TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            packet_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('draft','approved_for_manual_upload','listed','paused')),
+            external_listing_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(product_id, channel),
+            FOREIGN KEY(product_id) REFERENCES commerce_products(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS commerce_orders (
+            id TEXT PRIMARY KEY,
+            channel TEXT NOT NULL,
+            external_order_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            payment_status TEXT NOT NULL,
+            currency TEXT NOT NULL,
+            total TEXT NOT NULL,
+            items_json TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(channel, external_order_id)
+        );
+        CREATE TABLE IF NOT EXISTS commerce_fulfillment (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL CHECK(status IN ('awaiting_review','ready_after_payment_check','fulfilled_manually','blocked')),
+            delivery_note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(order_id) REFERENCES commerce_orders(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_commerce_orders_channel_status
+            ON commerce_orders(channel, status, received_at DESC);
+        """)
+
+
+class CatalogProductCreate(BaseModel):
+    sku: str = Field(min_length=2, max_length=80, pattern=r"^[A-Za-z0-9._-]+$")
+    title: str = Field(min_length=1, max_length=140)
+    description: str = Field(min_length=1, max_length=12000)
+    product_type: str = Field(min_length=1, max_length=80)
+    file_names: list[str] = Field(default_factory=list, max_length=30)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    base_price: str | None = Field(default=None, max_length=24)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _json(row):
+    return dict(row) if row else None
+
+
+@router.post("/catalog/products", status_code=201)
+def create_catalog_product(payload: CatalogProductCreate, request: Request):
+    # Canonical records are saved as drafts. No marketplace or store is contacted.
+    packet = ListingPacketRequest(
+        channel="woocommerce", title=payload.title, description=payload.description,
+        product_type=payload.product_type, file_names=payload.file_names,
+        tags=payload.tags, price=payload.base_price, currency=payload.currency,
+    )
+    now, product_id = _now(), str(uuid4())
+    with connect() as db:
+        try:
+            db.execute(
+                """INSERT INTO commerce_products
+                (id,sku,title,description,product_type,files_json,tags_json,base_price,currency,status,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,'draft',?,?)""",
+                (product_id, payload.sku, packet.title, packet.description, packet.product_type,
+                 json.dumps(packet.file_names), json.dumps(packet.tags), packet.price,
+                 packet.currency, now, now),
+            )
+        except Exception as exc:
+            if "UNIQUE constraint failed" in str(exc):
+                raise HTTPException(status_code=409, detail="SKU already exists.") from exc
+            raise
+    append_event(getattr(request.state, "actor", "unknown"), "commerce_product_drafted",
+                 "commerce_product", product_id, {"sku": payload.sku})
+    return {"id": product_id, "sku": payload.sku, "title": payload.title, "status": "draft"}
+
+
+@router.get("/catalog/products")
+def list_catalog_products(limit: int = Query(default=100, ge=1, le=500)):
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM commerce_products ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return {"products": [
+        {**dict(row), "files": json.loads(row["files_json"]), "tags": json.loads(row["tags_json"])}
+        for row in rows
+    ]}
+
+
+@router.post("/catalog/products/{product_id}/listing-packets", status_code=201)
+def create_product_listing_packet(product_id: str, channel: str, request: Request):
+    with connect() as db:
+        product = db.execute("SELECT * FROM commerce_products WHERE id=?", (product_id,)).fetchone()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found.")
+        if channel not in CHANNELS:
+            raise HTTPException(status_code=422, detail="Unsupported storefront channel.")
+        payload = ListingPacketRequest(
+            channel=channel, title=product["title"], description=product["description"],
+            product_type=product["product_type"], file_names=json.loads(product["files_json"]),
+            tags=json.loads(product["tags_json"]), price=product["base_price"],
+            currency=product["currency"],
+        )
+        packet = build_listing_packet(payload)
+        now, listing_id = _now(), str(uuid4())
+        try:
+            db.execute(
+                """INSERT INTO commerce_listings
+                (id,product_id,channel,packet_json,status,created_at,updated_at)
+                VALUES (?,?,?,?, 'draft',?,?)""",
+                (listing_id, product_id, channel, json.dumps(packet), now, now),
+            )
+        except Exception as exc:
+            if "UNIQUE constraint failed" in str(exc):
+                raise HTTPException(status_code=409, detail="A listing packet already exists for this product and channel.") from exc
+            raise
+    append_event(getattr(request.state, "actor", "unknown"), "commerce_listing_packet_created",
+                 "commerce_listing", listing_id, {"product_id": product_id, "channel": channel})
+    return {"id": listing_id, **packet}
+
+
+@router.get("/listings")
+def list_commerce_listings(limit: int = Query(default=100, ge=1, le=500)):
+    with connect() as db:
+        rows = db.execute(
+            """SELECT l.*, p.sku, p.title AS product_title
+            FROM commerce_listings l JOIN commerce_products p ON p.id=l.product_id
+            ORDER BY l.created_at DESC LIMIT ?""", (limit,)
+        ).fetchall()
+    return {"listings": [
+        {**dict(row), "packet": json.loads(row["packet_json"])} for row in rows
+    ]}
+
+
+def _normalize_order(channel: str, raw: dict) -> dict:
+    external_id = str(raw.get("id", "")).strip()
+    if not external_id or len(external_id) > 120:
+        raise HTTPException(status_code=422, detail="Order ID is required.")
+    status = str(raw.get("status", "unknown"))[:40]
+    payment = "paid" if status in {"processing", "completed"} else "unverified"
+    currency = str(raw.get("currency", "USD")).upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        currency = "XXX"
+    total = str(raw.get("total", "0"))
+    if not re.fullmatch(r"(?:0|[1-9][0-9]{0,9})(?:[.][0-9]{1,2})?", total):
+        total = "0"
+    items = []
+    for item in raw.get("line_items", [])[:100]:
+        if not isinstance(item, dict):
+            continue
+        items.append({
+            "product_id": str(item.get("product_id", ""))[:80],
+            "name": str(item.get("name", ""))[:180],
+            "quantity": max(0, min(int(item.get("quantity", 0) or 0), 10000)),
+            "total": str(item.get("total", "0"))[:24],
+        })
+    return {"external_order_id": external_id, "status": status, "payment_status": payment,
+            "currency": currency, "total": total, "items": items}
+
+
+def ingest_order(channel: str, raw: dict) -> dict:
+    normalized = _normalize_order(channel, raw)
+    now = _now()
+    with connect() as db:
+        existing = db.execute(
+            "SELECT id FROM commerce_orders WHERE channel=? AND external_order_id=?",
+            (channel, normalized["external_order_id"]),
+        ).fetchone()
+        if existing:
+            order_id = existing["id"]
+            db.execute(
+                """UPDATE commerce_orders SET status=?,payment_status=?,currency=?,total=?,items_json=?,updated_at=?
+                WHERE id=?""",
+                (normalized["status"], normalized["payment_status"], normalized["currency"],
+                 normalized["total"], json.dumps(normalized["items"]), now, order_id),
+            )
+            created = False
+        else:
+            order_id = str(uuid4())
+            db.execute(
+                """INSERT INTO commerce_orders
+                (id,channel,external_order_id,status,payment_status,currency,total,items_json,received_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (order_id, channel, normalized["external_order_id"], normalized["status"],
+                 normalized["payment_status"], normalized["currency"], normalized["total"],
+                 json.dumps(normalized["items"]), now, now),
+            )
+            db.execute(
+                """INSERT INTO commerce_fulfillment
+                (id,order_id,status,created_at,updated_at) VALUES (?,?, 'awaiting_review',?,?)""",
+                (str(uuid4()), order_id, now, now),
+            )
+            created = True
+    return {"id": order_id, "channel": channel, "external_order_id": normalized["external_order_id"],
+            "payment_status": normalized["payment_status"], "created": created,
+            "fulfillment_status": "awaiting_review"}
+
+
+@router.post("/webhooks/woocommerce", status_code=202)
+async def receive_woocommerce_order_webhook(request: Request, x_wc_webhook_signature: str = Header(default="")):
+    secret = os.getenv("AI_OS_WOOCOMMERCE_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail="WooCommerce webhook secret is not configured.")
+    body = await request.body()
+    expected = base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
+    if not x_wc_webhook_signature or not hmac.compare_digest(expected, x_wc_webhook_signature):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature.")
+    try:
+        payload = json.loads(body)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Expected an order object.")
+    result = ingest_order("woocommerce", payload)
+    append_event("woocommerce_webhook", "commerce_order_ingested", "commerce_order",
+                 result["id"], {"external_order_id": result["external_order_id"],
+                                "payment_status": result["payment_status"], "created": result["created"]})
+    return result
+
+
+@router.get("/orders")
+def list_commerce_orders(limit: int = Query(default=100, ge=1, le=500)):
+    with connect() as db:
+        rows = db.execute(
+            """SELECT o.*, f.status AS fulfillment_status
+            FROM commerce_orders o LEFT JOIN commerce_fulfillment f ON f.order_id=o.id
+            ORDER BY o.received_at DESC LIMIT ?""", (limit,)
+        ).fetchall()
+    return {"orders": [
+        {**dict(row), "items": json.loads(row["items_json"])} for row in rows
+    ]}
+
+
+@router.get("/fulfillment")
+def list_fulfillment_queue(limit: int = Query(default=100, ge=1, le=500)):
+    with connect() as db:
+        rows = db.execute(
+            """SELECT f.*, o.channel, o.external_order_id, o.payment_status, o.status AS order_status
+            FROM commerce_fulfillment f JOIN commerce_orders o ON o.id=f.order_id
+            ORDER BY f.created_at DESC LIMIT ?""", (limit,)
+        ).fetchall()
+    return {"fulfillment": [dict(row) for row in rows],
+            "policy": "No delivery is performed automatically. Verify payment and product entitlement before manual fulfillment."}
+
+
+@router.get("/overview")
+def commerce_overview():
+    with connect() as db:
+        products = db.execute("SELECT status,COUNT(*) AS count FROM commerce_products GROUP BY status").fetchall()
+        listings = db.execute("SELECT status,COUNT(*) AS count FROM commerce_listings GROUP BY status").fetchall()
+        orders = db.execute("SELECT channel,payment_status,COUNT(*) AS count FROM commerce_orders GROUP BY channel,payment_status").fetchall()
+        fulfillment = db.execute("SELECT status,COUNT(*) AS count FROM commerce_fulfillment GROUP BY status").fetchall()
+    return {
+        "storefronts": storefront_status()["storefronts"],
+        "products": {row["status"]: row["count"] for row in products},
+        "listings": {row["status"]: row["count"] for row in listings},
+        "orders": [dict(row) for row in orders],
+        "fulfillment": {row["status"]: row["count"] for row in fulfillment},
+        "payout_reconciliation": "not_connected_no_payout_data",
+        "automated_fulfillment": False,
+    }
