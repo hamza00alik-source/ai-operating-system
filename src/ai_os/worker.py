@@ -1,10 +1,11 @@
 """Durable worker for local jobs and model-backed specialist steps."""
 from uuid import uuid4
+from threading import Event, Thread
 
 from ai_os.agent_runtime import execute_company_step
 from ai_os.department_coordination import review_department_plan
 from ai_os.execution import mark_company_step_blocked
-from ai_os.queue import claim_next_job, fail_job, finish_job
+from ai_os.queue import claim_next_job, fail_job, finish_job, renew_job_lease
 from ai_os.work_packets import build_work_packet
 
 
@@ -49,6 +50,16 @@ def run_once(worker_id: str | None = None) -> dict:
     job = claim_next_job(worker_id)
     if job is None:
         return {"processed": False, "job": None, "notice": "No queued job is available."}
+
+    stop_heartbeat = Event()
+
+    def maintain_lease():
+        while not stop_heartbeat.wait(30):
+            if not renew_job_lease(job["id"], worker_id, lease_seconds=120):
+                return
+
+    heartbeat_thread = Thread(target=maintain_lease, name=f"lease-{job['id'][:8]}", daemon=True)
+    heartbeat_thread.start()
     try:
         handler = HANDLERS.get(job["job_type"])
         if handler is None:
@@ -72,3 +83,6 @@ def run_once(worker_id: str | None = None) -> dict:
         )
         return {"processed": True, "job": failed,
                 "notice": "Unexpected error recorded; no external action was attempted."}
+    finally:
+        stop_heartbeat.set()
+        heartbeat_thread.join(timeout=1)
