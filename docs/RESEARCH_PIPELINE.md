@@ -1,40 +1,34 @@
-# Opt-in web research
+# Research pipeline
 
-## Current behavior
+## Free release-feed collection
 
-The research adapter uses Exa's official `POST https://api.exa.ai/search` endpoint.
-It is **disabled by default** because Exa is a metered service. No key is bundled,
-no fallback provider is silently selected, and no search runs on startup or in
-the background. The API accepts at most five results per manually requested
-search and requests result highlights only.
+`POST /research/feeds` searches a fixed allowlist of six public GitHub Atom
+release feeds for relevant release notes. It does not require an API key or a
+paid search provider. It is manually initiated by the owner, not scheduled or
+run at application startup. It makes at most six requests, each with a
+12-second timeout and one-megabyte response limit; redirects are rejected.
+Only HTTPS GitHub release links are retained. XML DTD/entity declarations
+are rejected, and results are limited to 30 candidates per request.
 
-Enable it only after the owner has independently reviewed current provider
-pricing and explicitly chosen to permit charges on the private runtime:
+The feed scan is not general-purpose web search. It covers releases from
+LangGraph, CrewAI, Prefect, FastAPI, WooCommerce and WordPress. It may miss
+relevant announcements outside those feeds and may return no results if a
+source is unavailable. Query matching is lexical, not semantic.
 
-- Set `AI_OS_RESEARCH_ENABLED=true`.
-- Set `EXA_API_KEY` as a private environment secret; never commit it.
-- Keep the API protected by the owner token.
+All matches are saved as unreviewed knowledge candidates. Feed content is
+untrusted data: it cannot issue instructions, create tasks, modify code, or
+trigger business actions. Owners review candidates in the dashboard.
+Existing source URLs are deduplicated across the knowledge library.
 
-When disabled or missing a key, `GET /research/status` reports the reason and
-`POST /research/search` fails closed without contacting Exa.
+## Optional metered Exa search
 
-## Evidence and trust boundary
+The Exa adapter remains separate, disabled by default, and requires both
+`AI_OS_RESEARCH_ENABLED=true` and a private `EXA_API_KEY`. It is not called
+by the free feed endpoint and no fallback or automatic paid search occurs.
 
-Each result with an HTTPS URL, title, and non-empty highlight becomes a
-`candidate` knowledge item. It records the source URL/title, publication date
-when supplied, access time, and the query tags. Search ranking, highlights,
-and publication dates are not proof of truth. Candidates remain unavailable
-to specialist retrieval until an owner reviews and accepts them through the
-existing `/knowledge/{item_id}/review` workflow.
+## Current limitations
 
-The system does not crawl arbitrary URLs, execute page content, follow links,
-publish reports, create business tasks automatically, or accept provider
-content as instructions. Search errors are sanitized; API keys are not returned
-in status or logs. A single request makes at most one provider call; there are
-no retries or hidden fallback calls.
-
-## Zero-budget mode
-
-Leave the feature disabled. The existing owner-reviewed `POST /knowledge`
-workflow remains available for manually supplied source notes. This does not
-provide autonomous web discovery, but it creates no search-provider charges.
+There is no autonomous daily scheduler or automatic task creation yet.
+The current endpoints are owner-initiated. The next milestone is to let the
+CEO synthesize only owner-accepted sources into proposed tasks, with every
+task proposal requiring owner review before execution.
