@@ -47,8 +47,23 @@ def initialize_database() -> None:
             details TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS agents (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            department TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+        """)
+        task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
+        if "assigned_agent_id" not in task_columns:
+            connection.execute("ALTER TABLE tasks ADD COLUMN assigned_agent_id TEXT")
+        connection.executescript("""
         CREATE INDEX IF NOT EXISTS idx_audit_events_created_at
             ON audit_events(created_at);
         CREATE INDEX IF NOT EXISTS idx_audit_events_entity
             ON audit_events(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_tasks_assigned_agent
+            ON tasks(assigned_agent_id);
         """)
