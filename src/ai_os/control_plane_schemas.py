@@ -33,3 +33,24 @@ class EndpointCreate(BaseModel):
         if len(value) > 160 or any(ch.isspace() for ch in value):
             raise ValueError("credential_ref must be a short reference")
         return value
+
+class RuntimeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    runtime_name: str = Field(min_length=1, max_length=100)
+    runtime_kind: Literal["worker", "agent"]
+    agent_id: str | None = Field(default=None, max_length=120)
+
+    @field_validator("runtime_name")
+    @classmethod
+    def clean_runtime_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("runtime_name must not be blank")
+        return value
+
+
+class RuntimeHeartbeat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    runtime_id: str = Field(min_length=1, max_length=120)
+    status: Literal["starting", "idle", "working", "paused", "stopped", "error"]
+    current_job_id: str | None = Field(default=None, max_length=120)
