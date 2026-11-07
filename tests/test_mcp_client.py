@@ -57,11 +57,13 @@ def test_remote_tool_schema_is_bounded():
 
 
 def test_discovery_requires_enabled_mcp_endpoint(monkeypatch):
+    from ai_os import control_plane
+
     monkeypatch.setattr(
-        mcp_client, "_endpoint",
-        lambda _: {"endpoint_id": "ep", "protocol": "mcp", "enabled": False,
-                   "base_url": "https://mcp.example.org/mcp", "name": "disabled"},
+        control_plane, "list_control_plane_endpoints",
+        lambda: [{"endpoint_id": "ep", "protocol": "mcp", "enabled": False,
+                  "base_url": "https://mcp.example.org/mcp", "name": "disabled",
+                  "credential_ref": None}],
     )
-    monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org")
     with pytest.raises(mcp_client.MCPDiscoveryError, match="explicitly enabled"):
         asyncio.run(mcp_client.discover_mcp_tools("ep"))
