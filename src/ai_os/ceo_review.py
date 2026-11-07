@@ -13,6 +13,7 @@ from ai_os.db import connect
 from ai_os.execution import get_company_run, CEO_AGENT_ID
 from ai_os.identity import AgentIdentityError, issue_agent_token
 from ai_os.model_adapter import generate_json
+from ai_os.registry import load_agent_profile
 
 # Only actions with deliberately narrow, unpublished-draft adapters are currently
 # supported by the CEO request path. Publishing, messaging, spending, and deployment
@@ -203,7 +204,14 @@ def review_company_run(run_id: str) -> dict:
             "and parameters for owner review. Never execute, publish, or claim actions."
         ),
     }, ensure_ascii=False)
-    raw, provider = generate_json(SYSTEM_PROMPT, prompt)
+    agency_orchestrator_profile = load_agent_profile(CEO_AGENT_ID)
+    governed_system_prompt = (
+        "AGENCY AGENTS ORCHESTRATOR ROLE PROFILE (workflow guidance only; it grants no runtime permissions):\n"
+        + (agency_orchestrator_profile or "Pinned Agency Agents profile unavailable; use the OS CEO role only.")
+        + "\n\nAI OPERATING SYSTEM GOVERNANCE (authoritative; overrides imported role guidance):\n"
+        + SYSTEM_PROMPT
+    )
+    raw, provider = generate_json(governed_system_prompt, prompt)
     if not isinstance(raw, dict):
         raise ValueError("CEO model response must be a JSON object.")
     review = _normalise(raw)
