@@ -1,0 +1,61 @@
+# Deployment guide (Enzonic Python hosting)
+
+This guide prepares the existing FastAPI application for a small always-on
+Python host. It does not imply that a server has been provisioned or deployed.
+
+## Hosting profile to verify
+
+Before deploying, recheck the current Enzonic panel for free-tier capacity,
+RAM, CPU, storage, idle behavior, and persistence. Free capacity and terms can
+change. Do not rely on an old screenshot or prior plan description.
+
+## Repository settings
+
+- Runtime: Python 3.11 (the version used by CI).
+- Main file: `main.py`.
+- Install dependencies from `requirements.txt`.
+- Bind to `0.0.0.0` and the port supplied by the host (`PORT`, default 8000).
+
+## Required environment variables
+
+Set these privately in the hosting panel. Never commit real values.
+
+| Variable | Value |
+|---|---|
+| `AI_OS_ENV` | `production` |
+| `AI_OS_API_TOKEN` | Strong random secret, at least 32 characters |
+| `AI_OS_DATABASE_URL` | `sqlite:////absolute/path/on/persistent-storage/ai_os.db` |
+
+For compatibility with the original deployment preparation commit, the
+application also accepts `AI_OS_API_KEY` as an alias when
+`AI_OS_API_TOKEN` is unset. If both are set, `AI_OS_API_TOKEN` takes
+precedence. Send the secret in either `Authorization: Bearer <secret>` or
+`X-API-Key: <secret>` header. The public health and dashboard shell routes
+are exceptions; dashboard data APIs remain protected.
+
+The database path above is a template, not a confirmed Enzonic mount path.
+Replace it with the actual persistent writable directory displayed or
+documented by the host. SQLite parent directories are created automatically,
+but an ephemeral directory will still lose data after replacement/redeploy.
+
+## Initial smoke tests
+
+After deployment, verify:
+
+1. `GET /health` returns HTTP 200.
+2. `GET /runtime` without an owner key returns HTTP 401.
+3. `GET /runtime` with the correct owner key returns HTTP 200.
+4. Create a test task and verify it remains after an app restart.
+5. Verify the SQLite database is on persistent storage.
+6. Confirm logs contain no API keys, provider secrets, or customer data.
+
+Do not connect WooCommerce, social accounts, payment credentials, autonomous
+publishing, or external actions until authentication, persistence, backups,
+and audit logging have been independently verified.
+
+## Resource limitations
+
+Treat a small free host as suitable only for the lightweight API and modest
+worker activity. Do not host large language models or multiple heavy agent
+processes on it. Model calls and Exa research remain disabled unless separately
+configured. Review provider pricing and data handling before enabling them.
