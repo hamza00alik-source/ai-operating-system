@@ -116,3 +116,37 @@ def test_control_plane_routes_require_owner_token_when_configured(monkeypatch):
 
     assert denied.status_code == 401
     assert allowed.status_code == 200
+
+
+def test_control_plane_ceo_agent_cannot_be_disabled():
+    with TestClient(app) as client:
+        response = client.patch(
+            "/control-plane/agents/company-orchestrator",
+            json={"enabled": False},
+        )
+
+    assert response.status_code == 409
+    assert "cannot be disabled" in response.json()["detail"]
+
+
+def test_control_plane_rejects_raw_credential_values():
+    with TestClient(app) as client:
+        response = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Unsafe credential", "protocol": "mcp",
+                  "base_url": "https://example.com/mcp",
+                  "credential_ref": "sk-live-this-is-not-a-reference"},
+        )
+
+    assert response.status_code == 422
+
+
+def test_control_plane_rejects_unrecognized_endpoint_metadata():
+    with TestClient(app) as client:
+        response = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Metadata", "protocol": "internal",
+                  "metadata": {"description": "anything"}},
+        )
+
+    assert response.status_code == 422
