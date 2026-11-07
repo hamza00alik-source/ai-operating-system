@@ -461,3 +461,20 @@ def select_effective_agent(department: str):
         key=lambda agent: (agent.name.casefold(), agent.id),
     )
     return candidates[0] if candidates else None
+
+
+def filter_effective_agents(agents: list) -> list:
+    """Filter supplied registry profiles against one authoritative CP enabled-ID query."""
+    candidates = [agent for agent in agents if getattr(agent, "enabled", False)]
+    try:
+        with connect() as db:
+            rows = db.execute(
+                "SELECT agent_id FROM control_plane_agents WHERE enabled = 1"
+            ).fetchall()
+    except Exception as exc:
+        from sqlite3 import OperationalError
+        if isinstance(exc, OperationalError) and "no such table" in str(exc).lower():
+            return candidates
+        raise
+    enabled_ids = {row["agent_id"] for row in rows}
+    return [agent for agent in candidates if agent.id in enabled_ids]
