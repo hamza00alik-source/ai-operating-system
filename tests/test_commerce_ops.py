@@ -160,3 +160,36 @@ def test_paid_mapped_order_creates_one_internal_entitlement(monkeypatch, tmp_pat
     assert replay["created"] is False
     assert len(rows) == 1
     assert rows[0]["status"] == "awaiting_manual_delivery"
+
+
+def test_payout_statement_recording_validates_math_and_requires_owner(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-payout.sqlite'}")
+    owner_key = "y" * 64
+    monkeypatch.setenv("AI_OS_API_TOKEN", owner_key)
+    payload = {
+        "channel": "gumroad", "external_payout_id": "statement-001",
+        "currency": "USD", "gross_amount": "100.00",
+        "fee_amount": "10.00", "net_amount": "90.00",
+        "evidence_reference": "provider statement row 1",
+    }
+    with TestClient(app) as client:
+        denied = client.post("/commerce/payouts/records", json=payload)
+        invalid = client.post(
+            "/commerce/payouts/records",
+            json={**payload, "net_amount": "95.00"},
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+        created = client.post(
+            "/commerce/payouts/records", json=payload,
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+        confirmed = client.post(
+            f"/commerce/payouts/{created.json()['id']}/confirm-received",
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+    assert denied.status_code == 401
+    assert invalid.status_code == 422
+    assert created.status_code == 201
+    assert created.json()["status"] == "recorded_unverified"
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "owner_confirmed_received"
