@@ -99,3 +99,97 @@ def test_cli_backend_requires_no_tools_attestation_even_when_enabled(monkeypatch
     assert status["configured"] is False
     assert status["enabled"] is False
     assert status["reason"] == "confirm_cli_no_tools"
+
+
+
+def _enable_groq_free_only(monkeypatch, *, model="llama-3.3-70b-versatile"):
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "groq")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", model)
+    monkeypatch.setenv("AI_OS_MODEL_API_KEY", "test-secret")
+    monkeypatch.setenv("AI_OS_FREE_MODEL_ALLOWLIST", model)
+
+
+def test_free_only_groq_requires_exact_provider_endpoint_key_and_allowlisted_model(monkeypatch):
+    _enable_groq_free_only(monkeypatch)
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is True
+    assert status["configured"] is True
+    assert status["free_only"] is True
+    assert status["reason"] == "ready_free_only"
+
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://api.groq.com.evil.example/openai/v1")
+    assert model_adapter.get_model_status()["enabled"] is False
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "unlisted-model")
+    assert model_adapter.get_model_status()["reason"] == "free_only_configuration_rejected"
+
+
+def test_free_only_rejects_missing_key_and_non_groq_provider(monkeypatch):
+    _enable_groq_free_only(monkeypatch)
+    monkeypatch.delenv("AI_OS_MODEL_API_KEY")
+    assert model_adapter.get_model_status()["enabled"] is False
+    _enable_groq_free_only(monkeypatch)
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "other-provider")
+    assert model_adapter.get_model_status()["enabled"] is False
+
+
+def test_free_only_blocks_command_backend(monkeypatch):
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "command")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED", "true")
+    monkeypatch.setattr(model_adapter.shutil, "which", lambda value: "/usr/bin/agy")
+    assert model_adapter.get_model_status()["enabled"] is False
+
+
+def test_free_only_groq_sends_one_request_and_never_logs_secret(monkeypatch):
+    _enable_groq_free_only(monkeypatch)
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return json.dumps({
+                "choices": [{"message": {"content": json.dumps({
+                    "status": "completed", "summary": "Free-tier response"
+                })}}]
+            }).encode()
+
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(model_adapter.urllib.request, "urlopen", fake_urlopen)
+    result, metadata = model_adapter.generate_json("system", "task")
+    assert result["summary"] == "Free-tier response"
+    assert metadata["provider"] == "groq"
+    assert captured["request"].full_url == "https://api.groq.com/openai/v1/chat/completions"
+    assert captured["request"].get_header("Authorization") == "Bearer test-secret"
+    assert captured["request"].get_method() == "POST"
+
+
+def test_free_only_quota_error_is_not_retried_or_fallen_back(monkeypatch):
+    import urllib.error
+
+    _enable_groq_free_only(monkeypatch)
+    calls = []
+
+    def fail_once(request, timeout):
+        calls.append(request.full_url)
+        raise urllib.error.HTTPError(
+            request.full_url, 429, "rate limited", hdrs=None, fp=None
+        )
+
+    monkeypatch.setattr(model_adapter.urllib.request, "urlopen", fail_once)
+    with pytest.raises(RuntimeError, match="provider request failed"):
+        model_adapter.generate_json("system", "task")
+    assert len(calls) == 1
