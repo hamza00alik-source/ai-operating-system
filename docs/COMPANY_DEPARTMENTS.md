@@ -30,6 +30,19 @@ Workload membership is derived from the configured manager specialist's source d
 
 These endpoints are owner-authenticated and read-only. They do not assign new work, invoke a model, or run manager agents. The CEO overview is an operational visibility layer, not yet an autonomous coordination loop.
 
+## Manager delegation and review workflow
+
+The durable manager coordination endpoints now provide a first execution contract:
+
+- POST /company-runs/{run_id}/departments/{department_id}/plan — invokes the configured model with that department manager's pinned Agency Agents profile and asks it to create up to eight specialist tasks.
+- GET /company-runs/{run_id}/department-plans — lists persisted department plans and their status.
+- POST /company-runs/{run_id}/departments/{department_id}/review — after every delegated task is completed or blocked, asks the manager to assess the reports and record a CEO-facing summary.
+- POST /ceo/review/{run_id} now includes saved department-manager reviews in the CEO's consolidated review input.
+
+Plans are stored in SQLite and create durable pending company-run steps. Assignments are limited to enabled specialist profiles in the manager profile's source division; task keys, dependencies, and plan size are validated. Manager reviews are recommendations and escalations only. They cannot approve actions or bypass the CEO/owner approval gateway.
+
+These routes require a configured model provider; no model is configured or invoked by default. Creating a plan queues tasks but does not dispatch workers. The shared worker runtime still needs to be enabled to execute them. Manager review is only available after all delegated steps have terminal reports. This is request-driven coordination, not yet an always-running manager process or autonomous CEO loop.
+
 ## What the directory does — and does not do
 
 This is an organization and routing foundation. It resolves a named specialist
