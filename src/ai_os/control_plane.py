@@ -221,7 +221,7 @@ def control_plane_overview() -> dict:
         enabled_endpoints = db.execute("SELECT COUNT(*) FROM control_plane_endpoints WHERE enabled=1").fetchone()[0]
         relationships = db.execute("SELECT COUNT(*) FROM control_plane_relationships").fetchone()[0]
         runtimes = db.execute("SELECT COUNT(*) FROM control_plane_runtime_instances").fetchone()[0]
-        online_runtimes = db.execute("SELECT COUNT(*) FROM control_plane_runtime_instances WHERE revoked_at IS NULL AND last_heartbeat_at >= ?", ((datetime.now(timezone.utc) - timedelta(seconds=RUNTIME_HEARTBEAT_STALE_SECONDS)).isoformat(),)).fetchone()[0]
+        online_runtimes = db.execute("SELECT COUNT(*) FROM control_plane_runtime_instances WHERE revoked_at IS NULL AND status IN ('starting','idle','working','paused') AND last_heartbeat_at >= ?", ((datetime.now(timezone.utc) - timedelta(seconds=RUNTIME_HEARTBEAT_STALE_SECONDS)).isoformat(),)).fetchone()[0]
     return {
         "agent_profiles_registered": agents,
         "logical_agents_enabled": enabled,
