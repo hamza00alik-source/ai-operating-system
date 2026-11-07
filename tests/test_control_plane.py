@@ -218,3 +218,70 @@ def test_disabled_control_plane_agent_cannot_be_assigned_to_new_company_run():
                 "/control-plane/agents/research-synthesist",
                 json={"enabled": True},
             )
+
+
+
+def test_control_plane_capabilities_are_deny_by_default_and_owner_grantable():
+    with TestClient(app) as client:
+        denied = client.post(
+            "/control-plane/capabilities/evaluate",
+            json={"agent_id": "research-synthesist", "capability": "tool.research.read",
+                  "department_scope": "research"},
+        )
+        assert denied.status_code == 200
+        assert denied.json()["allowed"] is False
+        assert denied.json()["decision"] == "blocked_no_capability_grant"
+
+        granted = client.post(
+            "/control-plane/capabilities",
+            json={"agent_id": "research-synthesist", "capability": "tool.research.read",
+                  "department_scope": "research"},
+        )
+        assert granted.status_code == 201
+        assert granted.json()["capability"] == "tool.research.read"
+
+        allowed = client.post(
+            "/control-plane/capabilities/evaluate",
+            json={"agent_id": "research-synthesist", "capability": "tool.research.read",
+                  "department_scope": "research"},
+        )
+        revoked = client.delete(
+            "/control-plane/capabilities/" + granted.json()["grant_id"],
+        )
+        denied_again = client.post(
+            "/control-plane/capabilities/evaluate",
+            json={"agent_id": "research-synthesist", "capability": "tool.research.read",
+                  "department_scope": "research"},
+        )
+
+    assert allowed.json()["allowed"] is True
+    assert revoked.status_code == 200
+    assert revoked.json()["revoked"] is True
+    assert denied_again.json()["allowed"] is False
+
+
+def test_department_manager_broker_route_is_scoped_and_audited():
+    with TestClient(app) as client:
+        agents = client.get("/control-plane/agents", params={"department": "research"}).json()["agents"]
+        manager_id = "research-synthesist"
+        target = next(item for item in agents if item["agent_id"] != manager_id)
+        allowed = client.post(
+            "/control-plane/broker/evaluate",
+            json={"source_agent_id": manager_id, "target_agent_id": target["agent_id"]},
+        )
+        denied = client.post(
+            "/control-plane/broker/evaluate",
+            json={"source_agent_id": manager_id, "target_agent_id": "product-trend-researcher"},
+        )
+        self_route = client.post(
+            "/control-plane/broker/evaluate",
+            json={"source_agent_id": manager_id, "target_agent_id": manager_id},
+        )
+
+    assert allowed.status_code == 200
+    assert allowed.json()["allowed"] is True
+    assert allowed.json()["decision"] == "allowed_manager_scope"
+    assert denied.json()["allowed"] is False
+    assert denied.json()["decision"] == "blocked_department_scope"
+    assert self_route.json()["allowed"] is False
+    assert self_route.json()["decision"] == "blocked_self_route"
