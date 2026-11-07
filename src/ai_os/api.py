@@ -25,6 +25,7 @@ from ai_os.registry import get_agent, list_agents, load_agent_profile
 from ai_os.departments import get_department, list_departments
 from ai_os.department_management import get_company_overview, get_department_workload
 from ai_os.department_coordination import (create_department_plan, get_department_plan, list_department_plans, review_department_plan)
+from ai_os.ceo_delegation import delegate_ceo_selected_departments
 from ai_os.orchestrator import build_plan
 from ai_os.manual_schemas import WorkPacketCreate, WorkPacketOut, RuntimeStatus
 from ai_os.work_packets import build_work_packet
@@ -838,6 +839,28 @@ def post_ceo_review(run_id: str):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.post("/ceo/plans/{run_id}/delegate")
+def post_ceo_plan_department_delegation(run_id: str, request: Request):
+    """CEO delegates only to department managers explicitly selected in its plan."""
+    try:
+        result = delegate_ceo_selected_departments(run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ModelNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    append_event(
+        getattr(request.state, "actor", "unknown"),
+        "ceo_department_delegation_completed", "company_run", run_id,
+        {"selected_departments": result["selected_departments"],
+         "delegation_count": len(result["delegations"])},
+    )
+    return result
+
 
 @app.get("/ceo/plans/{run_id}", response_model=CEOPlanOut)
 def get_ceo_plan_detail(run_id: str):
