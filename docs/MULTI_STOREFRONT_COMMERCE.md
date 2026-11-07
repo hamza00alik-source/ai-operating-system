@@ -60,7 +60,7 @@ Order events are idempotent on (channel, external_order_id). A WooCommerce order
 - Marketplace account OAuth/token verification and country-specific payout onboarding.
 - Gumroad/itch.io/CGTrader/Fab/Etsy live order connectors.
 - Automated digital file hosting, expiring download links, license issuance, email delivery, and retries.
-- Marketplace payout statements, fee schedules, refund reconciliation, tax reporting, and cash-received ledger.
+- Automated payout statement imports, per-sale fee allocation, refund/dispute reconciliation, tax reporting, and bank/Payoneer settlement verification. A manual owner-entered payout record exists, but it is not an automated reconciliation.
 - Automated product sync or publication. The owner dashboard reports status but does not publish.
 
 
