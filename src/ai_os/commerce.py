@@ -328,6 +328,28 @@ def create_product_listing_packet(product_id: str, channel: str, request: Reques
     return {"id": listing_id, **packet}
 
 
+@router.post("/listings/{listing_id}/approve-manual-upload")
+def approve_manual_listing_packet(listing_id: str, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required.")
+    now = _now()
+    with connect() as db:
+        row = db.execute("SELECT status,channel FROM commerce_listings WHERE id=?", (listing_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Listing packet not found.")
+        if row["status"] != "draft":
+            raise HTTPException(status_code=409, detail="Only draft listing packets can be approved.")
+        db.execute(
+            "UPDATE commerce_listings SET status='approved_for_manual_upload',updated_at=? WHERE id=?",
+            (now, listing_id),
+        )
+    append_event(actor, "commerce_listing_packet_approved_for_manual_upload",
+                 "commerce_listing", listing_id, {"channel": row["channel"]})
+    return {"id": listing_id, "status": "approved_for_manual_upload",
+            "external_upload_performed": False, "published": False}
+
+
 @router.get("/listings")
 def list_commerce_listings(limit: int = Query(default=100, ge=1, le=500)):
     with connect() as db:
