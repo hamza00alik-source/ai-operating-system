@@ -1,0 +1,133 @@
+from fastapi.testclient import TestClient
+
+from ai_os.api import app
+
+
+def _register_worker(client):
+    response = client.post(
+        "/control-plane/runtimes",
+        json={"runtime_name": "Test worker", "runtime_kind": "worker"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_runtime_registration_returns_one_time_token_and_safe_public_record():
+    with TestClient(app) as client:
+        created = _register_worker(client)
+        listed = client.get("/control-plane/runtimes")
+
+    runtime = created["runtime"]
+    assert runtime["runtime_kind"] == "worker"
+    assert runtime["health"] == "offline"
+    assert runtime["last_heartbeat_at"] is None
+    assert "token_hash" not in runtime
+    assert len(created["runtime_token"]) >= 48
+    assert any(item["runtime_id"] == runtime["runtime_id"] for item in listed.json()["runtimes"])
+    assert "runtime_token" not in listed.text
+
+
+def test_runtime_heartbeat_requires_its_registered_credential():
+    with TestClient(app) as client:
+        created = _register_worker(client)
+        payload = {"runtime_id": created["runtime"]["runtime_id"], "status": "idle"}
+        missing = client.post("/control-plane/runtime-heartbeat", json=payload)
+        wrong = client.post(
+            "/control-plane/runtime-heartbeat", json=payload,
+            headers={"X-AI-Runtime-Token": "x" * 64},
+        )
+        accepted = client.post(
+            "/control-plane/runtime-heartbeat", json=payload,
+            headers={"X-AI-Runtime-Token": created["runtime_token"]},
+        )
+
+    assert missing.status_code == 401
+    assert wrong.status_code == 403
+    assert accepted.status_code == 200
+    assert accepted.json()["health"] == "idle"
+    assert accepted.json()["last_heartbeat_at"]
+
+
+def test_runtime_heartbeat_can_report_current_job_without_exposing_token():
+    with TestClient(app) as client:
+        created = _register_worker(client)
+        response = client.post(
+            "/control-plane/runtime-heartbeat",
+            json={"runtime_id": created["runtime"]["runtime_id"],
+                  "status": "working", "current_job_id": "job-123"},
+            headers={"X-AI-Runtime-Token": created["runtime_token"]},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["current_job_id"] == "job-123"
+    assert "token_hash" not in response.json()
+
+
+def test_runtime_token_rotation_invalidates_previous_credential():
+    with TestClient(app) as client:
+        created = _register_worker(client)
+        runtime_id = created["runtime"]["runtime_id"]
+        rotated = client.post(f"/control-plane/runtimes/{runtime_id}/rotate-token")
+        payload = {"runtime_id": runtime_id, "status": "idle"}
+        old_token = client.post(
+            "/control-plane/runtime-heartbeat", json=payload,
+            headers={"X-AI-Runtime-Token": created["runtime_token"]},
+        )
+        new_token = client.post(
+            "/control-plane/runtime-heartbeat", json=payload,
+            headers={"X-AI-Runtime-Token": rotated.json()["runtime_token"]},
+        )
+
+    assert rotated.status_code == 200
+    assert old_token.status_code == 403
+    assert new_token.status_code == 200
+
+
+def test_revoked_runtime_cannot_send_heartbeats():
+    with TestClient(app) as client:
+        created = _register_worker(client)
+        runtime_id = created["runtime"]["runtime_id"]
+        revoked = client.post(f"/control-plane/runtimes/{runtime_id}/revoke")
+        heartbeat = client.post(
+            "/control-plane/runtime-heartbeat",
+            json={"runtime_id": runtime_id, "status": "idle"},
+            headers={"X-AI-Runtime-Token": created["runtime_token"]},
+        )
+        detail = client.get(f"/control-plane/runtimes/{runtime_id}")
+
+    assert revoked.status_code == 200
+    assert revoked.json()["health"] == "revoked"
+    assert heartbeat.status_code == 403
+    assert detail.json()["revoked"] is True
+
+
+def test_agent_runtime_requires_an_enabled_registered_agent():
+    with TestClient(app) as client:
+        missing = client.post(
+            "/control-plane/runtimes",
+            json={"runtime_name": "Missing agent", "runtime_kind": "agent"},
+        )
+        created = client.post(
+            "/control-plane/runtimes",
+            json={"runtime_name": "Research specialist", "runtime_kind": "agent",
+                  "agent_id": "research-synthesist"},
+        )
+        invalid_worker = client.post(
+            "/control-plane/runtimes",
+            json={"runtime_name": "Worker with agent identity", "runtime_kind": "worker",
+                  "agent_id": "research-synthesist"},
+        )
+
+    assert missing.status_code == 422
+    assert created.status_code == 201
+    assert created.json()["runtime"]["agent_id"] == "research-synthesist"
+    assert invalid_worker.status_code == 422
+
+
+def test_control_plane_overview_counts_runtime_instances():
+    with TestClient(app) as client:
+        _register_worker(client)
+        overview = client.get("/control-plane")
+
+    assert overview.status_code == 200
+    assert overview.json()["runtime_instances_registered"] >= 1
