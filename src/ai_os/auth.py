@@ -6,7 +6,8 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 PUBLIC_PATHS = {"/health", "/dashboard"}
-AGENT_AUTH_PATHS = {("POST", "/ceo/approval-requests")}\nRUNTIME_AUTH_PATHS = {("POST", "/control-plane/runtime-heartbeat")}
+AGENT_AUTH_PATHS = {("POST", "/ceo/approval-requests")}
+RUNTIME_AUTH_PATHS = {("POST", "/control-plane/runtime-heartbeat")}
 
 async def authenticate_request(request: Request):
     """Require a configured owner token; fail closed for production misconfiguration."""
