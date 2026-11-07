@@ -52,3 +52,8 @@ The API tests verify the public dashboard shell, owner-token protection on data 
 ## Backup limitation
 
 SQLite backup creation and integrity verification are available as an explicit local helper (`ai_os.db_backup.create_database_backup`). The dashboard does not schedule backups, upload them off-host, or restore databases. Backups contain private company data and must be stored with restricted access. Stop all application writers before any manual restore operation.
+
+
+## CEO review approval handoff
+
+When the model-assisted CEO reviews a run, it may submit a signed owner-approval request for a supported unpublished WordPress page draft or WooCommerce product draft. The dashboard owner inbox shows the exact parameters, rationale, expiry, and action hash. Unsupported actions and proposals containing credential-like fields are rejected. The CEO cannot approve its own request; the owner must explicitly approve or reject it, then separately choose execution. Draft creation remains disabled unless both global external actions and the specific integration draft-write flag are explicitly enabled and valid credentials are configured. Publishing remains unavailable.
