@@ -27,8 +27,8 @@ def run_worker_loop(
     schedule: Callable[[], dict] = schedule_ready_steps,
     run: Callable[..., dict] = run_once,
     on_error: Callable[[Exception, int], None] | None = None,
-    desired_state: Callable[[], str] = get_worker_desired_state,
-    heartbeat: Callable[[str, str, str | None], None] = heartbeat_worker,
+    desired_state: Callable[[], str] = lambda: "running",
+    heartbeat: Callable[[str, str, str | None], None] = lambda *_: None,
 ) -> None:
     """Run until stopped; exponentially back off after process-level failures."""
     delay = max(1, min(int(poll_seconds), 60))
@@ -81,6 +81,8 @@ def main() -> None:
         worker_id=worker_id,
         poll_seconds=interval,
         stop_requested=lambda: False,
+        desired_state=get_worker_desired_state,
+        heartbeat=heartbeat_worker,
     )
 
 
