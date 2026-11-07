@@ -319,6 +319,25 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_department_manager_plans_run_status
             ON department_manager_plans(run_id, status, created_at);
+        CREATE TABLE IF NOT EXISTS worker_control (
+            singleton_id INTEGER PRIMARY KEY CHECK(singleton_id=1),
+            desired_state TEXT NOT NULL CHECK(desired_state IN ('running','paused','stopped')),
+            updated_at TEXT NOT NULL,
+            updated_by TEXT NOT NULL
+        );
+        INSERT OR IGNORE INTO worker_control
+            (singleton_id, desired_state, updated_at, updated_by)
+            VALUES (1, 'stopped', CURRENT_TIMESTAMP, 'system');
+        CREATE TABLE IF NOT EXISTS worker_instances (
+            worker_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL CHECK(status IN ('starting','idle','working','paused','stopped','error')),
+            current_job_id TEXT,
+            started_at TEXT NOT NULL,
+            last_heartbeat TEXT NOT NULL,
+            stopped_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_worker_instances_heartbeat
+            ON worker_instances(last_heartbeat);
         """)
         knowledge_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_items)")}
         if "access_scope" not in knowledge_columns:
