@@ -52,10 +52,12 @@ def run_once(worker_id: str | None = None) -> dict:
         return {"processed": False, "job": None, "notice": "No queued job is available."}
 
     stop_heartbeat = Event()
+    lease_lost = Event()
 
     def maintain_lease():
         while not stop_heartbeat.wait(30):
             if not renew_job_lease(job["id"], worker_id, lease_seconds=120):
+                lease_lost.set()
                 return
 
     heartbeat_thread = Thread(target=maintain_lease, name=f"lease-{job['id'][:8]}", daemon=True)
@@ -65,7 +67,19 @@ def run_once(worker_id: str | None = None) -> dict:
         if handler is None:
             raise ValueError("No handler is registered for this job type")
         result = handler(job["payload"])
+        if lease_lost.is_set():
+            return {
+                "processed": False,
+                "job": None,
+                "notice": "Worker lost its job lease; the result was discarded and was not marked complete.",
+            }
         completed = finish_job(job["id"], worker_id, result)
+        if completed is None:
+            return {
+                "processed": False,
+                "job": None,
+                "notice": "Worker no longer owns this job; the result was discarded and was not marked complete.",
+            }
         notices = {
             "execute_company_step": "Specialist model task completed; no external action was attempted.",
             "review_department_plan": "Department manager review completed and recorded for the CEO; no external action was attempted.",
