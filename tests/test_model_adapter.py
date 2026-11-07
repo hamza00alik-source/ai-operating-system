@@ -190,6 +190,6 @@ def test_free_only_quota_error_is_not_retried_or_fallen_back(monkeypatch):
         )
 
     monkeypatch.setattr(model_adapter.urllib.request, "urlopen", fail_once)
-    with pytest.raises(RuntimeError, match="provider request failed"):
+    with pytest.raises(model_adapter.ModelQuotaExceeded, match="without automatic retry"):
         model_adapter.generate_json("system", "task")
     assert len(calls) == 1
