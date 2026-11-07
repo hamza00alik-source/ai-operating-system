@@ -9,6 +9,7 @@ A feature is complete only when tested and its operating limits are documented.
 - [x] CI test execution (GitHub Actions)
 - [x] API-key authentication for operational endpoints outside development
 - [ ] Role-based authorization and broader security review
+- [x] Append-only task and approval lifecycle audit events
 
 ## Phase 2 — Orchestration
 - [ ] Task dependencies and assignment
