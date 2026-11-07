@@ -608,6 +608,9 @@ def evaluate_broker_route(source_agent_id: str, target_agent_id: str) -> dict:
     if source is None or target is None:
         return {"allowed": False, "decision": "blocked_agent_unavailable",
                 "reason": "Source and target must both be enabled registered agents."}
+    if source_agent_id == target_agent_id:
+        return {"allowed": False, "decision": "blocked_self_route",
+                "reason": "An agent cannot delegate a task to itself."}
     if source_agent_id == "company-orchestrator":
         return {"allowed": True, "decision": "allowed_ceo_route",
                 "source_agent_id": source_agent_id, "target_agent_id": target_agent_id,
