@@ -62,3 +62,13 @@ Order events are idempotent on (channel, external_order_id). A WooCommerce order
 - Automated digital file hosting, expiring download links, license issuance, email delivery, and retries.
 - Marketplace payout statements, fee schedules, refund reconciliation, tax reporting, and cash-received ledger.
 - Automated product sync or publication. The owner dashboard reports status but does not publish.
+
+
+## Entitlement mapping and payout records
+
+- POST /commerce/listings/{listing_id}/map-external-id is owner-only. After a listing packet is approved and manually published, the owner records the marketplace's product ID. This is a local mapping; it does not contact the marketplace.
+- For an order whose payment timestamp is confirmed, matching line-item IDs create idempotent internal entitlement records in awaiting_manual_delivery state.
+- GET /commerce/entitlements lists internal entitlements. No download URL, license key, email, or customer delivery is generated.
+- POST /commerce/payouts/records records a payout statement row entered by the owner. Gross minus fees must equal net; duplicate provider payout IDs are rejected.
+- A new payout record starts as recorded_unverified. POST /commerce/payouts/{payout_id}/confirm-received requires owner authentication and records the owner's confirmation that funds arrived. It does not access a bank, Payoneer, or marketplace payout account.
+- GET /commerce/payouts lists statement records. This is a manual reconciliation ledger, not automated statement ingestion or proof of settlement.
