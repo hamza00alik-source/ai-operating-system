@@ -9,15 +9,17 @@ from ai_os.departments import get_department, list_departments
 from ai_os.execution import list_company_runs
 from ai_os.queue import list_jobs
 from ai_os.registry import get_agent, list_agents
+from ai_os.control_plane import is_control_plane_agent_enabled, filter_effective_agents
 from ai_os.department_coordination import list_department_plans_for_runs
 
 
 def _department_agent_ids(department: dict) -> set[str]:
     manager = get_agent(department["manager_agent_id"])
-    if manager is None:
+    if (manager is None or not manager.enabled
+            or not is_control_plane_agent_enabled(manager.id, fallback_enabled=manager.enabled)):
         return set()
     return {
-        agent.id for agent in list_agents()
+        agent.id for agent in filter_effective_agents(list_agents())
         if agent.department == manager.department
     } | {manager.id}
 
@@ -61,7 +63,11 @@ def get_department_workload(department_id: str, *, run_limit: int = 200) -> dict
         "name": department["name"],
         "mission": department["mission"],
         "manager": ({"id": manager.id, "name": manager.name} if manager else None),
-        "manager_available": bool(manager and manager.enabled),
+        "manager_available": bool(
+            manager and manager.enabled and is_control_plane_agent_enabled(
+                manager.id, fallback_enabled=manager.enabled
+            )
+        ),
         "manager_profile_department": manager.department if manager else None,
         "specialist_count": len(member_ids),
         "workload": {

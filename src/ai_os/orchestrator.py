@@ -1,6 +1,6 @@
 """Deterministic planning primitives; this module does not call an LLM or tools."""
 from uuid import uuid4
-from ai_os.registry import select_agent
+from ai_os.control_plane import select_effective_agent
 
 APPROVAL_REQUIRED_ACTIONS = {
     "publishing", "spending", "customer_commitment", "external_message",
@@ -8,7 +8,7 @@ APPROVAL_REQUIRED_ACTIONS = {
 }
 
 def build_plan(title: str, description: str, department: str) -> dict:
-    agent = select_agent(department)
+    agent = select_effective_agent(department)
     if agent is None:
         raise LookupError(f"No enabled agent is registered for department '{department}'")
     gates = sorted(set(agent.requires_approval_for).intersection(APPROVAL_REQUIRED_ACTIONS))

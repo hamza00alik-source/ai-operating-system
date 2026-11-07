@@ -687,3 +687,27 @@ def test_owner_dashboard_includes_store_monitoring_panel():
     assert "/integrations/wordpress/pages?per_page=10" in page.text
     assert "/integrations/wordpress/posts?per_page=10" in page.text
     assert "No publishing, order updates, refunds, or payment actions" in page.text
+
+
+
+def test_ceo_governance_blocks_control_plane_disabled_agent():
+    with TestClient(app) as client:
+        disabled = client.patch(
+            "/control-plane/agents/engineering-frontend-developer",
+            json={"enabled": False},
+        )
+        try:
+            decision = client.post(
+                "/governance/evaluate",
+                json={"agent_id": "engineering-frontend-developer", "action": "research"},
+            )
+        finally:
+            client.patch(
+                "/control-plane/agents/engineering-frontend-developer",
+                json={"enabled": True},
+            )
+
+    assert disabled.status_code == 200
+    assert decision.status_code == 200
+    assert decision.json()["decision"] == "blocked_unknown_agent"
+    assert decision.json()["allowed"] is False

@@ -13,6 +13,7 @@ from ai_os.departments import get_department
 from ai_os.execution import get_company_run
 from ai_os.model_adapter import generate_json
 from ai_os.registry import get_agent, list_agents, load_agent_profile
+from ai_os.control_plane import is_control_plane_agent_enabled, filter_effective_agents, evaluate_broker_route
 
 CEO_AGENT_ID = "company-orchestrator"
 MAX_TASKS = 8
@@ -53,14 +54,17 @@ def _manager_context(department_id: str):
     if department is None:
         raise LookupError("Department not found")
     manager = get_agent(department["manager_agent_id"])
-    if manager is None or not manager.enabled or manager.id == CEO_AGENT_ID:
+    if (manager is None or not manager.enabled
+            or not is_control_plane_agent_enabled(manager.id, fallback_enabled=manager.enabled)
+            or manager.id == CEO_AGENT_ID):
         raise ValueError("Department manager profile is unavailable or disabled")
     profile = load_agent_profile(manager.id)
     if not profile.strip():
         raise ValueError("Department manager profile content is unavailable")
     members = [
-        agent for agent in list_agents()
-        if agent.enabled and agent.id != manager.id and agent.department == manager.department
+        agent for agent in filter_effective_agents(list_agents())
+        if agent.id != manager.id and agent.department == manager.department
+        and evaluate_broker_route(manager.id, agent.id).get("allowed", False)
     ]
     if not members:
         raise ValueError("No enabled specialist profiles are available in the manager's source division")

@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from ai_os.db import connect
-from ai_os.registry import get_agent
 from ai_os.work_packets import build_work_packet
 from ai_os.execution_schemas import CompanyRunCreate, StepReportCreate
 
@@ -47,8 +46,9 @@ def _validate_graph(payload: CompanyRunCreate) -> None:
             raise ValueError(f"Step {step.step_key} references unknown dependencies: {', '.join(sorted(missing))}")
         if step.step_key in step.depends_on:
             raise ValueError(f"Step {step.step_key} cannot depend on itself")
-        agent = get_agent(step.agent_id)
-        if agent is None or not agent.enabled or step.agent_id == CEO_AGENT_ID:
+        from ai_os.control_plane import get_effective_agent
+        agent = get_effective_agent(step.agent_id)
+        if agent is None or step.agent_id == CEO_AGENT_ID:
             raise ValueError(f"Step {step.step_key} must name an enabled specialist agent")
 
     graph = {step.step_key: step.depends_on for step in payload.steps}

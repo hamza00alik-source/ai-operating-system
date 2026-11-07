@@ -18,6 +18,10 @@ def test_department_workload_uses_manager_source_division(monkeypatch):
         "manager": manager, "specialist": specialist, "other": other,
     }.get(key))
     monkeypatch.setattr(department_management, "list_agents", lambda: [manager, specialist, other])
+    monkeypatch.setattr(department_management, "is_control_plane_agent_enabled",
+                        lambda agent_id, fallback_enabled=True: fallback_enabled)
+    monkeypatch.setattr(department_management, "filter_effective_agents",
+                        lambda agents: [agent for agent in agents if agent.enabled])
     monkeypatch.setattr(department_management, "list_company_runs", lambda limit=200: [{
         "id": "run-1", "title": "Growth", "steps": [
             {"step_key": "a", "agent_id": "specialist", "status": "completed",

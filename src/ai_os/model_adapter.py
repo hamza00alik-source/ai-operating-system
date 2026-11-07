@@ -18,6 +18,11 @@ class ModelNotConfigured(RuntimeError):
     pass
 
 
+class ModelQuotaExceeded(RuntimeError):
+    """Provider rate/quota limit: do not automatically retry a paid-capable job."""
+    pass
+
+
 def _truthy(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() == "true"
 
@@ -44,6 +49,15 @@ def get_model_status() -> dict:
     enabled = _truthy("AI_OS_MODEL_ENABLED")
     backend = os.getenv("AI_OS_MODEL_BACKEND", "openai_compatible").strip().lower()
     model = os.getenv("AI_OS_MODEL_NAME", "").strip()
+    free_only = _truthy("AI_OS_FREE_ONLY")
+    if free_only and backend != "openai_compatible":
+        return {
+            "enabled": False, "configured": False, "backend": backend,
+            "provider": os.getenv("AI_OS_MODEL_PROVIDER", backend).strip() or backend,
+            "model": model or None, "free_only": True,
+            "reason": "free_only_configuration_rejected",
+            "makes_network_request": False,
+        }
     if backend == "command":
         executable = os.getenv("AI_OS_MODEL_COMMAND", "").strip()
         try:
@@ -79,18 +93,42 @@ def get_model_status() -> dict:
             "reason": "unsupported_backend", "makes_network_request": False,
         }
     base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
+    provider = os.getenv("AI_OS_MODEL_PROVIDER", "openai_compatible").strip().lower() or "openai_compatible"
+    api_key_present = bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip())
     configured = bool(base_url and model)
+    reason = "ready" if enabled and configured else (
+        "disabled_by_default" if not enabled else "missing_base_url_or_model"
+    )
+    if free_only:
+        allowed_models = {
+            item.strip() for item in os.getenv("AI_OS_FREE_MODEL_ALLOWLIST", "").split(",")
+            if item.strip()
+        }
+        free_configured = (
+            backend == "openai_compatible"
+            and provider == "groq"
+            and base_url.rstrip("/") == "https://api.groq.com/openai/v1"
+            and api_key_present
+            and bool(model)
+            and model in allowed_models
+        )
+        configured = free_configured
+        if not free_configured:
+            reason = "free_only_configuration_rejected"
+        elif not enabled:
+            reason = "disabled_by_default"
+        else:
+            reason = "ready_free_only"
     return {
         "enabled": enabled and configured,
         "configured": configured,
         "backend": backend,
-        "provider": os.getenv("AI_OS_MODEL_PROVIDER", "openai_compatible").strip() or "openai_compatible",
+        "provider": provider,
         "model": model or None,
         "base_url_present": bool(base_url),
-        "api_key_present": bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip()),
-        "reason": "ready" if enabled and configured else (
-            "disabled_by_default" if not enabled else "missing_base_url_or_model"
-        ),
+        "api_key_present": api_key_present,
+        "free_only": free_only,
+        "reason": reason,
         "makes_network_request": False,
         "execution_may_use_network": True,
     }
@@ -174,6 +212,10 @@ def _generate_with_command(system_prompt: str, user_prompt: str) -> tuple[dict, 
 def generate_json(system_prompt: str, user_prompt: str) -> tuple[dict, dict]:
     status = get_model_status()
     if not status["enabled"]:
+        if status.get("free_only"):
+            raise ModelNotConfigured(
+                "Free-only model configuration is not enabled or valid. No model request was made."
+            )
         raise ModelNotConfigured(
             "Model execution is disabled or not configured. No model request was made."
         )
@@ -205,6 +247,14 @@ def generate_json(system_prompt: str, user_prompt: str) -> tuple[dict, dict]:
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            raise ModelQuotaExceeded(
+                "Model provider quota/rate limit reached; job stopped without automatic retry."
+            ) from exc
+        raise RuntimeError(
+            f"Model provider returned HTTP {exc.code}; no automatic provider fallback was attempted."
+        ) from exc
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         raise RuntimeError("Model provider request failed. Check provider availability and configuration.") from exc
     try:

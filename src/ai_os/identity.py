@@ -91,6 +91,9 @@ def issue_agent_token(
     registered = get_agent(agent_id)
     if registered is None or not registered.enabled:
         raise AgentIdentityError("Only enabled server-registered agents may receive identities.")
+    from ai_os.control_plane import is_control_plane_agent_enabled
+    if not is_control_plane_agent_enabled(agent_id, fallback_enabled=registered.enabled):
+        raise AgentIdentityError("Only enabled server-registered agents may receive identities.")
     allowed = AGENT_CAPABILITY_POLICY.get(agent_id, AGENT_CAPABILITY_POLICY["*"])
     if not set(normalized).issubset(allowed):
         raise AgentIdentityError("Requested capability is not granted to this agent by server policy.")
@@ -157,6 +160,9 @@ def verify_agent_token(
     from ai_os.registry import get_agent
     registered = get_agent(agent_id)
     if registered is None or not registered.enabled:
+        raise AgentIdentityError("Agent is no longer registered and enabled.")
+    from ai_os.control_plane import is_control_plane_agent_enabled
+    if not is_control_plane_agent_enabled(agent_id, fallback_enabled=registered.enabled):
         raise AgentIdentityError("Agent is no longer registered and enabled.")
 
     now = int(time.time())

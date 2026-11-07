@@ -2,7 +2,7 @@
 
 This module evaluates policy only. It does not execute tools or external actions.
 """
-from ai_os.registry import get_agent
+from ai_os.control_plane import get_effective_agent
 
 CEO_AGENT_ID = "company-orchestrator"
 
@@ -26,8 +26,8 @@ OWNER_APPROVAL_ACTIONS = {
 
 def evaluate_action(agent_id: str, action: str) -> dict:
     """Return the policy decision for an enabled agent and a canonical action."""
-    agent = get_agent(agent_id)
-    if agent is None or not agent.enabled:
+    agent = get_effective_agent(agent_id)
+    if agent is None:
         return {
             "decision": "blocked_unknown_agent",
             "allowed": False,

@@ -4,10 +4,14 @@ The queue owns per-job retries and stale-lease recovery. This module adds a
 process-level supervisor so transient scheduler/database errors do not terminate
 the worker. A service manager should still restart the process after host failure.
 """
+import json
 import logging
 import os
 import time
+import urllib.request
+from urllib.parse import urlsplit
 from uuid import uuid4
+from threading import Event, Thread
 from collections.abc import Callable
 
 from ai_os.agent_runtime import schedule_ready_steps
@@ -30,6 +34,7 @@ def run_worker_loop(
     on_error: Callable[[Exception, int], None] | None = None,
     desired_state: Callable[[], str] = lambda: "running",
     heartbeat: Callable[[str, str, str | None], None] = lambda *_: None,
+    heartbeat_interval_seconds: float = 20,
 ) -> None:
     """Run until stopped; exponentially back off after process-level failures."""
     delay = max(1, min(int(poll_seconds), 60))
@@ -44,7 +49,28 @@ def run_worker_loop(
                 continue
             heartbeat(worker_id, "idle", None)
             scheduled = schedule()
-            result = run(worker_id=worker_id)
+            heartbeat_stop = Event()
+
+            def maintain_runtime_heartbeat():
+                interval = max(0.05, min(float(heartbeat_interval_seconds), 30.0))
+                while not heartbeat_stop.wait(interval):
+                    try:
+                        heartbeat(worker_id, "working", None)
+                    except Exception:
+                        logger.exception("Runtime heartbeat refresh failed; control plane will mark this runtime stale if it persists.")
+
+            heartbeat(worker_id, "working", None)
+            heartbeat_thread = Thread(
+                target=maintain_runtime_heartbeat,
+                name=f"runtime-heartbeat-{worker_id[:12]}",
+                daemon=True,
+            )
+            heartbeat_thread.start()
+            try:
+                result = run(worker_id=worker_id)
+            finally:
+                heartbeat_stop.set()
+                heartbeat_thread.join(timeout=1)
             failure_count = 0
             heartbeat(worker_id, "working" if result.get("processed") else "idle",
                       (result.get("job") or {}).get("id"))
@@ -66,6 +92,49 @@ def run_worker_loop(
                 sleep(backoff)
 
 
+
+def heartbeat_dispatch(worker_id: str, status: str, current_job_id: str | None) -> None:
+    """Persist local worker health and optionally report to the authenticated control plane.
+
+    Remote reporting is opt-in. If any remote credential setting is present, all
+    three settings are required and HTTPS is mandatory except for localhost.
+    """
+    heartbeat_worker(worker_id, status, current_job_id)
+    base_url = os.getenv("AI_OS_CONTROL_PLANE_URL", "").strip()
+    runtime_id = os.getenv("AI_OS_RUNTIME_ID", "").strip()
+    runtime_token = os.getenv("AI_OS_RUNTIME_TOKEN", "").strip()
+    configured = (bool(base_url), bool(runtime_id), bool(runtime_token))
+    if not any(configured):
+        return
+    if not all(configured):
+        raise RuntimeError(
+            "AI_OS_CONTROL_PLANE_URL, AI_OS_RUNTIME_ID, and AI_OS_RUNTIME_TOKEN must be configured together."
+        )
+    parsed = urlsplit(base_url)
+    local_http = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+    if parsed.scheme != "https" and not local_http:
+        raise RuntimeError("Control-plane URL must use HTTPS (HTTP is allowed only for localhost).")
+    if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeError("Control-plane URL must not contain credentials, query strings, or fragments.")
+    body = json.dumps({
+        "runtime_id": runtime_id,
+        "status": status,
+        "current_job_id": current_job_id,
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/control-plane/runtime-heartbeat",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-AI-Runtime-Token": runtime_token,
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if not 200 <= response.status < 300:
+            raise RuntimeError("Control-plane heartbeat was rejected.")
+
+
 def main() -> None:
     initialize_database()
     status = get_model_status()
@@ -84,7 +153,7 @@ def main() -> None:
         poll_seconds=interval,
         stop_requested=lambda: False,
         desired_state=get_worker_desired_state,
-        heartbeat=heartbeat_worker,
+        heartbeat=heartbeat_dispatch,
     )
 
 
