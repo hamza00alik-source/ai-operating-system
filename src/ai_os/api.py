@@ -500,6 +500,8 @@ def post_draft_research_task_proposals(limit: int = Query(default=20, ge=1, le=5
         raise HTTPException(status_code=503, detail=str(exc)) from None
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="CEO returned an invalid task proposal response.") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail="Configured CEO model request failed; no task proposal was created.") from exc
     append_event(
         "agent:company-orchestrator", "research_task_proposals_drafted",
         "research_task_proposal_batch", str(uuid4()),
