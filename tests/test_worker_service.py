@@ -130,3 +130,34 @@ def test_worker_heartbeat_dispatch_rejects_insecure_remote_control_plane(monkeyp
 
     with pytest.raises(RuntimeError, match="must use HTTPS"):
         heartbeat_dispatch("local-worker", "idle", None)
+
+
+def test_worker_loop_refreshes_runtime_heartbeat_during_long_job():
+    from threading import Event
+
+    keepalive_seen = Event()
+    stop = {"value": False}
+    heartbeats = []
+
+    def heartbeat(worker_id, status, current_job_id):
+        heartbeats.append((status, current_job_id))
+        if sum(1 for item in heartbeats if item[0] == "working") >= 2:
+            keepalive_seen.set()
+
+    def run(*, worker_id):
+        assert keepalive_seen.wait(1), "worker did not send a keepalive during execution"
+        stop["value"] = True
+        return {"processed": False}
+
+    run_worker_loop(
+        worker_id="long-job-worker",
+        poll_seconds=1,
+        stop_requested=lambda: stop["value"],
+        sleep=lambda seconds: None,
+        schedule=lambda: {"scheduled": 0},
+        run=run,
+        heartbeat=heartbeat,
+        heartbeat_interval_seconds=0.05,
+    )
+
+    assert sum(1 for item in heartbeats if item[0] == "working") >= 2
