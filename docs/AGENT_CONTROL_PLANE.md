@@ -217,7 +217,7 @@ Required implementation sequence:
 7. Route remote calls through the same audited agent-tool gateway, enforce per-agent and per-step budgets, and keep all external side effects behind the existing exact-scope owner approval gateway.
 8. Test DNS/IP restrictions, redirects, TLS policy, credential handling, oversized payloads, malformed JSON-RPC, session expiry, timeout/retry behavior, capability revocation, prompt injection in tool results, and endpoint disable during an active call.
 
-Implemented CP-4 preparation: owner-authenticated `PATCH /control-plane/endpoints/{endpoint_id}` can enable or disable registered MCP endpoint metadata. Activation is limited to MCP (A2A/OpenAI-compatible endpoint execution remains disabled), and any credential reference must resolve to an existing `env:NAME` variable. Unresolved `secret://` references fail closed. The API response explicitly states that activation does not connect to the endpoint. This lifecycle is not yet an MCP client.
+Implemented CP-4 preparation: owner-authenticated `PATCH /control-plane/endpoints/{endpoint_id}` can enable or disable registered MCP endpoint metadata. Activation is limited to MCP (A2A/OpenAI-compatible endpoint execution remains disabled), and any credential reference must resolve to an existing `env:NAME` variable. Unresolved `secret://` references fail closed. The API response explicitly states that activation does not connect to the endpoint. The owner dashboard now lists registered endpoints and offers explicit enable/disable controls with confirmation. This lifecycle is not yet an MCP client.
 
 No MCP endpoint is currently connected or executed. The CP-1 endpoint registry is metadata-only; the above is an acceptance plan, not a claim of MCP support.
 
