@@ -1,7 +1,6 @@
 from fastapi.testclient import TestClient
 
 from ai_os.api import app
-from ai_os.db import connect
 from ai_os.service import list_audit_events
 
 
@@ -30,12 +29,8 @@ def test_approval_cannot_be_decided_twice():
     with TestClient(app) as client:
         approval = client.post("/approvals", json={"action": "spend_money"}).json()
         aid = approval["id"]
-        assert client.post(
-            f"/approvals/{aid}/decision", json={"decision": "approved"}
-        ).status_code == 200
-        assert client.post(
-            f"/approvals/{aid}/decision", json={"decision": "rejected"}
-        ).status_code == 409
+        assert client.post(f"/approvals/{aid}/decision", json={"decision": "approved"}).status_code == 200
+        assert client.post(f"/approvals/{aid}/decision", json={"decision": "rejected"}).status_code == 409
 
 
 def test_audit_trail_records_task_and_approval_lifecycle():
@@ -44,12 +39,8 @@ def test_audit_trail_records_task_and_approval_lifecycle():
         approval = client.post("/approvals", json={
             "task_id": task["id"], "action": "publish_campaign"
         }).json()
-        decided = client.post(
-            f"/approvals/{approval['id']}/decision",
-            json={"decision": "approved"},
-        )
+        decided = client.post(f"/approvals/{approval['id']}/decision", json={"decision": "approved"})
         assert decided.status_code == 200
-
     events = list_audit_events()
     relevant = [e for e in events if e["entity_id"] in {task["id"], approval["id"]}]
     assert {e["event_type"] for e in relevant} >= {
@@ -61,12 +52,48 @@ def test_audit_event_limit_is_bounded():
     assert len(list_audit_events(100000)) <= 500
 
 
+def test_agent_registry_and_task_assignment():
+    with TestClient(app) as client:
+        created_agent = client.post("/agents", json={
+            "name": "Research Agent", "department": "research",
+            "description": "Collects and summarizes market evidence."
+        })
+        assert created_agent.status_code == 201
+        agent = created_agent.json()
+        assert agent["enabled"] is True
+        assert any(item["id"] == agent["id"] for item in client.get("/agents").json())
+
+        task = client.post("/tasks", json={"title": "Find customer demand", "department": "research"})
+        assert task.status_code == 201
+        assigned = client.post(f"/tasks/{task.json()['id']}/assign/{agent['id']}")
+        assert assigned.status_code == 200
+        assert assigned.json()["assigned_agent_id"] == agent["id"]
+
+        reassignment = client.post(f"/tasks/{task.json()['id']}/assign/{agent['id']}")
+        assert reassignment.status_code == 200
+
+
+def test_agent_duplicate_name_conflict():
+    with TestClient(app) as client:
+        body = {"name": "Duplicate Agent", "department": "ops"}
+        assert client.post("/agents", json=body).status_code == 201
+        assert client.post("/agents", json=body).status_code == 409
+
+
+def test_assignment_rejects_unknown_agent_and_task():
+    with TestClient(app) as client:
+        task = client.post("/tasks", json={"title": "Test"}).json()
+        assert client.post(f"/tasks/{task['id']}/assign/missing").status_code == 404
+        assert client.post("/tasks/missing/assign/missing").status_code == 404
+
+
 def test_production_routes_require_api_key(monkeypatch):
     monkeypatch.setenv("AI_OS_ENV", "production")
     monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
         assert client.get("/tasks").status_code == 401
+        assert client.get("/agents").status_code == 401
         assert client.get("/tasks", headers={"X-API-Key": "wrong"}).status_code == 401
         assert client.get("/tasks", headers={"X-API-Key": "test-owner-key"}).status_code == 200
 
