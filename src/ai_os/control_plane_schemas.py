@@ -27,6 +27,18 @@ class EndpointCreate(BaseModel):
     def limit_metadata(cls, value: dict) -> dict:
         if len(str(value)) > 4000:
             raise ValueError("metadata is too large")
+        forbidden_parts = ("secret", "token", "password", "api_key", "apikey", "authorization")
+        def inspect(item):
+            if isinstance(item, dict):
+                for key, child in item.items():
+                    normalized = str(key).lower().replace("-", "_")
+                    if any(part in normalized for part in forbidden_parts):
+                        raise ValueError("metadata must not contain credentials or secret material")
+                    inspect(child)
+            elif isinstance(item, list):
+                for child in item:
+                    inspect(child)
+        inspect(value)
         return value
 
 
