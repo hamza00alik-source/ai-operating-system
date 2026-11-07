@@ -41,7 +41,7 @@ def _fail_claimed_job(job: dict, worker_id: str, error: str, *, retry: bool = Tr
         if isinstance(payload.get("run_id"), str) and isinstance(payload.get("step_key"), str):
             mark_company_step_blocked(
                 payload["run_id"], payload["step_key"],
-                "Specialist execution stopped after retries: " + error[:800],
+                "Specialist execution stopped: " + error[:800],
             )
     return failed
 
