@@ -79,18 +79,43 @@ def get_model_status() -> dict:
             "reason": "unsupported_backend", "makes_network_request": False,
         }
     base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
+    provider = os.getenv("AI_OS_MODEL_PROVIDER", "openai_compatible").strip().lower() or "openai_compatible"
+    api_key_present = bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip())
+    free_only = _truthy("AI_OS_FREE_ONLY")
     configured = bool(base_url and model)
+    reason = "ready" if enabled and configured else (
+        "disabled_by_default" if not enabled else "missing_base_url_or_model"
+    )
+    if free_only:
+        allowed_models = {
+            item.strip() for item in os.getenv("AI_OS_FREE_MODEL_ALLOWLIST", "").split(",")
+            if item.strip()
+        }
+        free_configured = (
+            backend == "openai_compatible"
+            and provider == "groq"
+            and base_url.rstrip("/") == "https://api.groq.com/openai/v1"
+            and api_key_present
+            and bool(model)
+            and model in allowed_models
+        )
+        configured = free_configured
+        if not free_configured:
+            reason = "free_only_configuration_rejected"
+        elif not enabled:
+            reason = "disabled_by_default"
+        else:
+            reason = "ready_free_only"
     return {
         "enabled": enabled and configured,
         "configured": configured,
         "backend": backend,
-        "provider": os.getenv("AI_OS_MODEL_PROVIDER", "openai_compatible").strip() or "openai_compatible",
+        "provider": provider,
         "model": model or None,
         "base_url_present": bool(base_url),
-        "api_key_present": bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip()),
-        "reason": "ready" if enabled and configured else (
-            "disabled_by_default" if not enabled else "missing_base_url_or_model"
-        ),
+        "api_key_present": api_key_present,
+        "free_only": free_only,
+        "reason": reason,
         "makes_network_request": False,
         "execution_may_use_network": True,
     }
@@ -174,6 +199,10 @@ def _generate_with_command(system_prompt: str, user_prompt: str) -> tuple[dict, 
 def generate_json(system_prompt: str, user_prompt: str) -> tuple[dict, dict]:
     status = get_model_status()
     if not status["enabled"]:
+        if status.get("free_only"):
+            raise ModelNotConfigured(
+                "Free-only model configuration is not enabled or valid. No model request was made."
+            )
         raise ModelNotConfigured(
             "Model execution is disabled or not configured. No model request was made."
         )
