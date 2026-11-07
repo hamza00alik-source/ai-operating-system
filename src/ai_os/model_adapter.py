@@ -44,6 +44,15 @@ def get_model_status() -> dict:
     enabled = _truthy("AI_OS_MODEL_ENABLED")
     backend = os.getenv("AI_OS_MODEL_BACKEND", "openai_compatible").strip().lower()
     model = os.getenv("AI_OS_MODEL_NAME", "").strip()
+    free_only = _truthy("AI_OS_FREE_ONLY")
+    if free_only and backend != "openai_compatible":
+        return {
+            "enabled": False, "configured": False, "backend": backend,
+            "provider": os.getenv("AI_OS_MODEL_PROVIDER", backend).strip() or backend,
+            "model": model or None, "free_only": True,
+            "reason": "free_only_configuration_rejected",
+            "makes_network_request": False,
+        }
     if backend == "command":
         executable = os.getenv("AI_OS_MODEL_COMMAND", "").strip()
         try:
@@ -81,7 +90,6 @@ def get_model_status() -> dict:
     base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
     provider = os.getenv("AI_OS_MODEL_PROVIDER", "openai_compatible").strip().lower() or "openai_compatible"
     api_key_present = bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip())
-    free_only = _truthy("AI_OS_FREE_ONLY")
     configured = bool(base_url and model)
     reason = "ready" if enabled and configured else (
         "disabled_by_default" if not enabled else "missing_base_url_or_model"
