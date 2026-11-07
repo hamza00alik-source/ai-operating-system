@@ -301,6 +301,25 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL
         );
         """)
+        connection.executescript("""
+        CREATE TABLE IF NOT EXISTS department_manager_plans (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            department_id TEXT NOT NULL,
+            manager_agent_id TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('delegated','reviewed','blocked')),
+            plan_json TEXT NOT NULL,
+            review_json TEXT,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(run_id, department_id),
+            FOREIGN KEY(run_id) REFERENCES company_runs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_department_manager_plans_run_status
+            ON department_manager_plans(run_id, status, created_at);
+        """)
         knowledge_columns = {row[1] for row in connection.execute("PRAGMA table_info(knowledge_items)")}
         if "access_scope" not in knowledge_columns:
             connection.execute("ALTER TABLE knowledge_items ADD COLUMN access_scope TEXT NOT NULL DEFAULT 'company'")
