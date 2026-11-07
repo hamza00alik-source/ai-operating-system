@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from ai_os.api import app
 from ai_os import research
+import ai_os.api as api
 
 
 def test_research_disabled_by_default_makes_no_provider_call(monkeypatch):
@@ -20,7 +21,7 @@ def test_research_disabled_by_default_makes_no_provider_call(monkeypatch):
 def test_research_search_creates_only_candidate_knowledge(monkeypatch):
     monkeypatch.setenv("AI_OS_RESEARCH_ENABLED", "true")
     monkeypatch.setenv("EXA_API_KEY", "test-secret-key")
-    monkeypatch.setattr(research, "search_exa", lambda query, num_results=5: [{
+    monkeypatch.setattr(api, "search_exa", lambda query, num_results=5: [{
         "url": "https://example.com/report",
         "title": "Buyer demand report",
         "published_date": "2026-10-20",
@@ -46,7 +47,7 @@ def test_research_provider_errors_are_sanitized(monkeypatch):
     monkeypatch.setenv("EXA_API_KEY", "test-secret-key")
     def fail(*args, **kwargs):
         raise research.ResearchProviderError("Research provider could not be reached.")
-    monkeypatch.setattr(research, "search_exa", fail)
+    monkeypatch.setattr(api, "search_exa", fail)
     with TestClient(app) as client:
         response = client.post("/research/search", json={"query": "recent game asset demand"})
     assert response.status_code == 502
