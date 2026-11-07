@@ -8,7 +8,11 @@ def _database_path() -> str:
     if not url.startswith("sqlite:///"):
         raise ValueError("This starter currently supports SQLite URLs only.")
     path = url.removeprefix("sqlite:///")
-    return path if path == ":memory:" else str(Path(path))
+    if path == ":memory:":
+        return path
+    database_path = Path(path)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    return str(database_path)
 
 def connect() -> sqlite3.Connection:
     connection = sqlite3.connect(_database_path(), check_same_thread=False, timeout=10)
