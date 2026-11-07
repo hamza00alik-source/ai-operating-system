@@ -54,3 +54,31 @@ class RuntimeHeartbeat(BaseModel):
     runtime_id: str = Field(min_length=1, max_length=120)
     status: Literal["starting", "idle", "working", "paused", "stopped", "error"]
     current_job_id: str | None = Field(default=None, max_length=120)
+
+
+class CapabilityGrantCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(min_length=1, max_length=120)
+    capability: str = Field(min_length=3, max_length=80)
+    department_scope: str | None = Field(default=None, max_length=100)
+
+    @field_validator("capability")
+    @classmethod
+    def clean_capability(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not value:
+            raise ValueError("capability must not be blank")
+        return value
+
+
+class BrokerRouteEvaluate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_agent_id: str = Field(min_length=1, max_length=120)
+    target_agent_id: str = Field(min_length=1, max_length=120)
+
+
+class CapabilityEvaluate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(min_length=1, max_length=120)
+    capability: str = Field(min_length=3, max_length=80)
+    department_scope: str | None = Field(default=None, max_length=100)
