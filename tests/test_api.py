@@ -674,3 +674,14 @@ def test_woocommerce_integration_routes_are_owner_protected_and_read_only(monkey
     assert "billing" not in orders.text and "private@example.com" not in orders.text
     assert invalid.status_code == 422
     assert all(call.get_method() == "GET" for call in calls)
+
+
+
+def test_owner_dashboard_includes_store_monitoring_panel():
+    with TestClient(app) as client:
+        page = client.get("/dashboard")
+    assert page.status_code == 200
+    assert "Store &amp; website" in page.text or "Store & website" in page.text
+    assert "renderStoreOverview" in page.text
+    assert "/integrations/woocommerce/orders?per_page=10" in page.text
+    assert "No publishing, order updates, refunds, or payment actions" in page.text
