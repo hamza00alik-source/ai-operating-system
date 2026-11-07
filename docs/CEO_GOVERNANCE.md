@@ -1,5 +1,9 @@
 # CEO governance and single approval gateway
 
+## CEO identity and Agency Agents orchestration profile
+
+The company leader remains the AI Operating System agent `company-orchestrator`, because it owns the signed CEO identity and is the only approval gateway. Its CEO review prompt now incorporates the pinned Agency Agents `specialized/agents-orchestrator.md` profile as workflow guidance for pipeline coordination, handoffs, quality gates, retries, and progress reporting. The imported profile does not create a second CEO process, grant tools, or override OS governance. The upstream NEXUS strategy describes Agents Orchestrator as the pipeline controller; it does not provide a separate executable CEO runtime.
+
 ## Non-negotiable company rule
 
 The CEO agent (registry ID: `company-orchestrator`) is accountable for every action performed by the company. Department agents are delegated specialists; they do not independently make owner-level decisions or contact the owner for approval.
