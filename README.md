@@ -29,6 +29,10 @@ Open http://127.0.0.1:8000/docs.
 
 Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [docs/OWNER_DASHBOARD.md](docs/OWNER_DASHBOARD.md) for dashboard behavior, data definitions, security, and limitations. Enter the configured `AI_OS_API_TOKEN`; the dashboard reads agent, run, job, approval, runtime, and audit data from the protected API. The deployment key may be supplied as `AI_OS_API_KEY` for compatibility; `AI_OS_API_TOKEN` takes precedence when both are set. The dashboard shell itself is public, but its data APIs still require owner authentication.
 
+## Hosting preparation
+
+A Python host entry point and deployment checklist are included. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). This is preparation only; it does not mean the service has been deployed. Configure a persistent SQLite path and owner API key before production use.
+
 ## Current capabilities
 - Create and list work tasks. The signed CEO approval ingress (`POST /ceo/approval-requests`) creates exact-scope requests; the owner-only inbox and decision API expose one-time approve/reject controls. The internal action gateway can consume exact approvals for trusted adapters, but external execution is disabled and no production adapter is registered.
 - Discover all imported specialists with `GET /agents` (CEO plus 283 Agency Agents profiles).
