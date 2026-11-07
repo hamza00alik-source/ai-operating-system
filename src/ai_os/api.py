@@ -42,6 +42,8 @@ from ai_os.identity import AgentIdentityError, consume_agent_token
 from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
 from ai_os.research_schemas import ResearchSearchIn
 from ai_os.research import (ResearchNotConfigured, ResearchProviderError, research_status, search_exa)
+from ai_os.research_feed_schemas import FeedResearchIn
+from ai_os.free_research import collect_release_feed_candidates
 from ai_os.evaluation import list_evaluations, evaluation_summary, evaluation_trends
 from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
                             list_knowledge_items, review_knowledge_item)
@@ -483,6 +485,62 @@ def get_audit_verification():
 def get_research_status():
     """Report configuration without exposing provider credentials."""
     return research_status()
+
+
+
+@app.post("/research/feeds")
+def post_research_feeds(payload: FeedResearchIn, request: Request):
+    """Search only fixed public release feeds; save matches as untrusted candidates."""
+    try:
+        results = collect_release_feed_candidates(
+            payload.query, max_per_feed=payload.max_per_feed
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    actor = getattr(request.state, "actor", "unknown")
+    existing = {
+        item["source_url"]
+        for item in list_knowledge_items(limit=500)
+        if item.get("source_url")
+    }
+    items = []
+    duplicates = 0
+    for result in results:
+        if result["url"] in existing:
+            duplicates += 1
+            continue
+        candidate = KnowledgeCreate(
+            title=result["title"],
+            content=result["excerpt"],
+            category=payload.category,
+            source_url=result["url"],
+            source_title=result["source_title"],
+            source_published_at=result.get("published_date"),
+            confidence=0.5,
+            tags=payload.tags,
+        )
+        item = create_knowledge_item(candidate, actor=actor)
+        existing.add(result["url"])
+        append_event(actor, "research_candidate_created", "knowledge_item", item["id"], {
+            "source_url": item["source_url"], "query": payload.query[:200],
+            "provider": "github_release_feeds",
+        })
+        items.append(item)
+    append_event(actor, "research_feed_scan_completed", "research_query", str(uuid4()), {
+        "provider": "github_release_feeds", "query": payload.query[:200],
+        "results_received": len(results), "candidates_created": len(items),
+        "duplicates_skipped": duplicates,
+    })
+    return {
+        "provider": "github_release_feeds",
+        "query": payload.query,
+        "results_received": len(results),
+        "candidates_created": len(items),
+        "duplicates_skipped": duplicates,
+        "items": items,
+        "notice": "Free release-feed matches are unreviewed candidates, not verified facts.",
+    }
 
 
 @app.post("/research/search")
