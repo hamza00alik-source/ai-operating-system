@@ -77,10 +77,11 @@ from ai_os.control_plane import (initialize_control_plane, control_plane_overvie
     create_runtime_instance, list_runtime_instances, get_runtime_instance,
     heartbeat_runtime, rotate_runtime_token, revoke_runtime_instance,
     is_control_plane_agent_enabled, grant_capability, list_capability_grants,
-    revoke_capability_grant, evaluate_capability, evaluate_broker_route)
+    revoke_capability_grant, evaluate_capability, evaluate_broker_route,
+    set_control_plane_endpoint_enabled)
 from ai_os.control_plane_schemas import (AgentEnableUpdate, EndpointCreate,
     RuntimeCreate, RuntimeHeartbeat, CapabilityGrantCreate,
-    BrokerRouteEvaluate, CapabilityEvaluate)
+    BrokerRouteEvaluate, CapabilityEvaluate, EndpointEnableUpdate)
 
 logger = logging.getLogger(__name__)
 
@@ -1199,6 +1200,24 @@ def patch_control_plane_agent(agent_id: str, payload: AgentEnableUpdate, request
 def get_control_plane_endpoints():
     return {"endpoints": list_control_plane_endpoints(),
             "notice": "New network endpoints are registered disabled; CP-1 does not connect to them."}
+
+
+@app.patch("/control-plane/endpoints/{endpoint_id}")
+def patch_control_plane_endpoint(endpoint_id: str, payload: EndpointEnableUpdate, request: Request):
+    try:
+        endpoint = set_control_plane_endpoint_enabled(endpoint_id, payload.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if endpoint is None:
+        raise HTTPException(status_code=404, detail="Control Plane endpoint not found")
+    append_event(
+        getattr(request.state, "actor", "unknown"),
+        "control_plane_endpoint_enabled" if payload.enabled else "control_plane_endpoint_disabled",
+        "control_plane_endpoint", endpoint_id,
+        {"protocol": endpoint["protocol"], "enabled": endpoint["enabled"]},
+    )
+    return {"endpoint": endpoint,
+            "notice": "Endpoint activation records owner intent only; no network connection or remote tool execution is performed."}
 
 
 @app.post("/control-plane/endpoints", status_code=201)
