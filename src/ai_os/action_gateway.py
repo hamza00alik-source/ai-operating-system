@@ -50,6 +50,7 @@ def register_action_adapter(
 def clear_action_adapters_for_tests() -> None:
     """Clear in-process adapter registrations; intended for isolated tests only."""
     _ADAPTERS.clear()
+    _AGENT_TOOL_ADAPTERS.clear()
 
 
 def get_action_gateway_status() -> dict:
