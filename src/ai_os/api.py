@@ -22,6 +22,7 @@ from ai_os.woocommerce import WooCommerceNotConfigured, WooCommerceReadError, Wo
 from ai_os.woocommerce_actions import register_woocommerce_draft_adapter
 from ai_os.agent_schemas import AgentOut, AgentProfileOut, PlanCreate, PlanOut
 from ai_os.registry import get_agent, list_agents, load_agent_profile
+from ai_os.departments import get_department, list_departments
 from ai_os.orchestrator import build_plan
 from ai_os.manual_schemas import WorkPacketCreate, WorkPacketOut, RuntimeStatus
 from ai_os.work_packets import build_work_packet
@@ -682,6 +683,29 @@ def post_knowledge_review(item_id: str, payload: KnowledgeReview, request: Reque
         {"decision": payload.decision},
     )
     return item
+
+@app.get("/company/departments")
+def get_company_departments():
+    """Read-only org chart; department managers are specialist assignments, not separate processes."""
+    return {
+        "accountable_agent_id": "company-orchestrator",
+        "departments": list_departments(),
+        "limitations": [
+            "This directory defines department charters and resolves available specialist profiles.",
+            "A manager assignment is not proof of an always-running manager process.",
+            "Department-specific budgets, integrations, schedules, and independent autonomy are not enabled.",
+            "All consequential external actions remain subject to CEO governance and owner approval.",
+        ],
+    }
+
+
+@app.get("/company/departments/{department_id}")
+def get_company_department(department_id: str):
+    department = get_department(department_id)
+    if department is None:
+        raise HTTPException(status_code=404, detail="Department not found")
+    return department
+
 
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
