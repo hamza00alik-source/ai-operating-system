@@ -27,6 +27,37 @@ def _truthy(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() == "true"
 
 
+_HTTP_PROVIDER_PRESETS = {
+    "gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "requires_api_key": True,
+    },
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "requires_api_key": True,
+    },
+    "ollama": {
+        "base_url": "http://127.0.0.1:11434/v1",
+        "requires_api_key": False,
+    },
+}
+
+
+def _provider_configuration() -> tuple[str, str, str, bool]:
+    provider = os.getenv("AI_OS_MODEL_PROVIDER", "openai_compatible").strip().lower()
+    provider = provider or "openai_compatible"
+    preset = _HTTP_PROVIDER_PRESETS.get(provider, {})
+    base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
+    if not base_url:
+        base_url = preset.get("base_url", "")
+    api_key = os.getenv("AI_OS_MODEL_API_KEY", "").strip()
+    return provider, base_url, api_key, bool(preset.get("requires_api_key", False))
+
+
+def _is_local_endpoint(base_url: str) -> bool:
+    return urllib.parse.urlparse(base_url).hostname in {"localhost", "127.0.0.1", "::1"}
+
+
 def _command_configuration() -> tuple[str, list[str]]:
     executable = os.getenv("AI_OS_MODEL_COMMAND", "").strip()
     if not executable:
@@ -49,7 +80,7 @@ def get_model_status() -> dict:
     enabled = _truthy("AI_OS_MODEL_ENABLED")
     backend = os.getenv("AI_OS_MODEL_BACKEND", "openai_compatible").strip().lower()
     model = os.getenv("AI_OS_MODEL_NAME", "").strip()
-    free_only = _truthy("AI_OS_FREE_ONLY")
+    free_only = os.getenv("AI_OS_FREE_ONLY", "true").strip().lower() == "true"
     if free_only and backend != "openai_compatible":
         return {
             "enabled": False, "configured": False, "backend": backend,
@@ -92,28 +123,52 @@ def get_model_status() -> dict:
             "provider": backend, "model": model or None,
             "reason": "unsupported_backend", "makes_network_request": False,
         }
-    base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
-    provider = os.getenv("AI_OS_MODEL_PROVIDER", "openai_compatible").strip().lower() or "openai_compatible"
-    api_key_present = bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip())
-    configured = bool(base_url and model)
-    reason = "ready" if enabled and configured else (
-        "disabled_by_default" if not enabled else "missing_base_url_or_model"
+    provider, base_url, api_key, requires_api_key = _provider_configuration()
+    api_key_present = bool(api_key)
+    remote_endpoint = bool(base_url) and not _is_local_endpoint(base_url)
+    free_tier_confirmed = _truthy("AI_OS_MODEL_FREE_TIER_CONFIRMED")
+    missing_base_or_model = not base_url or not model
+    missing_api_key = requires_api_key and not api_key_present
+    missing_free_confirmation = remote_endpoint and not free_tier_confirmed
+    configured = not (
+        missing_base_or_model or missing_api_key or missing_free_confirmation
     )
+    if not enabled:
+        reason = "disabled_by_default"
+    elif missing_base_or_model:
+        reason = "missing_base_url_or_model"
+    elif missing_api_key:
+        reason = "missing_api_key"
+    elif missing_free_confirmation:
+        reason = "confirm_free_tier"
+    else:
+        reason = "ready"
     if free_only:
         allowed_models = {
             item.strip() for item in os.getenv("AI_OS_FREE_MODEL_ALLOWLIST", "").split(",")
             if item.strip()
         }
-        free_configured = (
-            backend == "openai_compatible"
-            and provider == "groq"
-            and base_url.rstrip("/") == "https://api.groq.com/openai/v1"
+        preset_url = _HTTP_PROVIDER_PRESETS.get(provider, {}).get("base_url", "")
+        exact_preset_endpoint = bool(preset_url and base_url.rstrip("/") == preset_url.rstrip("/"))
+        cloud_profile = (
+            provider in {"gemini", "groq"}
+            and exact_preset_endpoint
             and api_key_present
-            and bool(model)
-            and model in allowed_models
+            and free_tier_confirmed
+        )
+        local_profile = (
+            provider == "ollama"
+            and exact_preset_endpoint
+            and _is_local_endpoint(base_url)
+            and not api_key_present
+        )
+        free_configured = (
+            bool(model) and model in allowed_models and (cloud_profile or local_profile)
         )
         configured = free_configured
-        if not free_configured:
+        if provider in {"gemini", "groq"} and exact_preset_endpoint and not free_tier_confirmed:
+            reason = "confirm_free_tier"
+        elif not free_configured:
             reason = "free_only_configuration_rejected"
         elif not enabled:
             reason = "disabled_by_default"
@@ -127,6 +182,8 @@ def get_model_status() -> dict:
         "model": model or None,
         "base_url_present": bool(base_url),
         "api_key_present": api_key_present,
+        "requires_api_key": requires_api_key,
+        "free_tier_confirmed": free_tier_confirmed,
         "free_only": free_only,
         "reason": reason,
         "makes_network_request": False,
@@ -222,7 +279,7 @@ def generate_json(system_prompt: str, user_prompt: str) -> tuple[dict, dict]:
     if status.get("backend") == "command":
         return _generate_with_command(system_prompt, user_prompt)
 
-    base_url = os.getenv("AI_OS_MODEL_BASE_URL", "").strip()
+    _, base_url, _, _ = _provider_configuration()
     model = os.getenv("AI_OS_MODEL_NAME", "").strip()
     timeout = max(5, min(int(os.getenv("AI_OS_MODEL_TIMEOUT_SECONDS", "45")), 90))
     body = {

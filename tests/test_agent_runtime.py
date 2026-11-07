@@ -1,6 +1,13 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from ai_os.api import app
+
+
+@pytest.fixture(autouse=True)
+def _configure_fake_model_endpoint(monkeypatch):
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "false")
+    monkeypatch.setenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", "true")
 
 
 def _run_payload():

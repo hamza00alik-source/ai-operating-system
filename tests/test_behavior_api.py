@@ -27,6 +27,7 @@ def _configure_local_model(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_ENV", "production")
     monkeypatch.setenv("AI_OS_BEHAVIOR_TEST_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "false")
     monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
     monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "http://localhost:8000/v1")
     monkeypatch.setenv("AI_OS_MODEL_NAME", "local-test-model")

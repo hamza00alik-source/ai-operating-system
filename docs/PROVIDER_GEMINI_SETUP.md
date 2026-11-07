@@ -41,11 +41,14 @@ AI_OS_MODEL_PROVIDER=gemini
 AI_OS_MODEL_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 AI_OS_MODEL_NAME=gemini-3.8-flash
 AI_OS_MODEL_API_KEY=<your-private-Gemini-API-key>
+AI_OS_MODEL_FREE_TIER_CONFIRMED=true
+AI_OS_FREE_ONLY=true
+AI_OS_FREE_MODEL_ALLOWLIST=gemini-3.8-flash
 AI_OS_AGENT_TOOL_CALLS_ENABLED=false
 AI_OS_MODEL_MAX_REQUESTS_PER_STEP=1
 ```
 
-Keep AI_OS_MODEL_ENABLED=false until the owner has reviewed the model, account tier, data terms, and limits. The request budget is set to one for an initial low-volume test; the code's hard ceiling remains four.
+Keep AI_OS_MODEL_ENABLED=false until the owner has reviewed the model, account tier, data terms, and limits. Add the exact model ID to the free-only allowlist. `AI_OS_MODEL_FREE_TIER_CONFIRMED=true` is an owner attestation; the application cannot query the account's billing tier. The request budget is set to one for an initial low-volume test; the code's hard ceiling remains four.
 
 ## Controlled activation procedure
 

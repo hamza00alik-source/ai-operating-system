@@ -1,46 +1,21 @@
 # Free-first execution model
 
-The operating system must not depend on paid model APIs to be useful.
+The operating system is useful without a paid model API: it can create local work packets, store company records in SQLite, and keep jobs queued until inference is deliberately enabled. A role profile is not a model; automatic specialist execution requires an available inference backend and a separately running worker process.
 
-## What is free and available now
+## Local workflow and persistence
 
-- The Agency Agents source repository provides reusable agent role profiles and workflow instructions under its MIT license.
-- This repository contains an initial role catalog and a provider-neutral registry.
-- GET /runtime reports which execution modes are enabled.
-- POST /work-packets creates a ready-to-paste specialist prompt without contacting any model provider.
-- The generated prompt includes evidence standards, safety boundaries, and an output format.
+`GET /runtime` reports execution modes, `GET /models/status` checks configuration without contacting a provider, and `POST /work-packets` prepares prompts locally. SQLite is the default database at `./data/ai_os.db`; the API and worker must use the same persistent writable file. The application does not provision or replicate a cloud database. See [provider and database setup](PROVIDER_SETUP.md) and [database backup instructions](OPERATIONS_PLAYBOOK.md#backup-and-restore).
 
-## Optional free model API
+## Free model options
 
-The first provider candidate is Google Gemini through Google AI Studio's OpenAI-compatible endpoint. Google's documentation lists a free tier for selected models, with account-specific rate limits and availability. See PROVIDER_GEMINI_SETUP.md.
+The runtime includes OpenAI-compatible presets for Gemini through Google AI Studio and Groq, plus local Ollama. Strict free-only mode defaults to on and accepts only the exact Gemini/Groq preset endpoints or localhost Ollama. The chosen model ID must be explicitly added to `AI_OS_FREE_MODEL_ALLOWLIST`. Gemini and Groq require an API key and the owner's `AI_OS_MODEL_FREE_TIER_CONFIRMED=true` attestation; the app cannot verify billing or account eligibility. See the [Gemini account guide](PROVIDER_GEMINI_SETUP.md).
 
-A free tier is limited and is not a 24/7 service guarantee. Google states that content submitted on the Free Tier may be used to improve its products. Do not send customer, confidential, or sensitive company information unless the owner has reviewed and accepted the provider's current data terms.
+Free cloud quotas and model eligibility change. Provider outages and quota errors stop jobs rather than trigger retries or a paid fallback. Google AI Studio's free-tier content terms may permit submitted content to be used to improve products; do not send confidential business or customer data without the owner's review and acceptance of current terms. Local Ollama avoids a model-provider inference bill but still uses hardware, electricity, storage, and host uptime.
 
-Groq may remain an alternative free-plan provider if the owner's account confirms free access and suitable model limits. It is not the same product as Grok from xAI. Grok is a possible future paid model option, not a current dependency.
+## Cost and action controls
 
-## Manual free-chat workflow
-
-1. Create a work packet for an enabled agent using the API docs at /docs.
-2. Copy the returned prompt_text.
-3. Paste it into a free AI chat interface that you already have access to.
-4. Review the result and evidence; do not assume the chat interface has accessed external tools unless it shows that it has.
-5. Bring the result back into the operating system for review and follow-up.
-
-This mode does not call an API, incur API usage charges, or run autonomously. It does require a person to transfer the prompt and result between interfaces.
-
-## Local model support
-
-A local model runtime (for example, Ollama on hardware that can run it) can be added behind a provider interface. It must be optional, report hardware requirements clearly, and never silently fall back to a paid provider. A local runtime is not automatically feasible on an Android-only device; a separate computer or suitable hosted machine may be needed.
-
-## Hard cost controls
-
-- No provider API is configured or enabled by default.
-- Paid API calls remain disabled.
-- No automatic paid fallback.
-- No subscriptions, purchases, cloud deployments, or metered services without explicit owner approval.
-- Before enabling any provider, display whether it is free, limited, metered, or paid and require explicit approval.
-- Free provider plans are quota-limited and may change; verify the exact account plan and model limits before sending requests.
+`AI_OS_MODEL_ENABLED=false` is the default, so no model is contacted until a private runtime explicitly enables it. Strict free-only mode blocks generic or unlisted providers, and the `AI_OS_EXTERNAL_ACTIONS_ENABLED=false` default keeps the worker limited to internal reports. Model output is untrusted and cannot approve or perform spending, publishing, customer contact, production changes, or deployment.
 
 ## Current limitations
 
-Agent work packets are prompt preparation, not AI execution. Autonomous operation requires an available model runtime plus a persistent worker, secure tool permissions, durable state, and authenticated approval gates. A free API tier can provide inference within its limits but cannot guarantee 24/7 availability or unlimited agent activity.
+Free API plans and free cloud hosts do not guarantee continuous service. SQLite is not cloud replication, and an ephemeral host disk can lose data. Unattended operation requires a suitable persistent host, a durable database path, a separately managed worker process, secure private credentials, and owner review. This setup does not create accounts, obtain API keys, deploy the app, or turn it into an autonomous company.

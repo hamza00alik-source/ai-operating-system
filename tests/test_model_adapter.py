@@ -6,6 +6,11 @@ import pytest
 from ai_os import model_adapter
 
 
+@pytest.fixture(autouse=True)
+def _keep_legacy_adapter_tests_out_of_free_only_mode(monkeypatch):
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "false")
+
+
 def test_command_backend_is_disabled_by_default(monkeypatch):
     monkeypatch.setenv("AI_OS_MODEL_BACKEND", "command")
     monkeypatch.setenv("AI_OS_MODEL_COMMAND", "agy")
@@ -111,6 +116,7 @@ def _enable_groq_free_only(monkeypatch, *, model="llama-3.3-70b-versatile"):
     monkeypatch.setenv("AI_OS_MODEL_NAME", model)
     monkeypatch.setenv("AI_OS_MODEL_API_KEY", "test-secret")
     monkeypatch.setenv("AI_OS_FREE_MODEL_ALLOWLIST", model)
+    monkeypatch.setenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", "true")
 
 
 def test_free_only_groq_requires_exact_provider_endpoint_key_and_allowlisted_model(monkeypatch):
@@ -193,3 +199,145 @@ def test_free_only_quota_error_is_not_retried_or_fallen_back(monkeypatch):
     with pytest.raises(model_adapter.ModelQuotaExceeded, match="without automatic retry"):
         model_adapter.generate_json("system", "task")
     assert len(calls) == 1
+
+
+def test_free_only_defaults_on_and_rejects_unlisted_provider(monkeypatch):
+    monkeypatch.delenv("AI_OS_FREE_ONLY", raising=False)
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "unverified-model")
+    monkeypatch.setenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", "true")
+
+    status = model_adapter.get_model_status()
+    assert status["free_only"] is True
+    assert status["configured"] is False
+    assert status["enabled"] is False
+    assert status["reason"] == "free_only_configuration_rejected"
+
+
+@pytest.mark.parametrize(
+    ("provider", "model", "base_url"),
+    [
+        ("gemini", "gemini-3.8-flash", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+        ("groq", "openai/gpt-oss-20b", "https://api.groq.com/openai/v1"),
+    ],
+)
+def test_free_cloud_provider_presets_require_attestation_and_allowlisted_model(
+    monkeypatch, provider, model, base_url
+):
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", provider)
+    monkeypatch.delenv("AI_OS_MODEL_BASE_URL", raising=False)
+    monkeypatch.setenv("AI_OS_MODEL_NAME", model)
+    monkeypatch.setenv("AI_OS_MODEL_API_KEY", "private-test-key")
+    monkeypatch.setenv("AI_OS_FREE_MODEL_ALLOWLIST", model)
+    monkeypatch.delenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", raising=False)
+
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is False
+    assert status["reason"] == "confirm_free_tier"
+    assert model_adapter._provider_configuration()[1] == base_url
+
+    monkeypatch.setenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", "true")
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is True
+    assert status["reason"] == "ready_free_only"
+
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", base_url + ".evil.example")
+    assert model_adapter.get_model_status()["reason"] == "free_only_configuration_rejected"
+
+
+def test_ollama_preset_is_local_and_requires_no_key_or_cloud_attestation(monkeypatch):
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "ollama")
+    monkeypatch.delenv("AI_OS_MODEL_BASE_URL", raising=False)
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "gemma4:e2b")
+    monkeypatch.setenv("AI_OS_FREE_MODEL_ALLOWLIST", "gemma4:e2b")
+    monkeypatch.delenv("AI_OS_MODEL_API_KEY", raising=False)
+    monkeypatch.delenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", raising=False)
+
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is True
+    assert status["api_key_present"] is False
+    assert status["free_tier_confirmed"] is False
+    assert model_adapter._provider_configuration()[1] == "http://127.0.0.1:11434/v1"
+
+
+def test_remote_free_tier_attestation_is_required_even_outside_strict_mode(monkeypatch):
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "false")
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "gemini")
+    monkeypatch.delenv("AI_OS_MODEL_BASE_URL", raising=False)
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "gemini-3.8-flash")
+    monkeypatch.setenv("AI_OS_MODEL_API_KEY", "private-test-key")
+    monkeypatch.delenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", raising=False)
+
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is False
+    assert status["reason"] == "confirm_free_tier"
+
+    monkeypatch.setenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", "true")
+    assert model_adapter.get_model_status()["enabled"] is True
+
+
+def test_remote_model_request_is_blocked_without_free_tier_attestation(monkeypatch):
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "false")
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "gemini")
+    monkeypatch.delenv("AI_OS_MODEL_BASE_URL", raising=False)
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "gemini-3.8-flash")
+    monkeypatch.setenv("AI_OS_MODEL_API_KEY", "private-test-key")
+    monkeypatch.delenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", raising=False)
+    monkeypatch.setattr(
+        model_adapter.urllib.request,
+        "urlopen",
+        lambda *args, **kwargs: pytest.fail("provider must not be contacted"),
+    )
+
+    with pytest.raises(model_adapter.ModelNotConfigured, match="No model request was made"):
+        model_adapter.generate_json("system", "task")
+
+
+def test_gemini_preset_sends_json_completion_without_live_network(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            content = json.dumps({"status": "completed", "summary": "Test response"})
+            return json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        return FakeResponse()
+
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "gemini")
+    monkeypatch.delenv("AI_OS_MODEL_BASE_URL", raising=False)
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "gemini-3.8-flash")
+    monkeypatch.setenv("AI_OS_MODEL_API_KEY", "private-test-key")
+    monkeypatch.setenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", "true")
+    monkeypatch.setenv("AI_OS_FREE_MODEL_ALLOWLIST", "gemini-3.8-flash")
+    monkeypatch.setattr(model_adapter.urllib.request, "urlopen", fake_urlopen)
+
+    result, metadata = model_adapter.generate_json("system", "task")
+    assert result == {"status": "completed", "summary": "Test response"}
+    assert metadata["provider"] == "gemini"
+    assert captured["request"].full_url == (
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    )
+    assert captured["request"].get_header("Authorization") == "Bearer private-test-key"
