@@ -73,3 +73,12 @@ A CEO request token is consumed only after the action has passed canonical valid
 ## Server-side action gateway
 
 The internal `ai_os.action_gateway` module adds a trusted adapter registry and execution-time approval consumption. It refuses execution unless `AI_OS_EXTERNAL_ACTIONS_ENABLED=true`, checks for a registered server-owned adapter before consuming approval, verifies the exact approved parameters, consumes the approval once, and audits adapter start/completion/failure. It is not exposed as an HTTP route. No production adapters are registered, the flag defaults to false, and no external action is currently executable. An adapter failure leaves the approval consumed and requires manual reconciliation; automatic retries are intentionally prohibited. See [ACTION_GATEWAY.md](ACTION_GATEWAY.md).
+
+
+## CEO review to owner-approval handoff
+
+After a model-assisted CEO review, the trusted server-side CEO review module may turn justified proposals into signed, run-bound owner-approval requests. The CEO identity token is minted inside the server runtime, is limited to `approval.request`, is short-lived and one-use, and is never returned to the browser or included in the review record.
+
+The proposal path currently supports only two narrow actions: `create_website_draft` (exactly `title` and `content`) and `create_product_draft` (exactly `name`, `description`, and `regular_price`). These actions create unpublished drafts only. The server rejects unsupported actions and credential-like parameter keys. The owner still sees the exact parameters and hash, must explicitly approve or reject, and must separately trigger execution. This path does not publish content or products, send messages, spend money, or deploy services.
+
+CEO-generated approval requests are recommendations for owner review, not proof that a product is commercially or legally ready. Verify content, intellectual-property rights, pricing, tax treatment, and destination store before approving any draft creation.
