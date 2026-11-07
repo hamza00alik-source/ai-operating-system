@@ -108,12 +108,14 @@ See [OPERATIONS_PLAYBOOK.md](OPERATIONS_PLAYBOOK.md), [CONTINUOUS_LEARNING.md](C
 - [x] CP-3 baseline: effective-agent enforcement across work packets, identities, company-run assignment, CEO/manager routing, department workload, and dashboard status (full CI passing)
 - [x] CP-3 broker: inspectable CEO/manager route evaluation, department-scoped manager delegation, self/cross-department route denial, and policy enforcement in manager workflows
 - [x] CP-3 capabilities: owner-managed explicit capability grants/revocation, deny-by-default checks, and trusted in-process tool adapter execution with audit events
-- [ ] CP-3 remaining: bind reviewed read-only research/knowledge/store adapters and surface route traces in the dashboard
+- [x] CP-3 built-ins: bounded free release-feed research, owner-accepted knowledge search, and read-only WooCommerce catalog/order-status tools
+- [x] CP-3 specialist tool loop: opt-in model-requested tool calls, maximum three calls per step, untrusted tool-result handling, and disabled-by-default switch
+- [ ] CP-3 remaining: dashboard policy traces and adversarial/task-budget hardening
 - [ ] CP-4: secure MCP integration, followed by A2A interoperability after identity and policy controls
 - [ ] CP-5: live health, job telemetry, policy traces, and agent-network visualization
 - [ ] CP-6: production deployment hardening, monitoring, backup/restore, and rollback verification
 
-See [AGENT_CONTROL_PLANE.md](AGENT_CONTROL_PLANE.md) for architecture, trust boundaries, sequence, and acceptance criteria. CP-1 and CP-2 are implemented on this branch. CP-3 baseline, broker routing, explicit capability grants, and the trusted in-process tool adapter boundary are implemented and tested (255 tests passing). Concrete tool adapters and dashboard route traces remain in progress. CP-4 through CP-6 remain planned.
+See [AGENT_CONTROL_PLANE.md](AGENT_CONTROL_PLANE.md) for architecture, trust boundaries, sequence, and acceptance criteria. CP-1 and CP-2 are implemented on this branch. CP-3 baseline, broker routing, explicit capability grants, trusted tool dispatch, four read-only built-ins, and the opt-in bounded specialist tool loop are implemented and tested (261 tests passed at the last validated code commit). Dashboard policy traces and further operational hardening remain in progress. CP-4 through CP-6 remain planned.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
