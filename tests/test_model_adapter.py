@@ -99,3 +99,29 @@ def test_cli_backend_requires_no_tools_attestation_even_when_enabled(monkeypatch
     assert status["configured"] is False
     assert status["enabled"] is False
     assert status["reason"] == "confirm_cli_no_tools"
+
+
+def test_zero_cost_mode_blocks_configured_model_before_any_request(monkeypatch):
+    monkeypatch.setenv("AI_OS_ZERO_COST_MODE", "true")
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://provider.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "example-model")
+    monkeypatch.setenv("AI_OS_MODEL_API_KEY", "test-secret")
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is False
+    assert status["configured"] is False
+    assert status["reason"] == "zero_cost_mode"
+    with pytest.raises(model_adapter.ModelNotConfigured, match="disabled or not configured"):
+        model_adapter.generate_json("system", "task")
+
+
+def test_zero_cost_mode_blocks_local_cli_too(monkeypatch):
+    monkeypatch.setenv("AI_OS_ZERO_COST_MODE", "true")
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "command")
+    monkeypatch.setenv("AI_OS_MODEL_COMMAND", "some-local-model")
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is False
+    assert status["reason"] == "zero_cost_mode"
+    with pytest.raises(model_adapter.ModelNotConfigured):
+        model_adapter.generate_json("system", "task")
