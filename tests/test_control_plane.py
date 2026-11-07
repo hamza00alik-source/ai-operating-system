@@ -150,3 +150,71 @@ def test_control_plane_rejects_unrecognized_endpoint_metadata():
         )
 
     assert response.status_code == 422
+
+
+
+def test_disabled_control_plane_agent_cannot_receive_work_packet_or_identity(monkeypatch):
+    from ai_os.identity import AgentIdentityError, issue_agent_token
+    from ai_os.work_packets import build_work_packet
+
+    monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "k" * 48)
+    with TestClient(app) as client:
+        disabled = client.patch(
+            "/control-plane/agents/research-synthesist",
+            json={"enabled": False},
+        )
+        assert disabled.status_code == 200
+        try:
+            try:
+                build_work_packet("research-synthesist", "Research market demand")
+                assert False, "disabled agent unexpectedly received a work packet"
+            except LookupError:
+                pass
+            try:
+                issue_agent_token(
+                    "research-synthesist",
+                    run_id="run-disabled-agent",
+                    capabilities=["step.report"],
+                )
+                assert False, "disabled agent unexpectedly received an identity"
+            except AgentIdentityError:
+                pass
+        finally:
+            client.patch(
+                "/control-plane/agents/research-synthesist",
+                json={"enabled": True},
+            )
+
+
+def test_disabled_control_plane_agent_cannot_be_assigned_to_new_company_run():
+    from ai_os.execution import _validate_graph
+    from ai_os.execution_schemas import CompanyRunCreate
+
+    with TestClient(app) as client:
+        disabled = client.patch(
+            "/control-plane/agents/research-synthesist",
+            json={"enabled": False},
+        )
+        assert disabled.status_code == 200
+        try:
+            payload = CompanyRunCreate(
+                title="Disabled agent guard",
+                description="A disabled logical agent must not receive new work.",
+                steps=[{
+                    "step_key": "research",
+                    "agent_id": "research-synthesist",
+                    "task": "Research a topic",
+                    "context": "",
+                    "depends_on": [],
+                }],
+            )
+            try:
+                _validate_graph(payload)
+                assert False, "disabled agent unexpectedly passed assignment validation"
+            except ValueError as exc:
+                assert "enabled specialist" in str(exc)
+        finally:
+            client.patch(
+                "/control-plane/agents/research-synthesist",
+                json={"enabled": True},
+            )
