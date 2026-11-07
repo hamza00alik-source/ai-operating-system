@@ -1,0 +1,195 @@
+import base64
+import hashlib
+import hmac
+import json
+
+from fastapi.testclient import TestClient
+
+from ai_os.api import app
+from ai_os.commerce import initialize_commerce_storage, ingest_order
+from ai_os.db import connect
+
+
+def test_order_ingestion_is_idempotent_and_requires_payment_timestamp(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce.sqlite'}")
+    initialize_commerce_storage()
+    pending = {
+        "id": 123, "status": "processing", "currency": "USD", "total": "4.99",
+        "date_paid": None,
+        "line_items": [{"product_id": 9, "name": "UI pack", "quantity": 1, "total": "4.99"}],
+        "billing": {"email": "must-not-be-stored@example.com"},
+    }
+    first = ingest_order("woocommerce", pending)
+    second = ingest_order("woocommerce", pending)
+    assert first["created"] is True
+    assert second["created"] is False
+    assert first["id"] == second["id"]
+    with connect() as db:
+        order = db.execute("SELECT * FROM commerce_orders WHERE id=?", (first["id"],)).fetchone()
+        fulfillment = db.execute("SELECT * FROM commerce_fulfillment WHERE order_id=?", (first["id"],)).fetchone()
+    assert order["payment_status"] == "not_confirmed"
+    assert "must-not-be-stored" not in str(dict(order))
+    assert fulfillment["status"] == "awaiting_review"
+
+
+def test_paid_order_moves_only_to_review_ready_not_auto_fulfilled(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-paid.sqlite'}")
+    initialize_commerce_storage()
+    order = {
+        "id": 456, "status": "processing", "currency": "USD", "total": "2.00",
+        "date_paid": "2026-11-07T10:00:00",
+        "line_items": [{"product_id": 2, "name": "Icon pack", "quantity": 1, "total": "2.00"}],
+    }
+    result = ingest_order("woocommerce", order)
+    assert result["payment_status"] == "paid"
+    with connect() as db:
+        fulfillment = db.execute("SELECT status FROM commerce_fulfillment WHERE order_id=?", (result["id"],)).fetchone()
+    assert fulfillment["status"] == "ready_after_payment_check"
+
+
+def test_woocommerce_webhook_hmac_and_idempotent_order_ingestion(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-hook.sqlite'}")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_WEBHOOK_SECRET", "test-webhook-secret")
+    body = json.dumps({
+        "id": 789, "status": "completed", "currency": "USD", "total": "7.50",
+        "date_paid": "2026-11-07T10:00:00",
+        "line_items": [{"product_id": 5, "name": "Asset", "quantity": 1, "total": "7.50"}],
+    }).encode()
+    signature = base64.b64encode(
+        hmac.new(b"test-webhook-secret", body, hashlib.sha256).digest()
+    ).decode()
+    with TestClient(app) as client:
+        denied = client.post("/commerce/webhooks/woocommerce", content=body)
+        first = client.post(
+            "/commerce/webhooks/woocommerce", content=body,
+            headers={"X-WC-Webhook-Signature": signature},
+        )
+        second = client.post(
+            "/commerce/webhooks/woocommerce", content=body,
+            headers={"X-WC-Webhook-Signature": signature},
+        )
+    assert denied.status_code == 401
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json()["created"] is True
+    assert second.json()["created"] is False
+
+
+def test_catalog_product_and_channel_listing_packet_are_local_drafts(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-catalog.sqlite'}")
+    with TestClient(app) as client:
+        created = client.post("/commerce/catalog/products", json={
+            "sku": "SCI-FI-UI-001", "title": "Sci-Fi UI Pack",
+            "description": "Original downloadable interface assets.",
+            "product_type": "game_ui_assets", "file_names": ["assets.zip"],
+            "tags": ["sci-fi", "ui"], "base_price": "2.99", "currency": "USD",
+        })
+        assert created.status_code == 201
+        product_id = created.json()["id"]
+        listing = client.post(f"/commerce/catalog/products/{product_id}/listing-packets?channel=itch_io")
+        overview = client.get("/commerce/overview")
+    assert listing.status_code == 201
+    assert listing.json()["published"] is False
+    assert listing.json()["upload_performed"] is False
+    assert overview.status_code == 200
+    assert overview.json()["automated_fulfillment"] is False
+
+
+def test_manual_listing_approval_requires_owner_and_never_publishes(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-approval.sqlite'}")
+    owner_key = "x" * 64
+    monkeypatch.setenv("AI_OS_API_TOKEN", owner_key)
+    with TestClient(app) as client:
+        product = client.post("/commerce/catalog/products", json={
+            "sku": "APPROVAL-001", "title": "Asset", "description": "Digital file",
+            "product_type": "asset", "file_names": ["asset.zip"],
+        }, headers={"Authorization": "Bearer " + owner_key})
+        listing = client.post(
+            f"/commerce/catalog/products/{product.json()['id']}/listing-packets?channel=gumroad",
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+        listing_id = listing.json()["id"]
+        denied = client.post(f"/commerce/listings/{listing_id}/approve-manual-upload")
+        approved = client.post(
+            f"/commerce/listings/{listing_id}/approve-manual-upload",
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+    assert product.status_code == 201
+    assert listing.status_code == 201
+    assert denied.status_code == 401
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved_for_manual_upload"
+    assert approved.json()["external_upload_performed"] is False
+    assert approved.json()["published"] is False
+
+
+def test_paid_mapped_order_creates_one_internal_entitlement(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-entitlement.sqlite'}")
+    initialize_commerce_storage()
+    from ai_os.commerce import CatalogProductCreate, create_catalog_product, build_listing_packet
+    from ai_os.commerce import connect as commerce_connect
+    from ai_os.commerce import _now
+    import uuid
+    product_id = str(uuid.uuid4())
+    now = _now()
+    with commerce_connect() as db:
+        db.execute(
+            """INSERT INTO commerce_products
+            (id,sku,title,description,product_type,files_json,tags_json,base_price,currency,status,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,'draft',?,?)""",
+            (product_id, "MAP-001", "Mapped Asset", "Description", "asset",
+             "[]", "[]", "2.00", "USD", now, now),
+        )
+        db.execute(
+            """INSERT INTO commerce_listings
+            (id,product_id,channel,packet_json,status,external_listing_id,created_at,updated_at)
+            VALUES (?,?,?,?, 'listed',?,?,?)""",
+            (str(uuid.uuid4()), product_id, "woocommerce", "{}", "555", now, now),
+        )
+    paid = {
+        "id": 990, "status": "processing", "currency": "USD", "total": "2.00",
+        "date_paid": "2026-11-07T10:00:00",
+        "line_items": [{"product_id": 555, "name": "Mapped Asset", "quantity": 1, "total": "2.00"}],
+    }
+    first = ingest_order("woocommerce", paid)
+    replay = ingest_order("woocommerce", paid)
+    with commerce_connect() as db:
+        rows = db.execute("SELECT * FROM commerce_entitlements WHERE order_id=?", (first["id"],)).fetchall()
+    assert first["payment_status"] == "paid"
+    assert first["fulfillment_status"] == "ready_after_payment_check"
+    assert replay["created"] is False
+    assert len(rows) == 1
+    assert rows[0]["status"] == "awaiting_manual_delivery"
+
+
+def test_payout_statement_recording_validates_math_and_requires_owner(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-payout.sqlite'}")
+    owner_key = "y" * 64
+    monkeypatch.setenv("AI_OS_API_TOKEN", owner_key)
+    payload = {
+        "channel": "gumroad", "external_payout_id": "statement-001",
+        "currency": "USD", "gross_amount": "100.00",
+        "fee_amount": "10.00", "net_amount": "90.00",
+        "evidence_reference": "provider statement row 1",
+    }
+    with TestClient(app) as client:
+        denied = client.post("/commerce/payouts/records", json=payload)
+        invalid = client.post(
+            "/commerce/payouts/records",
+            json={**payload, "net_amount": "95.00"},
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+        created = client.post(
+            "/commerce/payouts/records", json=payload,
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+        confirmed = client.post(
+            f"/commerce/payouts/{created.json()['id']}/confirm-received",
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+    assert denied.status_code == 401
+    assert invalid.status_code == 422
+    assert created.status_code == 201
+    assert created.json()["status"] == "recorded_unverified"
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "owner_confirmed_received"
