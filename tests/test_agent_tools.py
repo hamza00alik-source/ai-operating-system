@@ -175,3 +175,62 @@ def test_specialist_tool_loop_hard_caps_configured_call_budget(monkeypatch):
         agent_runtime._generate_specialist_response(
             "research-synthesist", "system", "task", max_tool_calls=4
         )
+
+
+
+def test_specialist_model_request_budget_limits_tool_followups(monkeypatch):
+    from ai_os import agent_runtime, action_gateway
+
+    monkeypatch.setenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_MAX_REQUESTS_PER_STEP", "2")
+    responses = iter([
+        {"tool_call": {"name": "research.release_feeds", "parameters": {"query": "agents"}}},
+        {"status": "completed", "summary": "Completed within budget.", "evidence": [], "blockers": []},
+    ])
+    calls = []
+    monkeypatch.setattr(
+        agent_runtime, "generate_json",
+        lambda *_: (next(responses), {"provider": "test"}),
+    )
+    monkeypatch.setattr(
+        action_gateway, "execute_agent_tool",
+        lambda *_: calls.append("tool") or {"status": "completed", "result": {}},
+    )
+
+    result, _, tool_calls = agent_runtime._generate_specialist_response(
+        "research-synthesist", "system", "task"
+    )
+    assert result["summary"] == "Completed within budget."
+    assert len(calls) == 1
+    assert len(tool_calls) == 1
+
+
+def test_specialist_model_request_budget_one_disables_followup_tools(monkeypatch):
+    from ai_os import agent_runtime
+
+    monkeypatch.setenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_MAX_REQUESTS_PER_STEP", "1")
+    calls = []
+    monkeypatch.setattr(
+        agent_runtime, "generate_json",
+        lambda *_: calls.append("model") or (
+            {"tool_call": {"name": "research.release_feeds", "parameters": {"query": "agents"}}},
+            {"provider": "test"},
+        ),
+    )
+    with pytest.raises(ValueError, match="maximum number of tool calls"):
+        agent_runtime._generate_specialist_response(
+            "research-synthesist", "system", "task"
+        )
+    assert calls == ["model"]
+
+
+@pytest.mark.parametrize("value", ["0", "5", "invalid"])
+def test_specialist_model_request_budget_rejects_unsafe_configuration(monkeypatch, value):
+    from ai_os import agent_runtime
+
+    monkeypatch.setenv("AI_OS_MODEL_MAX_REQUESTS_PER_STEP", value)
+    with pytest.raises(ValueError, match="one to four"):
+        agent_runtime._generate_specialist_response(
+            "research-synthesist", "system", "task"
+        )
