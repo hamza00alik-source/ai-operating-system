@@ -148,3 +148,31 @@ def test_runtime_without_recent_heartbeat_is_reported_stale():
 
     assert response.status_code == 200
     assert response.json()["health"] == "stale"
+
+
+def test_disabling_logical_agent_revokes_its_runtime_credential():
+    with TestClient(app) as client:
+        created = client.post(
+            "/control-plane/runtimes",
+            json={"runtime_name": "Research runtime", "runtime_kind": "agent",
+                  "agent_id": "research-synthesist"},
+        )
+        runtime_id = created.json()["runtime"]["runtime_id"]
+        disabled = client.patch(
+            "/control-plane/agents/research-synthesist",
+            json={"enabled": False},
+        )
+        heartbeat = client.post(
+            "/control-plane/runtime-heartbeat",
+            json={"runtime_id": runtime_id, "status": "idle"},
+            headers={"X-AI-Runtime-Token": created.json()["runtime_token"]},
+        )
+        reenabled = client.patch(
+            "/control-plane/agents/research-synthesist",
+            json={"enabled": True},
+        )
+
+    assert created.status_code == 201
+    assert disabled.status_code == 200
+    assert heartbeat.status_code == 403
+    assert reenabled.status_code == 200
