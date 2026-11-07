@@ -286,3 +286,21 @@ def test_department_manager_broker_route_is_scoped_and_audited():
     assert denied.json()["decision"] == "blocked_department_scope"
     assert self_route.json()["allowed"] is False
     assert self_route.json()["decision"] == "blocked_self_route"
+
+
+
+def test_control_plane_database_errors_do_not_fall_back_to_registry_allowance(monkeypatch):
+    import sqlite3
+    from ai_os import control_plane
+
+    def unavailable_database():
+        raise sqlite3.OperationalError("unable to open database file")
+
+    monkeypatch.setattr(control_plane, "connect", unavailable_database)
+    try:
+        control_plane.is_control_plane_agent_enabled(
+            "research-synthesist", fallback_enabled=True
+        )
+        assert False, "database failure must not permit registry-only fallback"
+    except sqlite3.OperationalError as exc:
+        assert "unable to open database" in str(exc)
