@@ -10,7 +10,7 @@ AGENT_AUTH_PATHS = {("POST", "/ceo/approval-requests")}
 
 async def authenticate_request(request: Request):
     """Require a configured owner token; fail closed for production misconfiguration."""
-    configured = os.getenv("AI_OS_API_TOKEN", "").strip()
+    configured = (os.getenv("AI_OS_API_TOKEN", "").strip() or os.getenv("AI_OS_API_KEY", "").strip())
     environment = os.getenv("AI_OS_ENV", "development").strip().lower()
     if request.url.path in PUBLIC_PATHS:
         request.state.actor = "system"
@@ -26,7 +26,7 @@ async def authenticate_request(request: Request):
         if environment == "production":
             return JSONResponse(
                 status_code=503,
-                content={"detail": "Server authentication is not configured. Set AI_OS_API_TOKEN."},
+                content={"detail": "Server authentication is not configured. Set AI_OS_API_TOKEN or AI_OS_API_KEY."},
             )
         request.state.actor = "local-development"
         return None
@@ -34,7 +34,7 @@ async def authenticate_request(request: Request):
     if len(configured) < 32:
         return JSONResponse(
             status_code=503,
-            content={"detail": "AI_OS_API_TOKEN must contain at least 32 characters."},
+            content={"detail": "The configured owner API key must contain at least 32 characters."},
         )
 
     authorization = request.headers.get("authorization", "")
