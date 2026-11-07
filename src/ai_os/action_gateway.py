@@ -12,6 +12,7 @@ from typing import Any
 from ai_os.approvals import ApprovalSecurityError, consume_owner_approval
 from ai_os.audit import append_event
 from ai_os.governance import OWNER_APPROVAL_ACTIONS
+from ai_os.control_plane import evaluate_capability, get_effective_agent, BROKER_CAPABILITIES
 
 
 class ActionGatewayError(RuntimeError):
@@ -19,6 +20,8 @@ class ActionGatewayError(RuntimeError):
 
 
 ActionAdapter = Callable[[dict, str], Any]
+AgentToolAdapter = Callable[[dict], Any]
+_AGENT_TOOL_ADAPTERS: dict[str, tuple[str, AgentToolAdapter]] = {}
 _ADAPTERS: dict[str, tuple[str, ActionAdapter]] = {}
 
 
@@ -137,3 +140,72 @@ def execute_approved_action(
             "The approved action adapter failed after the approval was consumed. "
             "Inspect the audit trail before any manual retry."
         ) from exc
+
+
+
+def register_agent_tool_adapter(
+    tool_name: str,
+    *,
+    capability: str,
+    adapter: AgentToolAdapter,
+) -> None:
+    """Register a trusted in-process tool adapter behind an explicit capability."""
+    normalized = tool_name.strip().lower() if isinstance(tool_name, str) else ""
+    required = capability.strip().lower() if isinstance(capability, str) else ""
+    if not normalized or len(normalized) > 100 or any(ch.isspace() for ch in normalized):
+        raise ActionGatewayError("A valid tool name is required.")
+    if required not in BROKER_CAPABILITIES or not required.startswith("tool."):
+        raise ActionGatewayError("Tool adapters require a supported tool.* capability.")
+    if not callable(adapter):
+        raise ActionGatewayError("A callable trusted tool adapter is required.")
+    existing = _AGENT_TOOL_ADAPTERS.get(normalized)
+    if existing and existing[0] != required:
+        raise ActionGatewayError("Tool is already registered with a different capability.")
+    _AGENT_TOOL_ADAPTERS[normalized] = (required, adapter)
+
+
+def clear_agent_tool_adapters_for_tests() -> None:
+    _AGENT_TOOL_ADAPTERS.clear()
+
+
+def execute_agent_tool(agent_id: str, tool_name: str, parameters: dict) -> dict:
+    """Execute a trusted tool only when the caller has an explicit scoped grant."""
+    normalized = tool_name.strip().lower() if isinstance(tool_name, str) else ""
+    registered = _AGENT_TOOL_ADAPTERS.get(normalized)
+    if registered is None:
+        raise ActionGatewayError("No trusted tool adapter is registered.")
+    capability, adapter = registered
+    agent = get_effective_agent(agent_id)
+    if agent is None:
+        raise ActionGatewayError("Agent is not enabled in the Control Plane.")
+    decision = evaluate_capability(agent_id, capability, agent.department)
+    if not decision.get("allowed"):
+        append_event(
+            "agent:" + agent_id, "agent_tool_execution_denied", "agent_tool", normalized,
+            {"capability": capability, "decision": decision.get("decision")},
+        )
+        raise ActionGatewayError("Agent tool capability was denied by Control Plane policy.")
+    append_event(
+        "agent:" + agent_id, "agent_tool_execution_started", "agent_tool", normalized,
+        {"capability": capability, "grant_id": decision.get("grant_id")},
+    )
+    try:
+        result = adapter(parameters)
+        encoded = json.dumps(
+            result, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False, default=str,
+        )
+        digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        append_event(
+            "agent:" + agent_id, "agent_tool_execution_completed", "agent_tool", normalized,
+            {"capability": capability, "grant_id": decision.get("grant_id"),
+             "result_sha256": digest},
+        )
+        return {"status": "completed", "tool": normalized, "result": result,
+                "result_sha256": digest}
+    except Exception as exc:
+        append_event(
+            "agent:" + agent_id, "agent_tool_execution_failed", "agent_tool", normalized,
+            {"capability": capability, "error_type": type(exc).__name__},
+        )
+        raise ActionGatewayError("Trusted agent tool adapter failed; inspect the audit trail.") from exc
