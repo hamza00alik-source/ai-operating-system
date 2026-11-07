@@ -35,13 +35,16 @@ These endpoints are owner-authenticated and read-only. They do not assign new wo
 The durable manager coordination endpoints now provide a first execution contract:
 
 - POST /company-runs/{run_id}/departments/{department_id}/plan — invokes the configured model with that department manager's pinned Agency Agents profile and asks it to create up to eight specialist tasks.
+- POST /ceo/plans/{run_id}/delegate — explicitly asks the CEO delegation service to select only department charters whose manager profiles were assigned in the CEO plan, then invokes those managers to create their bounded plans.
 - GET /company-runs/{run_id}/department-plans — lists persisted department plans and their status.
 - POST /company-runs/{run_id}/departments/{department_id}/review — after every delegated task is completed or blocked, asks the manager to assess the reports and record a CEO-facing summary.
 - POST /ceo/review/{run_id} now includes saved department-manager reviews in the CEO's consolidated review input.
 
 Plans are stored in SQLite and create durable pending company-run steps. Assignments are limited to enabled specialist profiles in the manager profile's source division; task keys, dependencies, and plan size are validated. Manager reviews are recommendations and escalations only. They cannot approve actions or bypass the CEO/owner approval gateway.
 
-These routes require a configured model provider; no model is configured or invoked by default. Creating a plan queues tasks but does not dispatch workers. The shared worker runtime still needs to be enabled to execute them. Manager review is only available after all delegated steps have terminal reports. This is request-driven coordination, not yet an always-running manager process or autonomous CEO loop.
+The shared scheduler now detects when every delegated specialist step is completed or blocked and enqueues an idempotent `review_department_plan` job. The common worker executes that manager review and saves its CEO-facing summary; the CEO review consumes those saved summaries. This is still a shared worker, not one persistent process per department. The scheduler is invoked through the existing worker-run request; continuous host-level supervision is not yet enabled.
+
+The delegation and review stages require a configured model provider; no model is configured or invoked by default. CEO planning itself remains deterministic and does not call a model. The explicit CEO delegation endpoint may invoke one model call per selected department manager. Manager review may invoke another call per department after specialist work reaches terminal states. Provider usage and any charges depend on the owner's model configuration. If the provider is disabled, no model calls or review jobs are scheduled.
 
 ## What the directory does — and does not do
 
@@ -70,11 +73,7 @@ remain disconnected or approval-gated.
 
 ## Next implementation stages
 
-1. Add department-specific work queues, manager review contracts and workload
-   reporting on top of the existing durable queue.
-2. Give each department its own measurable service-level and quality metrics.
-3. Add connector adapters incrementally, starting with read-only store visibility
-   and draft-only actions.
-4. Add persistent scheduling and worker supervision on the chosen host.
-5. Verify cross-department execution end-to-end before enabling any external
-   side effects.
+1. Add continuous worker supervision, bounded concurrency, health checks, pause/resume and crash-recovery verification on the chosen host.
+2. Give each department measurable service-level and quality metrics, including manager review quality.
+3. Add connector adapters incrementally, starting with read-only store visibility and draft-only actions.
+4. Verify cross-department execution end-to-end before enabling any external side effects.
