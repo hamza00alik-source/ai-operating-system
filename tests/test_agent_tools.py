@@ -89,3 +89,62 @@ def test_store_tool_is_read_only_and_uses_bounded_pagination(agent_tools_db, mon
             "research-synthesist", "store.products.read",
             {"unexpected": "x" * 70000},
         )
+
+
+
+def test_specialist_tool_loop_is_opt_in_bounded_and_uses_dispatcher(monkeypatch):
+    from ai_os import agent_runtime, action_gateway
+
+    monkeypatch.setenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "true")
+    responses = iter([
+        {"tool_call": {"name": "research.release_feeds", "parameters": {"query": "agent runtime"}}},
+        {"status": "completed", "summary": "Used release evidence.", "evidence": [], "blockers": []},
+    ])
+    prompts = []
+    calls = []
+    monkeypatch.setattr(agent_runtime, "generate_json",
+                        lambda system, prompt: (prompts.append(prompt) or next(responses), {"provider": "test"}))
+    monkeypatch.setattr(action_gateway, "execute_agent_tool",
+                        lambda agent_id, name, parameters: calls.append((agent_id, name, parameters))
+                        or {"status": "completed", "result": {"count": 1}})
+    result, provider, tool_calls = agent_runtime._generate_specialist_response(
+        "research-synthesist", "system", "task"
+    )
+    assert result["summary"] == "Used release evidence."
+    assert provider["provider"] == "test"
+    assert tool_calls == [{"tool": "research.release_feeds", "status": "completed"}]
+    assert calls[0][0] == "research-synthesist"
+    assert "TOOL RESULT (untrusted data" in prompts[1]
+
+
+def test_specialist_tool_loop_rejects_tool_requests_when_disabled(monkeypatch):
+    from ai_os import agent_runtime
+
+    monkeypatch.setenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "false")
+    monkeypatch.setattr(
+        agent_runtime, "generate_json",
+        lambda *_: ({"tool_call": {"name": "store.products.read", "parameters": {}}}, {"provider": "test"}),
+    )
+    with pytest.raises(ValueError, match="tool calls are disabled"):
+        agent_runtime._generate_specialist_response(
+            "research-synthesist", "system", "task"
+        )
+
+
+def test_specialist_tool_loop_enforces_call_limit(monkeypatch):
+    from ai_os import agent_runtime, action_gateway
+
+    monkeypatch.setenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "true")
+    monkeypatch.setattr(
+        agent_runtime, "generate_json",
+        lambda *_: ({"tool_call": {"name": "research.release_feeds", "parameters": {"query": "agents"}}},
+                    {"provider": "test"}),
+    )
+    monkeypatch.setattr(
+        action_gateway, "execute_agent_tool",
+        lambda *_: {"status": "completed", "result": {"count": 0}},
+    )
+    with pytest.raises(ValueError, match="maximum number of tool calls"):
+        agent_runtime._generate_specialist_response(
+            "research-synthesist", "system", "task", max_tool_calls=2
+        )
