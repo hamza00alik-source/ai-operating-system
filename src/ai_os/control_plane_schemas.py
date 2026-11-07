@@ -4,15 +4,16 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
 class AgentEnableUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     enabled: bool
 
 
 class EndpointCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=100)
     protocol: Literal["internal", "mcp", "a2a", "openai_compatible"]
     base_url: str | None = Field(default=None, max_length=500)
     credential_ref: str | None = Field(default=None, max_length=160)
-    metadata: dict = Field(default_factory=dict)
 
     @field_validator("name")
     @classmethod
@@ -32,26 +33,3 @@ class EndpointCreate(BaseModel):
         if len(value) > 160 or any(ch.isspace() for ch in value):
             raise ValueError("credential_ref must be a short reference")
         return value
-
-    @field_validator("metadata")
-    @classmethod
-    def limit_metadata(cls, value: dict) -> dict:
-        if len(str(value)) > 4000:
-            raise ValueError("metadata is too large")
-        forbidden_parts = ("secret", "token", "password", "api_key", "apikey", "authorization")
-        def inspect(item):
-            if isinstance(item, dict):
-                for key, child in item.items():
-                    normalized = str(key).lower().replace("-", "_")
-                    if any(part in normalized for part in forbidden_parts):
-                        raise ValueError("metadata must not contain credentials or secret material")
-                    inspect(child)
-            elif isinstance(item, list):
-                for child in item:
-                    inspect(child)
-        inspect(value)
-        return value
-
-
-class AgentRegistryList(BaseModel):
-    model_config = ConfigDict(extra="allow")
