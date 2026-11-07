@@ -232,6 +232,19 @@ def initialize_commerce_storage() -> None:
             updated_at TEXT NOT NULL,
             FOREIGN KEY(order_id) REFERENCES commerce_orders(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS commerce_entitlements (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            external_item_id TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('awaiting_manual_delivery','delivered_manually','revoked')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(order_id, product_id),
+            FOREIGN KEY(order_id) REFERENCES commerce_orders(id) ON DELETE CASCADE,
+            FOREIGN KEY(product_id) REFERENCES commerce_products(id)
+        );
         CREATE INDEX IF NOT EXISTS idx_commerce_orders_channel_status
             ON commerce_orders(channel, status, received_at DESC);
         """)
@@ -350,6 +363,31 @@ def approve_manual_listing_packet(listing_id: str, request: Request):
             "external_upload_performed": False, "published": False}
 
 
+@router.post("/listings/{listing_id}/map-external-id")
+def map_external_listing_id(listing_id: str, external_listing_id: str, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required.")
+    external_listing_id = external_listing_id.strip()
+    if not external_listing_id or len(external_listing_id) > 120:
+        raise HTTPException(status_code=422, detail="A valid external listing ID is required.")
+    now = _now()
+    with connect() as db:
+        row = db.execute("SELECT channel,status FROM commerce_listings WHERE id=?", (listing_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Listing packet not found.")
+        if row["status"] not in {"approved_for_manual_upload", "listed"}:
+            raise HTTPException(status_code=409, detail="Approve the manual listing packet before mapping its marketplace ID.")
+        db.execute(
+            "UPDATE commerce_listings SET external_listing_id=?,status='listed',updated_at=? WHERE id=?",
+            (external_listing_id, now, listing_id),
+        )
+    append_event(actor, "commerce_external_listing_mapped", "commerce_listing", listing_id,
+                 {"channel": row["channel"], "external_listing_id": external_listing_id})
+    return {"id": listing_id, "channel": row["channel"], "status": "listed",
+            "external_listing_id": external_listing_id, "marketplace_contacted": False}
+
+
 @router.get("/listings")
 def list_commerce_listings(limit: int = Query(default=100, ge=1, le=500)):
     with connect() as db:
@@ -422,6 +460,23 @@ def ingest_order(channel: str, raw: dict) -> dict:
                 (id,order_id,status,created_at,updated_at) VALUES (?,?,?,?,?)""",
                 (str(uuid4()), order_id, fulfillment_status, now, now),
             )
+            # Match marketplace item IDs to owner-recorded listing mappings.
+            for item in normalized["items"]:
+                if not item["product_id"]:
+                    continue
+                mapped = db.execute(
+                    """SELECT l.product_id FROM commerce_listings l
+                    WHERE l.channel=? AND l.external_listing_id=? AND l.status='listed'""",
+                    (channel, item["product_id"]),
+                ).fetchone()
+                if mapped:
+                    db.execute(
+                        """INSERT OR IGNORE INTO commerce_entitlements
+                        (id,order_id,product_id,channel,external_item_id,status,created_at,updated_at)
+                        VALUES (?,?,?,?,?,'awaiting_manual_delivery',?,?)""",
+                        (str(uuid4()), order_id, mapped["product_id"], channel,
+                         item["product_id"], now, now),
+                    )
             created = True
     return {"id": order_id, "channel": channel, "external_order_id": normalized["external_order_id"],
             "payment_status": normalized["payment_status"], "created": created,
@@ -461,6 +516,18 @@ def list_commerce_orders(limit: int = Query(default=100, ge=1, le=500)):
     return {"orders": [
         {**dict(row), "items": json.loads(row["items_json"])} for row in rows
     ]}
+
+
+@router.get("/entitlements")
+def list_commerce_entitlements(limit: int = Query(default=100, ge=1, le=500)):
+    with connect() as db:
+        rows = db.execute(
+            """SELECT e.*, p.sku, p.title AS product_title
+            FROM commerce_entitlements e JOIN commerce_products p ON p.id=e.product_id
+            ORDER BY e.created_at DESC LIMIT ?""", (limit,)
+        ).fetchall()
+    return {"entitlements": [dict(row) for row in rows],
+            "policy": "Entitlements are internal records only; no download URL or customer notification is generated."}
 
 
 @router.get("/fulfillment")
