@@ -123,6 +123,16 @@ def _generate_specialist_response(agent_id: str, system_prompt: str,
     """Run a bounded model/tool loop; tools remain disabled unless owner opted in."""
     if isinstance(max_tool_calls, bool) or not isinstance(max_tool_calls, int) or not 0 <= max_tool_calls <= 3:
         raise ValueError("max_tool_calls must be an integer from zero to three.")
+    # One initial model request plus at most three follow-up requests. The owner
+    # may lower this per-step budget, but cannot raise the hard safety ceiling.
+    raw_budget = os.getenv("AI_OS_MODEL_MAX_REQUESTS_PER_STEP", "4").strip()
+    try:
+        request_budget = int(raw_budget)
+    except ValueError as exc:
+        raise ValueError("AI_OS_MODEL_MAX_REQUESTS_PER_STEP must be an integer from one to four.") from exc
+    if not 1 <= request_budget <= 4:
+        raise ValueError("AI_OS_MODEL_MAX_REQUESTS_PER_STEP must be an integer from one to four.")
+    max_tool_calls = min(max_tool_calls, request_budget - 1)
     enabled = os.getenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "false").strip().lower() == "true"
     tool_context = (
         "\n\nAgent tool calls enabled: " + ("true" if enabled else "false")
