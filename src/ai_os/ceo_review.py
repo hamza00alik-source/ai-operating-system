@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from ai_os.approvals import ApprovalSecurityError, create_owner_approval_request
+from ai_os.approvals import ApprovalSecurityError, canonical_action, create_owner_approval_request
 from ai_os.audit import append_event
 from ai_os.db import connect
 from ai_os.execution import get_company_run, CEO_AGENT_ID
@@ -111,6 +111,35 @@ def _create_owner_requests(run_id: str, proposals: list[dict]) -> tuple[list[dic
     rejected = []
     for proposal in proposals:
         try:
+            _, action_hash = canonical_action(
+                proposal["action_type"], proposal["parameters"]
+            )
+            # Repeated CEO reviews must not flood the owner inbox with the same
+            # still-live request for this run and exact action.
+            with connect() as db:
+                existing = db.execute(
+                    """SELECT * FROM owner_approval_requests
+                       WHERE run_id=? AND action_hash=?
+                         AND status IN ('pending','approved') AND expires_at>?
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (run_id, action_hash, int(datetime.now(timezone.utc).timestamp())),
+                ).fetchone()
+            if existing is not None:
+                existing_item = dict(existing)
+                existing_item["parameters"] = json.loads(existing_item.pop("parameters_json"))
+                created.append({
+                    "id": existing_item["id"],
+                    "run_id": existing_item["run_id"],
+                    "action_type": existing_item["action_type"],
+                    "parameters": existing_item["parameters"],
+                    "action_hash": existing_item["action_hash"],
+                    "status": existing_item["status"],
+                    "expires_at": existing_item["expires_at"],
+                    "rationale": proposal["rationale"],
+                    "reused_existing_request": True,
+                })
+                continue
+
             token = issue_agent_token(
                 CEO_AGENT_ID,
                 run_id=run_id,
