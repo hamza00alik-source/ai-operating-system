@@ -112,7 +112,8 @@ See [OPERATIONS_PLAYBOOK.md](OPERATIONS_PLAYBOOK.md), [CONTINUOUS_LEARNING.md](C
 - [x] CP-3 specialist tool loop: opt-in model-requested tool calls, maximum three calls per step, untrusted tool-result handling, and disabled-by-default switch
 - [x] CP-3 observability: owner dashboard shows Control Plane health, capability grants, tool readiness, and recent broker/tool audit events; owner can grant/revoke capabilities from the UI
 - [ ] CP-3 remaining: adversarial/task-budget hardening and provider-failure recovery
-- [ ] CP-4: secure MCP integration, followed by A2A interoperability after identity and policy controls
+- [x] CP-4 security acceptance plan: endpoint lifecycle, public-address egress restrictions, credential references, Streamable HTTP/JSON-RPC validation, capability mapping, audit, and adversarial tests specified
+- [ ] CP-4 implementation: secure MCP integration, followed by A2A interoperability after identity and policy controls
 - [ ] CP-5: live health, job telemetry, policy traces, and agent-network visualization
 - [ ] CP-6: production deployment hardening, monitoring, backup/restore, and rollback verification
 
