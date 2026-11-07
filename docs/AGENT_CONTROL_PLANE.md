@@ -196,7 +196,7 @@ Operator activation:
 4. WooCommerce tools remain unavailable until the existing read-only store credentials are configured; they expose bounded catalog and minimized order status only. No publishing, product/order writes, refunds, or customer messages are included.
 
 Validation:
-- GitHub Actions passed the full suite: 266 tests.
+- GitHub Actions passed the full suite: 270 tests.
 
 Remaining CP-3 work:
 - Continue adversarial testing of task-level budgets, transient provider failures, and worker recovery under real deployment conditions.
@@ -216,6 +216,8 @@ Required implementation sequence:
 6. Map each discovered remote tool to a locally owner-approved capability grant. An endpoint being enabled or a tool being discovered must not grant an agent permission to call it.
 7. Route remote calls through the same audited agent-tool gateway, enforce per-agent and per-step budgets, and keep all external side effects behind the existing exact-scope owner approval gateway.
 8. Test DNS/IP restrictions, redirects, TLS policy, credential handling, oversized payloads, malformed JSON-RPC, session expiry, timeout/retry behavior, capability revocation, prompt injection in tool results, and endpoint disable during an active call.
+
+Implemented CP-4 preparation: owner-authenticated `PATCH /control-plane/endpoints/{endpoint_id}` can enable or disable registered MCP endpoint metadata. Activation is limited to MCP (A2A/OpenAI-compatible endpoint execution remains disabled), and any credential reference must resolve to an existing `env:NAME` variable. Unresolved `secret://` references fail closed. The API response explicitly states that activation does not connect to the endpoint. This lifecycle is not yet an MCP client.
 
 No MCP endpoint is currently connected or executed. The CP-1 endpoint registry is metadata-only; the above is an acceptance plan, not a claim of MCP support.
 
