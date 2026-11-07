@@ -146,12 +146,24 @@ Use the existing durable queue as the source of truth. Add authenticated worker 
 - Add automated tests for seeding, relationships, filters, enable/disable, owner authentication, endpoint validation, and CEO protection.
 - GitHub Actions passed the full suite: 235 tests passed on the CP-1 branch.
 
-Runtime instances, authenticated heartbeats, and live health status are deliberately deferred to CP-2; profile availability is not a live-worker signal.
+### CP-2 — Runtime identity and heartbeat — implemented
+- Add a persistent runtime-instance registry for generic worker processes and logical-agent runtime identities.
+- Owner-authenticated registration returns a high-entropy runtime credential once; only its SHA-256 hash is stored.
+- Runtime credentials expire after 30 days and can be rotated by the owner; rotation immediately invalidates the previous credential.
+- Owner revocation immediately blocks further heartbeats. Disabling a logical agent also revokes every runtime identity assigned to it.
+- A separate runtime-authenticated heartbeat endpoint records status, current job ID, and last-seen time. The endpoint bypasses the owner-token middleware only because it verifies the runtime-specific credential itself.
+- Runtime health is derived from heartbeat evidence: never-seen runtimes are offline; heartbeats older than 60 seconds are stale; revoked runtimes are revoked.
+- The worker service supports optional remote heartbeat reporting using `AI_OS_CONTROL_PLANE_URL`, `AI_OS_RUNTIME_ID`, and `AI_OS_RUNTIME_TOKEN`. It refreshes heartbeats during long-running jobs, not only between jobs.
+- The owner token and runtime credentials are separate. Runtime credentials authorize heartbeat reporting only; they do not grant queue, model, MCP, A2A, or external-action permissions.
+- GitHub Actions passed the full suite: 250 tests.
 
-### CP-2 — Runtime identity and heartbeat
-- Give each worker/runtime a revocable identity with least privilege.
-- Add signed heartbeat and job-lease renewal, expiry, replay protection, and last-seen state.
-- Keep the owner token separate from worker credentials.
+Operational setup:
+1. Register a worker through the owner-authenticated `POST /control-plane/runtimes` endpoint with `runtime_kind: "worker"`.
+2. Copy the returned token once into the worker host's secret environment as `AI_OS_RUNTIME_TOKEN`; set `AI_OS_RUNTIME_ID` and `AI_OS_CONTROL_PLANE_URL` alongside it.
+3. Restart the worker service and confirm its authenticated heartbeat in `GET /control-plane/runtimes`.
+4. Rotate the token before its 30-day expiry; revoke the runtime if the host is retired or compromised.
+
+Limitations: this milestone registers and monitors runtime identities; it does not yet provide remote job claiming or a distributed queue transport. The worker still needs access to the configured durable queue/database to execute jobs. Registering an agent runtime does not by itself launch an independent AI process.
 
 ### CP-3 — Broker and policy enforcement
 - Make CEO routing decisions inspectable and policy-validated.
