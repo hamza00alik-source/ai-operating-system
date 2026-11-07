@@ -179,7 +179,7 @@ Implemented broker and capability controls:
 - Add an inspectable CEO/manager route evaluator at owner-authenticated `POST /control-plane/broker/evaluate`. CEO routes may target any enabled logical agent; non-CEO delegation is limited to the configured manager of the target agent's department and requires a seeded, department-scoped `task.delegate` grant. Self-delegation and cross-department manager routes are denied.
 - Enforce the same broker route policy while department managers build specialist plans; only policy-approved specialists are eligible.
 - Add owner-managed explicit grants at `GET/POST /control-plane/capabilities`, revocation at `DELETE /control-plane/capabilities/{grant_id}`, and policy preview at `POST /control-plane/capabilities/evaluate`.
-- Capability checks fail closed for unknown capabilities, disabled agents, and missing grants. The supported initial capability vocabulary is `task.delegate`, `tool.research.read`, `tool.knowledge.write`, `tool.store.read`, and `tool.store.draft`.
+- Capability checks fail closed for unknown capabilities, disabled agents, and missing grants. The supported initial capability vocabulary is `task.delegate`, `tool.research.read`, `tool.knowledge.read`, `tool.knowledge.write`, `tool.store.read`, and `tool.store.draft`.
 - Seed each department manager with only the `task.delegate` capability for the department named in the company charter. This does not grant tool access.
 - Add a trusted in-process agent-tool adapter registry. Each tool adapter is registered by application code with one supported `tool.*` capability; execution requires an explicit matching Control Plane grant, JSON-object parameters and results capped at 64 KiB, and writes start/deny/success/failure events to the hash-chained audit log.
 - Register bounded read-only tools at application startup: `research.release_feeds` (fixed public GitHub release feeds, no paid search provider), `knowledge.search` (owner-accepted company knowledge only), `store.products.read`, and `store.orders.read` (minimized order/payment status only).
@@ -187,7 +187,7 @@ Implemented broker and capability controls:
 - Keep specialist tool calling separately disabled by default with `AI_OS_AGENT_TOOL_CALLS_ENABLED=false`. Enabling the model adapter does not automatically enable tool calls. Each tool still requires a matching owner-managed capability grant.
 - Preserve the separate exact-scope owner approval gateway for external actions. Agent-tool adapters are not exposed through remote endpoint registration and do not enable MCP/A2A networking.
 - Extend the action gateway readiness view to distinguish owner-approved external actions from capability-gated internal agent tools and show whether specialist tool calls are enabled.
-- Add an owner-dashboard panel showing Control Plane agent/runtime counts, tool-call readiness, registered internal adapters, explicit capability grants, and recent broker/tool audit events.
+- Add an owner-dashboard panel showing Control Plane agent/runtime counts, tool-call readiness, registered internal adapters, explicit capability grants, and recent broker/tool audit events. Owners can grant and revoke capabilities directly from the dashboard; each change calls the owner-authenticated API and is audited.
 
 Operator activation:
 1. Keep `AI_OS_AGENT_TOOL_CALLS_ENABLED=false` unless the owner has reviewed the model provider's cost/usage implications and the enabled tools.
@@ -199,7 +199,7 @@ Validation:
 - GitHub Actions passed the full suite: 266 tests.
 
 Remaining CP-3 work:
-- Add more adversarial and operational tests around tool-call retries, provider failures, and task-level budgets.
+- Continue adversarial testing of task-level budgets, transient provider failures, and worker recovery under real deployment conditions.
 
 Profile capability metadata remains descriptive and is never treated as an executable grant. Runtime credentials still authorize heartbeat reporting only. Remote MCP/A2A endpoints remain disabled and unconnected until CP-4.
 
