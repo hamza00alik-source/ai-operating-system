@@ -253,3 +253,22 @@ A control-plane milestone is complete only when:
 - Audit events contain enough context to reconstruct decisions but no credentials or sensitive payloads.
 - Dashboard labels distinguish catalog entries, logical agents, and live runtime instances.
 - Existing company-run, approval, backup, and store-integration tests continue to pass.
+
+
+### CP-4 — MCP discovery client (initial read-only slice)
+
+Implemented on `feat/agent-control-plane`:
+- Add the official MCP Python SDK v2 as an optional extra (`pip install -e '.[mcp]'`); base installs remain free of the optional MCP dependency.
+- Add owner-triggered `POST /control-plane/endpoints/{endpoint_id}/discover`. Discovery requires an existing MCP endpoint that the owner explicitly enabled.
+- Require HTTPS, an exact hostname in `AI_OS_MCP_ALLOWED_HOSTS`, and DNS resolution exclusively to globally routable IP addresses. No wildcard host entries are supported.
+- Bound the Streamable HTTP SSE event size to 64 KiB, discovery time to 20 seconds, discovered tools to 50, descriptions to 2,000 characters, and each JSON input schema to 32 KiB.
+- Use SDK v2 automatic protocol negotiation for modern stateless and legacy MCP servers. The client performs `tools/list` only; it does not call remote tools.
+- Treat every returned description and schema as untrusted. Discovery results are returned to the owner but are not persisted as executable adapters, do not receive capabilities, and cannot be invoked by agents.
+- Authenticated MCP discovery is deliberately not enabled in this slice. Endpoints with a credential reference fail closed until a transport that safely injects credentials is implemented.
+
+Security boundary / remaining work:
+- Host allowlisting and DNS preflight are defense-in-depth, not a substitute for network egress controls. Production deployment must also restrict outbound traffic at the host/network layer to the approved destination addresses; DNS can change between preflight and connection.
+- SDK transport redirects are restricted to the endpoint origin, but production still requires adversarial tests against the exact pinned SDK version and deployment network.
+- No discovered tool is executable. The next CP-4 slice must persist discovery snapshots, require explicit owner mapping of each exact remote tool to a local capability, and route approved read-only calls through the existing audited action gateway. Remote write/side-effect tools remain blocked pending exact-scope owner approval.
+- This is not yet full MCP interoperability: credentials, tool invocation, remote notifications, and A2A remain unimplemented.
+
