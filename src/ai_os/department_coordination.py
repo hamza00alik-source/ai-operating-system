@@ -13,7 +13,7 @@ from ai_os.departments import get_department
 from ai_os.execution import get_company_run
 from ai_os.model_adapter import generate_json
 from ai_os.registry import get_agent, list_agents, load_agent_profile
-from ai_os.control_plane import is_control_plane_agent_enabled, filter_effective_agents
+from ai_os.control_plane import is_control_plane_agent_enabled, filter_effective_agents, evaluate_broker_route
 
 CEO_AGENT_ID = "company-orchestrator"
 MAX_TASKS = 8
@@ -64,6 +64,7 @@ def _manager_context(department_id: str):
     members = [
         agent for agent in filter_effective_agents(list_agents())
         if agent.id != manager.id and agent.department == manager.department
+        and evaluate_broker_route(manager.id, agent.id).get("allowed", False)
     ]
     if not members:
         raise ValueError("No enabled specialist profiles are available in the manager's source division")
