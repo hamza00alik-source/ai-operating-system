@@ -40,6 +40,8 @@ from ai_os.model_adapter import get_model_status, ModelNotConfigured
 from ai_os.ceo_review import review_company_run
 from ai_os.identity import AgentIdentityError, consume_agent_token
 from ai_os.knowledge_schemas import KnowledgeCreate, KnowledgeReview
+from ai_os.research_schemas import ResearchSearchIn
+from ai_os.research import (ResearchNotConfigured, ResearchProviderError, research_status, search_exa)
 from ai_os.evaluation import list_evaluations, evaluation_summary, evaluation_trends
 from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
                             list_knowledge_items, review_knowledge_item)
@@ -474,6 +476,59 @@ def get_training_dataset_exports(
 def get_audit_verification():
     return verify_chain()
 
+
+
+
+@app.get("/research/status")
+def get_research_status():
+    """Report configuration without exposing provider credentials."""
+    return research_status()
+
+
+@app.post("/research/search")
+def post_research_search(payload: ResearchSearchIn, request: Request):
+    """Run one explicitly requested, bounded, metered search and save candidates."""
+    try:
+        results = search_exa(payload.query, num_results=payload.num_results)
+    except ResearchNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except ResearchProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+    actor = getattr(request.state, "actor", "unknown")
+    items = []
+    for result in results:
+        try:
+            candidate = KnowledgeCreate(
+                title=result["title"],
+                content=result["excerpt"],
+                category=payload.category,
+                source_url=result["url"],
+                source_title=result["title"],
+                source_published_at=result.get("published_date"),
+                confidence=0.5,
+                tags=payload.tags,
+            )
+        except Exception:
+            continue
+        item = create_knowledge_item(candidate, actor=actor)
+        append_event(actor, "research_candidate_created", "knowledge_item", item["id"], {
+            "source_url": item["source_url"], "query": payload.query[:200],
+            "provider": "exa",
+        })
+        items.append(item)
+    append_event(actor, "research_search_completed", "research_query", str(uuid4()), {
+        "provider": "exa", "query": payload.query[:200],
+        "results_received": len(results), "candidates_created": len(items),
+    })
+    return {
+        "provider": "exa",
+        "query": payload.query,
+        "results_received": len(results),
+        "candidates_created": len(items),
+        "items": items,
+        "notice": "All results are unreviewed candidates, not verified facts.",
+    }
 
 
 @app.post("/knowledge", status_code=201)
