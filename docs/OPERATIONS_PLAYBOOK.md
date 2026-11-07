@@ -40,7 +40,7 @@ Cloud Shell is a development environment and may be stopped or reclaimed. It is 
 
 - Configure WooCommerce read-only credentials as server-side environment variables: AI_OS_WOOCOMMERCE_URL, AI_OS_WOOCOMMERCE_CONSUMER_KEY, and AI_OS_WOOCOMMERCE_CONSUMER_SECRET.
 - Use a dedicated WooCommerce key with read-only permissions. Never put credentials in Git, browser JavaScript, prompts, logs, or support tickets.
-- The read-only inventory endpoints expose a bounded product catalog and minimized order status fields only, without customer billing/shipping details. A separate opt-in adapter can create a new unpublished product draft after exact-scope CEO request, owner approval, and explicit owner execution. It cannot publish, update or delete products, fulfill orders, issue refunds, or change payment state.
+- The read-only inventory endpoints expose a bounded product catalog and minimized order status fields, WooCommerce's date-paid field, and a derived paid/not-confirmed indicator without customer billing/shipping details. This is a provider-reported status check, not independent settlement reconciliation. A separate opt-in adapter can create a new unpublished product draft after exact-scope CEO request, owner approval, and explicit owner execution. It cannot publish, update or delete products, fulfill orders, issue refunds, or change payment state.
 - Social planning and content drafts remain review artifacts. No social publishing adapter is registered.
 - Before any write integration, add separate least-privilege credentials, exact-scope owner approval, idempotency keys, request/response validation, timeout/reconciliation behavior, audit events, and mocked plus sandbox integration tests. Never reuse read-only credentials for writes.
 
