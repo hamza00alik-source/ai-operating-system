@@ -11,6 +11,7 @@ import time
 import urllib.request
 from urllib.parse import urlsplit
 from uuid import uuid4
+from threading import Event, Thread
 from collections.abc import Callable
 
 from ai_os.agent_runtime import schedule_ready_steps
@@ -33,6 +34,7 @@ def run_worker_loop(
     on_error: Callable[[Exception, int], None] | None = None,
     desired_state: Callable[[], str] = lambda: "running",
     heartbeat: Callable[[str, str, str | None], None] = lambda *_: None,
+    heartbeat_interval_seconds: float = 20,
 ) -> None:
     """Run until stopped; exponentially back off after process-level failures."""
     delay = max(1, min(int(poll_seconds), 60))
@@ -47,7 +49,28 @@ def run_worker_loop(
                 continue
             heartbeat(worker_id, "idle", None)
             scheduled = schedule()
-            result = run(worker_id=worker_id)
+            heartbeat_stop = Event()
+
+            def maintain_runtime_heartbeat():
+                interval = max(1.0, min(float(heartbeat_interval_seconds), 30.0))
+                while not heartbeat_stop.wait(interval):
+                    try:
+                        heartbeat(worker_id, "working", None)
+                    except Exception:
+                        logger.exception("Runtime heartbeat refresh failed; control plane will mark this runtime stale if it persists.")
+
+            heartbeat(worker_id, "working", None)
+            heartbeat_thread = Thread(
+                target=maintain_runtime_heartbeat,
+                name=f"runtime-heartbeat-{worker_id[:12]}",
+                daemon=True,
+            )
+            heartbeat_thread.start()
+            try:
+                result = run(worker_id=worker_id)
+            finally:
+                heartbeat_stop.set()
+                heartbeat_thread.join(timeout=1)
             failure_count = 0
             heartbeat(worker_id, "working" if result.get("processed") else "idle",
                       (result.get("job") or {}).get("id"))
