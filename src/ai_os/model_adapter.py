@@ -18,6 +18,11 @@ class ModelNotConfigured(RuntimeError):
     pass
 
 
+class ModelQuotaExceeded(RuntimeError):
+    """Provider rate/quota limit: do not automatically retry a paid-capable job."""
+    pass
+
+
 def _truthy(name: str) -> bool:
     return os.getenv(name, "false").strip().lower() == "true"
 
@@ -242,6 +247,14 @@ def generate_json(system_prompt: str, user_prompt: str) -> tuple[dict, dict]:
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            raise ModelQuotaExceeded(
+                "Model provider quota/rate limit reached; job stopped without automatic retry."
+            ) from exc
+        raise RuntimeError(
+            f"Model provider returned HTTP {exc.code}; no automatic provider fallback was attempted."
+        ) from exc
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         raise RuntimeError("Model provider request failed. Check provider availability and configuration.") from exc
     try:
