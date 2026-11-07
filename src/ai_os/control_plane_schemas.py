@@ -82,3 +82,9 @@ class CapabilityEvaluate(BaseModel):
     agent_id: str = Field(min_length=1, max_length=120)
     capability: str = Field(min_length=3, max_length=80)
     department_scope: str | None = Field(default=None, max_length=100)
+
+
+
+class EndpointEnableUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
