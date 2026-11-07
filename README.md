@@ -44,6 +44,7 @@ A Python host entry point and deployment checklist are included. See [docs/DEPLO
 - Generate ready-to-paste agent prompts with `POST /work-packets`; this makes no model/API call.
 - Execute dependency-ready specialist steps through a durable worker queue when an owner-configured model endpoint is explicitly enabled.
 - Run a persistent worker process with `python -m ai_os.worker_service`; see [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
+- Control the persistent worker through owner-authenticated `GET /worker/status` and `POST /worker/start`, `/worker/pause`, `/worker/resume`, and `/worker/stop`; active job leases renew during long-running handlers.
 - Persist task, company-run, report, queue, knowledge, evaluation, and owner-reviewed training-example records in SQLite.
 - Curate owner-reviewed model training examples in the dashboard and export accepted-only, versioned private JSONL datasets with SHA-256 manifests; this does not train a model.
 - Inspect per-agent evaluation history and cautious sample-gated quality trends.
