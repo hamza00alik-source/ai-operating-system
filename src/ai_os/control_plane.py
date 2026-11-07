@@ -57,6 +57,7 @@ def initialize_control_plane() -> None:
             status TEXT NOT NULL CHECK(status IN ('starting','idle','working','paused','stopped','error','revoked')),
             current_job_id TEXT,
             token_hash TEXT NOT NULL,
+            token_expires_at TEXT,
             registered_at TEXT NOT NULL,
             last_heartbeat_at TEXT,
             updated_at TEXT NOT NULL,
@@ -77,6 +78,14 @@ def initialize_control_plane() -> None:
             CHECK(source_agent_id <> target_agent_id)
         );
         """)
+        runtime_columns = {row[1] for row in db.execute("PRAGMA table_info(control_plane_runtime_instances)")}
+        if "token_expires_at" not in runtime_columns:
+            db.execute("ALTER TABLE control_plane_runtime_instances ADD COLUMN token_expires_at TEXT")
+        expiry_default = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        db.execute(
+            "UPDATE control_plane_runtime_instances SET token_expires_at=? WHERE token_expires_at IS NULL",
+            (expiry_default,),
+        )
         now = _now()
         for agent in list_agents(enabled_only=False):
             db.execute(
@@ -277,6 +286,7 @@ def create_runtime_instance(*, runtime_name: str, runtime_kind: str,
     if runtime_kind == "worker" and agent_id:
         raise ValueError("generic worker runtime must not claim a logical agent identity")
     runtime_id, token, now = str(uuid4()), secrets.token_urlsafe(48), _now()
+    token_expires_at = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     with connect() as db:
         if agent_id:
@@ -288,10 +298,10 @@ def create_runtime_instance(*, runtime_name: str, runtime_kind: str,
         db.execute(
             """INSERT INTO control_plane_runtime_instances
                (runtime_id, runtime_name, runtime_kind, agent_id, status,
-                current_job_id, token_hash, registered_at, last_heartbeat_at,
+                current_job_id, token_hash, token_expires_at, registered_at, last_heartbeat_at,
                 updated_at, revoked_at)
-               VALUES (?, ?, ?, ?, 'starting', NULL, ?, ?, NULL, ?, NULL)""",
-            (runtime_id, runtime_name, runtime_kind, agent_id, token_hash, now, now),
+               VALUES (?, ?, ?, ?, 'starting', NULL, ?, ?, ?, NULL, ?, NULL)""",
+            (runtime_id, runtime_name, runtime_kind, agent_id, token_hash, token_expires_at, now, now),
         )
         row = db.execute(
             "SELECT * FROM control_plane_runtime_instances WHERE runtime_id = ?",
@@ -327,13 +337,15 @@ def heartbeat_runtime(*, runtime_id: str, token: str, status: str,
     now = _now()
     with connect() as db:
         row = db.execute(
-            "SELECT token_hash, revoked_at, agent_id FROM control_plane_runtime_instances WHERE runtime_id = ?",
+            "SELECT token_hash, token_expires_at, revoked_at, agent_id FROM control_plane_runtime_instances WHERE runtime_id = ?",
             (runtime_id,),
         ).fetchone()
         if row is None or row["revoked_at"] is not None or not secrets.compare_digest(
             supplied_hash, row["token_hash"]
         ):
             raise PermissionError("Runtime credential is invalid or revoked")
+        if row["token_expires_at"] and datetime.fromisoformat(row["token_expires_at"]) <= datetime.now(timezone.utc):
+            raise PermissionError("Runtime credential has expired; an owner must rotate it")
         if row["agent_id"]:
             agent = db.execute(
                 "SELECT enabled FROM control_plane_agents WHERE agent_id=?", (row["agent_id"],)
@@ -355,6 +367,7 @@ def heartbeat_runtime(*, runtime_id: str, token: str, status: str,
 
 def rotate_runtime_token(runtime_id: str) -> tuple[dict, str] | None:
     token, now = secrets.token_urlsafe(48), _now()
+    token_expires_at = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     with connect() as db:
         row = db.execute(
@@ -364,8 +377,8 @@ def rotate_runtime_token(runtime_id: str) -> tuple[dict, str] | None:
         if row is None or row["revoked_at"] is not None:
             return None
         db.execute(
-            "UPDATE control_plane_runtime_instances SET token_hash=?, updated_at=? WHERE runtime_id=?",
-            (token_hash, now, runtime_id),
+            "UPDATE control_plane_runtime_instances SET token_hash=?, token_expires_at=?, updated_at=? WHERE runtime_id=?",
+            (token_hash, token_expires_at, now, runtime_id),
         )
         updated = db.execute(
             "SELECT * FROM control_plane_runtime_instances WHERE runtime_id = ?",
