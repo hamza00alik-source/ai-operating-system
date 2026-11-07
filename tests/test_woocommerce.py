@@ -53,7 +53,8 @@ def test_woocommerce_product_and_order_results_are_minimized(monkeypatch):
             }])
         return Response([{
             "id": 9, "status": "processing", "date_created": "2026-11-06T10:00:00",
-            "currency": "USD", "total": "5.00", "billing": {"email": "private@example.com"},
+            "currency": "USD", "total": "5.00", "date_paid": "2026-11-06T10:01:00",
+            "billing": {"email": "private@example.com"},
         }])
 
     monkeypatch.setattr("urllib.request.urlopen", fake_open)
@@ -66,6 +67,8 @@ def test_woocommerce_product_and_order_results_are_minimized(monkeypatch):
     assert products[0]["name"] == "Asset"
     assert "description" not in products[0]
     assert orders[0]["status"] == "processing"
+    assert orders[0]["payment_status"] == "paid"
+    assert orders[0]["date_paid"] == "2026-11-06T10:01:00"
     assert "billing" not in orders[0]
     assert all(call[0].get_method() == "GET" for call in calls)
     assert "consumer-secret" not in calls[0][0].headers.get("Authorization", "")
@@ -123,3 +126,29 @@ def test_woocommerce_draft_creation_rejects_invalid_price(monkeypatch, price):
     monkeypatch.setenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "true")
     with pytest.raises(ValueError):
         client.create_product_draft(name="Asset", description="", regular_price=price)
+
+
+
+def test_woocommerce_payment_status_is_not_confirmed_without_date_paid(monkeypatch):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return json.dumps([{
+                "id": 10, "status": "pending", "date_created": "2026-11-07T00:00:00",
+                "date_paid": None, "currency": "USD", "total": "9.00",
+                "billing": {"email": "private@example.com"},
+            }]).encode()
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: Response())
+    client = WooCommerceReadOnlyClient(
+        "https://shop.example/wp-json/wc/v3", "consumer-key", "consumer-secret"
+    )
+    order = client.list_order_statuses()[0]
+    assert order["payment_status"] == "not_confirmed"
+    assert order["date_paid"] is None
+    assert "billing" not in order
