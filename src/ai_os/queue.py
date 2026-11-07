@@ -108,3 +108,15 @@ def fail_job(job_id: str, worker_id: str, error: str) -> dict | None:
         )
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     return _decode(row) if row else None
+
+
+def renew_job_lease(job_id: str, worker_id: str, lease_seconds: int = 120) -> bool:
+    """Extend a running job lease only for the worker that currently owns it."""
+    now = _now()
+    with connect() as db:
+        changed = db.execute(
+            """UPDATE jobs SET locked_at=?, updated_at=?
+               WHERE id=? AND status='running' AND locked_by=?""",
+            (now, now, job_id, worker_id),
+        ).rowcount
+    return changed == 1
