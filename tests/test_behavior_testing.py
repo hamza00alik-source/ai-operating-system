@@ -11,6 +11,12 @@ from ai_os.behavior_testing import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _configure_mock_model_endpoints(monkeypatch):
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "false")
+    monkeypatch.setenv("AI_OS_MODEL_FREE_TIER_CONFIRMED", "true")
+
+
 def _seed(path, monkeypatch):
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{path}")
     initialize_database()
