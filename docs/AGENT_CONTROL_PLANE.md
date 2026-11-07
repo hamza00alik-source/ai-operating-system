@@ -165,10 +165,22 @@ Operational setup:
 
 Limitations: this milestone registers and monitors runtime identities; it does not yet provide remote job claiming or a distributed queue transport. The worker still needs access to the configured durable queue/database to execute jobs. Registering an agent runtime does not by itself launch an independent AI process.
 
-### CP-3 — Broker and policy enforcement
+### CP-3 — Broker and policy enforcement — in progress
+
+Implemented baseline enforcement:
+- Add effective-agent resolution that requires both the pinned profile registry and the persistent Control Plane enabled state to permit an agent.
+- Apply that check when building work packets, issuing/verifying signed agent identities, validating new company-run assignments, and accepting logical-agent runtime heartbeats.
+- Route deterministic CEO department selection, CEO objective planning, manager delegation, and department workload availability through effective-agent policy.
+- Keep bulk department filtering to one Control Plane query rather than one database connection per profile.
+- Expose effective enabled/disabled state in the existing owner `/agents` API so the dashboard does not present stale registry-only status.
+- Add regression coverage proving a Control Plane-disabled agent cannot receive a packet, identity, or new company-run assignment.
+
+Remaining CP-3 work:
 - Make CEO routing decisions inspectable and policy-validated.
 - Add capability allowlists, department scopes, and deny-by-default tool dispatch.
 - Preserve existing exact-scope owner approvals.
+
+The baseline above is not the complete broker: profile capability metadata remains descriptive, and runtime credentials still authorize heartbeat reporting only. No new model/tool dispatch authority is granted by this change.
 
 ### CP-4 — MCP, then A2A
 - Implement a local MCP adapter registry and safe client for allowlisted tools.
