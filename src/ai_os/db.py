@@ -26,6 +26,25 @@ def initialize_database() -> None:
             department TEXT NOT NULL DEFAULT 'general',
             status TEXT NOT NULL DEFAULT 'queued', created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS research_task_proposals (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            department TEXT NOT NULL,
+            source_ids_json TEXT NOT NULL,
+            rationale TEXT NOT NULL,
+            fingerprint TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL CHECK(status IN ('candidate','approved','rejected')),
+            created_at TEXT NOT NULL,
+            reviewed_at TEXT,
+            reviewed_by TEXT,
+            review_note TEXT NOT NULL DEFAULT '',
+            task_id TEXT,
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_task_proposals_status
+            ON research_task_proposals(status, created_at);
         CREATE TABLE IF NOT EXISTS approvals (
             id TEXT PRIMARY KEY, task_id TEXT, action TEXT NOT NULL,
             details TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
