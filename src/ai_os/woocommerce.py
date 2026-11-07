@@ -119,8 +119,13 @@ class WooCommerceReadOnlyClient:
                 raise ValueError("Unsupported WooCommerce order status filter.")
             params["status"] = status
         rows = self._get("orders", params)
-        allowed = ("id", "status", "date_created", "currency", "total")
-        return [{key: row.get(key) for key in allowed} for row in rows]
+        allowed = ("id", "status", "date_created", "date_paid", "currency", "total")
+        result = []
+        for row in rows:
+            item = {key: row.get(key) for key in allowed}
+            item["payment_status"] = "paid" if row.get("date_paid") else "not_confirmed"
+            result.append(item)
+        return result
 
     def create_product_draft(self, *, name: str, description: str, regular_price: str) -> dict:
         """Create a WooCommerce product draft only; publishing is never allowed."""
