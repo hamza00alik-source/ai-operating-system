@@ -155,12 +155,20 @@ def set_agent_enabled(agent_id: str, enabled: bool) -> dict | None:
     if agent_id == "company-orchestrator" and not enabled:
         raise ValueError("The CEO agent cannot be disabled; it is the company accountability root.")
     with connect() as db:
+        now = _now()
         cursor = db.execute(
             "UPDATE control_plane_agents SET enabled = ?, updated_at = ? WHERE agent_id = ?",
-            (1 if enabled else 0, _now(), agent_id),
+            (1 if enabled else 0, now, agent_id),
         )
         if cursor.rowcount == 0:
             return None
+        if not enabled:
+            db.execute(
+                """UPDATE control_plane_runtime_instances
+                   SET status='revoked', revoked_at=?, updated_at=?, current_job_id=NULL
+                   WHERE agent_id=? AND revoked_at IS NULL""",
+                (now, now, agent_id),
+            )
     return get_control_plane_agent(agent_id)
 
 
@@ -319,13 +327,19 @@ def heartbeat_runtime(*, runtime_id: str, token: str, status: str,
     now = _now()
     with connect() as db:
         row = db.execute(
-            "SELECT token_hash, revoked_at FROM control_plane_runtime_instances WHERE runtime_id = ?",
+            "SELECT token_hash, revoked_at, agent_id FROM control_plane_runtime_instances WHERE runtime_id = ?",
             (runtime_id,),
         ).fetchone()
         if row is None or row["revoked_at"] is not None or not secrets.compare_digest(
             supplied_hash, row["token_hash"]
         ):
             raise PermissionError("Runtime credential is invalid or revoked")
+        if row["agent_id"]:
+            agent = db.execute(
+                "SELECT enabled FROM control_plane_agents WHERE agent_id=?", (row["agent_id"],)
+            ).fetchone()
+            if agent is None or not agent["enabled"]:
+                raise PermissionError("The logical agent assigned to this runtime is disabled")
         db.execute(
             """UPDATE control_plane_runtime_instances
                SET status=?, current_job_id=?, last_heartbeat_at=?, updated_at=?
