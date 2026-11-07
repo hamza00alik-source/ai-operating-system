@@ -175,12 +175,24 @@ Implemented baseline enforcement:
 - Expose effective enabled/disabled state in the existing owner `/agents` API so the dashboard does not present stale registry-only status.
 - Add regression coverage proving a Control Plane-disabled agent cannot receive a packet, identity, or new company-run assignment.
 
-Remaining CP-3 work:
-- Make CEO routing decisions inspectable and policy-validated.
-- Add capability allowlists, department scopes, and deny-by-default tool dispatch.
-- Preserve existing exact-scope owner approvals.
+Implemented broker and capability controls:
+- Add an inspectable CEO/manager route evaluator at owner-authenticated `POST /control-plane/broker/evaluate`. CEO routes may target any enabled logical agent; non-CEO delegation is limited to the configured manager of the target agent's department and requires a seeded, department-scoped `task.delegate` grant. Self-delegation and cross-department manager routes are denied.
+- Enforce the same broker route policy while department managers build specialist plans; only policy-approved specialists are eligible.
+- Add owner-managed explicit grants at `GET/POST /control-plane/capabilities`, revocation at `DELETE /control-plane/capabilities/{grant_id}`, and policy preview at `POST /control-plane/capabilities/evaluate`.
+- Capability checks fail closed for unknown capabilities, disabled agents, and missing grants. The supported initial capability vocabulary is `task.delegate`, `tool.research.read`, `tool.knowledge.write`, `tool.store.read`, and `tool.store.draft`.
+- Seed each department manager with only the `task.delegate` capability for the department named in the company charter. This does not grant tool access.
+- Add a trusted in-process agent-tool adapter registry. Each tool adapter is registered by application code with one supported `tool.*` capability; execution requires an explicit matching Control Plane grant, JSON-object parameters capped at 64 KiB, and writes start/deny/success/failure events to the hash-chained audit log.
+- Preserve the separate exact-scope owner approval gateway for external actions. Agent-tool adapters are not exposed through remote endpoint registration and do not enable MCP/A2A networking.
+- Extend the action gateway readiness view to distinguish owner-approved external actions from capability-gated internal agent tools.
 
-The baseline above is not the complete broker: profile capability metadata remains descriptive, and runtime credentials still authorize heartbeat reporting only. No new model/tool dispatch authority is granted by this change.
+Validation:
+- GitHub Actions passed the full suite: 255 tests.
+
+Remaining CP-3 work:
+- Bind concrete read-only research, knowledge, and store adapters to the trusted tool registry only after their input/output contracts and data scopes are reviewed.
+- Add policy-aware CEO route execution traces to the dashboard.
+
+Profile capability metadata remains descriptive and is never treated as an executable grant. Runtime credentials still authorize heartbeat reporting only. Remote MCP/A2A endpoints remain disabled and unconnected until CP-4.
 
 ### CP-4 — MCP, then A2A
 - Implement a local MCP adapter registry and safe client for allowlisted tools.
