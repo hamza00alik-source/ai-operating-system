@@ -460,6 +460,8 @@ def ingest_order(channel: str, raw: dict) -> dict:
                 (id,order_id,status,created_at,updated_at) VALUES (?,?,?,?,?)""",
                 (str(uuid4()), order_id, fulfillment_status, now, now),
             )
+            created = True
+        if normalized["payment_status"] == "paid":
             # Match marketplace item IDs to owner-recorded listing mappings.
             for item in normalized["items"]:
                 if not item["product_id"]:
@@ -477,10 +479,12 @@ def ingest_order(channel: str, raw: dict) -> dict:
                         (str(uuid4()), order_id, mapped["product_id"], channel,
                          item["product_id"], now, now),
                     )
-            created = True
+        fulfillment = db.execute(
+            "SELECT status FROM commerce_fulfillment WHERE order_id=?", (order_id,)
+        ).fetchone()
     return {"id": order_id, "channel": channel, "external_order_id": normalized["external_order_id"],
             "payment_status": normalized["payment_status"], "created": created,
-            "fulfillment_status": "awaiting_review"}
+            "fulfillment_status": fulfillment["status"] if fulfillment else "missing"}
 
 
 @router.post("/webhooks/woocommerce", status_code=202)
