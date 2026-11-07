@@ -21,10 +21,10 @@ People & Agent Management, and Data/Analytics/Learning.
 
 ## Department workload and CEO overview
 
-The read-only coordination APIs now expose actual workload from persisted company runs:
+The coordination APIs expose actual workload from persisted company runs and durable manager plans:
 
 - `GET /company/overview` — CEO-level roll-up of department assignments, pending/assigned/completed/blocked counts, company-run status and governance flags.
-- `GET /company/departments/{department_id}/workload` — one department's proposed manager, manager source division, specialist count, recent assigned steps, reports and linked worker-job status.
+- `GET /company/departments/{department_id}/workload` — one department's proposed manager, manager source division, specialist count, recent assigned steps, reports, linked worker-job status, and manager-plan counts (delegated/reviewed/blocked).
 
 Workload membership is derived from the configured manager specialist's source division in the pinned agent library. This is an initial routing convention, not an independently staffed department boundary; review manager/source-division mapping before relying on it for staffing or performance decisions. Only steps already present in company runs appear. Empty workload does not mean the department is inactive outside this system.
 
