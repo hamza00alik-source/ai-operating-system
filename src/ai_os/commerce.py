@@ -345,7 +345,7 @@ def _normalize_order(channel: str, raw: dict) -> dict:
     if not external_id or len(external_id) > 120:
         raise HTTPException(status_code=422, detail="Order ID is required.")
     status = str(raw.get("status", "unknown"))[:40]
-    payment = "paid" if status in {"processing", "completed"} else "unverified"
+    payment = "paid" if raw.get("date_paid") else "not_confirmed"
     currency = str(raw.get("currency", "USD")).upper()
     if not re.fullmatch(r"[A-Z]{3}", currency):
         currency = "XXX"
@@ -393,10 +393,11 @@ def ingest_order(channel: str, raw: dict) -> dict:
                  normalized["payment_status"], normalized["currency"], normalized["total"],
                  json.dumps(normalized["items"]), now, now),
             )
+            fulfillment_status = "ready_after_payment_check" if normalized["payment_status"] == "paid" else "awaiting_review"
             db.execute(
                 """INSERT INTO commerce_fulfillment
-                (id,order_id,status,created_at,updated_at) VALUES (?,?, 'awaiting_review',?,?)""",
-                (str(uuid4()), order_id, now, now),
+                (id,order_id,status,created_at,updated_at) VALUES (?,?,?,?,?)""",
+                (str(uuid4()), order_id, fulfillment_status, now, now),
             )
             created = True
     return {"id": order_id, "channel": channel, "external_order_id": normalized["external_order_id"],
