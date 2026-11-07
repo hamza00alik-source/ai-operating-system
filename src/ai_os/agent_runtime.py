@@ -121,6 +121,8 @@ def _bounded_strings(value, *, max_items: int, max_length: int) -> list[str]:
 def _generate_specialist_response(agent_id: str, system_prompt: str,
                                   user_prompt: str, *, max_tool_calls: int = 3):
     """Run a bounded model/tool loop; tools remain disabled unless owner opted in."""
+    if isinstance(max_tool_calls, bool) or not isinstance(max_tool_calls, int) or not 0 <= max_tool_calls <= 3:
+        raise ValueError("max_tool_calls must be an integer from zero to three.")
     enabled = os.getenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "false").strip().lower() == "true"
     tool_context = (
         "\n\nAgent tool calls enabled: " + ("true" if enabled else "false")
