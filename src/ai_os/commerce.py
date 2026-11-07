@@ -10,7 +10,7 @@ import os
 import re
 import base64
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/commerce", tags=["commerce"])
@@ -178,6 +178,7 @@ from uuid import uuid4
 
 from fastapi import Header, HTTPException, Request
 from ai_os.db import connect
+from ai_os.audit import append_event
 
 
 def initialize_commerce_storage() -> None:
