@@ -44,6 +44,8 @@ from ai_os.research_schemas import ResearchSearchIn
 from ai_os.research import (ResearchNotConfigured, ResearchProviderError, research_status, search_exa)
 from ai_os.research_feed_schemas import FeedResearchIn
 from ai_os.free_research import collect_release_feed_candidates
+from ai_os.research_task_schemas import ResearchTaskProposalReview
+from ai_os.research_planner import (draft_research_task_proposals, list_research_task_proposals, review_research_task_proposal)
 from ai_os.evaluation import list_evaluations, evaluation_summary, evaluation_trends
 from ai_os.knowledge import (create_knowledge_item, get_knowledge_item,
                             list_knowledge_items, review_knowledge_item)
@@ -486,6 +488,52 @@ def get_research_status():
     """Report configuration without exposing provider credentials."""
     return research_status()
 
+
+
+
+@app.post("/research/task-proposals/draft")
+def post_draft_research_task_proposals(limit: int = Query(default=20, ge=1, le=50)):
+    """Ask the configured CEO model to turn accepted research into task proposals."""
+    try:
+        result = draft_research_task_proposals(limit=limit)
+    except ModelNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="CEO returned an invalid task proposal response.") from exc
+    append_event(
+        "agent:company-orchestrator", "research_task_proposals_drafted",
+        "research_task_proposal_batch", str(uuid4()),
+        {"created": result.get("created", 0), "rejected": len(result.get("rejected", []))},
+    )
+    return result
+
+
+@app.get("/research/task-proposals")
+def get_research_task_proposals(
+    status: str | None = Query(default=None, pattern=r"^(candidate|approved|rejected)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    return list_research_task_proposals(status=status, limit=limit)
+
+
+@app.post("/research/task-proposals/{proposal_id}/review")
+def post_review_research_task_proposal(
+    proposal_id: str, payload: ResearchTaskProposalReview, request: Request
+):
+    actor = getattr(request.state, "actor", "unknown")
+    if actor not in {"owner", "local-development"}:
+        raise HTTPException(status_code=403, detail="Owner review is required.")
+    try:
+        proposal = review_research_task_proposal(
+            proposal_id, decision=payload.decision, actor=actor, note=payload.note
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Research task proposal not found.")
+    append_event(actor, "research_task_proposal_reviewed", "research_task_proposal",
+                 proposal_id, {"decision": payload.decision, "task_id": proposal.get("task_id")})
+    return proposal
 
 
 @app.post("/research/feeds")
