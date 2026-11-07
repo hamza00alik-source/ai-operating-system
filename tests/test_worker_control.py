@@ -87,3 +87,14 @@ def test_worker_loop_respects_stopped_state_until_owner_starts_it():
 
     assert calls["schedule"] == 1
     assert calls["run"] == 1
+
+
+
+def test_dashboard_exposes_worker_controls_and_live_status():
+    with TestClient(app) as client:
+        response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert 'id="workerControl"' in response.text
+    assert 'id="workerState"' in response.text
+    assert 'data-worker-action="pause"' in response.text
+    assert 'async function controlWorker(action)' in response.text
