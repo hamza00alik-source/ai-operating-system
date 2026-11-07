@@ -447,10 +447,7 @@ def is_control_plane_agent_enabled(agent_id: str, *, fallback_enabled: bool = Tr
     except Exception as exc:
         # Early unit tests and one-off tools may use the registry before CP startup.
         from sqlite3 import OperationalError
-        if isinstance(exc, OperationalError) and (
-            "no such table" in str(exc).lower()
-            or "unable to open database" in str(exc).lower()
-        ):
+        if isinstance(exc, OperationalError) and "no such table" in str(exc).lower():
             return fallback_enabled
         raise
     return bool(row["enabled"]) if row is not None else False
