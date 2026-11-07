@@ -71,6 +71,7 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
 from ai_os.agent_tools import register_builtin_agent_tools
+from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
     list_control_plane_endpoints, create_control_plane_endpoint,
@@ -1218,6 +1219,22 @@ def patch_control_plane_endpoint(endpoint_id: str, payload: EndpointEnableUpdate
     )
     return {"endpoint": endpoint,
             "notice": "Endpoint activation records owner intent only; no network connection or remote tool execution is performed."}
+
+
+@app.post("/control-plane/endpoints/{endpoint_id}/discover")
+async def post_control_plane_mcp_discovery(endpoint_id: str, request: Request):
+    """Owner-triggered MCP tool discovery; returned remote metadata remains untrusted."""
+    try:
+        result = await discover_mcp_tools(endpoint_id)
+    except MCPDiscoveryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        getattr(request.state, "actor", "unknown"),
+        "control_plane_mcp_tools_discovered", "control_plane_endpoint", endpoint_id,
+        {"discovered_tool_count": result["discovered_tool_count"],
+         "tool_names": [item["name"] for item in result["tools"]]},
+    )
+    return result
 
 
 @app.post("/control-plane/endpoints", status_code=201)
