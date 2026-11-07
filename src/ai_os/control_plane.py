@@ -624,3 +624,40 @@ def evaluate_broker_route(source_agent_id: str, target_agent_id: str) -> dict:
     return {"allowed": True, "decision": "allowed_manager_scope",
             "source_agent_id": source_agent_id, "target_agent_id": target_agent_id,
             "department_scope": target.department, "grant_id": grant["grant_id"]}
+
+
+
+def set_control_plane_endpoint_enabled(endpoint_id: str, enabled: bool) -> dict | None:
+    """Owner-controlled MCP endpoint lifecycle; enabling does not execute a connection."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM control_plane_endpoints WHERE endpoint_id=?", (endpoint_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        if enabled:
+            if row["protocol"] != "mcp":
+                raise ValueError("Only MCP endpoints may be enabled in CP-4; other protocols remain disabled.")
+            credential_ref = row["credential_ref"]
+            if credential_ref:
+                if not credential_ref.startswith("env:"):
+                    raise ValueError("This deployment has no secret-manager resolver; use env:NAME or omit credentials.")
+                variable = credential_ref[4:]
+                if not variable or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", variable):
+                    raise ValueError("Credential reference must be env: followed by a valid environment variable name.")
+                if not os.getenv(variable, "").strip():
+                    raise ValueError("Referenced MCP credential environment variable is not configured.")
+        now = _now()
+        db.execute(
+            "UPDATE control_plane_endpoints SET enabled=?, updated_at=? WHERE endpoint_id=?",
+            (1 if enabled else 0, now, endpoint_id),
+        )
+        updated = db.execute(
+            """SELECT endpoint_id, name, protocol, base_url, enabled,
+                      credential_ref, metadata_json, created_at, updated_at
+               FROM control_plane_endpoints WHERE endpoint_id=?""", (endpoint_id,)
+        ).fetchone()
+    item = dict(updated)
+    item["enabled"] = bool(item["enabled"])
+    item["metadata"] = json.loads(item.pop("metadata_json"))
+    return item
