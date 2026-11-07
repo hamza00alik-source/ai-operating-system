@@ -100,17 +100,17 @@ A feature is complete only when tested and its operating limits are documented. 
 
 See [OPERATIONS_PLAYBOOK.md](OPERATIONS_PLAYBOOK.md), [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md),  [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for the company-owned model plan, and [ACTION_GATEWAY.md](ACTION_GATEWAY.md) for the action execution boundary.
 
-## Phase 6 — Agent control plane (specification added; implementation not started)
+## Phase 6 — Agent control plane (CP-1 and CP-2 implemented; later stages pending)
 - [x] Define a zero-cost, provider-neutral control-plane architecture inspired by Agent Fabric capabilities
 - [x] Document the distinction between profile catalog entries, logical agents, and live runtime instances
 - [x] CP-1: SQLite registry for logical agents, profile capability metadata, endpoint metadata, and agent relationships; owner APIs, disabled-by-default endpoints, CEO-root protection, and automated tests (235 tests passing)
-- [ ] CP-2: runtime-instance records, least-privilege worker identities, authenticated heartbeats, expiry, and revocation
+- [x] CP-2: runtime-instance records, one-time hashed credentials with 30-day expiry, owner rotation/revocation, authenticated heartbeats, stale detection, and worker keepalives (250 tests passing)
 - [ ] CP-3: CEO broker routing with deterministic policy validation and deny-by-default capability dispatch
 - [ ] CP-4: secure MCP integration, followed by A2A interoperability after identity and policy controls
 - [ ] CP-5: live health, job telemetry, policy traces, and agent-network visualization
 - [ ] CP-6: production deployment hardening, monitoring, backup/restore, and rollback verification
 
-See [AGENT_CONTROL_PLANE.md](AGENT_CONTROL_PLANE.md) for architecture, trust boundaries, sequence, and acceptance criteria. These are planned capabilities, not implemented features.
+See [AGENT_CONTROL_PLANE.md](AGENT_CONTROL_PLANE.md) for architecture, trust boundaries, sequence, and acceptance criteria. CP-1 and CP-2 are implemented on this branch; CP-3 through CP-6 remain planned and are not yet implemented.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
