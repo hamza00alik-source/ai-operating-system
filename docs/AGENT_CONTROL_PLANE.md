@@ -187,6 +187,7 @@ Implemented broker and capability controls:
 - Keep specialist tool calling separately disabled by default with `AI_OS_AGENT_TOOL_CALLS_ENABLED=false`. Enabling the model adapter does not automatically enable tool calls. Each tool still requires a matching owner-managed capability grant.
 - Preserve the separate exact-scope owner approval gateway for external actions. Agent-tool adapters are not exposed through remote endpoint registration and do not enable MCP/A2A networking.
 - Extend the action gateway readiness view to distinguish owner-approved external actions from capability-gated internal agent tools and show whether specialist tool calls are enabled.
+- Add an owner-dashboard panel showing Control Plane agent/runtime counts, tool-call readiness, registered internal adapters, explicit capability grants, and recent broker/tool audit events.
 
 Operator activation:
 1. Keep `AI_OS_AGENT_TOOL_CALLS_ENABLED=false` unless the owner has reviewed the model provider's cost/usage implications and the enabled tools.
@@ -198,7 +199,6 @@ Validation:
 - GitHub Actions passed the full suite: 261 tests.
 
 Remaining CP-3 work:
-- Add policy-aware CEO route and tool execution traces to the owner dashboard.
 - Add more adversarial and operational tests around tool-call retries, provider failures, and task-level budgets.
 
 Profile capability metadata remains descriptive and is never treated as an executable grant. Runtime credentials still authorize heartbeat reporting only. Remote MCP/A2A endpoints remain disabled and unconnected until CP-4.
