@@ -47,6 +47,10 @@ def test_ceo_drafts_task_from_accepted_sources_and_owner_approval_creates_task(m
             json={"decision": "approved", "note": "Approved for internal research."},
         )
         tasks_after = client.get("/tasks").json()
+        repeated = client.post(
+            f"/research/task-proposals/{proposal['id']}/review",
+            json={"decision": "approved", "note": "Duplicate approval attempt."},
+        )
     assert draft.json()["created"] == 1
     assert proposal["source_ids"] == [source_id]
     assert any(row["id"] == proposal["id"] for row in listed.json())
@@ -56,6 +60,7 @@ def test_ceo_drafts_task_from_accepted_sources_and_owner_approval_creates_task(m
     assert len(tasks_after) == len(tasks_before) + 1
     assert tasks_after[0]["id"] == decision.json()["task_id"]
     assert tasks_after[0]["status"] == "queued"
+    assert repeated.status_code == 409
 
 
 def test_ceo_cannot_create_task_proposal_from_unaccepted_sources(monkeypatch):
@@ -75,7 +80,7 @@ def test_ceo_cannot_create_task_proposal_from_unaccepted_sources(monkeypatch):
     assert response.json()["rejected"]
 
 
-def test_task_proposal_cannot_be_approved_twice(monkeypatch):
+def test_unknown_task_proposal_cannot_be_approved(monkeypatch):
     monkeypatch.setattr(planner, "generate_json", lambda *args: ({
         "proposals": []
     }, {"provider": "test", "model": "test"}))
