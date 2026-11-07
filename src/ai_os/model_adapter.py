@@ -42,6 +42,20 @@ def _command_configuration() -> tuple[str, list[str]]:
 
 def get_model_status() -> dict:
     enabled = _truthy("AI_OS_MODEL_ENABLED")
+    zero_cost_mode = _truthy("AI_OS_ZERO_COST_MODE")
+    if zero_cost_mode:
+        backend = os.getenv("AI_OS_MODEL_BACKEND", "openai_compatible").strip().lower()
+        return {
+            "enabled": False,
+            "configured": False,
+            "backend": backend,
+            "provider": os.getenv("AI_OS_MODEL_PROVIDER", backend).strip() or backend,
+            "model": os.getenv("AI_OS_MODEL_NAME", "").strip() or None,
+            "api_key_present": bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip()),
+            "reason": "zero_cost_mode",
+            "makes_network_request": False,
+            "execution_may_use_network": True,
+        }
     backend = os.getenv("AI_OS_MODEL_BACKEND", "openai_compatible").strip().lower()
     model = os.getenv("AI_OS_MODEL_NAME", "").strip()
     if backend == "command":
