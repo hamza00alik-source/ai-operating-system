@@ -1,46 +1,94 @@
-"""Task and approval business logic."""
+"""Task, agent registry, and approval logic with an append-only audit trail."""
 from datetime import datetime, timezone
 from uuid import uuid4
+
 from ai_os.db import connect
-from ai_os.schemas import ApprovalCreate, ApprovalDecision, TaskCreate
+from ai_os.schemas import AgentCreate, ApprovalCreate, ApprovalDecision, TaskCreate
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+def _record_event(db, event_type: str, entity_type: str, entity_id: str, details: str = "") -> None:
+    db.execute(
+        """INSERT INTO audit_events (event_type, entity_type, entity_id, details, created_at)
+        VALUES (?, ?, ?, ?, ?)""",
+        (event_type, entity_type, entity_id, details, _now()),
+    )
+
+
 def create_task(payload: TaskCreate) -> dict:
     task = {"id": str(uuid4()), "title": payload.title,
             "description": payload.description, "department": payload.department,
-            "status": "queued", "created_at": _now()}
+            "status": "queued", "assigned_agent_id": None, "created_at": _now()}
     with connect() as db:
         db.execute("""INSERT INTO tasks
-            (id,title,description,department,status,created_at)
-            VALUES (:id,:title,:description,:department,:status,:created_at)""", task)
+            (id,title,description,department,status,assigned_agent_id,created_at)
+            VALUES (:id,:title,:description,:department,:status,:assigned_agent_id,:created_at)""", task)
+        _record_event(db, "task.created", "task", task["id"], task["title"])
     return task
+
 
 def list_tasks() -> list[dict]:
     with connect() as db:
         rows = db.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
     return [dict(row) for row in rows]
 
+
+def register_agent(payload: AgentCreate) -> dict:
+    agent = {"id": str(uuid4()), "name": payload.name, "department": payload.department,
+             "description": payload.description, "enabled": True, "created_at": _now()}
+    with connect() as db:
+        db.execute("""INSERT INTO agents (id,name,department,description,enabled,created_at)
+            VALUES (:id,:name,:department,:description,1,:created_at)""", agent)
+        _record_event(db, "agent.registered", "agent", agent["id"], agent["name"])
+    return agent
+
+
+def list_agents() -> list[dict]:
+    with connect() as db:
+        rows = db.execute("SELECT * FROM agents ORDER BY department,name").fetchall()
+    return [{**dict(row), "enabled": bool(row["enabled"])} for row in rows]
+
+
+def assign_task(task_id: str, agent_id: str) -> dict | None:
+    with connect() as db:
+        task = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        if task is None:
+            return None
+        agent = db.execute("SELECT * FROM agents WHERE id=? AND enabled=1", (agent_id,)).fetchone()
+        if agent is None:
+            raise LookupError("Enabled agent not found")
+        if task["status"] != "queued":
+            raise ValueError("Only queued tasks can be assigned")
+        db.execute("UPDATE tasks SET assigned_agent_id=? WHERE id=?", (agent_id, task_id))
+        _record_event(db, "task.assigned", "task", task_id, agent_id)
+        updated = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+    return dict(updated)
+
+
 def create_approval(payload: ApprovalCreate) -> dict:
-    if payload.task_id:
-        with connect() as db:
-            exists = db.execute("SELECT 1 FROM tasks WHERE id=?", (payload.task_id,)).fetchone()
-        if not exists:
-            raise LookupError("Task not found")
     approval = {"id": str(uuid4()), "task_id": payload.task_id,
                 "action": payload.action, "details": payload.details,
                 "status": "pending", "created_at": _now(), "decided_at": None}
     with connect() as db:
+        if payload.task_id:
+            exists = db.execute("SELECT 1 FROM tasks WHERE id=?", (payload.task_id,)).fetchone()
+            if not exists:
+                raise LookupError("Task not found")
         db.execute("""INSERT INTO approvals
             (id,task_id,action,details,status,created_at,decided_at)
             VALUES (:id,:task_id,:action,:details,:status,:created_at,:decided_at)""", approval)
+        _record_event(db, "approval.requested", "approval", approval["id"], approval["action"])
     return approval
+
 
 def list_approvals() -> list[dict]:
     with connect() as db:
         rows = db.execute("SELECT * FROM approvals ORDER BY created_at DESC").fetchall()
     return [dict(row) for row in rows]
+
 
 def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
     with connect() as db:
@@ -52,5 +100,15 @@ def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
         decided_at = _now()
         db.execute("UPDATE approvals SET status=?, decided_at=? WHERE id=?",
                    (payload.decision, decided_at, approval_id))
+        _record_event(db, f"approval.{payload.decision}", "approval", approval_id, row["action"])
         updated = db.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
     return dict(updated)
+
+
+def list_audit_events(limit: int = 100) -> list[dict]:
+    safe_limit = max(1, min(limit, 500))
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM audit_events ORDER BY id DESC LIMIT ?", (safe_limit,)
+        ).fetchall()
+    return [dict(row) for row in rows]
