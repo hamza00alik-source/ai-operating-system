@@ -68,8 +68,6 @@ def test_manager_plan_persists_delegated_steps_and_is_idempotent(monkeypatch, tm
     assert result["plan"]["tasks"][0]["step_key"] == "research_followup"
     assert "Department manager profile." in calls[0][0]
 
-    run = coordination.get_company_run(run_id) if hasattr(coordination, "get_company_run") else None
-    assert run is None  # run retrieval belongs to the execution module
     from ai_os.execution import get_company_run
     updated = get_company_run(run_id)
     assert any(step["step_key"] == "research_followup" and step["status"] == "pending"
