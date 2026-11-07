@@ -135,11 +135,18 @@ Use the existing durable queue as the source of truth. Add authenticated worker 
 - Record architecture, trust boundaries, current limitations, and staged implementation.
 - Keep the existing Agency Agents branch intact.
 
-### CP-1 — Registry data model and read APIs
-- Add SQLite tables for runtime instances, capabilities, endpoints (credential references only), and agent-to-service relationships.
-- Add owner-authenticated registration, enable/disable, list, detail, and health-status APIs.
-- Seed logical agents from the existing profile registry without pretending they are running.
-- Add migration, validation, and tests.
+### CP-1 — Registry data model and read APIs — implemented
+- Additive SQLite schema for logical agents, endpoint metadata, and agent relationships.
+- Seed and synchronize logical agent records from the pinned Agency Agents profile catalogue; preserve owner enable/disable choices across restarts.
+- Expose owner-authenticated list, detail, department/enabled filters, enable/disable, and endpoint-registration APIs.
+- Register internal, MCP, A2A, and OpenAI-compatible endpoint metadata; network endpoints remain disabled and are not contacted.
+- Store profile capabilities as descriptive metadata only; they are not executable permissions.
+- Protect the CEO accountability root from being disabled.
+- Validate HTTPS for remote endpoints, permit HTTP only for localhost, reject URL-embedded credentials/query strings, and accept only secret-manager/environment references rather than raw credentials.
+- Add automated tests for seeding, relationships, filters, enable/disable, owner authentication, endpoint validation, and CEO protection.
+- GitHub Actions passed the full suite: 235 tests passed on the CP-1 branch.
+
+Runtime instances, authenticated heartbeats, and live health status are deliberately deferred to CP-2; profile availability is not a live-worker signal.
 
 ### CP-2 — Runtime identity and heartbeat
 - Give each worker/runtime a revocable identity with least privilege.
