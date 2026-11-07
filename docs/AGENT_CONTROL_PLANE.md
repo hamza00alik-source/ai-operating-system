@@ -204,9 +204,22 @@ Remaining CP-3 work:
 Profile capability metadata remains descriptive and is never treated as an executable grant. Runtime credentials still authorize heartbeat reporting only. Remote MCP/A2A endpoints remain disabled and unconnected until CP-4.
 
 ### CP-4 — MCP, then A2A
-- Implement a local MCP adapter registry and safe client for allowlisted tools.
-- Add protocol conformance and security tests before any remote endpoint is enabled.
-- Add A2A only after runtime identity and policy enforcement are complete.
+
+MCP is the next integration boundary. It must not weaken the CP-3 in-process capability gateway.
+
+Required implementation sequence:
+1. Add an explicit owner enable/disable lifecycle for each registered MCP endpoint. Registration remains metadata-only and disabled by default.
+2. Resolve only `env:NAME` credential references from the worker process environment; never return resolved credentials from an API or log them. Reject unresolved `secret://` references until a real secret-manager adapter exists.
+3. Require HTTPS for remote MCP endpoints; permit HTTP only for loopback development. Resolve and reject non-public destination addresses, prohibit redirects, cap request/response sizes and timeouts, and avoid forwarding credentials across origins.
+4. Implement the supported MCP Streamable HTTP transport with protocol-version negotiation, initialization/session handling, strict JSON-RPC validation, and bounded `tools/list` / `tools/call` requests. Reject unsupported transports and malformed or unexpected response content types.
+5. Treat remote tool descriptions and all remote results as untrusted data. Never let a remote server change agent permissions, approval policy, endpoint metadata, or owner settings.
+6. Map each discovered remote tool to a locally owner-approved capability grant. An endpoint being enabled or a tool being discovered must not grant an agent permission to call it.
+7. Route remote calls through the same audited agent-tool gateway, enforce per-agent and per-step budgets, and keep all external side effects behind the existing exact-scope owner approval gateway.
+8. Test DNS/IP restrictions, redirects, TLS policy, credential handling, oversized payloads, malformed JSON-RPC, session expiry, timeout/retry behavior, capability revocation, prompt injection in tool results, and endpoint disable during an active call.
+
+No MCP endpoint is currently connected or executed. The CP-1 endpoint registry is metadata-only; the above is an acceptance plan, not a claim of MCP support.
+
+A2A follows only after MCP identity, endpoint lifecycle, and capability mapping are proven. A2A must use signed identity, replay protection, scoped delegation, bounded task state, and the same owner-approval boundary; it must not create a second permission system.
 
 ### CP-5 — Observability and visual topology
 - Add runtime heartbeats, job metrics, error summaries, policy traces, and graph relationships to the owner dashboard.
