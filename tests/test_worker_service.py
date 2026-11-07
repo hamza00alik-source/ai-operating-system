@@ -175,7 +175,7 @@ def test_worker_does_not_retry_model_job_after_quota_limit(monkeypatch):
     }
     monkeypatch.setattr(worker, "claim_next_job", lambda worker_id: claimed)
     monkeypatch.setattr(worker, "renew_job_lease", lambda *args, **kwargs: True)
-    monkeypatch.setattr(worker, "execute_company_step",
+    monkeypatch.setitem(worker.HANDLERS, "execute_company_step",
                         lambda payload: (_ for _ in ()).throw(ModelQuotaExceeded("quota reached")))
     failures = []
     monkeypatch.setattr(worker, "fail_job",
