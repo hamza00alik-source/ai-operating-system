@@ -121,3 +121,42 @@ def test_manual_listing_approval_requires_owner_and_never_publishes(monkeypatch,
     assert approved.json()["status"] == "approved_for_manual_upload"
     assert approved.json()["external_upload_performed"] is False
     assert approved.json()["published"] is False
+
+
+def test_paid_mapped_order_creates_one_internal_entitlement(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-entitlement.sqlite'}")
+    initialize_commerce_storage()
+    from ai_os.commerce import CatalogProductCreate, create_catalog_product, build_listing_packet
+    from ai_os.commerce import connect as commerce_connect
+    from ai_os.commerce import _now
+    import uuid
+    product_id = str(uuid.uuid4())
+    now = _now()
+    with commerce_connect() as db:
+        db.execute(
+            """INSERT INTO commerce_products
+            (id,sku,title,description,product_type,files_json,tags_json,base_price,currency,status,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,'draft',?,?)""",
+            (product_id, "MAP-001", "Mapped Asset", "Description", "asset",
+             "[]", "[]", "2.00", "USD", now, now),
+        )
+        db.execute(
+            """INSERT INTO commerce_listings
+            (id,product_id,channel,packet_json,status,external_listing_id,created_at,updated_at)
+            VALUES (?,?,?,?, 'listed',?,?,?)""",
+            (str(uuid.uuid4()), product_id, "woocommerce", "{}", "555", now, now),
+        )
+    paid = {
+        "id": 990, "status": "processing", "currency": "USD", "total": "2.00",
+        "date_paid": "2026-11-07T10:00:00",
+        "line_items": [{"product_id": 555, "name": "Mapped Asset", "quantity": 1, "total": "2.00"}],
+    }
+    first = ingest_order("woocommerce", paid)
+    replay = ingest_order("woocommerce", paid)
+    with commerce_connect() as db:
+        rows = db.execute("SELECT * FROM commerce_entitlements WHERE order_id=?", (first["id"],)).fetchall()
+    assert first["payment_status"] == "paid"
+    assert first["fulfillment_status"] == "ready_after_payment_check"
+    assert replay["created"] is False
+    assert len(rows) == 1
+    assert rows[0]["status"] == "awaiting_manual_delivery"
