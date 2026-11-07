@@ -70,6 +70,7 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
+from ai_os.agent_tools import register_builtin_agent_tools
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
     list_control_plane_endpoints, create_control_plane_endpoint,
@@ -89,6 +90,7 @@ async def lifespan(_: FastAPI):
     initialize_control_plane()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
+    register_builtin_agent_tools()
     yield
 
 app = FastAPI(title="AI Operating System", version="0.6.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
