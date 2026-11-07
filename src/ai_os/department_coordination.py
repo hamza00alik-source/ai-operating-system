@@ -269,3 +269,17 @@ needs_ceo_attention (boolean).
              now, run_id, department_id),
         )
     return {**get_department_plan(run_id, department_id), "reused_existing_review": False}
+
+
+def list_department_plans_for_runs(run_ids: list[str]) -> list[dict]:
+    """Load manager plans for a bounded set of company runs in one query."""
+    if not run_ids:
+        return []
+    ids = list(dict.fromkeys(run_ids))[:500]
+    placeholders = ",".join("?" for _ in ids)
+    with connect() as db:
+        rows = db.execute(
+            f"SELECT * FROM department_manager_plans WHERE run_id IN ({placeholders}) ORDER BY created_at DESC",
+            ids,
+        ).fetchall()
+    return [_decode(row) for row in rows]
