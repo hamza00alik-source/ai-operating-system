@@ -6,6 +6,7 @@ A modular, human-supervised foundation for running an AI-powered company, with t
 
 ## Principles
 - Free-first: no paid model API is required for the current workflow.
+- Enforced zero-cost mode is the recommended default: `AI_OS_ZERO_COST_MODE=true` blocks all model backends, including configured API and CLI execution.
 - Human approval before external or consequential actions.
 - No spending, publishing, customer commitments, or production changes without explicit approval.
 - Provider-independent architecture; no silent paid fallback.
