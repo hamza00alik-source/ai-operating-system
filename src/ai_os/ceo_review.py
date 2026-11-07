@@ -203,7 +203,7 @@ def review_company_run(run_id: str) -> dict:
                 "report": manager_review,
             })
     if not reports:
-        raise ValueError("No specialist or department-manager reports are available for CEO review yet.")
+        raise ValueError("No specialist reports or department-manager reports are available for CEO review yet.")
     prompt = json.dumps({
         "company_objective": run["title"],
         "run_description": run["description"],
