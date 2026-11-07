@@ -40,7 +40,7 @@ Cloud Shell is a development environment and may be stopped or reclaimed. It is 
 
 - Configure WooCommerce read-only credentials as server-side environment variables: AI_OS_WOOCOMMERCE_URL, AI_OS_WOOCOMMERCE_CONSUMER_KEY, and AI_OS_WOOCOMMERCE_CONSUMER_SECRET.
 - Use a dedicated WooCommerce key with read-only permissions. Never put credentials in Git, browser JavaScript, prompts, logs, or support tickets.
-- The current connector reads a bounded product catalog and minimized order status fields only. It deliberately does not expose customer billing/shipping details, create or update products, fulfill orders, issue refunds, or change payment state.
+- The read-only inventory endpoints expose a bounded product catalog and minimized order status fields only, without customer billing/shipping details. A separate opt-in adapter can create a new unpublished product draft after exact-scope CEO request, owner approval, and explicit owner execution. It cannot publish, update or delete products, fulfill orders, issue refunds, or change payment state.
 - Social planning and content drafts remain review artifacts. No social publishing adapter is registered.
 - Before any write integration, add separate least-privilege credentials, exact-scope owner approval, idempotency keys, request/response validation, timeout/reconciliation behavior, audit events, and mocked plus sandbox integration tests. Never reuse read-only credentials for writes.
 
@@ -81,7 +81,7 @@ The current single-owner token gate is not full RBAC. Keep the application local
 
 ## WordPress site inventory (read-only)
 
-The optional WordPress connector uses HTTPS and a WordPress Application Password supplied through environment variables. It reads bounded page/post metadata only; it does not expose users or implement content, media, plugin, theme, or settings writes.
+The optional WordPress connector uses HTTPS and a WordPress Application Password supplied through environment variables. Its inventory endpoints read bounded page/post metadata only. A separate opt-in adapter can create a new unpublished page draft after exact-scope CEO request, owner approval, and explicit owner execution; it does not expose users or implement publishing, updates to existing content, media, plugin, theme, or settings writes.
 
 Set these only on the private runtime host (never commit them):
 
@@ -89,7 +89,7 @@ Set these only on the private runtime host (never commit them):
 - `AI_OS_WORDPRESS_USERNAME`
 - `AI_OS_WORDPRESS_APPLICATION_PASSWORD`
 
-Use a dedicated least-privilege WordPress account. The connector has no write methods, but WordPress Application Passwords inherit the account's permissions; create a read-only account or otherwise restrict the account before connecting. The API status is configuration metadata only and does not prove that the live site is reachable. No credentials are configured by this repository change.
+Use a dedicated least-privilege WordPress account. WordPress Application Passwords inherit the account's permissions; use a read-only account when draft creation is disabled, or a tightly scoped account that can create drafts but cannot publish or change settings when draft creation is enabled. The API status is configuration metadata only and does not prove that the live site is reachable. No credentials are configured by this repository change.
 
 
 
@@ -110,3 +110,8 @@ The WooCommerce connector can optionally create a new unpublished product draft 
 To enable on a private host, set `AI_OS_EXTERNAL_ACTIONS_ENABLED=true` and `AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED=true` after configuring WooCommerce API credentials for a dedicated account. Keep both flags false by default and never commit credentials. The execution route accepts no caller-supplied product fields; it reads the exact previously approved parameters from the approval record. After an adapter error, inspect WooCommerce and the audit trail before retrying.
 
 No live store is connected by this repository change. These flags remain false in the example configuration.
+
+
+## Store monitoring dashboard
+
+The owner dashboard calls the owner-protected `/integrations/woocommerce/status`, `/integrations/woocommerce/products`, and `/integrations/woocommerce/orders` endpoints when available. It shows whether credentials are configured, a bounded product page, and recent coarse order statuses. The panel is monitoring only; it does not change products or orders. The WordPress status and inventory endpoints are also owner-protected. A configured status is not a live connectivity check; the first inventory request verifies actual API access.
