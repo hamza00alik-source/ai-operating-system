@@ -93,3 +93,31 @@ def test_catalog_product_and_channel_listing_packet_are_local_drafts(monkeypatch
     assert listing.json()["upload_performed"] is False
     assert overview.status_code == 200
     assert overview.json()["automated_fulfillment"] is False
+
+
+def test_manual_listing_approval_requires_owner_and_never_publishes(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'commerce-approval.sqlite'}")
+    owner_key = "x" * 64
+    monkeypatch.setenv("AI_OS_API_TOKEN", owner_key)
+    with TestClient(app) as client:
+        product = client.post("/commerce/catalog/products", json={
+            "sku": "APPROVAL-001", "title": "Asset", "description": "Digital file",
+            "product_type": "asset", "file_names": ["asset.zip"],
+        }, headers={"Authorization": "Bearer " + owner_key})
+        listing = client.post(
+            f"/commerce/catalog/products/{product.json()['id']}/listing-packets?channel=gumroad",
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+        listing_id = listing.json()["id"]
+        denied = client.post(f"/commerce/listings/{listing_id}/approve-manual-upload")
+        approved = client.post(
+            f"/commerce/listings/{listing_id}/approve-manual-upload",
+            headers={"Authorization": "Bearer " + owner_key},
+        )
+    assert product.status_code == 201
+    assert listing.status_code == 201
+    assert denied.status_code == 401
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved_for_manual_upload"
+    assert approved.json()["external_upload_performed"] is False
+    assert approved.json()["published"] is False
