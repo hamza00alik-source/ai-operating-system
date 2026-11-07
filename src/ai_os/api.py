@@ -24,6 +24,7 @@ from ai_os.agent_schemas import AgentOut, AgentProfileOut, PlanCreate, PlanOut
 from ai_os.registry import get_agent, list_agents, load_agent_profile
 from ai_os.departments import get_department, list_departments
 from ai_os.department_management import get_company_overview, get_department_workload
+from ai_os.department_coordination import (create_department_plan, get_department_plan, list_department_plans, review_department_plan)
 from ai_os.orchestrator import build_plan
 from ai_os.manual_schemas import WorkPacketCreate, WorkPacketOut, RuntimeStatus
 from ai_os.work_packets import build_work_packet
@@ -684,6 +685,43 @@ def post_knowledge_review(item_id: str, payload: KnowledgeReview, request: Reque
         {"decision": payload.decision},
     )
     return item
+
+@app.post("/company-runs/{run_id}/departments/{department_id}/plan")
+def post_department_manager_plan(run_id: str, department_id: str):
+    """Ask the configured department manager to delegate bounded internal work."""
+    try:
+        return create_department_plan(run_id, department_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ModelNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/company-runs/{run_id}/department-plans")
+def get_department_manager_plans(run_id: str):
+    if get_company_run(run_id) is None:
+        raise HTTPException(status_code=404, detail="Company run not found")
+    return {"run_id": run_id, "plans": list_department_plans(run_id)}
+
+
+@app.post("/company-runs/{run_id}/departments/{department_id}/review")
+def post_department_manager_review(run_id: str, department_id: str):
+    """Manager reviews completed delegated work and produces a CEO-facing report."""
+    try:
+        return review_department_plan(run_id, department_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ModelNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
 
 @app.get("/company/overview")
 def get_company_coordination_overview():
