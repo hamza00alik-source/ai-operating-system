@@ -15,6 +15,7 @@ from ai_os.identity import consume_agent_token, issue_agent_token
 from ai_os.model_adapter import generate_json, get_model_status, ModelNotConfigured
 from ai_os.queue import enqueue_job
 from ai_os.queue_schemas import JobCreate
+from ai_os.department_coordination import list_department_plans
 from ai_os.knowledge import create_knowledge_item, retrieve_accepted_knowledge
 from ai_os.knowledge_schemas import KnowledgeCreate
 from ai_os.evaluation import evaluate_specialist_report, record_evaluation
@@ -72,7 +73,35 @@ def schedule_ready_steps(*, limit: int = 20) -> dict:
                               "agent_id": assigned["agent_id"], "job_id": job["id"]})
         if len(scheduled) >= limit:
             break
-    return {"scheduled": len(scheduled), "model_enabled": True, "steps": scheduled}
+    manager_reviews = []
+    for listed_run in runs:
+        if len(scheduled) + len(manager_reviews) >= limit:
+            break
+        current_run = get_company_run(listed_run["id"])
+        if current_run is None:
+            continue
+        step_states = {step["step_key"]: step["status"] for step in current_run["steps"]}
+        for plan in list_department_plans(listed_run["id"]):
+            if len(scheduled) + len(manager_reviews) >= limit:
+                break
+            if plan["status"] != "delegated":
+                continue
+            task_keys = [task["step_key"] for task in plan["plan"].get("tasks", [])]
+            if not task_keys or any(step_states.get(key) not in {"completed", "blocked"} for key in task_keys):
+                continue
+            job = enqueue_job(JobCreate(
+                job_type="review_department_plan",
+                payload={"run_id": listed_run["id"], "department_id": plan["department_id"]},
+                idempotency_key=f"department-review:{listed_run['id']}:{plan['department_id']}",
+            ))
+            manager_reviews.append({
+                "run_id": listed_run["id"], "department_id": plan["department_id"],
+                "manager_agent_id": plan["manager_agent_id"], "job_id": job["id"],
+            })
+    return {
+        "scheduled": len(scheduled), "model_enabled": True, "steps": scheduled,
+        "manager_reviews_scheduled": len(manager_reviews), "manager_reviews": manager_reviews,
+    }
 
 
 def _bounded_strings(value, *, max_items: int, max_length: int) -> list[str]:
