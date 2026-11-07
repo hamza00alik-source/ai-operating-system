@@ -9,6 +9,7 @@ The operating system must not depend on paid model APIs to be useful.
 - `GET /runtime` reports which execution modes are enabled.
 - `POST /work-packets` creates a ready-to-paste specialist prompt without contacting any model provider.
 - The generated prompt includes evidence standards, safety boundaries, and an output format.
+- The model adapter supports OpenAI-compatible chat-completions endpoints, including compatible providers such as Groq. Provider configuration is opt-in; see [Groq free-plan setup](PROVIDER_GROQ_SETUP.md).
 
 ## Manual free-chat workflow
 
@@ -20,18 +21,19 @@ The operating system must not depend on paid model APIs to be useful.
 
 This mode does not call an API, incur API usage charges, or run autonomously. It does require a person to transfer the prompt and result between interfaces.
 
-## Future free/local model support
+## Local model support
 
 A local model runtime (for example, Ollama on hardware that can run it) can be added behind a provider interface. It must be optional, report hardware requirements clearly, and never silently fall back to a paid provider. A local runtime is not automatically feasible on an Android-only device; a separate computer or suitable hosted machine may be needed.
 
 ## Hard cost controls
 
-- No provider API is configured by default.
+- No provider API is configured or enabled by default.
 - Paid API calls remain disabled.
 - No automatic paid fallback.
 - No subscriptions, purchases, cloud deployments, or metered services without explicit owner approval.
 - Before enabling any provider, display whether it is free, limited, metered, or paid and require explicit approval.
+- Free provider plans are quota-limited and may change; verify the exact account plan and model limits before sending requests.
 
 ## Current limitations
 
-Agent work packets are prompt preparation, not AI execution. The system cannot independently reason or continue working while the owner is offline in this mode. Autonomous operation requires an available model runtime plus a persistent worker, secure tool permissions, durable state, and authenticated approval gates.
+Agent work packets are prompt preparation, not autonomous AI execution. Autonomous operation requires an available model runtime plus a persistent worker, secure tool permissions, durable state, and authenticated approval gates. A free API tier can provide inference within its limits but cannot guarantee 24/7 availability or unlimited agent activity.
