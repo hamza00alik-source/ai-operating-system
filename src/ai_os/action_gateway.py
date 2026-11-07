@@ -64,6 +64,7 @@ def get_action_gateway_status() -> dict:
         "registered_actions": configured,
         "external_actions_available": bool(enabled and configured),
         "agent_tool_count": len(_AGENT_TOOL_ADAPTERS),
+        "agent_tool_calls_enabled": os.getenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "false").strip().lower() == "true",
         "registered_agent_tools": sorted(_AGENT_TOOL_ADAPTERS),
         "agent_tool_dispatch_policy": "explicit_capability_grants",
         "note": "External readiness requires the explicit enable flag and a server-registered adapter. Agent tools additionally require an explicit scoped Control Plane grant.",
