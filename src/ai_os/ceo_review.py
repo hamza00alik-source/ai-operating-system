@@ -13,6 +13,7 @@ from ai_os.db import connect
 from ai_os.execution import get_company_run, CEO_AGENT_ID
 from ai_os.identity import AgentIdentityError, issue_agent_token
 from ai_os.model_adapter import generate_json
+from ai_os.department_coordination import list_department_plans
 from ai_os.registry import load_agent_profile
 
 # Only actions with deliberately narrow, unpublished-draft adapters are currently
@@ -192,8 +193,17 @@ def review_company_run(run_id: str) -> dict:
          "task": s["task"], "report": s["report"]}
         for s in run["steps"] if s.get("report")
     ]
+    for manager_plan in list_department_plans(run_id):
+        manager_review = manager_plan.get("review")
+        if manager_review:
+            reports.append({
+                "step_key": "department-manager:" + manager_plan["department_id"],
+                "agent_id": manager_plan["manager_agent_id"],
+                "task": "Consolidated department review for " + manager_plan["department_id"],
+                "report": manager_review,
+            })
     if not reports:
-        raise ValueError("No specialist reports are available for CEO review yet.")
+        raise ValueError("No specialist or department-manager reports are available for CEO review yet.")
     prompt = json.dumps({
         "company_objective": run["title"],
         "run_description": run["description"],
