@@ -1,4 +1,4 @@
-"""Enzonic-compatible ASGI process entry point."""
+"""ASGI entry point for hosts that launch a Python file."""
 import os
 import sys
 from pathlib import Path

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source": {"name": "Agency Agents", "url": "https://github.com/hamza00alik-source/agency-agents", "license": "MIT", "usage": "Complete pinned specialist profile library; runtime, CEO governance, and safety controls are independently implemented."},
+  "agents": [
+    {"id":"company-orchestrator","name":"CEO Agent","department":"leadership","description":"Leads the company, delegates and verifies all work, owns every company action, and is the only agent that requests owner approval.","profile_path":"specialized/agents-orchestrator.md","capabilities":["company_leadership","task_decomposition","delegation","quality_review","approval_gateway","progress_synthesis"],"requires_approval_for":["publishing","spending","customer_commitment"],"enabled":true},
+    {"id":"product-trend-researcher","name":"Product Trend Researcher","department":"research","description":"Researches customer demand, competitors and market evidence.","capabilities":["market_research","competitor_analysis","source_evaluation"],"requires_approval_for":["external_action"],"enabled":true},
+    {"id":"product-manager","name":"Product Manager","department":"product","description":"Turns validated opportunities into scoped requirements.","capabilities":["requirements","prioritization","acceptance_criteria"],"requires_approval_for":["scope_commitment"],"enabled":true},
+    {"id":"engineering-builder","name":"Engineering Builder","department":"engineering","description":"Designs and implements reviewable software changes.","capabilities":["technical_design","implementation","testing"],"requires_approval_for":["production_change"],"enabled":true},
+    {"id":"marketing-strategist","name":"Marketing Strategist","department":"marketing","description":"Plans organic distribution and channel experiments.","capabilities":["channel_strategy","positioning","growth_experiments"],"requires_approval_for":["publishing","paid_promotion"],"enabled":true},
+    {"id":"content-creator","name":"Content Creator","department":"content","description":"Creates platform-adapted content drafts for review.","capabilities":["copywriting","content_repurposing","editorial_planning"],"requires_approval_for":["publishing"],"enabled":true},
+    {"id":"customer-support-responder","name":"Customer Support Responder","department":"support","description":"Classifies support requests and drafts replies.","capabilities":["ticket_triage","response_drafting","knowledge_retrieval"],"requires_approval_for":["refund","customer_commitment","external_message"],"enabled":true},
+    {"id":"analytics-reporter","name":"Analytics Reporter","department":"analytics","description":"Summarizes performance and proposes experiments.","capabilities":["metrics_analysis","reporting","experiment_review"],"requires_approval_for":["external_action"],"enabled":true}
+  ]
+}

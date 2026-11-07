@@ -1,44 +1,61 @@
 # Deployment guide (Enzonic Python hosting)
 
-This guide prepares the existing FastAPI starter for a small always-on Python host. It does not imply that a server has been provisioned.
+This guide prepares the existing FastAPI application for a small always-on
+Python host. It does not imply that a server has been provisioned or deployed.
 
-## Hosting profile inspected
+## Hosting profile to verify
 
-The Enzonic panel's final review screen showed a Free plan with 512 MB RAM, 1 CPU core, 1 GB storage, and the label "Always on". The provider states that free capacity is subject to availability and is limited to one free bot/app or Minecraft server per account. Recheck the terms in the panel before deployment.
+Before deploying, recheck the current Enzonic panel for free-tier capacity,
+RAM, CPU, storage, idle behavior, and persistence. Free capacity and terms can
+change. Do not rely on an old screenshot or prior plan description.
 
 ## Repository settings
 
-- Runtime: Python 3.11 (supported by this project; use a newer runtime only after CI verifies it).
+- Runtime: Python 3.11 (the version used by CI).
 - Main file: `main.py`.
 - Install dependencies from `requirements.txt`.
 - Bind to `0.0.0.0` and the port supplied by the host (`PORT`, default 8000).
 
 ## Required environment variables
 
-Set these as private environment variables in the hosting panel. Never put real values in GitHub.
+Set these privately in the hosting panel. Never commit real values.
 
 | Variable | Value |
 |---|---|
 | `AI_OS_ENV` | `production` |
-| `AI_OS_API_KEY` | A long, randomly generated secret; keep it private |
+| `AI_OS_API_TOKEN` | Strong random secret, at least 32 characters |
 | `AI_OS_DATABASE_URL` | `sqlite:////absolute/path/on/persistent-storage/ai_os.db` |
 
-The database path above is a template, not a confirmed Enzonic mount path. Replace it with the actual persistent writable directory documented or displayed by Enzonic. Do not deploy with SQLite on an ephemeral working directory if records must survive restarts/redeploys.
+For compatibility with the original deployment preparation commit, the
+application also accepts `AI_OS_API_KEY` as an alias when
+`AI_OS_API_TOKEN` is unset. If both are set, `AI_OS_API_TOKEN` takes
+precedence. Send the secret in either `Authorization: Bearer <secret>` or
+`X-API-Key: <secret>` header. The public health and dashboard shell routes
+are exceptions; dashboard data APIs remain protected.
 
-The application refuses to start outside development if `AI_OS_API_KEY` is missing. All task and approval endpoints require the `X-API-Key` header; `/health` remains public. Use HTTPS for all requests.
+The database path above is a template, not a confirmed Enzonic mount path.
+Replace it with the actual persistent writable directory displayed or
+documented by the host. SQLite parent directories are created automatically,
+but an ephemeral directory will still lose data after replacement/redeploy.
 
 ## Initial smoke tests
 
 After deployment, verify:
 
 1. `GET /health` returns HTTP 200.
-2. `GET /tasks` without `X-API-Key` returns HTTP 401.
-3. `GET /tasks` with the correct `X-API-Key` returns HTTP 200.
-4. Create a test task and approval, then verify they remain after an app restart.
-5. Confirm logs contain no secrets.
+2. `GET /runtime` without an owner key returns HTTP 401.
+3. `GET /runtime` with the correct owner key returns HTTP 200.
+4. Create a test task and verify it remains after an app restart.
+5. Verify the SQLite database is on persistent storage.
+6. Confirm logs contain no API keys, provider secrets, or customer data.
 
-Do not connect WooCommerce, social accounts, payment credentials, or autonomous publishing until authentication, persistence, backups, and audit logging have been verified.
+Do not connect WooCommerce, social accounts, payment credentials, autonomous
+publishing, or external actions until authentication, persistence, backups,
+and audit logging have been independently verified.
 
 ## Resource limitations
 
-512 MB RAM and one CPU core are suitable only for the lightweight API and small jobs. Do not host large language models or multiple heavy agent processes on this server. Call external model APIs only after separately configuring a provider and its secret, with spending controls.
+Treat a small free host as suitable only for the lightweight API and modest
+worker activity. Do not host large language models or multiple heavy agent
+processes on it. Model calls and Exa research remain disabled unless separately
+configured. Review provider pricing and data handling before enabling them.

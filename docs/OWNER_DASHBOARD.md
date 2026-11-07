@@ -1,0 +1,59 @@
+# Owner dashboard
+
+The responsive owner dashboard is served by the FastAPI application at `/dashboard`. It is an operational view with an owner-controlled research review inbox; it does not start agents, dispatch work, or execute external operations.
+
+## What it displays
+
+- Agent catalogue: enabled profiles returned by `GET /agents`. A registered profile is not evidence of a running AI process.
+- Per-agent workload: pending, assigned, completed, and blocked run steps grouped by the assigned `agent_id`.
+- Progress percentage: completed steps divided by all tracked steps for that agent. Agents with no tracked steps show 0% and an idle state.
+- Last recorded activity: newest `updated_at` timestamp among the agent's tracked run steps.
+- Company runs: persisted run status and completed-step counts from `GET /company-runs`.
+- Worker queue: local packet-builder and specialist execution jobs from `GET /jobs`.
+- Owner approvals: signed CEO requests from `GET /owner/approval-requests`. Pending requests show exact parameters, expiry, and the SHA-256 action hash. The owner can approve or reject once; the API requires the same hash shown in the inbox. A decision records authorization only and does not execute the external action.
+- Agent quality and learning: recent persisted evaluations from `GET /evaluations`, including basic average score, pass/fail counts, evaluator version, and per-agent run/step history. Scores are structural/safety signals only, not truth or business-outcome measurements.
+- CEO improvement proposals: owner can approve a candidate for testing or reject it. Approved candidates expose a static safety-check action. If a local behavior-test backend is configured, the owner can compare baseline and candidate prompts against fixed fixtures. If a behavior test is run, its latest result must pass for the exact candidate and same active baseline before activation. A configured owner token is required to activate the exact tested text as a new immutable instruction version. The dashboard shows active version and offers rollback to its parent version; all activation/rollback events are audited.
+- Research review inbox: agent-proposed and manually entered candidates from \`GET /knowledge?status=candidate\`; the owner can open the source and accept or reject each candidate. No agent can approve its own research.
+- Recent audit activity: meaningful audit events from \`GET /audit\`; routine read-request events are filtered to keep the feed useful.
+- Runtime safeguards and model readiness: `GET /runtime` and `GET /models/status`.
+
+The dashboard refreshes automatically every 30 seconds while its browser tab is visible. The Refresh button can also be used at any time.
+
+## Authentication and deployment
+
+The HTML shell at `/dashboard` is public so the browser can load it. All operational data endpoints remain behind the owner API-token middleware. The owner token is held in tab-scoped `sessionStorage`, sent in the Authorization bearer header, and cleared by Sign out. Do not share the token or commit it to the repository.
+
+For local development, generate a token and export it before starting Uvicorn:
+
+```bash
+export AI_OS_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+printf 'Owner token: %s\n' "$AI_OS_API_TOKEN"
+uvicorn ai_os.api:app --reload
+```
+
+Use HTTPS when exposing the service beyond a trusted local environment. Do not deploy the dashboard publicly until a secure hosting and secret-management configuration is in place.
+
+## Current limitations
+
+- The worker can execute bounded specialist analysis only when an inference engine is explicitly configured; it is not a fleet of 283 independent model instances.
+- Instruction addenda are versioned separately from pinned Agency Agents profiles and are subordinate to OS governance. A changed upstream profile hash causes active addenda to be withheld until reviewed.
+- Static candidate screening is not a model-behavior benchmark. Optional local behavior tests are limited regression signals, not proof of factual accuracy or general improvement. Owner activation is always explicit.
+- Progress reflects stored workflow records, not live model tokens, CPU activity, or independent agent heartbeats.
+- Agent profile count is not the count of active agents.
+- Owner decisions are explicit, one-time, exact-scope, expiry-bound, and audit-logged. Approval does not trigger an external action; no store, social, payment, messaging, or deployment executor is connected.
+- Training exports are returned only through owner-authenticated APIs and must remain private. The basic sensitive-text scan is not a complete PII detector or legal review.
+- Model execution is disabled by default. Ecommerce, social publishing, spending, customer commitments, and other external actions remain disconnected and require separate implementation and owner approval.
+
+## Verification
+
+The API tests verify the public dashboard shell, owner-token protection on data APIs, dashboard data-source wiring, owner-token protection, candidate review controls, the model-status endpoint, evaluation history authentication, trend API/dashboard wiring, improvement proposal generation/review, static improvement-test history, owner-token-gated instruction activation, version history, rollback, and local behavior-test API/dashboard wiring, the no-automatic-activation boundary, and the owner-token gate.
+
+
+## Backup limitation
+
+SQLite backup creation and integrity verification are available as an explicit local helper (`ai_os.db_backup.create_database_backup`). The dashboard does not schedule backups, upload them off-host, or restore databases. Backups contain private company data and must be stored with restricted access. Stop all application writers before any manual restore operation.
+
+
+## CEO review approval handoff
+
+When the model-assisted CEO reviews a run, it may submit a signed owner-approval request for a supported unpublished WordPress page draft or WooCommerce product draft. The dashboard owner inbox shows the exact parameters, rationale, expiry, and action hash. Unsupported actions and proposals containing credential-like fields are rejected. The CEO cannot approve its own request; the owner must explicitly approve or reject it, then separately choose execution. Draft creation remains disabled unless both global external actions and the specific integration draft-write flag are explicitly enabled and valid credentials are configured. Publishing remains unavailable.
