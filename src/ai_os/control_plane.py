@@ -516,6 +516,7 @@ def filter_effective_agents(agents: list) -> list:
 BROKER_CAPABILITIES = {
     "task.delegate",
     "tool.research.read",
+    "tool.knowledge.read",
     "tool.knowledge.write",
     "tool.store.read",
     "tool.store.draft",
