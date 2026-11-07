@@ -1162,7 +1162,10 @@ def get_control_plane_agent_detail(agent_id: str):
 @app.patch("/control-plane/agents/{agent_id}")
 def patch_control_plane_agent(agent_id: str, payload: AgentEnableUpdate, request: Request):
     actor = getattr(request.state, "actor", "unknown")
-    agent = set_agent_enabled(agent_id, payload.enabled)
+    try:
+        agent = set_agent_enabled(agent_id, payload.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if agent is None:
         raise HTTPException(status_code=404, detail="Registered agent not found")
     append_event(
