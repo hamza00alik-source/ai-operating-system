@@ -74,7 +74,8 @@ from ai_os.control_plane import (initialize_control_plane, control_plane_overvie
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
     list_control_plane_endpoints, create_control_plane_endpoint,
     create_runtime_instance, list_runtime_instances, get_runtime_instance,
-    heartbeat_runtime, rotate_runtime_token, revoke_runtime_instance)
+    heartbeat_runtime, rotate_runtime_token, revoke_runtime_instance,
+    is_control_plane_agent_enabled)
 from ai_os.control_plane_schemas import (AgentEnableUpdate, EndpointCreate,
     RuntimeCreate, RuntimeHeartbeat)
 
@@ -773,7 +774,14 @@ def get_company_department(department_id: str):
 
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
-    return [agent.__dict__ for agent in list_agents()]
+    agents = []
+    for agent in list_agents(enabled_only=False):
+        item = dict(agent.__dict__)
+        item["enabled"] = bool(agent.enabled and is_control_plane_agent_enabled(
+            agent.id, fallback_enabled=agent.enabled
+        ))
+        agents.append(item)
+    return agents
 
 @app.get("/runbooks")
 def get_runbooks():
