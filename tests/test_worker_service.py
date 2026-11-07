@@ -161,3 +161,48 @@ def test_worker_loop_refreshes_runtime_heartbeat_during_long_job():
     )
 
     assert sum(1 for item in heartbeats if item[0] == "working") >= 2
+
+
+def test_run_once_leaves_model_jobs_queued_when_model_is_disabled(monkeypatch):
+    from ai_os import worker
+
+    captured = {}
+
+    def claim(worker_id, **kwargs):
+        captured["worker_id"] = worker_id
+        captured["allowed_job_types"] = set(kwargs["allowed_job_types"])
+        return None
+
+    monkeypatch.setattr("ai_os.worker.get_model_status", lambda: {"enabled": False})
+    monkeypatch.setattr("ai_os.worker.claim_next_job", claim)
+
+    result = worker.run_once(worker_id="offline-worker")
+
+    assert captured["worker_id"] == "offline-worker"
+    assert captured["allowed_job_types"] == {
+        "build_work_packet",
+        "review_department_plan",
+    }
+    assert result["processed"] is False
+    assert "remain queued" in result["notice"]
+
+
+def test_run_once_allows_model_jobs_when_model_is_enabled(monkeypatch):
+    from ai_os import worker
+
+    captured = {}
+
+    def claim(worker_id, **kwargs):
+        captured["allowed_job_types"] = set(kwargs["allowed_job_types"])
+        return None
+
+    monkeypatch.setattr("ai_os.worker.get_model_status", lambda: {"enabled": True})
+    monkeypatch.setattr("ai_os.worker.claim_next_job", claim)
+
+    worker.run_once(worker_id="online-worker")
+
+    assert captured["allowed_job_types"] == {
+        "build_work_packet",
+        "execute_company_step",
+        "review_department_plan",
+    }
