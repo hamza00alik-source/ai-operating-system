@@ -5,6 +5,7 @@ from threading import Event, Thread
 from ai_os.agent_runtime import execute_company_step
 from ai_os.department_coordination import review_department_plan
 from ai_os.execution import mark_company_step_blocked
+from ai_os.model_adapter import get_model_status
 from ai_os.queue import claim_next_job, fail_job, finish_job, renew_job_lease
 from ai_os.work_packets import build_work_packet
 
@@ -47,9 +48,24 @@ def _fail_claimed_job(job: dict, worker_id: str, error: str) -> dict | None:
 
 def run_once(worker_id: str | None = None) -> dict:
     worker_id = worker_id or f"local-{uuid4()}"
-    job = claim_next_job(worker_id)
+    model_enabled = get_model_status()["enabled"]
+    allowed_job_types = set(HANDLERS)
+    if not model_enabled:
+        # Keep local packet-building and manager-review tasks available, but leave
+        # specialist inference jobs queued until an approved model is enabled.
+        allowed_job_types.discard("execute_company_step")
+    job = claim_next_job(worker_id, allowed_job_types=allowed_job_types)
     if job is None:
-        return {"processed": False, "job": None, "notice": "No queued job is available."}
+        return {
+            "processed": False,
+            "job": None,
+            "notice": (
+                "No eligible queued job is available. Model-backed specialist jobs "
+                "remain queued while model execution is disabled."
+                if not model_enabled
+                else "No queued job is available."
+            ),
+        }
 
     stop_heartbeat = Event()
 
