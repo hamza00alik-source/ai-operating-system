@@ -4,9 +4,11 @@ from __future__ import annotations
 import json
 import hashlib
 import secrets
+import re
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from urllib.parse import urlsplit
+from pathlib import Path
 
 from ai_os.db import connect
 from ai_os.registry import get_agent, list_agents
@@ -67,6 +69,20 @@ def initialize_control_plane() -> None:
         CREATE INDEX IF NOT EXISTS idx_cp_runtime_heartbeat
             ON control_plane_runtime_instances(last_heartbeat_at, status);
 
+
+        CREATE TABLE IF NOT EXISTS control_plane_capability_grants (
+            grant_id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            capability TEXT NOT NULL,
+            department_scope TEXT,
+            granted_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(agent_id, capability, department_scope),
+            FOREIGN KEY(agent_id) REFERENCES control_plane_agents(agent_id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_cp_capability_agent
+            ON control_plane_capability_grants(agent_id, capability);
+
         CREATE TABLE IF NOT EXISTS control_plane_relationships (
             source_agent_id TEXT NOT NULL,
             target_agent_id TEXT NOT NULL,
@@ -102,6 +118,23 @@ def initialize_control_plane() -> None:
                  agent.source, json.dumps(list(agent.capabilities)),
                  1 if agent.enabled else 0, now, now),
             )
+        # Department charters explicitly authorize each named manager to delegate
+        # internal tasks only within that manager's own department.
+        departments_path = Path(__file__).resolve().parents[2] / "company" / "departments.json"
+        try:
+            department_items = json.loads(departments_path.read_text(encoding="utf-8")).get("departments", [])
+        except (OSError, ValueError):
+            department_items = []
+        for department in department_items:
+            manager_id = department.get("manager_agent_id")
+            department_id = department.get("id")
+            if manager_id and department_id:
+                db.execute(
+                    """INSERT OR IGNORE INTO control_plane_capability_grants
+                       (grant_id, agent_id, capability, department_scope, granted_by, created_at)
+                       VALUES (?, ?, 'task.delegate', ?, 'system:department-charter', ?)""",
+                    (str(uuid4()), manager_id, department_id, now),
+                )
         # The CEO is the sole company-level reporting authority.
         db.execute(
             """INSERT OR IGNORE INTO control_plane_relationships
@@ -478,3 +511,115 @@ def filter_effective_agents(agents: list) -> list:
         raise
     enabled_ids = {row["agent_id"] for row in rows}
     return [agent for agent in candidates if agent.id in enabled_ids]
+
+
+BROKER_CAPABILITIES = {
+    "task.delegate",
+    "tool.research.read",
+    "tool.knowledge.write",
+    "tool.store.read",
+    "tool.store.draft",
+}
+_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{2,79}$")
+
+
+def grant_capability(*, agent_id: str, capability: str,
+                     department_scope: str | None, granted_by: str) -> dict:
+    capability = capability.strip().lower()
+    if capability not in BROKER_CAPABILITIES or not _CAPABILITY_PATTERN.fullmatch(capability):
+        raise ValueError("Capability is not in the supported allowlist")
+    if not is_control_plane_agent_enabled(agent_id, fallback_enabled=False):
+        raise ValueError("Capability can only be granted to an enabled registered agent")
+    if department_scope:
+        agent = get_agent(agent_id)
+        if agent is None or (agent_id != "company-orchestrator" and agent.department != department_scope):
+            raise ValueError("Department-scoped capability must match the agent's department")
+    grant_id, now = str(uuid4()), _now()
+    with connect() as db:
+        db.execute(
+            """INSERT INTO control_plane_capability_grants
+               (grant_id, agent_id, capability, department_scope, granted_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(agent_id, capability, department_scope) DO NOTHING""",
+            (grant_id, agent_id, capability, department_scope, granted_by, now),
+        )
+        row = db.execute(
+            """SELECT * FROM control_plane_capability_grants
+               WHERE agent_id=? AND capability=? AND department_scope IS ?""",
+            (agent_id, capability, department_scope),
+        ).fetchone()
+    return dict(row)
+
+
+def list_capability_grants(*, agent_id: str | None = None) -> list[dict]:
+    with connect() as db:
+        if agent_id:
+            rows = db.execute(
+                """SELECT * FROM control_plane_capability_grants
+                   WHERE agent_id=? ORDER BY capability, department_scope""", (agent_id,)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """SELECT * FROM control_plane_capability_grants
+                   ORDER BY agent_id, capability, department_scope"""
+            ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def revoke_capability_grant(grant_id: str) -> dict | None:
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM control_plane_capability_grants WHERE grant_id=?", (grant_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        db.execute("DELETE FROM control_plane_capability_grants WHERE grant_id=?", (grant_id,))
+    return dict(row)
+
+
+def evaluate_capability(agent_id: str, capability: str,
+                        department_scope: str | None = None) -> dict:
+    normalized = capability.strip().lower() if isinstance(capability, str) else ""
+    if normalized not in BROKER_CAPABILITIES:
+        return {"allowed": False, "decision": "blocked_unknown_capability",
+                "reason": "Capability is not in the supported allowlist."}
+    if not is_control_plane_agent_enabled(agent_id, fallback_enabled=False):
+        return {"allowed": False, "decision": "blocked_agent_disabled",
+                "reason": "Agent is not enabled in the Control Plane."}
+    with connect() as db:
+        row = db.execute(
+            """SELECT grant_id, department_scope FROM control_plane_capability_grants
+               WHERE agent_id=? AND capability=?
+                 AND (department_scope IS NULL OR department_scope IS ?)
+               ORDER BY CASE WHEN department_scope IS NULL THEN 1 ELSE 0 END LIMIT 1""",
+            (agent_id, normalized, department_scope),
+        ).fetchone()
+    if row is None:
+        return {"allowed": False, "decision": "blocked_no_capability_grant",
+                "reason": "No explicit capability grant matches this agent and scope."}
+    return {"allowed": True, "decision": "allowed_explicit_grant",
+            "grant_id": row["grant_id"], "department_scope": row["department_scope"],
+            "reason": "An explicit owner-approved capability grant matches this request."}
+
+
+def evaluate_broker_route(source_agent_id: str, target_agent_id: str) -> dict:
+    source = get_effective_agent(source_agent_id)
+    target = get_effective_agent(target_agent_id)
+    if source is None or target is None:
+        return {"allowed": False, "decision": "blocked_agent_unavailable",
+                "reason": "Source and target must both be enabled registered agents."}
+    if source_agent_id == "company-orchestrator":
+        return {"allowed": True, "decision": "allowed_ceo_route",
+                "source_agent_id": source_agent_id, "target_agent_id": target_agent_id,
+                "department_scope": target.department}
+    from ai_os.departments import get_department
+    department = get_department(target.department)
+    if department is None or department.get("manager_agent_id") != source_agent_id:
+        return {"allowed": False, "decision": "blocked_department_scope",
+                "reason": "Only the configured department manager may delegate to specialists in that department."}
+    grant = evaluate_capability(source_agent_id, "task.delegate", target.department)
+    if not grant["allowed"]:
+        return {**grant, "source_agent_id": source_agent_id, "target_agent_id": target_agent_id}
+    return {"allowed": True, "decision": "allowed_manager_scope",
+            "source_agent_id": source_agent_id, "target_agent_id": target_agent_id,
+            "department_scope": target.department, "grant_id": grant["grant_id"]}
