@@ -247,6 +247,21 @@ def initialize_commerce_storage() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_commerce_orders_channel_status
             ON commerce_orders(channel, status, received_at DESC);
+        CREATE TABLE IF NOT EXISTS commerce_payout_records (
+            id TEXT PRIMARY KEY,
+            channel TEXT NOT NULL,
+            external_payout_id TEXT NOT NULL,
+            currency TEXT NOT NULL,
+            gross_amount TEXT NOT NULL,
+            fee_amount TEXT NOT NULL,
+            net_amount TEXT NOT NULL,
+            payout_date TEXT,
+            evidence_reference TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL CHECK(status IN ('recorded_unverified','owner_confirmed_received')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(channel, external_payout_id)
+        );
         """)
 
 
@@ -546,6 +561,105 @@ def list_fulfillment_queue(limit: int = Query(default=100, ge=1, le=500)):
             "policy": "No delivery is performed automatically. Verify payment and product entitlement before manual fulfillment."}
 
 
+
+class PayoutRecordCreate(BaseModel):
+    channel: str
+    external_payout_id: str = Field(min_length=1, max_length=120)
+    currency: str = Field(min_length=3, max_length=3)
+    gross_amount: str
+    fee_amount: str
+    net_amount: str
+    payout_date: str | None = Field(default=None, max_length=40)
+    evidence_reference: str = Field(default="", max_length=500)
+
+    @field_validator("channel")
+    @classmethod
+    def payout_channel(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in CHANNELS:
+            raise ValueError("Unsupported storefront channel.")
+        return value
+
+    @field_validator("currency")
+    @classmethod
+    def payout_currency(cls, value: str) -> str:
+        value = value.upper()
+        if not re.fullmatch(r"[A-Z]{3}", value):
+            raise ValueError("Currency must be a three-letter code.")
+        return value
+
+    @field_validator("gross_amount", "fee_amount", "net_amount")
+    @classmethod
+    def payout_amount(cls, value: str) -> str:
+        if not re.fullmatch(r"(?:0|[1-9][0-9]{0,9})(?:[.][0-9]{1,2})?", value):
+            raise ValueError("Amount must be a non-negative decimal with up to two places.")
+        return value
+
+
+@router.post("/payouts/records", status_code=201)
+def record_payout_statement(payload: PayoutRecordCreate, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required.")
+    def cents(value: str) -> int:
+        whole, _, fraction = value.partition(".")
+        return int(whole) * 100 + int((fraction + "00")[:2])
+    if cents(payload.gross_amount) - cents(payload.fee_amount) != cents(payload.net_amount):
+        raise HTTPException(status_code=422, detail="Gross amount minus fees must equal net amount.")
+    now, record_id = _now(), str(uuid4())
+    with connect() as db:
+        try:
+            db.execute(
+                """INSERT INTO commerce_payout_records
+                (id,channel,external_payout_id,currency,gross_amount,fee_amount,net_amount,
+                 payout_date,evidence_reference,status,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,'recorded_unverified',?,?)""",
+                (record_id, payload.channel, payload.external_payout_id, payload.currency,
+                 payload.gross_amount, payload.fee_amount, payload.net_amount,
+                 payload.payout_date, payload.evidence_reference, now, now),
+            )
+        except Exception as exc:
+            if "UNIQUE constraint failed" in str(exc):
+                raise HTTPException(status_code=409, detail="Payout record already exists.") from exc
+            raise
+    append_event(actor, "commerce_payout_recorded", "commerce_payout", record_id,
+                 {"channel": payload.channel, "currency": payload.currency,
+                  "net_amount": payload.net_amount, "status": "recorded_unverified"})
+    return {"id": record_id, "status": "recorded_unverified",
+            "note": "Recording a statement is not proof that funds reached your account."}
+
+
+@router.post("/payouts/{payout_id}/confirm-received")
+def confirm_payout_received(payout_id: str, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    if actor != "owner":
+        raise HTTPException(status_code=403, detail="A configured owner token is required.")
+    now = _now()
+    with connect() as db:
+        row = db.execute("SELECT status,channel,net_amount,currency FROM commerce_payout_records WHERE id=?", (payout_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Payout record not found.")
+        if row["status"] != "recorded_unverified":
+            raise HTTPException(status_code=409, detail="Payout is already confirmed or otherwise changed.")
+        db.execute(
+            "UPDATE commerce_payout_records SET status='owner_confirmed_received',updated_at=? WHERE id=?",
+            (now, payout_id),
+        )
+    append_event(actor, "commerce_payout_owner_confirmed_received", "commerce_payout", payout_id,
+                 {"channel": row["channel"], "currency": row["currency"], "net_amount": row["net_amount"]})
+    return {"id": payout_id, "status": "owner_confirmed_received"}
+
+
+@router.get("/payouts")
+def list_payout_records(limit: int = Query(default=100, ge=1, le=500)):
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM commerce_payout_records ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return {"payouts": [dict(row) for row in rows],
+            "note": "Records are manually entered from provider statements; no payment account is accessed."}
+
+
 @router.get("/overview")
 def commerce_overview():
     with connect() as db:
@@ -553,12 +667,15 @@ def commerce_overview():
         listings = db.execute("SELECT status,COUNT(*) AS count FROM commerce_listings GROUP BY status").fetchall()
         orders = db.execute("SELECT channel,payment_status,COUNT(*) AS count FROM commerce_orders GROUP BY channel,payment_status").fetchall()
         fulfillment = db.execute("SELECT status,COUNT(*) AS count FROM commerce_fulfillment GROUP BY status").fetchall()
+    with connect() as db:
+        payout_counts = db.execute("SELECT status,COUNT(*) AS count FROM commerce_payout_records GROUP BY status").fetchall()
     return {
         "storefronts": storefront_status()["storefronts"],
         "products": {row["status"]: row["count"] for row in products},
         "listings": {row["status"]: row["count"] for row in listings},
         "orders": [dict(row) for row in orders],
         "fulfillment": {row["status"]: row["count"] for row in fulfillment},
-        "payout_reconciliation": "not_connected_no_payout_data",
+        "payout_reconciliation": "manual_statement_records_only",
+        "payout_records": {row["status"]: row["count"] for row in payout_counts},
         "automated_fulfillment": False,
     }
