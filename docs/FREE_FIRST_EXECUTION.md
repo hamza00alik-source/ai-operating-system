@@ -24,6 +24,12 @@ This mode does not call an API, incur API usage charges, or run autonomously. It
 
 A local model runtime (for example, Ollama on hardware that can run it) can be added behind a provider interface. It must be optional, report hardware requirements clearly, and never silently fall back to a paid provider. A local runtime is not automatically feasible on an Android-only device; a separate computer or suitable hosted machine may be needed.
 
+## Enforced zero-cost mode
+
+The recommended `.env.example` sets `AI_OS_ZERO_COST_MODE=true`. When this switch is true, the model adapter refuses to execute **any** model backend, even if an API endpoint, key, model name, or local CLI is configured and `AI_OS_MODEL_ENABLED=true`. The status endpoint reports `reason: zero_cost_mode`; no provider request or CLI process is started. The guard applies to remote API backends and local CLI backends alike because a CLI may itself contact a remote service.
+
+Keep this setting true while operating without a budget. To use any model later, the owner must deliberately set `AI_OS_ZERO_COST_MODE=false`, separately enable model execution, and review the provider's actual billing, quota, privacy, and hosting requirements first. There is no automatic fallback.
+
 ## Hard cost controls
 
 - No provider API is configured by default.
@@ -35,3 +41,7 @@ A local model runtime (for example, Ollama on hardware that can run it) can be a
 ## Current limitations
 
 Agent work packets are prompt preparation, not AI execution. The system cannot independently reason or continue working while the owner is offline in this mode. Autonomous operation requires an available model runtime plus a persistent worker, secure tool permissions, durable state, and authenticated approval gates.
+
+## What this means for the company
+
+In zero-cost mode, the company OS can preserve plans, queues, agent profiles, work packets, approvals, audit history, research notes, and owner-reviewed learning records. It cannot generate new AI reasoning autonomously. Free chat interfaces can be used manually by copying work packets and returning reviewed results. This is an honest operating mode, not a claim that background agents are thinking while the owner is offline.
