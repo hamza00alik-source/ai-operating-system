@@ -27,6 +27,7 @@ def test_department_workload_uses_manager_source_division(monkeypatch):
         ],
     }])
     monkeypatch.setattr(department_management, "list_jobs", lambda limit=500: [])
+    monkeypatch.setattr(department_management, "list_department_plans_for_runs", lambda run_ids: [])
 
     result = department_management.get_department_workload("marketing")
     assert result["manager"]["id"] == "manager"
