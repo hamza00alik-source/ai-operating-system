@@ -304,3 +304,84 @@ def test_control_plane_database_errors_do_not_fall_back_to_registry_allowance(mo
         assert False, "database failure must not permit registry-only fallback"
     except sqlite3.OperationalError as exc:
         assert "unable to open database" in str(exc)
+
+
+
+def test_mcp_endpoint_owner_lifecycle_is_explicit_and_does_not_connect():
+    with TestClient(app) as client:
+        created = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Approved MCP metadata", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp"},
+        )
+        endpoint_id = created.json()["endpoint_id"]
+        enabled = client.patch(
+            f"/control-plane/endpoints/{endpoint_id}", json={"enabled": True}
+        )
+        disabled = client.patch(
+            f"/control-plane/endpoints/{endpoint_id}", json={"enabled": False}
+        )
+
+    assert created.status_code == 201
+    assert created.json()["enabled"] is False
+    assert enabled.status_code == 200
+    assert enabled.json()["endpoint"]["enabled"] is True
+    assert "no network connection" in enabled.json()["notice"]
+    assert disabled.status_code == 200
+    assert disabled.json()["endpoint"]["enabled"] is False
+
+
+def test_mcp_endpoint_activation_requires_resolvable_env_credential(monkeypatch):
+    with TestClient(app) as client:
+        created = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Authenticated MCP", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp",
+                  "credential_ref": "env:AI_OS_TEST_MCP_TOKEN"},
+        )
+        endpoint_id = created.json()["endpoint_id"]
+        missing = client.patch(
+            f"/control-plane/endpoints/{endpoint_id}", json={"enabled": True}
+        )
+        monkeypatch.setenv("AI_OS_TEST_MCP_TOKEN", "test-secret-value")
+        enabled = client.patch(
+            f"/control-plane/endpoints/{endpoint_id}", json={"enabled": True}
+        )
+
+    assert missing.status_code == 422
+    assert "not configured" in missing.json()["detail"]
+    assert enabled.status_code == 200
+    assert "test-secret-value" not in enabled.text
+
+
+def test_a2a_endpoint_cannot_be_enabled_before_cp4_mcp_is_complete():
+    with TestClient(app) as client:
+        created = client.post(
+            "/control-plane/endpoints",
+            json={"name": "A2A pending", "protocol": "a2a",
+                  "base_url": "https://a2a.example.org/agent"},
+        )
+        response = client.patch(
+            f"/control-plane/endpoints/{created.json()['endpoint_id']}",
+            json={"enabled": True},
+        )
+
+    assert response.status_code == 422
+    assert "Only MCP endpoints" in response.json()["detail"]
+
+
+def test_mcp_endpoint_secret_manager_reference_fails_closed():
+    with TestClient(app) as client:
+        created = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Unresolved secret manager", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp",
+                  "credential_ref": "secret://provider/secret"},
+        )
+        response = client.patch(
+            f"/control-plane/endpoints/{created.json()['endpoint_id']}",
+            json={"enabled": True},
+        )
+
+    assert response.status_code == 422
+    assert "no secret-manager resolver" in response.json()["detail"]
