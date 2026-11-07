@@ -15,6 +15,7 @@ class Agent:
         self.id = agent_id
         self.name = name
         self.department = department
+        self.description = "Test specialist expertise."
         self.enabled = True
 
 
