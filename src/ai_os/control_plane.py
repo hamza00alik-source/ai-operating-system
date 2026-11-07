@@ -9,7 +9,7 @@ from uuid import uuid4
 from urllib.parse import urlsplit
 
 from ai_os.db import connect
-from ai_os.registry import list_agents
+from ai_os.registry import get_agent, list_agents
 
 
 def _now() -> str:
@@ -401,3 +401,63 @@ def revoke_runtime_instance(runtime_id: str) -> dict | None:
             (runtime_id,),
         ).fetchone()
     return _runtime_public(row) if row else None
+
+
+def is_control_plane_agent_enabled(agent_id: str, *, fallback_enabled: bool = True) -> bool:
+    """Return the authoritative CP enabled state, falling back before CP schema exists."""
+    try:
+        with connect() as db:
+            row = db.execute(
+                "SELECT enabled FROM control_plane_agents WHERE agent_id = ?",
+                (agent_id,),
+            ).fetchone()
+    except Exception as exc:
+        # Early unit tests and one-off tools may use the registry before CP startup.
+        from sqlite3 import OperationalError
+        if isinstance(exc, OperationalError) and (
+            "no such table" in str(exc).lower()
+            or "unable to open database" in str(exc).lower()
+        ):
+            return fallback_enabled
+        raise
+    return bool(row["enabled"]) if row is not None else False
+
+
+def get_effective_agent(agent_id: str):
+    """Resolve a registry profile only when both registry and CP policy enable it."""
+    agent = get_agent(agent_id)
+    if agent is None or not agent.enabled:
+        return None
+    return agent if is_control_plane_agent_enabled(agent_id, fallback_enabled=agent.enabled) else None
+
+
+def list_effective_agents(*, department: str | None = None) -> list:
+    """Return enabled profile objects using one CP query, not one DB query per profile."""
+    agents = list_agents(enabled_only=True)
+    try:
+        with connect() as db:
+            rows = db.execute(
+                "SELECT agent_id FROM control_plane_agents WHERE enabled = 1"
+            ).fetchall()
+    except Exception as exc:
+        from sqlite3 import OperationalError
+        if isinstance(exc, OperationalError) and "no such table" in str(exc).lower():
+            rows = None
+        else:
+            raise
+    if rows is not None:
+        enabled_ids = {row["agent_id"] for row in rows}
+        agents = [agent for agent in agents if agent.id in enabled_ids]
+    if department:
+        agents = [agent for agent in agents if agent.department == department]
+    return agents
+
+
+def select_effective_agent(department: str):
+    """Deterministically select the first enabled specialist in a department."""
+    candidates = sorted(
+        (agent for agent in list_effective_agents(department=department)
+         if agent.id != "company-orchestrator"),
+        key=lambda agent: (agent.name.casefold(), agent.id),
+    )
+    return candidates[0] if candidates else None
