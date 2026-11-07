@@ -106,7 +106,7 @@ class ListingPacketRequest(BaseModel):
     def valid_price(cls, value: str | None) -> str | None:
         if value is None or value == "":
             return None
-        if not re.fullmatch(r"(?:0|[1-9][0-9]{0,7})(?:\\.[0-9]{1,2})?", value):
+        if not re.fullmatch(r"(?:0|[1-9][0-9]{0,7})(?:[.][0-9]{1,2})?", value):
             raise ValueError("Price must be a non-negative decimal with up to two places.")
         return value
 
