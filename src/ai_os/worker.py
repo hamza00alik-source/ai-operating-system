@@ -2,9 +2,17 @@
 from uuid import uuid4
 
 from ai_os.agent_runtime import execute_company_step
+from ai_os.department_coordination import review_department_plan
 from ai_os.execution import mark_company_step_blocked
 from ai_os.queue import claim_next_job, fail_job, finish_job
 from ai_os.work_packets import build_work_packet
+
+
+def _review_department_plan(payload: dict) -> dict:
+    run_id, department_id = payload.get("run_id"), payload.get("department_id")
+    if not isinstance(run_id, str) or not isinstance(department_id, str):
+        raise ValueError("review_department_plan requires run_id and department_id")
+    return review_department_plan(run_id, department_id)
 
 
 def _build_work_packet(payload: dict) -> dict:
@@ -16,6 +24,7 @@ def _build_work_packet(payload: dict) -> dict:
 HANDLERS = {
     "build_work_packet": _build_work_packet,
     "execute_company_step": execute_company_step,
+    "review_department_plan": _review_department_plan,
 }
 
 
@@ -46,9 +55,12 @@ def run_once(worker_id: str | None = None) -> dict:
             raise ValueError("No handler is registered for this job type")
         result = handler(job["payload"])
         completed = finish_job(job["id"], worker_id, result)
-        notice = ("Specialist model task completed; no external action was attempted."
-                  if job["job_type"] == "execute_company_step"
-                  else "Work packet completed locally; no model or external service was called.")
+        notices = {
+            "execute_company_step": "Specialist model task completed; no external action was attempted.",
+            "review_department_plan": "Department manager review completed and recorded for the CEO; no external action was attempted.",
+            "build_work_packet": "Work packet completed locally; no model or external service was called.",
+        }
+        notice = notices.get(job["job_type"], "Job completed safely.")
         return {"processed": True, "job": completed, "notice": notice}
     except (KeyError, TypeError, ValueError, LookupError) as exc:
         failed = _fail_claimed_job(job, worker_id, str(exc))
