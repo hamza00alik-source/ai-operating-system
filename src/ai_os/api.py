@@ -59,7 +59,6 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
-from ai_os.wordpress import WordPressNotConfigured, WordPressReadError, WordPressReadOnlyClient
 
 logger = logging.getLogger(__name__)
 
