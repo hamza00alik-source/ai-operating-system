@@ -86,7 +86,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [ ] Social platform content planning and draft generation
 - [ ] Human approval before any external publishing
 - [ ] Customer support inbox and response drafts
-- [ ] Payment-status verification only; no autonomous money movement
+- [x] Read-only WooCommerce payment confirmation signal from date_paid; no autonomous money movement or independent settlement reconciliation
 
 ## Phase 5 — Operations and release
 - [x] Owner dashboard for agent, run, queue, approval, audit, model, evaluation trends, and improvement proposal review
