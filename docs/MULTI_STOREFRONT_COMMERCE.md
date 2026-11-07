@@ -29,3 +29,36 @@ The routes inherit the application's owner authentication and request audit midd
 - No channel has automated publishing in this release.
 - Every external upload or publication requires a future channel-specific adapter, idempotency/reconciliation tests, exact-scope CEO request, owner approval, and explicit execution.
 - Unsupported APIs must continue to produce exportable manual listing packets rather than simulated automation.
+
+
+## Implemented local commerce operations
+
+The current branch also adds a SQLite-backed canonical product catalog, per-channel listing-packet records, an idempotent normalized order ledger, and a fulfillment review queue.
+
+- POST /commerce/catalog/products creates a local product in draft status.
+- GET /commerce/catalog/products lists the canonical catalogue.
+- POST /commerce/catalog/products/{product_id}/listing-packets?channel=... creates a local channel-specific packet.
+- POST /commerce/listings/{listing_id}/approve-manual-upload requires the configured owner identity and marks the packet approved for manual upload only. It does not upload or publish.
+- GET /commerce/listings lists stored packets and status.
+- POST /commerce/webhooks/woocommerce accepts an HMAC-SHA256 signed WooCommerce webhook using AI_OS_WOOCOMMERCE_WEBHOOK_SECRET and X-WC-Webhook-Signature.
+- GET /commerce/orders lists minimized normalized orders. Customer billing and shipping PII are not stored.
+- GET /commerce/fulfillment lists fulfillment review items. No delivery is performed.
+- GET /commerce/overview feeds the owner dashboard.
+
+Order events are idempotent on (channel, external_order_id). A WooCommerce order is considered paid only when date_paid is present in the webhook payload; processing/completed status alone is not sufficient. Even a paid order moves only to ready_after_payment_check, never to auto-fulfilled.
+
+## Required deployment configuration
+
+- Set AI_OS_WOOCOMMERCE_WEBHOOK_SECRET to the exact secret configured in the WooCommerce webhook.
+- Configure a WooCommerce webhook for the order event and point it to /commerce/webhooks/woocommerce on the deployed HTTPS service.
+- The endpoint verifies the signature before parsing and storing the payload. It is exempt from owner bearer-token middleware only because it performs its own HMAC signature check.
+- Configure owner API token and database persistence separately. Do not commit secrets.
+- Test with a non-production webhook or sample signed request before enabling the production webhook.
+
+## Not yet implemented
+
+- Marketplace account OAuth/token verification and country-specific payout onboarding.
+- Gumroad/itch.io/CGTrader/Fab/Etsy live order connectors.
+- Automated digital file hosting, expiring download links, license issuance, email delivery, and retries.
+- Marketplace payout statements, fee schedules, refund reconciliation, tax reporting, and cash-received ledger.
+- Automated product sync or publication. The owner dashboard reports status but does not publish.
