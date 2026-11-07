@@ -1132,3 +1132,65 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
     return result
+
+
+# Agent Control Plane — CP-1 registry APIs. All routes inherit owner-token auth.
+@app.get("/control-plane")
+def get_control_plane_status():
+    return control_plane_overview()
+
+
+@app.get("/control-plane/agents")
+def get_control_plane_agents(
+    department: str | None = Query(default=None, max_length=100),
+    enabled: bool | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=1000),
+):
+    return {"agents": list_control_plane_agents(
+        department=department, enabled=enabled, limit=limit
+    )}
+
+
+@app.get("/control-plane/agents/{agent_id}")
+def get_control_plane_agent_detail(agent_id: str):
+    agent = get_control_plane_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Registered agent not found")
+    return agent
+
+
+@app.patch("/control-plane/agents/{agent_id}")
+def patch_control_plane_agent(agent_id: str, payload: AgentEnableUpdate, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    agent = set_agent_enabled(agent_id, payload.enabled)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Registered agent not found")
+    append_event(
+        actor, "control_plane_agent_enabled" if payload.enabled else "control_plane_agent_disabled",
+        "control_plane_agent", agent_id, {"enabled": payload.enabled},
+    )
+    return agent
+
+
+@app.get("/control-plane/endpoints")
+def get_control_plane_endpoints():
+    return {"endpoints": list_control_plane_endpoints(),
+            "notice": "New network endpoints are registered disabled; CP-1 does not connect to them."}
+
+
+@app.post("/control-plane/endpoints", status_code=201)
+def post_control_plane_endpoint(payload: EndpointCreate, request: Request):
+    try:
+        endpoint = create_control_plane_endpoint(
+            name=payload.name, protocol=payload.protocol, base_url=payload.base_url,
+            credential_ref=payload.credential_ref, metadata=payload.metadata,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_endpoint_registered",
+        "control_plane_endpoint", endpoint["endpoint_id"],
+        {"protocol": endpoint["protocol"], "enabled": endpoint["enabled"],
+         "has_credential_reference": bool(endpoint["credential_ref"])},
+    )
+    return endpoint
