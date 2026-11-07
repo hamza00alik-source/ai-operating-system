@@ -169,7 +169,7 @@ Limitations: this milestone registers and monitors runtime identities; it does n
 
 Implemented baseline enforcement:
 - Add effective-agent resolution that requires both the pinned profile registry and the persistent Control Plane enabled state to permit an agent.
-- Apply that check when building work packets, issuing/verifying signed agent identities, validating new company-run assignments, and accepting logical-agent runtime heartbeats.
+- Apply that check when building work packets, issuing/verifying signed agent identities, validating new company-run assignments, evaluating CEO governance actions, accepting logical-agent runtime heartbeats, and starting already-queued specialist inference.
 - Route deterministic CEO department selection, CEO objective planning, manager delegation, and department workload availability through effective-agent policy.
 - Keep bulk department filtering to one Control Plane query rather than one database connection per profile.
 - Expose effective enabled/disabled state in the existing owner `/agents` API so the dashboard does not present stale registry-only status.
@@ -181,7 +181,7 @@ Implemented broker and capability controls:
 - Add owner-managed explicit grants at `GET/POST /control-plane/capabilities`, revocation at `DELETE /control-plane/capabilities/{grant_id}`, and policy preview at `POST /control-plane/capabilities/evaluate`.
 - Capability checks fail closed for unknown capabilities, disabled agents, and missing grants. The supported initial capability vocabulary is `task.delegate`, `tool.research.read`, `tool.knowledge.write`, `tool.store.read`, and `tool.store.draft`.
 - Seed each department manager with only the `task.delegate` capability for the department named in the company charter. This does not grant tool access.
-- Add a trusted in-process agent-tool adapter registry. Each tool adapter is registered by application code with one supported `tool.*` capability; execution requires an explicit matching Control Plane grant, JSON-object parameters capped at 64 KiB, and writes start/deny/success/failure events to the hash-chained audit log.
+- Add a trusted in-process agent-tool adapter registry. Each tool adapter is registered by application code with one supported `tool.*` capability; execution requires an explicit matching Control Plane grant, JSON-object parameters and results capped at 64 KiB, and writes start/deny/success/failure events to the hash-chained audit log.
 - Register bounded read-only tools at application startup: `research.release_feeds` (fixed public GitHub release feeds, no paid search provider), `knowledge.search` (owner-accepted company knowledge only), `store.products.read`, and `store.orders.read` (minimized order/payment status only).
 - Add a bounded specialist model/tool loop: a specialist may request at most three registered tools per step. Tool outputs are passed back as untrusted data. Unknown tools, disabled agents, missing grants, invalid JSON parameters, and oversized parameters are rejected.
 - Keep specialist tool calling separately disabled by default with `AI_OS_AGENT_TOOL_CALLS_ENABLED=false`. Enabling the model adapter does not automatically enable tool calls. Each tool still requires a matching owner-managed capability grant.
@@ -196,7 +196,7 @@ Operator activation:
 4. WooCommerce tools remain unavailable until the existing read-only store credentials are configured; they expose bounded catalog and minimized order status only. No publishing, product/order writes, refunds, or customer messages are included.
 
 Validation:
-- GitHub Actions passed the full suite: 261 tests.
+- GitHub Actions passed the full suite: 263 tests.
 
 Remaining CP-3 work:
 - Add more adversarial and operational tests around tool-call retries, provider failures, and task-level budgets.
