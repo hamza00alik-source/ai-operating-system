@@ -43,6 +43,10 @@ def _setup(monkeypatch, tmp_path):
         "test-manager": manager, "product-trend-researcher": specialist,
     }.get(key))
     monkeypatch.setattr(coordination, "list_agents", lambda: [manager, specialist])
+    monkeypatch.setattr(coordination, "is_control_plane_agent_enabled",
+                        lambda agent_id, fallback_enabled=True: fallback_enabled)
+    monkeypatch.setattr(coordination, "filter_effective_agents",
+                        lambda agents: [agent for agent in agents if agent.enabled])
     monkeypatch.setattr(coordination, "load_agent_profile", lambda key: "Department manager profile.")
     return run["id"]
 
