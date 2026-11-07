@@ -237,3 +237,40 @@ def test_specialist_report_string_fields_are_bounded_and_type_checked():
     )
 
     assert result == ["concise", "xxxxxxxx"]
+
+
+
+def test_disabled_agent_is_blocked_before_model_inference(monkeypatch):
+    from ai_os.agent_runtime import execute_company_step
+    from ai_os.execution import dispatch_ready_step
+
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "test-model")
+    calls = []
+    monkeypatch.setattr(
+        "ai_os.agent_runtime.generate_json",
+        lambda *_: calls.append("called") or ({"summary": "should not run"}, {"provider": "test"}),
+    )
+
+    with TestClient(app) as client:
+        created = client.post("/company-runs", json=_run_payload())
+        assert created.status_code == 201, created.text
+        run_id = created.json()["id"]
+        dispatch_ready_step(run_id, "research")
+        disabled = client.patch(
+            "/control-plane/agents/product-trend-researcher",
+            json={"enabled": False},
+        )
+        try:
+            import pytest
+            with pytest.raises(ValueError, match="disabled or unavailable"):
+                execute_company_step({"run_id": run_id, "step_key": "research"})
+        finally:
+            client.patch(
+                "/control-plane/agents/product-trend-researcher",
+                json={"enabled": True},
+            )
+
+    assert disabled.status_code == 200
+    assert calls == []
