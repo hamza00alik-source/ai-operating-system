@@ -17,6 +17,8 @@ from ai_os.approvals import (ApprovalSecurityError, create_owner_approval_reques
                              decide_owner_approval, list_owner_approval_requests)
 from ai_os.action_gateway import ActionGatewayError, execute_approved_action
 from ai_os.wordpress_actions import register_wordpress_draft_adapter
+from ai_os.wordpress import WordPressNotConfigured, WordPressReadError, WordPressReadOnlyClient
+from ai_os.woocommerce import WooCommerceNotConfigured, WooCommerceReadError, WooCommerceReadOnlyClient
 from ai_os.woocommerce_actions import register_woocommerce_draft_adapter
 from ai_os.agent_schemas import AgentOut, AgentProfileOut, PlanCreate, PlanOut
 from ai_os.registry import get_agent, list_agents, load_agent_profile
@@ -153,6 +155,45 @@ def get_wordpress_pages(page: int = Query(default=1, ge=1, le=1000),
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except WordPressReadError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+@app.get("/integrations/woocommerce/status")
+def get_woocommerce_integration_status():
+    """Owner-only configuration status; does not contact the store."""
+    return WooCommerceReadOnlyClient.status()
+
+
+@app.get("/integrations/woocommerce/products")
+def get_woocommerce_products(page: int = Query(default=1, ge=1, le=1000),
+                             per_page: int = Query(default=20, ge=1, le=50)):
+    """Owner-only bounded WooCommerce product inventory; read-only."""
+    try:
+        return {"products": WooCommerceReadOnlyClient.from_environment().list_products(
+            page=page, per_page=per_page
+        )}
+    except WooCommerceNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except WooCommerceReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/integrations/woocommerce/orders")
+def get_woocommerce_order_statuses(
+    page: int = Query(default=1, ge=1, le=1000),
+    per_page: int = Query(default=20, ge=1, le=50),
+    status: str | None = Query(default=None, max_length=20),
+):
+    """Owner-only minimized order status view; excludes customer/billing/shipping PII."""
+    try:
+        return {"orders": WooCommerceReadOnlyClient.from_environment().list_order_statuses(
+            page=page, per_page=per_page, status=status
+        )}
+    except WooCommerceNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except WooCommerceReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 @app.get("/actions/gateway/status")
 def get_action_gateway_readiness():
