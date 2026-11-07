@@ -39,3 +39,15 @@ def initialize_database() -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
         """)
+        # Additive migrations keep existing SQLite installations compatible.
+        task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
+        for name, sql_type in (
+            ("worker_id", "TEXT"),
+            ("started_at", "TEXT"),
+            ("finished_at", "TEXT"),
+            ("result", "TEXT"),
+            ("error", "TEXT"),
+        ):
+            if name not in task_columns:
+                connection.execute(f"ALTER TABLE tasks ADD COLUMN {name} {sql_type}")
+
