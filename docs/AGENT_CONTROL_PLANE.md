@@ -196,7 +196,7 @@ Operator activation:
 4. WooCommerce tools remain unavailable until the existing read-only store credentials are configured; they expose bounded catalog and minimized order status only. No publishing, product/order writes, refunds, or customer messages are included.
 
 Validation:
-- GitHub Actions passed the full suite: 263 tests.
+- GitHub Actions passed the full suite: 266 tests.
 
 Remaining CP-3 work:
 - Add more adversarial and operational tests around tool-call retries, provider failures, and task-level budgets.
