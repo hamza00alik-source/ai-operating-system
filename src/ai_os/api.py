@@ -75,9 +75,11 @@ from ai_os.control_plane import (initialize_control_plane, control_plane_overvie
     list_control_plane_endpoints, create_control_plane_endpoint,
     create_runtime_instance, list_runtime_instances, get_runtime_instance,
     heartbeat_runtime, rotate_runtime_token, revoke_runtime_instance,
-    is_control_plane_agent_enabled)
+    is_control_plane_agent_enabled, grant_capability, list_capability_grants,
+    revoke_capability_grant, evaluate_capability, evaluate_broker_route)
 from ai_os.control_plane_schemas import (AgentEnableUpdate, EndpointCreate,
-    RuntimeCreate, RuntimeHeartbeat)
+    RuntimeCreate, RuntimeHeartbeat, CapabilityGrantCreate,
+    BrokerRouteEvaluate, CapabilityEvaluate)
 
 logger = logging.getLogger(__name__)
 
@@ -1213,6 +1215,59 @@ def post_control_plane_endpoint(payload: EndpointCreate, request: Request):
          "has_credential_reference": bool(endpoint["credential_ref"])},
     )
     return endpoint
+
+
+
+
+# CP-3 broker policy and explicit capability grants.
+@app.get("/control-plane/capabilities")
+def get_control_plane_capability_grants(agent_id: str | None = Query(default=None, max_length=120)):
+    return {"grants": list_capability_grants(agent_id=agent_id),
+            "notice": "Only listed grants authorize capability use; missing grants are denied."}
+
+
+@app.post("/control-plane/capabilities", status_code=201)
+def post_control_plane_capability_grant(payload: CapabilityGrantCreate, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        grant = grant_capability(
+            agent_id=payload.agent_id, capability=payload.capability,
+            department_scope=payload.department_scope, granted_by=actor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(actor, "control_plane_capability_granted", "capability_grant",
+                 grant["grant_id"], {"agent_id": grant["agent_id"],
+                 "capability": grant["capability"], "department_scope": grant["department_scope"]})
+    return grant
+
+
+@app.delete("/control-plane/capabilities/{grant_id}")
+def delete_control_plane_capability_grant(grant_id: str, request: Request):
+    grant = revoke_capability_grant(grant_id)
+    if grant is None:
+        raise HTTPException(status_code=404, detail="Capability grant not found")
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "control_plane_capability_revoked", "capability_grant", grant_id,
+                 {"agent_id": grant["agent_id"], "capability": grant["capability"],
+                  "department_scope": grant["department_scope"]})
+    return {"revoked": True, "grant": grant}
+
+
+@app.post("/control-plane/capabilities/evaluate")
+def post_control_plane_capability_evaluation(payload: CapabilityEvaluate):
+    return evaluate_capability(payload.agent_id, payload.capability, payload.department_scope)
+
+
+@app.post("/control-plane/broker/evaluate")
+def post_control_plane_broker_route_evaluation(payload: BrokerRouteEvaluate, request: Request):
+    decision = evaluate_broker_route(payload.source_agent_id, payload.target_agent_id)
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "control_plane_broker_route_evaluated", "agent_route",
+                 payload.source_agent_id + "->" + payload.target_agent_id,
+                 {"decision": decision.get("decision"), "allowed": decision.get("allowed"),
+                  "department_scope": decision.get("department_scope")})
+    return decision
 
 
 # CP-2 runtime identity and authenticated heartbeat endpoints.
