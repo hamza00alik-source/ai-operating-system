@@ -9,6 +9,7 @@ from ai_os.departments import get_department, list_departments
 from ai_os.execution import list_company_runs
 from ai_os.queue import list_jobs
 from ai_os.registry import get_agent, list_agents
+from ai_os.department_coordination import list_department_plans_for_runs
 
 
 def _department_agent_ids(department: dict) -> set[str]:
@@ -38,6 +39,9 @@ def get_department_workload(department_id: str, *, run_limit: int = 200) -> dict
                 "attempts": job["attempts"], "error": job.get("error"),
             }
 
+    manager_plans = [plan for plan in list_department_plans_for_runs([run["id"] for run in runs])
+                     if plan["department_id"] == department_id]
+    plan_counts = Counter(plan["status"] for plan in manager_plans)
     steps = []
     for run in runs:
         for step in run.get("steps", []):
@@ -68,6 +72,13 @@ def get_department_workload(department_id: str, *, run_limit: int = 200) -> dict
             "blocked": counts.get("blocked", 0),
         },
         "items": sorted(steps, key=lambda item: item["updated_at"], reverse=True)[:50],
+        "manager_coordination": {
+            "plans_total": len(manager_plans),
+            "delegated": plan_counts.get("delegated", 0),
+            "reviewed": plan_counts.get("reviewed", 0),
+            "blocked": plan_counts.get("blocked", 0),
+            "items": manager_plans[:10],
+        },
         "execution_enabled": False,
         "notice": (
             "Workload is derived from existing company-run steps assigned to the "
@@ -98,6 +109,12 @@ def get_company_overview(*, run_limit: int = 200) -> dict:
             "assigned": totals.get("assigned", 0),
             "completed": totals.get("completed", 0),
             "blocked": totals.get("blocked", 0),
+        },
+        "manager_coordination": {
+            "plans_total": sum(item.get("manager_coordination", {}).get("plans_total", 0) for item in departments if item),
+            "delegated": sum(item.get("manager_coordination", {}).get("delegated", 0) for item in departments if item),
+            "reviewed": sum(item.get("manager_coordination", {}).get("reviewed", 0) for item in departments if item),
+            "blocked": sum(item.get("manager_coordination", {}).get("blocked", 0) for item in departments if item),
         },
         "company_runs": {
             "total": len(runs),
