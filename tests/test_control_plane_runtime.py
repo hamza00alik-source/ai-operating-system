@@ -176,3 +176,31 @@ def test_disabling_logical_agent_revokes_its_runtime_credential():
     assert disabled.status_code == 200
     assert heartbeat.status_code == 403
     assert reenabled.status_code == 200
+
+
+def test_expired_runtime_credential_is_rejected_and_owner_can_rotate_it():
+    from ai_os.db import connect
+
+    with TestClient(app) as client:
+        created = _register_worker(client)
+        runtime_id = created["runtime"]["runtime_id"]
+        with connect() as db:
+            db.execute(
+                "UPDATE control_plane_runtime_instances SET token_expires_at=? WHERE runtime_id=?",
+                ("2000-01-01T00:00:00+00:00", runtime_id),
+            )
+        payload = {"runtime_id": runtime_id, "status": "idle"}
+        expired = client.post(
+            "/control-plane/runtime-heartbeat", json=payload,
+            headers={"X-AI-Runtime-Token": created["runtime_token"]},
+        )
+        rotated = client.post(f"/control-plane/runtimes/{runtime_id}/rotate-token")
+        accepted = client.post(
+            "/control-plane/runtime-heartbeat", json=payload,
+            headers={"X-AI-Runtime-Token": rotated.json()["runtime_token"]},
+        )
+
+    assert expired.status_code == 403
+    assert "expired" in expired.json()["detail"]
+    assert rotated.status_code == 200
+    assert accepted.status_code == 200
