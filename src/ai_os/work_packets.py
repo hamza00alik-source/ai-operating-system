@@ -9,9 +9,10 @@ from ai_os.instruction_versions import get_active_instruction
 CEO_AGENT_ID = "company-orchestrator"
 
 def build_work_packet(agent_id: str, task: str, context: str = "") -> dict:
-    agent = get_agent(agent_id)
-    if agent is None or not agent.enabled:
-        raise LookupError("Agent not found or disabled")
+    from ai_os.control_plane import get_effective_agent
+    agent = get_effective_agent(agent_id)
+    if agent is None:
+        raise LookupError("Agent not found or disabled by the active control-plane policy")
     task = task.strip()
     if not task:
         raise ValueError("Task must not be empty")
