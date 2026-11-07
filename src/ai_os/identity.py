@@ -87,9 +87,12 @@ def issue_agent_token(
     if len(normalized) != len(capabilities):
         raise AgentIdentityError("Capabilities must be unique.")
 
-    from ai_os.control_plane import get_effective_agent
-    registered = get_effective_agent(agent_id)
-    if registered is None:
+    from ai_os.registry import get_agent
+    registered = get_agent(agent_id)
+    if registered is None or not registered.enabled:
+        raise AgentIdentityError("Only enabled server-registered agents may receive identities.")
+    from ai_os.control_plane import is_control_plane_agent_enabled
+    if not is_control_plane_agent_enabled(agent_id, fallback_enabled=registered.enabled):
         raise AgentIdentityError("Only enabled server-registered agents may receive identities.")
     allowed = AGENT_CAPABILITY_POLICY.get(agent_id, AGENT_CAPABILITY_POLICY["*"])
     if not set(normalized).issubset(allowed):
@@ -154,9 +157,12 @@ def verify_agent_token(
     if not set(capabilities).issubset(allowed):
         raise AgentIdentityError("Token contains a capability not granted by server policy.")
 
-    from ai_os.control_plane import get_effective_agent
-    registered = get_effective_agent(agent_id)
-    if registered is None:
+    from ai_os.registry import get_agent
+    registered = get_agent(agent_id)
+    if registered is None or not registered.enabled:
+        raise AgentIdentityError("Agent is no longer registered and enabled.")
+    from ai_os.control_plane import is_control_plane_agent_enabled
+    if not is_control_plane_agent_enabled(agent_id, fallback_enabled=registered.enabled):
         raise AgentIdentityError("Agent is no longer registered and enabled.")
 
     now = int(time.time())
