@@ -103,8 +103,8 @@ See [OPERATIONS_PLAYBOOK.md](OPERATIONS_PLAYBOOK.md), [CONTINUOUS_LEARNING.md](C
 ## Phase 6 — Agent control plane (specification added; implementation not started)
 - [x] Define a zero-cost, provider-neutral control-plane architecture inspired by Agent Fabric capabilities
 - [x] Document the distinction between profile catalog entries, logical agents, and live runtime instances
-- [ ] CP-1: SQLite registry for logical agents, runtime instances, capabilities, endpoints, and relationships
-- [ ] CP-2: least-privilege runtime identities, authenticated heartbeats, expiry, and revocation
+- [x] CP-1: SQLite registry for logical agents, profile capability metadata, endpoint metadata, and agent relationships; owner APIs, disabled-by-default endpoints, CEO-root protection, and automated tests (235 tests passing)
+- [ ] CP-2: runtime-instance records, least-privilege worker identities, authenticated heartbeats, expiry, and revocation
 - [ ] CP-3: CEO broker routing with deterministic policy validation and deny-by-default capability dispatch
 - [ ] CP-4: secure MCP integration, followed by A2A interoperability after identity and policy controls
 - [ ] CP-5: live health, job telemetry, policy traces, and agent-network visualization
