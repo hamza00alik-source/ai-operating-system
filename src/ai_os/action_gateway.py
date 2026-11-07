@@ -208,6 +208,8 @@ def execute_agent_tool(agent_id: str, tool_name: str, parameters: dict) -> dict:
             result, sort_keys=True, separators=(",", ":"),
             ensure_ascii=False, allow_nan=False, default=str,
         )
+        if len(encoded.encode("utf-8")) > 65536:
+            raise ActionGatewayError("Agent tool result exceeds the 64 KiB safety limit.")
         digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
         append_event(
             "agent:" + agent_id, "agent_tool_execution_completed", "agent_tool", normalized,
