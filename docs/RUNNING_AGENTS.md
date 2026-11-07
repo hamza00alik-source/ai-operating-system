@@ -66,18 +66,39 @@ explicitly opt in:
 - AI_OS_AGENT_SIGNING_KEY: random secret of at least 32 characters.
 - AI_OS_API_TOKEN: owner API token of at least 32 characters.
 
-Then start the persistent worker process:
+Start the worker service as a separate, long-lived process (use your host's
+process manager, such as systemd or an equivalent restart policy):
 
 ```bash
 python -m ai_os.worker_service
 ```
 
-Create a company objective through POST /ceo/plan. The worker discovers
-dependency-ready steps, dispatches them into the durable queue, executes them,
-and stores authenticated specialist reports for CEO review. Keep the worker
-running as a separate process; stopping it pauses work without losing queued
-jobs. Restarting resumes queued jobs subject to the queue's bounded retry and
-lease policy.
+The service starts in the persisted `stopped` state and waits without claiming
+jobs until the owner changes its desired state. The API exposes owner-authenticated
+controls:
+
+- `GET /worker/status` — desired state, live worker heartbeats, and queue counts.
+- `POST /worker/start` — allow the worker process to schedule and claim jobs.
+- `POST /worker/pause` — stop claiming new jobs; an already claimed job is
+  allowed to finish.
+- `POST /worker/resume` — resume scheduling and job claims.
+- `POST /worker/stop` — return to the stopped/idle state without deleting jobs.
+
+These API calls update persisted desired state; they do not spawn or terminate an
+operating-system process. The separately hosted worker service must already be
+running. Use the host process manager to launch it on boot and restart it after
+host/process failure. If the API and worker use separate containers, they must
+share the same persistent SQLite database volume. Keep one worker process for
+now; parallel replicas are intentionally not enabled.
+
+Once the owner starts the worker, create a company objective through
+`POST /ceo/plan`. When model execution is explicitly enabled, the worker
+discovers dependency-ready steps, dispatches them into the durable queue,
+executes them, and stores authenticated specialist reports for CEO review.
+The queue renews the active job lease during long-running handlers; after a
+process crash, expired leases are recovered through the bounded retry policy.
+With model execution disabled, the process can still handle eligible local
+jobs, but it does not schedule model-backed specialist steps.
 
 ## Safety limits
 
@@ -88,8 +109,8 @@ lease policy.
 - Publishing, sending customer messages, spending, refunds, purchases,
   production changes, and public deployment remain disabled.
 - Owner approval primitives are not yet wired to external execution.
-- Use one worker process initially. Multiple workers require a later concurrency
-  and recovery review.
+- Use one worker process initially. Parallel replicas are not enabled until
+  cross-process concurrency and recovery are separately validated.
 
 
 ## Failed work and dependency propagation
