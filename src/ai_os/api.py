@@ -70,7 +70,7 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
-from ai_os.commerce import router as commerce_router
+from ai_os.commerce import router as commerce_router, initialize_commerce_storage
 from ai_os.agent_tools import register_builtin_agent_tools
 from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
@@ -90,6 +90,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    initialize_commerce_storage()
     initialize_control_plane()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
