@@ -22,6 +22,17 @@ class EndpointCreate(BaseModel):
             raise ValueError("name must not be blank")
         return value
 
+    @field_validator("credential_ref")
+    @classmethod
+    def validate_credential_reference(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not (value.startswith("env:") or value.startswith("secret://")):
+            raise ValueError("credential_ref must be an env:NAME or secret:// provider reference, never a credential value")
+        if len(value) > 160 or any(ch.isspace() for ch in value):
+            raise ValueError("credential_ref must be a short reference")
+        return value
+
     @field_validator("metadata")
     @classmethod
     def limit_metadata(cls, value: dict) -> dict:
