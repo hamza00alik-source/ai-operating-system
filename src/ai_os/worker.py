@@ -7,6 +7,7 @@ from ai_os.department_coordination import review_department_plan
 from ai_os.execution import mark_company_step_blocked
 from ai_os.queue import claim_next_job, fail_job, finish_job, renew_job_lease
 from ai_os.work_packets import build_work_packet
+from ai_os.model_adapter import ModelQuotaExceeded
 
 
 def _review_department_plan(payload: dict) -> dict:
@@ -29,8 +30,8 @@ HANDLERS = {
 }
 
 
-def _fail_claimed_job(job: dict, worker_id: str, error: str) -> dict | None:
-    failed = fail_job(job["id"], worker_id, error)
+def _fail_claimed_job(job: dict, worker_id: str, error: str, *, retry: bool = True) -> dict | None:
+    failed = fail_job(job["id"], worker_id, error, retry=retry)
     if (
         failed
         and failed["status"] == "failed"
@@ -73,6 +74,10 @@ def run_once(worker_id: str | None = None) -> dict:
         }
         notice = notices.get(job["job_type"], "Job completed safely.")
         return {"processed": True, "job": completed, "notice": notice}
+    except ModelQuotaExceeded as exc:
+        failed = _fail_claimed_job(job, worker_id, str(exc), retry=False)
+        return {"processed": True, "job": failed,
+                "notice": "Provider quota reached; job stopped permanently for this attempt and will not auto-retry."}
     except (KeyError, TypeError, ValueError, LookupError) as exc:
         failed = _fail_claimed_job(job, worker_id, str(exc))
         return {"processed": True, "job": failed,
