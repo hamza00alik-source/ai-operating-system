@@ -52,7 +52,7 @@ def run_worker_loop(
             heartbeat_stop = Event()
 
             def maintain_runtime_heartbeat():
-                interval = max(1.0, min(float(heartbeat_interval_seconds), 30.0))
+                interval = max(0.05, min(float(heartbeat_interval_seconds), 30.0))
                 while not heartbeat_stop.wait(interval):
                     try:
                         heartbeat(worker_id, "working", None)
