@@ -12,8 +12,9 @@ A feature is complete only when tested and its operating limits are documented.
 - [x] Append-only task and approval lifecycle audit events
 
 ## Phase 2 — Orchestration
-- [ ] Task dependencies and assignment
-- [ ] Agent interface and registry
+- [x] Agent registry and owner-controlled task assignment
+- [ ] Agent execution interface and lifecycle
+- [ ] Task dependencies and assignment policies
 - [ ] Retry policy, timeouts, execution logs
 - [ ] Background worker and scheduler
 
