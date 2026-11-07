@@ -63,7 +63,11 @@ def get_department_workload(department_id: str, *, run_limit: int = 200) -> dict
         "name": department["name"],
         "mission": department["mission"],
         "manager": ({"id": manager.id, "name": manager.name} if manager else None),
-        "manager_available": bool(manager and manager.enabled and is_control_plane_agent_enabled(\n            manager.id, fallback_enabled=manager.enabled\n        )),
+        "manager_available": bool(
+            manager and manager.enabled and is_control_plane_agent_enabled(
+                manager.id, fallback_enabled=manager.enabled
+            )
+        ),
         "manager_profile_department": manager.department if manager else None,
         "specialist_count": len(member_ids),
         "workload": {
