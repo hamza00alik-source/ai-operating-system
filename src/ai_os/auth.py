@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 PUBLIC_PATHS = {"/health", "/dashboard"}
 AGENT_AUTH_PATHS = {("POST", "/ceo/approval-requests")}
 RUNTIME_AUTH_PATHS = {("POST", "/control-plane/runtime-heartbeat")}
+SIGNED_WEBHOOK_PATHS = {("POST", "/commerce/webhooks/woocommerce")}
 
 async def authenticate_request(request: Request):
     """Require a configured owner token; fail closed for production misconfiguration."""
@@ -15,6 +16,11 @@ async def authenticate_request(request: Request):
     environment = os.getenv("AI_OS_ENV", "development").strip().lower()
     if request.url.path in PUBLIC_PATHS:
         request.state.actor = "system"
+        return None
+
+    # External webhooks authenticate their raw body using a channel signature.
+    if (request.method, request.url.path) in SIGNED_WEBHOOK_PATHS:
+        request.state.actor = "signed-webhook-pending-verification"
         return None
 
     # This single CEO ingress route performs its own signed-agent verification.
