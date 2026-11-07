@@ -161,3 +161,31 @@ def test_worker_loop_refreshes_runtime_heartbeat_during_long_job():
     )
 
     assert sum(1 for item in heartbeats if item[0] == "working") >= 2
+
+
+
+def test_worker_does_not_retry_model_job_after_quota_limit(monkeypatch):
+    from ai_os.worker import run_once
+    from ai_os.model_adapter import ModelQuotaExceeded
+    from ai_os import worker
+
+    claimed = {
+        "id": "quota-job", "job_type": "execute_company_step",
+        "payload": {"run_id": "run-1", "step_key": "research"},
+    }
+    monkeypatch.setattr(worker, "claim_next_job", lambda worker_id: claimed)
+    monkeypatch.setattr(worker, "renew_job_lease", lambda *args, **kwargs: True)
+    monkeypatch.setitem(worker.HANDLERS, "execute_company_step",
+                        lambda payload: (_ for _ in ()).throw(ModelQuotaExceeded("quota reached")))
+    failures = []
+    monkeypatch.setattr(worker, "fail_job",
+                        lambda job_id, worker_id, error, retry=True: failures.append(retry) or {
+                            "status": "failed", "error": error
+                        })
+    blocked = []
+    monkeypatch.setattr(worker, "mark_company_step_blocked",
+                        lambda *args: blocked.append(args))
+    result = run_once(worker_id="worker-test")
+    assert failures == [False]
+    assert result["job"]["status"] == "failed"
+    assert blocked and "quota reached" in blocked[0][2]
