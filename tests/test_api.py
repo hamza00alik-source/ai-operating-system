@@ -684,4 +684,6 @@ def test_owner_dashboard_includes_store_monitoring_panel():
     assert "Store &amp; website" in page.text or "Store & website" in page.text
     assert "renderStoreOverview" in page.text
     assert "/integrations/woocommerce/orders?per_page=10" in page.text
+    assert "/integrations/wordpress/pages?per_page=10" in page.text
+    assert "/integrations/wordpress/posts?per_page=10" in page.text
     assert "No publishing, order updates, refunds, or payment actions" in page.text
