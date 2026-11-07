@@ -63,7 +63,7 @@ Approval is a server-enforced workflow, not an execution sandbox. No external ad
 - Remote HTTP endpoints must use HTTPS; localhost model servers may use HTTP. API keys are read only from environment variables. CLI execution uses `shell=False` but inherits the CLI's own permissions; verify a prompt-only/no-tools CLI profile and set `AI_OS_MODEL_COMMAND_NO_TOOLS_CONFIRMED=true` before enabling it. See [docs/RUNNING_AGENTS.md](docs/RUNNING_AGENTS.md).
 - `GET /models/status` checks readiness without contacting a provider.
 - `POST /worker/run-once` schedules ready company-run steps and executes one durable job; the persistent worker uses the same queue.
-- `python -m ai_os.worker_service` runs a separate polling worker process. It refuses to start unless model execution is enabled and configured.
+- `python -m ai_os.worker_service` runs a separate polling worker process. It can start with model execution disabled for health reporting and eligible local-only jobs; model-backed specialist jobs remain queued until an owner explicitly enables a configured model.
 - Specialists receive their full role profile, execute one bounded internal task through the configured model, and submit authenticated reports to the CEO in dependency order.
 - `POST /ceo/review/{run_id}` sends completed specialist reports to the configured model and stores its structured CEO review. It performs no actions.
 - Reports are treated as untrusted input. Recommendations cannot dispatch agents, create approvals, publish, spend, or contact customers.
