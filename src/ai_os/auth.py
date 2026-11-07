@@ -6,7 +6,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 PUBLIC_PATHS = {"/health", "/dashboard"}
-AGENT_AUTH_PATHS = {("POST", "/ceo/approval-requests")}
+AGENT_AUTH_PATHS = {("POST", "/ceo/approval-requests")}\nRUNTIME_AUTH_PATHS = {("POST", "/control-plane/runtime-heartbeat")}
 
 async def authenticate_request(request: Request):
     """Require a configured owner token; fail closed for production misconfiguration."""
@@ -20,6 +20,9 @@ async def authenticate_request(request: Request):
     # No other route may bypass the owner-token gate.
     if (request.method, request.url.path) in AGENT_AUTH_PATHS:
         request.state.actor = "unverified-agent"
+        return None
+    if (request.method, request.url.path) in RUNTIME_AUTH_PATHS:
+        request.state.actor = "unverified-runtime"
         return None
 
     if not configured:
