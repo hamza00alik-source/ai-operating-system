@@ -34,15 +34,6 @@ def initialize_control_plane() -> None:
         CREATE INDEX IF NOT EXISTS idx_cp_agents_department_enabled
             ON control_plane_agents(department, enabled, name);
 
-        CREATE TABLE IF NOT EXISTS control_plane_capabilities (
-            agent_id TEXT NOT NULL,
-            capability TEXT NOT NULL,
-            granted_by TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            PRIMARY KEY(agent_id, capability),
-            FOREIGN KEY(agent_id) REFERENCES control_plane_agents(agent_id) ON DELETE CASCADE
-        );
-
         CREATE TABLE IF NOT EXISTS control_plane_endpoints (
             endpoint_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -82,13 +73,6 @@ def initialize_control_plane() -> None:
                  agent.source, json.dumps(list(agent.capabilities)),
                  1 if agent.enabled else 0, now, now),
             )
-            for capability in agent.capabilities:
-                db.execute(
-                    """INSERT OR IGNORE INTO control_plane_capabilities
-                       (agent_id, capability, granted_by, created_at)
-                       VALUES (?, ?, 'profile-sync', ?)""",
-                    (agent.id, capability, now),
-                )
         # The CEO is the sole company-level reporting authority.
         db.execute(
             """INSERT OR IGNORE INTO control_plane_relationships
@@ -148,6 +132,8 @@ def get_control_plane_agent(agent_id: str) -> dict | None:
 
 
 def set_agent_enabled(agent_id: str, enabled: bool) -> dict | None:
+    if agent_id == "company-orchestrator" and not enabled:
+        raise ValueError("The CEO agent cannot be disabled; it is the company accountability root.")
     with connect() as db:
         cursor = db.execute(
             "UPDATE control_plane_agents SET enabled = ?, updated_at = ? WHERE agent_id = ?",
@@ -190,7 +176,7 @@ def create_control_plane_endpoint(*, name: str, protocol: str,
         local_http = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
         if parsed.scheme != "https" and not local_http:
             raise ValueError("Endpoint URL must use HTTPS (HTTP is allowed only for localhost)")
-        if not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+        if not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.query:
             raise ValueError("Endpoint URL must not contain credentials or a fragment")
     if credential_ref and (len(credential_ref) > 160 or any(c.isspace() for c in credential_ref)):
         raise ValueError("credential_ref must be a short secret-manager reference, not a secret")
@@ -214,16 +200,13 @@ def control_plane_overview() -> dict:
         endpoints = db.execute("SELECT COUNT(*) FROM control_plane_endpoints").fetchone()[0]
         enabled_endpoints = db.execute("SELECT COUNT(*) FROM control_plane_endpoints WHERE enabled=1").fetchone()[0]
         relationships = db.execute("SELECT COUNT(*) FROM control_plane_relationships").fetchone()[0]
-        runtime_instances = db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='control_plane_runtime_instances'"
-        ).fetchone()
     return {
         "agent_profiles_registered": agents,
         "logical_agents_enabled": enabled,
         "endpoints_registered": endpoints,
         "endpoints_enabled": enabled_endpoints,
         "relationships_registered": relationships,
-        "runtime_instances_registered": 0 if runtime_instances is None else None,
+        "runtime_instances_registered": 0,
         "runtime_status": "not_implemented_in_cp1",
         "notice": "Registered profiles and logical agents are not proof of live worker processes.",
     }
