@@ -54,7 +54,7 @@ def get_model_status() -> dict:
             "api_key_present": bool(os.getenv("AI_OS_MODEL_API_KEY", "").strip()),
             "reason": "zero_cost_mode",
             "makes_network_request": False,
-            "execution_may_use_network": backend != "command",
+            "execution_may_use_network": True,
         }
     backend = os.getenv("AI_OS_MODEL_BACKEND", "openai_compatible").strip().lower()
     model = os.getenv("AI_OS_MODEL_NAME", "").strip()
