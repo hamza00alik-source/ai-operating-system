@@ -603,3 +603,74 @@ def test_owner_dashboard_loads_and_displays_static_improvement_test_history():
     assert '"/tests?limit=3"' in page.text
     assert "Latest static test:" in page.text
     assert "PASSED" in page.text and "FAILED" in page.text
+
+
+
+def test_woocommerce_integration_routes_are_owner_protected_and_read_only(monkeypatch):
+    import json
+
+    token = "test-owner-token-" + "y" * 40
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_TOKEN", token)
+    for name in (
+        "AI_OS_WOOCOMMERCE_URL",
+        "AI_OS_WOOCOMMERCE_CONSUMER_KEY",
+        "AI_OS_WOOCOMMERCE_CONSUMER_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with TestClient(app) as client:
+        denied = client.get("/integrations/woocommerce/status")
+        missing = client.get(
+            "/integrations/woocommerce/products",
+            headers={"Authorization": "Bearer " + token},
+        )
+    assert denied.status_code == 401
+    assert missing.status_code == 503
+
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_URL", "https://shop.example/wp-json/wc/v3")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_CONSUMER_KEY", "consumer-key")
+    monkeypatch.setenv("AI_OS_WOOCOMMERCE_CONSUMER_SECRET", "consumer-secret")
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = json.dumps(payload).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, limit):
+            return self.payload
+
+    calls = []
+
+    def fake_open(request, timeout):
+        calls.append(request)
+        if "/products?" in request.full_url:
+            return Response([{"id": 4, "name": "Demo", "status": "draft", "price": "0.00"}])
+        return Response([{
+            "id": 5, "status": "processing", "date_created": "2026-11-07T00:00:00",
+            "currency": "USD", "total": "0.00",
+            "billing": {"email": "private@example.com"},
+        }])
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    headers = {"Authorization": "Bearer " + token}
+    with TestClient(app) as client:
+        status = client.get("/integrations/woocommerce/status", headers=headers)
+        products = client.get("/integrations/woocommerce/products", headers=headers)
+        orders = client.get("/integrations/woocommerce/orders?status=processing", headers=headers)
+        invalid = client.get("/integrations/woocommerce/orders?status=unknown", headers=headers)
+
+    assert status.status_code == 200
+    assert status.json()["configured"] is True
+    assert status.json()["published_writes_enabled"] is False
+    assert products.status_code == 200
+    assert products.json()["products"][0]["name"] == "Demo"
+    assert orders.status_code == 200
+    assert "billing" not in orders.text and "private@example.com" not in orders.text
+    assert invalid.status_code == 422
+    assert all(call.get_method() == "GET" for call in calls)
