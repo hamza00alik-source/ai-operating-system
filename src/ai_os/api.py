@@ -72,8 +72,11 @@ from ai_os.training_data import (create_training_example, list_training_examples
 from ai_os.action_gateway import get_action_gateway_status
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
-    list_control_plane_endpoints, create_control_plane_endpoint)
-from ai_os.control_plane_schemas import AgentEnableUpdate, EndpointCreate
+    list_control_plane_endpoints, create_control_plane_endpoint,
+    create_runtime_instance, list_runtime_instances, get_runtime_instance,
+    heartbeat_runtime, rotate_runtime_token, revoke_runtime_instance)
+from ai_os.control_plane_schemas import (AgentEnableUpdate, EndpointCreate,
+    RuntimeCreate, RuntimeHeartbeat)
 
 logger = logging.getLogger(__name__)
 
@@ -1202,3 +1205,96 @@ def post_control_plane_endpoint(payload: EndpointCreate, request: Request):
          "has_credential_reference": bool(endpoint["credential_ref"])},
     )
     return endpoint
+
+
+# CP-2 runtime identity and authenticated heartbeat endpoints.
+@app.post("/control-plane/runtimes", status_code=201)
+def post_control_plane_runtime(payload: RuntimeCreate, request: Request):
+    try:
+        runtime, runtime_token = create_runtime_instance(
+            runtime_name=payload.runtime_name,
+            runtime_kind=payload.runtime_kind,
+            agent_id=payload.agent_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_runtime_registered",
+        "control_plane_runtime", runtime["runtime_id"],
+        {"runtime_kind": runtime["runtime_kind"], "agent_id": runtime["agent_id"]},
+    )
+    return {
+        "runtime": runtime,
+        "runtime_token": runtime_token,
+        "token_notice": "This credential is shown once. Store it in the worker's secret environment; it is never retrievable from the registry.",
+    }
+
+
+@app.get("/control-plane/runtimes")
+def get_control_plane_runtimes():
+    return {"runtimes": list_runtime_instances(),
+            "notice": "Health is derived from authenticated heartbeat age; profiles alone are never shown as online."}
+
+
+@app.get("/control-plane/runtimes/{runtime_id}")
+def get_control_plane_runtime_detail(runtime_id: str):
+    runtime = get_runtime_instance(runtime_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Runtime instance not found")
+    return runtime
+
+
+@app.post("/control-plane/runtime-heartbeat")
+def post_control_plane_runtime_heartbeat(
+    payload: RuntimeHeartbeat,
+    request: Request,
+    runtime_token: str | None = Header(default=None, alias="X-AI-Runtime-Token"),
+):
+    if not runtime_token:
+        raise HTTPException(status_code=401, detail="A runtime credential is required.")
+    try:
+        runtime = heartbeat_runtime(
+            runtime_id=payload.runtime_id,
+            token=runtime_token,
+            status=payload.status,
+            current_job_id=payload.current_job_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        "runtime:" + payload.runtime_id, "control_plane_runtime_heartbeat",
+        "control_plane_runtime", payload.runtime_id,
+        {"status": payload.status, "has_current_job": bool(payload.current_job_id)},
+    )
+    return runtime
+
+
+@app.post("/control-plane/runtimes/{runtime_id}/rotate-token")
+def post_control_plane_runtime_token_rotation(runtime_id: str, request: Request):
+    rotated = rotate_runtime_token(runtime_id)
+    if rotated is None:
+        raise HTTPException(status_code=404, detail="Active runtime instance not found")
+    runtime, runtime_token = rotated
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_runtime_token_rotated",
+        "control_plane_runtime", runtime_id, {},
+    )
+    return {
+        "runtime": runtime,
+        "runtime_token": runtime_token,
+        "token_notice": "The previous credential is invalid. Store this new credential securely; it is shown once.",
+    }
+
+
+@app.post("/control-plane/runtimes/{runtime_id}/revoke")
+def post_control_plane_runtime_revocation(runtime_id: str, request: Request):
+    runtime = revoke_runtime_instance(runtime_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Runtime instance not found")
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_runtime_revoked",
+        "control_plane_runtime", runtime_id, {},
+    )
+    return runtime
