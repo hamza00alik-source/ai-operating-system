@@ -70,12 +70,13 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
-
+from ai_os.control_plane import (initialize_control_plane, control_plane_overview,\n    list_control_plane_agents, get_control_plane_agent, set_agent_enabled,\n    list_control_plane_endpoints, create_control_plane_endpoint)\nfrom ai_os.control_plane_schemas import AgentEnableUpdate, EndpointCreate\n
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    initialize_control_plane()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
     yield
@@ -1186,7 +1187,7 @@ def post_control_plane_endpoint(payload: EndpointCreate, request: Request):
     try:
         endpoint = create_control_plane_endpoint(
             name=payload.name, protocol=payload.protocol, base_url=payload.base_url,
-            credential_ref=payload.credential_ref, metadata=payload.metadata,
+            credential_ref=payload.credential_ref, metadata=None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
