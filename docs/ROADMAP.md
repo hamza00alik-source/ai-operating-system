@@ -113,11 +113,12 @@ See [OPERATIONS_PLAYBOOK.md](OPERATIONS_PLAYBOOK.md), [CONTINUOUS_LEARNING.md](C
 - [x] CP-3 observability: owner dashboard shows Control Plane health, capability grants, tool readiness, and recent broker/tool audit events; owner can grant/revoke capabilities from the UI
 - [ ] CP-3 remaining: adversarial/task-budget hardening and provider-failure recovery
 - [x] CP-4 security acceptance plan: endpoint lifecycle, public-address egress restrictions, credential references, Streamable HTTP/JSON-RPC validation, capability mapping, audit, and adversarial tests specified
+- [x] CP-4 preparation: owner-authenticated MCP endpoint enable/disable lifecycle, environment-reference resolution checks, and fail-closed A2A/unsupported secret-manager activation
 - [ ] CP-4 implementation: secure MCP integration, followed by A2A interoperability after identity and policy controls
 - [ ] CP-5: live health, job telemetry, policy traces, and agent-network visualization
 - [ ] CP-6: production deployment hardening, monitoring, backup/restore, and rollback verification
 
-See [AGENT_CONTROL_PLANE.md](AGENT_CONTROL_PLANE.md) for architecture, trust boundaries, sequence, and acceptance criteria. CP-1 and CP-2 are implemented on this branch. CP-3 baseline, broker routing, explicit capability grants, trusted tool dispatch, four read-only built-ins, and the opt-in bounded specialist tool loop are implemented and tested (266 tests passed at the last validated code commit; dashboard grant/revoke controls also pass CI). Dashboard policy traces and further operational hardening remain in progress. CP-4 through CP-6 remain planned.
+See [AGENT_CONTROL_PLANE.md](AGENT_CONTROL_PLANE.md) for architecture, trust boundaries, sequence, and acceptance criteria. CP-1 and CP-2 are implemented on this branch. CP-3 baseline, broker routing, explicit capability grants, trusted tool dispatch, four read-only built-ins, and the opt-in bounded specialist tool loop are implemented and tested (270 tests passed at the last validated code commit; dashboard grant/revoke controls and MCP endpoint lifecycle preparation also pass CI). Dashboard policy traces and further operational hardening remain in progress. CP-4 through CP-6 remain planned.
 
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
