@@ -6,8 +6,9 @@ A feature is complete only when tested and its operating limits are documented.
 - [x] FastAPI application and Python package
 - [x] SQLite persistence for tasks and approvals
 - [x] Human decision endpoints
-- [ ] CI test execution
-- [ ] Authentication and role-based authorization
+- [x] CI test execution (GitHub Actions)
+- [x] API-key authentication for operational endpoints outside development
+- [ ] Role-based authorization and broader security review
 
 ## Phase 2 — Orchestration
 - [ ] Task dependencies and assignment
