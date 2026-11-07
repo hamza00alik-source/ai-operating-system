@@ -12,7 +12,7 @@ def test_control_plane_seeds_profile_catalog_and_distinguishes_live_runtime():
     assert status.json()["agent_profiles_registered"] >= 280
     assert status.json()["logical_agents_enabled"] >= 280
     assert status.json()["runtime_instances_registered"] == 0
-    assert status.json()["runtime_status"] == "not_implemented_in_cp1"
+    assert status.json()["runtime_status"] == "heartbeat_based"
     assert "not proof of live worker processes" in status.json()["notice"]
     assert agents.status_code == 200
     assert any(item["agent_id"] == "company-orchestrator" for item in agents.json()["agents"])
