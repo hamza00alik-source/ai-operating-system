@@ -435,7 +435,8 @@ def _normalize_order(channel: str, raw: dict) -> dict:
         items.append({
             "product_id": str(item.get("product_id", ""))[:80],
             "name": str(item.get("name", ""))[:180],
-            "quantity": max(0, min(int(item.get("quantity", 0) or 0), 10000)),
+            "quantity": max(0, min(int(str(item.get("quantity", 0)).strip()), 10000))
+                if str(item.get("quantity", 0)).strip().lstrip("-").isdigit() else 0,
             "total": str(item.get("total", "0"))[:24],
         })
     return {"external_order_id": external_id, "status": status, "payment_status": payment,
