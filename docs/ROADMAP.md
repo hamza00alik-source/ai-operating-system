@@ -17,6 +17,7 @@ A feature is complete only when tested and its operating limits are documented. 
 - [x] Starter API tests authored
 - [x] GitHub Actions test workflow authored
 - [x] Single-owner API token gate with production fail-closed behavior
+- [x] Python host entry point and Enzonic deployment preparation guide (deployment itself remains pending)
 - [x] Append-only SQLite audit trail with SHA-256 chain verification
 - [x] Request IDs and request metadata logging without credentials or request bodies
 - [x] CEO accountability policy, internal-action allowlist, sensitive-action escalation, and fail-closed unknown-action handling
