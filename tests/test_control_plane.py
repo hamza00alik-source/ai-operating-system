@@ -262,12 +262,11 @@ def test_control_plane_capabilities_are_deny_by_default_and_owner_grantable():
 
 def test_department_manager_broker_route_is_scoped_and_audited():
     with TestClient(app) as client:
-        agents = client.get("/control-plane/agents", params={"department": "research"}).json()["agents"]
         manager_id = "research-synthesist"
-        target = next(item for item in agents if item["agent_id"] != manager_id)
+        grants = client.get("/control-plane/capabilities", params={"agent_id": manager_id})
         allowed = client.post(
             "/control-plane/broker/evaluate",
-            json={"source_agent_id": manager_id, "target_agent_id": target["agent_id"]},
+            json={"source_agent_id": "company-orchestrator", "target_agent_id": manager_id},
         )
         denied = client.post(
             "/control-plane/broker/evaluate",
@@ -278,9 +277,11 @@ def test_department_manager_broker_route_is_scoped_and_audited():
             json={"source_agent_id": manager_id, "target_agent_id": manager_id},
         )
 
+    assert any(item["capability"] == "task.delegate"
+               and item["department_scope"] == "research" for item in grants.json()["grants"])
     assert allowed.status_code == 200
     assert allowed.json()["allowed"] is True
-    assert allowed.json()["decision"] == "allowed_manager_scope"
+    assert allowed.json()["decision"] == "allowed_ceo_route"
     assert denied.json()["allowed"] is False
     assert denied.json()["decision"] == "blocked_department_scope"
     assert self_route.json()["allowed"] is False
