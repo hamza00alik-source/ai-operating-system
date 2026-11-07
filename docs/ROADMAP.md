@@ -77,9 +77,12 @@ A feature is complete only when tested and its operating limits are documented. 
 
 ## Phase 4 — Business operations
 - [x] Read-only WooCommerce product catalog and minimized order-status connector
+- [x] Owner-protected WooCommerce status, product, and minimized order-status API endpoints
+- [x] Owner dashboard Store & Website overview for connection status, bounded product inventory, and coarse recent order statuses
 - [x] Read-only WordPress posts/pages inventory connector with HTTPS, bounded pagination, minimized metadata, and GET-only tests
 - [x] Owner-approved WordPress new-page draft creation through exact-scope, one-time approval and explicit owner execution (publishing and updates remain disabled)
-- [ ] Owner-approved WooCommerce write operations, order fulfillment, and reconciliation
+- [x] Owner-approved WooCommerce new-product draft creation through exact-scope, one-time approval and explicit owner execution (publishing and all order writes remain disabled)
+- [ ] Other WooCommerce write operations, order fulfillment, and reconciliation
 - [ ] Social platform content planning and draft generation
 - [ ] Human approval before any external publishing
 - [ ] Customer support inbox and response drafts
