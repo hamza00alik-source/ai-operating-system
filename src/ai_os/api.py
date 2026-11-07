@@ -32,6 +32,7 @@ from ai_os.work_packets import build_work_packet
 from ai_os.queue_schemas import JobCreate, JobOut, WorkerRunOut
 from ai_os.queue import enqueue_job, list_jobs
 from ai_os.worker import run_once
+from ai_os.worker_control import set_worker_desired_state, get_worker_status
 from ai_os.agent_runtime import schedule_ready_steps
 from ai_os.governance import evaluate_action
 from ai_os.governance_schemas import GovernanceEvaluateIn, GovernanceEvaluateOut
@@ -961,6 +962,39 @@ def post_job(payload: JobCreate):
 @app.get("/jobs", response_model=list[JobOut])
 def get_jobs(limit: int = Query(default=100, ge=1, le=500)):
     return list_jobs(limit)
+
+@app.get("/worker/status")
+def get_persistent_worker_status():
+    return get_worker_status()
+
+
+def _set_worker_state(state: str, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    result = set_worker_desired_state(state, actor)
+    append_event(actor, f"worker_{state}", "worker_control", "singleton",
+                 {"desired_state": state})
+    return {**get_worker_status(), "control": result}
+
+
+@app.post("/worker/start")
+def post_worker_start(request: Request):
+    return _set_worker_state("running", request)
+
+
+@app.post("/worker/pause")
+def post_worker_pause(request: Request):
+    return _set_worker_state("paused", request)
+
+
+@app.post("/worker/resume")
+def post_worker_resume(request: Request):
+    return _set_worker_state("running", request)
+
+
+@app.post("/worker/stop")
+def post_worker_stop(request: Request):
+    return _set_worker_state("stopped", request)
+
 
 @app.post("/worker/run-once", response_model=WorkerRunOut)
 def post_worker_run_once():
