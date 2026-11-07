@@ -89,6 +89,14 @@ def test_ceo_review_creates_signed_owner_request_for_supported_draft_only(
         assert inbox.status_code == 200
         assert any(item["id"] == request["id"] for item in inbox.json())
 
+        repeated_review = client.post(f"/ceo/review/{run_id}", headers=owner)
+        assert repeated_review.status_code == 200, repeated_review.text
+        repeated_request = repeated_review.json()["owner_approval_requests"][0]
+        assert repeated_request["id"] == request["id"]
+        assert repeated_request["reused_existing_request"] is True
+        inbox_after_repeat = client.get("/owner/approval-requests?status=pending", headers=owner)
+        assert len(inbox_after_repeat.json()) == 1
+
     assert "You may propose an owner-approval request" in calls[0][0]
     assert "never execute" in calls[0][0].lower()
 
