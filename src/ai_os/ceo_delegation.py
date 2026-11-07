@@ -7,6 +7,7 @@ uses the configured model adapter; no provider is contacted by CEO planning alon
 from ai_os.departments import list_departments
 from ai_os.department_coordination import create_department_plan
 from ai_os.execution import get_company_run
+from ai_os.control_plane import get_effective_agent
 
 CEO_AGENT_ID = "company-orchestrator"
 
@@ -23,6 +24,7 @@ def delegate_ceo_selected_departments(run_id: str) -> dict:
     selected = [
         department for department in list_departments()
         if department["manager_agent_id"] in assigned_agent_ids
+        and get_effective_agent(department["manager_agent_id"]) is not None
     ]
     if not selected:
         return {
