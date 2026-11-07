@@ -71,6 +71,9 @@ def load_agent_profile(agent_id: str) -> str:
     path = (AGENCY_ROOT / agent.profile_path).resolve()
     if AGENCY_ROOT.resolve() not in path.parents:
         raise ValueError("Invalid agent profile path")
+    if not path.is_file():
+        # Preserve the documented CEO-only fallback when a ZIP omits submodule contents.
+        return ""
     return path.read_text(encoding="utf-8")
 
 @lru_cache(maxsize=1)
@@ -95,7 +98,8 @@ def load_agents() -> tuple[AgentDefinition, ...]:
             description=str(raw["description"]),
             capabilities=tuple(raw.get("capabilities", [])),
             requires_approval_for=tuple(raw.get("requires_approval_for", [])),
-            enabled=True, source="ai-operating-system",
+            enabled=True, profile_path=str(raw.get("profile_path", "")),
+            source="ai-operating-system+agency-agents",
         ))
 
     if not DIVISIONS_PATH.exists():
