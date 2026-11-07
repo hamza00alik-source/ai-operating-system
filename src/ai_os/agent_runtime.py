@@ -182,6 +182,14 @@ def execute_company_step(payload: dict) -> dict:
                 "notice": "Step already has a final report; no duplicate model call was made."}
     if step["status"] != "assigned" or not step.get("work_packet"):
         raise ValueError("Specialist step must be assigned before execution")
+    from ai_os.control_plane import get_effective_agent
+    if get_effective_agent(step["agent_id"]) is None:
+        append_event(
+            "system:agent-runtime", "company_step_blocked_agent_disabled",
+            "company_run_step", f"{run_id}:{step_key}",
+            {"run_id": run_id, "step_key": step_key, "agent_id": step["agent_id"]},
+        )
+        raise ValueError("Assigned specialist is disabled or unavailable in the Control Plane.")
 
     task_context = step["work_packet"]["prompt_text"]
     accepted_context = retrieve_accepted_knowledge(task_context, limit=5)
