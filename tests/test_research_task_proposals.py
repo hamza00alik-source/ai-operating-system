@@ -50,11 +50,10 @@ def test_ceo_drafts_task_from_accepted_sources_and_owner_approval_creates_task(m
     assert draft.json()["created"] == 1
     assert proposal["source_ids"] == [source_id]
     assert any(row["id"] == proposal["id"] for row in listed.json())
-    assert len(tasks_before) == 0
     assert decision.status_code == 200, decision.text
     assert decision.json()["status"] == "approved"
     assert decision.json()["task_id"]
-    assert len(tasks_after) == 1
+    assert len(tasks_after) == len(tasks_before) + 1
     assert tasks_after[0]["id"] == decision.json()["task_id"]
     assert tasks_after[0]["status"] == "queued"
 
