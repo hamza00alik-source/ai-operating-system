@@ -11,27 +11,33 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Role-based authorization and broader security review
 
 ## Phase 2 — Orchestration
-- [ ] Task dependencies and assignment
-- [ ] Agent interface and registry
-- [ ] Retry policy, timeouts, execution logs
-- [ ] Background worker and scheduler
+- [x] Durable agent registry
+- [x] Atomic queued-task claiming and assignment
+- [x] Shared task handoff state in SQLite
+- [ ] Agent completion/failure reporting and lease recovery
+- [ ] Agent interface and provider-backed execution runtime
+- [ ] Retry policy, timeouts, execution logs and supervised worker process
 
 ## Phase 3 — Memory and learning
-- [ ] Source-attributed company knowledge
-- [ ] Retrieval and access controls
+- [x] Persistent shared memory entries with source and author metadata
+- [x] Searchable memory API
+- [x] Audit events for agent registration, task claims and memory writes
+- [ ] Tamper-evident audit chain and access controls
+- [ ] Semantic retrieval and source verification
 - [ ] Evaluation datasets and regression checks
 - [ ] Improvement proposals requiring human approval
 
 ## Phase 4 — Integrations
-- [ ] Provider-neutral LLM adapter
+- [ ] Provider-neutral LLM adapter with explicit model selection
 - [ ] WooCommerce
 - [ ] Social adapters with mandatory approval
 - [ ] Email and support adapters
 - [ ] Payment-status verification only
 
 ## Phase 5 — Operations
-- [ ] Dashboard, deployment profiles, backups
+- [ ] Owner dashboard, deployment profiles and backups
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide
+- [ ] Persistent hosted worker with restart recovery
 
 No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases.
