@@ -9,9 +9,9 @@
 The caption points to a directory of free-tier LLM API providers, rather than a bundle of API keys or a universal free inference service.
 
 Candidate directory identified from the description:
-- https://github.com/open-free-llm-api/awesome-free-llm-apis
+- https://github.com/mnfst/awesome-free-llm-apis
 - License reported by repository metadata: MIT.
-- The directory describes provider base URLs, model IDs, signup links, and changing free-tier limits. Most providers require the user to create their own account and API key.
+- The directory describes provider base URLs, model IDs, signup links, and changing free-tier limits. Most providers require the user to create their own account and API key. The exact repository URL in the earlier draft was corrected after checking GitHub; multiple forks exist, so the catalogue is a discovery aid rather than an authoritative source.
 
 ### Decision: adopt as a discovery catalogue, not as an API source
 
@@ -121,7 +121,7 @@ Do not deploy it now. First complete AIOS's API and task/approval lifecycle. Lat
 
 ## Source notes
 
-- Free LLM directory: https://github.com/open-free-llm-api/awesome-free-llm-apis
+- Free LLM directory: https://github.com/mnfst/awesome-free-llm-apis
 - Orca: https://github.com/stablyai/orca
 - OpenHands SDK docs: https://docs.openhands.dev/sdk
 - OpenHands overview: https://docs.openhands.dev/overview/introduction
