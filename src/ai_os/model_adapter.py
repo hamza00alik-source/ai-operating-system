@@ -104,11 +104,19 @@ def get_model_status() -> dict:
             item.strip() for item in os.getenv("AI_OS_FREE_MODEL_ALLOWLIST", "").split(",")
             if item.strip()
         }
-        free_configured = (
-            backend == "openai_compatible"
-            and provider == "groq"
+        groq_free_configured = (
+            provider == "groq"
             and base_url.rstrip("/") == "https://api.groq.com/openai/v1"
             and api_key_present
+        )
+        ovh_anonymous_configured = (
+            provider == "ovhcloud-anonymous"
+            and base_url.rstrip("/") == "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
+            and not api_key_present
+        )
+        free_configured = (
+            backend == "openai_compatible"
+            and (groq_free_configured or ovh_anonymous_configured)
             and bool(model)
             and model in allowed_models
         )
