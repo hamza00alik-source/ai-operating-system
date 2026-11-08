@@ -13,7 +13,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-from ai_os.credentials import get_openrouter
+from ai_os.credentials import get_provider_credential
 
 
 @dataclass(frozen=True)
@@ -57,11 +57,10 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
     model = os.getenv(provider.model_env, "").strip()
     secret = os.getenv(provider.secret_env, "").strip()
     free = os.getenv(provider.free_confirm_env, "").strip().lower() == "true"
-    if provider.key == "openrouter":
-        saved = get_openrouter()
-        if saved:
-            base, model, secret = saved["base_url"], saved["model"], saved["secret"]
-            free = saved["free_confirmed"]
+    saved = get_provider_credential(provider.key)
+    if saved:
+        base, model, secret = saved["base_url"], saved["model"], saved["secret"]
+        free = saved["free_confirmed"]
     configured = bool(base and model and secret)
     eligible = configured and free
     return {
