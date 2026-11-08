@@ -39,3 +39,9 @@ class ApprovalDecision(BaseModel):
 
 class DiscoveryScanCreate(BaseModel):
     categories: list[Literal["agent-frameworks", "mcp-servers", "rag-storage", "self-hosted", "llm-tools"]] = Field(min_length=1, max_length=5)
+
+
+class CandidateReviewDecision(BaseModel):
+    repository_url: str = Field(min_length=12, max_length=500)
+    decision: Literal["approved-for-sandbox", "rejected"]
+    notes: str = Field(default="", max_length=2000)
