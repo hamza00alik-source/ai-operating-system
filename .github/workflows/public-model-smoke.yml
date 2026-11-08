@@ -23,5 +23,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Test public no-key model endpoint
+      - name: Test AIOS adapter against public no-key model
+        env:
+          PYTHONPATH: src
         run: python scripts/smoke_test_public_model.py
