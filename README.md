@@ -42,11 +42,13 @@ The visual owner console at `/owner` can queue GitHub repository discovery scans
 - `GET /discovery/scans`
 - `GET /discovery/candidates`
 
-Run the separate discovery worker alongside the API (both processes must remain running):
+Run the combined background worker alongside the API (both processes must remain running):
 
 ```bash
-python -m ai_os.discovery_worker
+python -m ai_os.worker_service
 ```
+
+The combined worker processes both technology-discovery scans and queued Research Analyst runs. It uses SQLite leases so a second worker cannot normally claim the same active run; expired leases can be recovered after a process crash. Keep the worker process running on an always-on host for unattended queue processing.
 
 The worker searches public GitHub repository metadata. Set `GITHUB_TOKEN` as a private environment variable to use authenticated GitHub API limits; never commit it. Without a token, GitHub documents a lower unauthenticated limit. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
 
@@ -63,7 +65,12 @@ The Owner Dashboard includes provider status, a live connection test, and a real
 
 Secrets are not stored in SQLite, returned by status endpoints, or meant to be pasted into the dashboard/chat. Add them only through the hosting environment-variable panel. If no provider is configured, live inference correctly remains unavailable.
 
-See `.env.example` for the environment-variable names. The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner, MCP execution runtime, or background agent workforce.
+See `.env.example` for the environment-variable names. The first persistent Research Analyst agent is now available:
+- `POST /agents/runs` with `{"provider":"groq","goal":"Analyze this business brief..." }` queues an analysis-only run and returns HTTP 202.
+- `GET /agents/runs` lists saved run history and output.
+- The owner dashboard can queue work and refresh its run history.
+
+The Research Analyst calls the guarded LLM gateway from the background worker. It does not browse, execute shell commands, call MCP tools, spend money, publish, or contact customers. This is one constrained background agent, not yet a general-purpose multi-agent planner or MCP execution runtime.
 
 ## Hosting
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
