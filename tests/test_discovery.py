@@ -42,6 +42,7 @@ def test_free_api_catalog_sync_imports_evidence_without_enabling_providers(monke
             "policy": {"trains_on_your_data": "no", "commercial_use": "unclear"},
             "confidence": "partial", "last_verified": "2026-09-26",
             "probe": {"docs_url": "https://example.com/docs"},
+            "sources": [{"title": "Official docs", "url": "https://example.com/docs", "accessed": "2026-11-08"}],
         }],
     }
     status = {
