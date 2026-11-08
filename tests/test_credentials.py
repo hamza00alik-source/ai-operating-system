@@ -3,6 +3,13 @@ from fastapi.testclient import TestClient
 
 from ai_os import credentials
 from ai_os.api import app
+from ai_os.db import connect, initialize_database
+
+
+@pytest.fixture(autouse=True)
+def isolated_credential_database(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "credentials-test.db"))
+    initialize_database()
 
 
 def test_vault_requires_encryption_key(monkeypatch):
@@ -15,6 +22,9 @@ def test_vault_encrypts_and_round_trips_secret(monkeypatch):
     from cryptography.fernet import Fernet
     monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
     credentials.save_openrouter("or-test-secret", True)
+    with connect() as db:
+        encrypted = db.execute("SELECT encrypted_secret FROM provider_credentials WHERE provider='openrouter'").fetchone()[0]
+    assert "or-test-secret" not in encrypted
     assert credentials.get_openrouter()["secret"] == "or-test-secret"
     assert credentials.credential_status() == {"configured": True, "model": "openrouter/free", "free_confirmed": True}
 
