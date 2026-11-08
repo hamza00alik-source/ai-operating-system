@@ -478,8 +478,8 @@ def test_mcp_tool_execution_requires_explicit_agent_capability_and_uses_broker(m
     })
     calls = []
 
-    async def fake_call(endpoint_id, tool_name, arguments):
-        calls.append((endpoint_id, tool_name, arguments))
+    async def fake_call(endpoint_id, tool_name, arguments, expected_schema):
+        calls.append((endpoint_id, tool_name, arguments, expected_schema))
         return {"content": ["two useful results"]}
 
     monkeypatch.setattr(api, "call_mcp_read_only_tool", fake_call)
@@ -519,7 +519,8 @@ def test_mcp_tool_execution_requires_explicit_agent_capability_and_uses_broker(m
 
     assert executed.status_code == 200
     assert executed.json()["result"]["content"] == ["two useful results"]
-    assert calls == [(endpoint_id, "search_docs", {"query": "MCP documentation"},\n                     {"type": "object", "properties": {"query": {"type": "string"}}})]
+    assert calls == [(endpoint_id, "search_docs", {"query": "MCP documentation"},
+                     {"type": "object", "properties": {"query": {"type": "string"}}})]
 
 
 
