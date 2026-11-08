@@ -85,3 +85,16 @@ For the first end-to-end run, use only a synthetic internal task with no custome
 The MCP registry is configuration-only until an owner explicitly tests a registered server. The owner-only `POST /mcp/servers/{server_id}/test` endpoint performs a Streamable HTTP initialize handshake and `tools/list` discovery. It does not call any discovered tool, and it reports `tool_execution_enabled: false`.
 
 Configure the server with HTTPS and reference bearer credentials by environment-variable name (never paste secret values into the registry). The probe rejects disabled servers, missing environment variables, non-public DNS answers and redirects. The first configured credential environment variable is sent as a Bearer token. OAuth authorization flows, per-provider auth schemes, dynamic tool invocation, and credential management are not implemented yet. Tool descriptions and input schemas returned by remote servers are untrusted metadata and must not be treated as agent instructions.
+
+
+### Explicitly approved MCP tool invocation
+
+The owner-only `POST /mcp/servers/{server_id}/tools/call` endpoint can invoke one tool after consuming an exact, one-time approval. First create an approval using `POST /approvals` with:
+
+- `action`: `mcp.tool.call`
+- `resource_id`: `{server_id}:{tool_name}`
+- `action_payload`: the exact object `{"server_id":"...","tool_name":"...","arguments":{...}}`
+
+The approval actor is assigned from the authenticated owner identity. An owner must approve it through the existing approval decision endpoint. Then submit `approval_id`, `tool_name`, and the exact same `arguments` to the tool-call endpoint. The API consumes the approval atomically before making the remote call. An approval cannot be reused or altered after approval.
+
+This is deliberately owner-triggered, not autonomous agent access. Tool names must still be advertised by the server and required/unknown argument keys are checked against its declared input schema. Remote tool execution can have real external effects; inspect the tool description and exact arguments before approving. Tool schemas are untrusted metadata, and full JSON Schema validation, OAuth flows, per-tool policy classification, and automatic agent invocation are not implemented. The endpoint is not a sandbox for malicious MCP servers.
