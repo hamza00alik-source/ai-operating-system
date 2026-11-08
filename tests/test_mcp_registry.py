@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import pytest
 
@@ -5,7 +6,7 @@ from ai_os.mcp_registry import MCPRegistryError, search_official_registry
 
 
 @pytest.mark.asyncio
-async def test_registry_search_returns_metadata_only():
+def test_registry_search_returns_metadata_only():
     payload = {
         "servers": [{
             "server": {
@@ -29,7 +30,7 @@ async def test_registry_search_returns_metadata_only():
         assert request.url.params["version"] == "latest"
         return httpx.Response(200, json=payload)
 
-    result = await search_official_registry("demo", transport=httpx.MockTransport(handler))
+    result = asyncio.run(search_official_registry("demo", transport=httpx.MockTransport(handler)))
     assert result["count"] == 1
     server = result["servers"][0]
     assert server["name"] == "io.example/demo"
@@ -39,15 +40,15 @@ async def test_registry_search_returns_metadata_only():
 
 
 @pytest.mark.asyncio
-async def test_registry_search_rejects_short_query():
+def test_registry_search_rejects_short_query():
     with pytest.raises(ValueError, match="three characters"):
-        await search_official_registry("ab")
+        asyncio.run(search_official_registry("ab"))
 
 
 @pytest.mark.asyncio
-async def test_registry_search_rejects_non_200():
+def test_registry_search_rejects_non_200():
     def handler(request):
         return httpx.Response(503)
 
     with pytest.raises(MCPRegistryError, match="HTTP 503"):
-        await search_official_registry("demo", transport=httpx.MockTransport(handler))
+        asyncio.run(search_official_registry("demo", transport=httpx.MockTransport(handler)))
