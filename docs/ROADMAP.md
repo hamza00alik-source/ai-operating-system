@@ -11,6 +11,10 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Role-based authorization and broader security review
 
 ## Phase 2 — Orchestration
+- [x] Initial GitHub discovery scan queue, candidate persistence, metadata evaluation, and separate worker
+- [ ] Dashboard UI for scan status, evidence, and owner review
+- [ ] Worker lease/claim safety for multiple worker instances
+- [ ] Broader agent orchestration beyond discovery
 - [ ] Task dependencies and assignment
 - [ ] Agent interface and registry
 - [ ] Retry policy, timeouts, execution logs

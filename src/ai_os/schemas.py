@@ -35,3 +35,7 @@ class ApprovalOut(BaseModel):
 
 class ApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class DiscoveryScanCreate(BaseModel):
+    categories: list[Literal["agent-frameworks", "mcp-servers", "rag-storage", "self-hosted", "llm-tools"]] = Field(min_length=1, max_length=5)
