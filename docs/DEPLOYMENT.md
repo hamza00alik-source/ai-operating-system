@@ -37,11 +37,14 @@ Set these privately in the hosting panel. Never commit real values.
 | `AI_OS_AGENT_SIGNING_KEY` | Strong private signing secret for internal agent identities |
 | `AI_OS_CREDENTIAL_ENCRYPTION_KEY` | Private Fernet key for encrypted credential storage |
 
-Optional model configuration (keep inference disabled until a provider is
-verified): `AI_OS_MODEL_ENABLED=false`, `AI_OS_MODEL_BACKEND=openai_compatible`,
-`AI_OS_MODEL_BASE_URL`, `AI_OS_MODEL_NAME`, and `AI_OS_MODEL_API_KEY`.
-Enabling inference can contact a third-party provider and may incur costs.
-Review provider terms and pricing first. Never commit keys or tokens.
+The current `.env.example` includes a live-tested anonymous OVHcloud
+OpenAI-compatible preset (`gpt-oss-20b`) with no API key, strict
+`AI_OS_FREE_ONLY=true`, and an explicit one-model allowlist. It enables model
+execution in that example configuration. The endpoint is rate-limited and
+receives task text sent by the agents; review its data-handling terms before
+using real company or customer information. Set `AI_OS_MODEL_ENABLED=false`
+to pause inference. Do not disable strict free-only mode unless paid-provider
+use is separately approved. The public endpoint is not a production SLA.
 
 For compatibility with the original deployment preparation commit, the
 application also accepts `AI_OS_API_KEY` as an alias when
@@ -74,5 +77,6 @@ and audit logging have been independently verified.
 
 Treat a small free host as suitable only for the lightweight API and modest
 worker activity. Do not host large language models or multiple heavy agent
-processes on it. Model calls and Exa research remain disabled unless separately
-configured. Review provider pricing and data handling before enabling them.
+processes on it. The example configuration enables only the verified no-key public model; Exa
+research remains disabled unless separately configured. Review provider terms,
+rate limits, and data handling before sending real company information.
