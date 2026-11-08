@@ -14,6 +14,9 @@ with tempfile.TemporaryDirectory(prefix="aios-mcp-smoke-") as temp_dir:
 
     from fastapi.testclient import TestClient
     from ai_os.api import app
+    from ai_os import mcp_client
+    if not callable(mcp_client._guard_outbound_request):
+        raise RuntimeError("Outbound HTTPS allowlist guard is not installed.")
 
     try:
         with TestClient(app) as client:
