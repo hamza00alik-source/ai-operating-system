@@ -18,12 +18,15 @@ class Provider:
     name: str
     base_url: str
     model: str
-    api_key_env: str
+    api_key_env: str | None = None
     free_tier_confirmed: bool = False
+    auth_style: str = "bearer"
 
     @property
     def api_key_configured(self) -> bool:
-        return bool(os.getenv(self.api_key_env, "").strip())
+        if self.auth_style == "none":
+            return True
+        return bool(self.api_key_env and os.getenv(self.api_key_env, "").strip())
 
 
 def load_providers() -> list[Provider]:
@@ -43,9 +46,13 @@ def load_providers() -> list[Provider]:
         name = str(entry.get("name", "")).strip().lower()
         base_url = str(entry.get("base_url", "")).strip().rstrip("/")
         model = str(entry.get("model", "")).strip()
-        api_key_env = str(entry.get("api_key_env", "")).strip()
-        if not all((name, base_url, model, api_key_env)):
-            raise ValueError("Each provider needs name, base_url, model, and api_key_env")
+        raw_key_env = entry.get("api_key_env")
+        api_key_env = str(raw_key_env).strip() if raw_key_env else None
+        auth_style = str(entry.get("auth_style", "bearer")).strip().lower()
+        if not all((name, base_url, model)) or auth_style not in {"bearer", "none"}:
+            raise ValueError("Each provider needs name, HTTPS base_url, model, and supported auth_style")
+        if auth_style != "none" and not api_key_env:
+            raise ValueError("Authenticated providers need api_key_env")
         if name in names:
             raise ValueError(f"Duplicate LLM provider name: {name}")
         if not base_url.startswith("https://"):
@@ -57,6 +64,17 @@ def load_providers() -> list[Provider]:
             model=model,
             api_key_env=api_key_env,
             free_tier_confirmed=entry.get("free_tier_confirmed") is True,
+            auth_style=auth_style,
+        ))
+
+    if "ovhcloud-anonymous" not in names:
+        providers.append(Provider(
+            name="ovhcloud-anonymous",
+            base_url="https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+            model="gpt-oss-20b",
+            api_key_env=None,
+            free_tier_confirmed=True,
+            auth_style="none",
         ))
     return providers
 
@@ -68,6 +86,8 @@ def provider_status() -> list[dict[str, Any]]:
             "name": p.name,
             "model": p.model,
             "configured": p.api_key_configured,
+            "authentication": p.auth_style,
+            "key_required": p.auth_style != "none",
             "eligible_for_test": p.api_key_configured and (p.free_tier_confirmed or allow_paid),
             "free_tier_confirmed_by_owner": p.free_tier_confirmed,
         }
@@ -80,8 +100,8 @@ async def test_provider(name: str, prompt: str) -> dict[str, Any]:
     provider = providers.get(name.strip().lower())
     if provider is None:
         raise LookupError("Configured LLM provider not found")
-    api_key = os.getenv(provider.api_key_env, "").strip()
-    if not api_key:
+    api_key = os.getenv(provider.api_key_env, "").strip() if provider.api_key_env else ""
+    if provider.auth_style != "none" and not api_key:
         raise RuntimeError(f"Missing API key environment variable: {provider.api_key_env}")
 
     allow_paid = os.getenv("AI_OS_ALLOW_PAID_LLM", "false").lower() == "true"
@@ -99,11 +119,10 @@ async def test_provider(name: str, prompt: str) -> dict[str, Any]:
         "max_tokens": 120,
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-        response = await client.post(
-            url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-        )
+        headers = {"Content-Type": "application/json"}
+        if provider.auth_style != "none":
+            headers["Authorization"] = f"Bearer {api_key}"
+        response = await client.post(url, headers=headers, json=payload)
     if response.status_code >= 400:
         # Do not expose request headers or secrets in errors.
         detail = response.text[:500]
