@@ -1,7 +1,7 @@
-"""Owner-triggered, read-only MCP discovery using the official SDK v2.
+"""Owner-triggered MCP discovery with optional vault-backed bearer authentication.
 
-Discovery is deliberately separate from execution: remote tool metadata is
-untrusted and is never registered as an executable local adapter.
+Remote tool metadata remains untrusted and non-executable. This implements
+static bearer-token transport only; OAuth 2.1 discovery/refresh is separate.
 """
 from __future__ import annotations
 
@@ -37,11 +37,6 @@ def _endpoint(endpoint_id: str) -> dict:
         raise MCPDiscoveryError("Only MCP endpoints support MCP discovery.")
     if not endpoint["enabled"]:
         raise MCPDiscoveryError("MCP endpoint must be explicitly enabled by the owner.")
-    if endpoint.get("credential_ref"):
-        raise MCPDiscoveryError(
-            "Authenticated MCP discovery is not enabled yet; remove no credentials "
-            "or expose a read-only endpoint until the credential transport is implemented."
-        )
     return endpoint
 
 
@@ -72,6 +67,28 @@ def _validate_destination(url: str) -> str:
         if not ip.is_global:
             raise MCPDiscoveryError("MCP hostname resolves to a non-public address; discovery was blocked.")
     return url
+
+
+def _authorization_headers(endpoint: dict) -> dict[str, str]:
+    """Resolve a vault reference into a short-lived in-memory bearer header."""
+    credential_ref = endpoint.get("credential_ref")
+    if not credential_ref:
+        return {}
+    if not isinstance(credential_ref, str) or not credential_ref.startswith("vault:"):
+        raise MCPDiscoveryError("MCP credential reference must point to the encrypted credential vault.")
+    try:
+        from ai_os.credential_vault import CredentialVaultError, resolve_credential
+        secret = resolve_credential(credential_ref)
+    except (CredentialVaultError, ValueError) as exc:
+        raise MCPDiscoveryError("MCP credential is unavailable, revoked, or cannot be decrypted.") from exc
+    token = secret.get("access_token")
+    if not isinstance(token, str) or not token.strip() or len(token) > 8192:
+        raise MCPDiscoveryError(
+            "Bearer credential must contain a non-empty access_token of at most 8192 characters."
+        )
+    if any(ord(char) < 33 or ord(char) > 126 for char in token):
+        raise MCPDiscoveryError("Bearer credential contains invalid header characters.")
+    return {"Authorization": "Bearer " + token}
 
 
 def _tool_metadata(tool) -> dict:
@@ -108,9 +125,11 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
     """Discover bounded metadata from one owner-enabled, allowlisted MCP server."""
     endpoint = _endpoint(endpoint_id)
     url = _validate_destination(endpoint["base_url"])
+    headers = _authorization_headers(endpoint)
     try:
         from mcp import Client
         from mcp.client.streamable_http import streamable_http_client
+        import httpx2
     except ImportError as exc:
         raise MCPDiscoveryError(
             "MCP SDK is not installed. Install the optional dependency with: "
@@ -118,16 +137,23 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
         ) from exc
 
     try:
-        transport = streamable_http_client(
-            url, max_sse_event_size=MAX_SSE_EVENT_BYTES
-        )
-        async with Client(transport) as client:
-            result = await asyncio.wait_for(client.list_tools(), timeout=20)
+        timeout = httpx2.Timeout(30.0, read=60.0)
+        async with httpx2.AsyncClient(
+            headers=headers, timeout=timeout, follow_redirects=False
+        ) as http_client:
+            transport = streamable_http_client(
+                url, http_client=http_client,
+                max_sse_event_size=MAX_SSE_EVENT_BYTES,
+            )
+            async with Client(transport) as client:
+                result = await asyncio.wait_for(client.list_tools(), timeout=20)
     except asyncio.TimeoutError as exc:
         raise MCPDiscoveryError("MCP discovery timed out after 20 seconds.") from exc
+    except MCPDiscoveryError:
+        raise
     except Exception as exc:
         raise MCPDiscoveryError(
-            "MCP discovery failed. Check the endpoint, TLS certificate, and server protocol."
+            "MCP discovery failed. Check endpoint, TLS, bearer credential and server protocol."
         ) from exc
 
     remote_tools = list(getattr(result, "tools", []) or [])
@@ -142,9 +168,12 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
         "server_name": endpoint["name"],
         "discovered_tool_count": len(tools),
         "tools": tools,
+        "authenticated": bool(headers),
+        "authentication_method": "static_bearer" if headers else "none",
         "execution_enabled": False,
         "notice": (
             "Discovery only. Remote descriptions and schemas are untrusted data; "
-            "no tool has been granted a capability or made executable."
+            "no tool has been granted a capability or made executable. Static bearer "
+            "authentication does not implement OAuth authorization-code, refresh, or scopes."
         ),
     }
