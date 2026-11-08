@@ -53,6 +53,8 @@ def post_approval(payload: ApprovalCreate):
         return create_approval(payload)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Approval action payload must be valid JSON data.") from exc
 
 
 @app.get(
