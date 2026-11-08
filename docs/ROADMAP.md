@@ -32,7 +32,8 @@ A feature is complete only when tested and its operating limits are documented.
 
 ## Phase 4 — Integrations
 - [x] Provider-neutral OpenAI-compatible LLM adapter (no live provider configured)
-- [ ] MCP provider registry and account-connection workflows
+- [x] MCP remote server configuration registry (no live connections or OAuth)
+- [ ] MCP transport client, OAuth/account connection and capability discovery
 - [ ] WooCommerce
 - [ ] Social adapters for selected platforms with mandatory approval
 - [ ] Email and support adapters
@@ -45,3 +46,6 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Android-friendly setup and operator controls
 
 No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases. Agent graph execution is disabled by default and makes three model requests per task when explicitly enabled. Approval consumption is not yet connected to an external-action executor.
+
+### MCP registry boundary
+The registry stores remote Streamable HTTP endpoint configuration, environment-variable *names* for credentials, and operator-declared capabilities. It never stores credential values or makes outbound network requests. A listed capability is not verified until a future MCP client performs protocol discovery. Enabling a registry entry only enables its configuration; it does not establish a connection or grant permission to execute tools. Local stdio servers, OAuth flows, endpoint health checks, and tool execution remain future work. Production connection code must add DNS/IP revalidation and per-tool approval enforcement to prevent SSRF and unsafe actions.
