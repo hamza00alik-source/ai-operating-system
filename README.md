@@ -32,7 +32,7 @@ Open http://127.0.0.1:8000/docs.
 
 In development, operational endpoints are open for local testing. In staging/production, set `AI_OS_ENV=production` and a strong private `AI_OS_API_KEY`. Send it in the `X-API-Key` header. The app refuses to start in non-development mode if the key is missing. Keep `/health` public for uptime checks.
 
-Approval records are workflow primitives, not a security sandbox. Do not connect production credentials until authorization, audit logging, and integration safeguards are reviewed.
+Approval requests are bound to a structured action payload, intended actor, target resource and expiry. The service supports atomic single-use consumption through `consume_approval`; no external executor is connected to it yet. The current `actor_id` is caller-supplied metadata, not independently authenticated identity. Legacy approval rows cannot authorize execution. Do not connect production credentials until distinct principal authentication, audit logging and executor-level safeguards are implemented and reviewed.
 
 ## Hosting
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
