@@ -40,3 +40,12 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Beginner-friendly setup guide
 
 No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases.
+
+## External AI tool evaluation (2026-11-08)
+- [x] Evaluate free LLM API directory, Orca, OpenHands, Dify, and LibreChat references
+- [x] Record selective adoption and security/cost boundaries in [video tool evaluation](VIDEO_TOOL_EVALUATION.md)
+- [ ] Build curated, disabled-by-default provider catalogue and model adapter
+- [ ] Verify one real free-tier or documented keyless model call
+- [ ] Pilot OpenHands only in a separate isolated developer sandbox
+- [ ] Consider LibreChat as an optional UI after AIOS APIs stabilize
+- [ ] Do not adopt Dify or Orca as required AIOS runtime dependencies
