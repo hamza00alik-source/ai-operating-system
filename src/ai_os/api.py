@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, generate, test_provider
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
+from ai_os.brain import brain_status, list_memories, review_memory
 from pydantic import BaseModel, Field
 
 
@@ -141,6 +142,11 @@ class ModelRunRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
 
 
+class BrainMemoryReview(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+    note: str = Field(default="", max_length=1000)
+
+
 class OpenRouterCredentialRequest(BaseModel):
     api_key: str = Field(min_length=8, max_length=512)
     confirm_free_only: bool
@@ -245,6 +251,29 @@ def get_company_overview():
         "execution_runtime": "shared-worker-on-demand-specialist-plus-ceo-review",
         "agent_worker_running": bool(_agent_thread and _agent_thread.is_alive()),
     }
+
+
+@app.get("/brain/status", dependencies=[Depends(require_api_key)])
+def get_brain_status():
+    return brain_status()
+
+
+@app.get("/brain/memories", dependencies=[Depends(require_api_key)])
+def get_brain_memories(status: str | None = None, limit: int = 100):
+    if status is not None and status not in {"proposed", "approved", "rejected"}:
+        raise HTTPException(status_code=422, detail="Invalid memory status.")
+    return list_memories(status, limit)
+
+
+@app.post("/brain/memories/{memory_id}/review", dependencies=[Depends(require_owner_key)])
+def post_brain_memory_review(memory_id: str, payload: BrainMemoryReview):
+    try:
+        result = review_memory(memory_id, payload.decision, payload.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Proposed memory not found or already reviewed.")
+    return result
 
 
 @app.get("/health")
