@@ -41,7 +41,9 @@ def initialize_database() -> None:
         CREATE TABLE IF NOT EXISTS discovery_scans (
             id TEXT PRIMARY KEY, categories TEXT NOT NULL, status TEXT NOT NULL,
             created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT,
-            result_count INTEGER NOT NULL DEFAULT 0, error TEXT
+            result_count INTEGER NOT NULL DEFAULT 0, error TEXT,
+            lease_owner TEXT, lease_expires_at TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS discovery_candidates (
             canonical_url TEXT PRIMARY KEY, full_name TEXT NOT NULL,
@@ -52,3 +54,16 @@ def initialize_database() -> None:
             discovered_at TEXT NOT NULL, evidence TEXT NOT NULL
         );
         """)
+        # Additive migration for databases created before worker leases existed.
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(discovery_scans)")}
+        for name, declaration in (
+            ("lease_owner", "TEXT"),
+            ("lease_expires_at", "TEXT"),
+            ("attempts", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if name not in columns:
+                connection.execute(f"ALTER TABLE discovery_scans ADD COLUMN {name} {declaration}")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_discovery_scan_queue "
+            "ON discovery_scans(status, created_at, lease_expires_at)"
+        )
