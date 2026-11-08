@@ -12,15 +12,37 @@
 
 ## Running specialist work
 
-The worker is a process, not 283 independent model instances. It executes queued steps when an operator starts the worker loop or invokes a worker run. It does not run continuously merely because the repository is deployed.
+The API and worker can run as separate processes. Start the API with the host's
+usual ASGI command (for example, `uvicorn main:app --host 0.0.0.0 --port 8000`)
+and start the durable worker with:
 
-Model execution is deliberately disabled unless the owner explicitly configures and enables an inference backend:
+```bash
+python -m ai_os.worker_service
+```
+
+Both processes must use the same `AI_OS_DATABASE_URL` and the same persistent
+database file. For SQLite, keep both processes on the same host and local
+persistent volume; do not put the database on an arbitrary network filesystem.
+A process manager or hosting platform must restart the worker after host or
+process failure. The worker loop polls continuously, respects the persisted
+pause/stop control, refreshes runtime heartbeats, and uses bounded exponential
+backoff after transient scheduler failures.
+
+The worker initializes the database, commerce storage, control-plane registry,
+credential vault, and trusted built-in read-only adapters before polling. This
+is required when it runs independently of the API process.
+
+Model execution is deliberately disabled unless the owner explicitly configures
+and enables an inference backend:
 
 - `openai_compatible`: an explicitly configured OpenAI-compatible HTTPS endpoint (HTTP is accepted only for localhost).
 - `command`: an owner-configured local CLI invoked with an argument array, never through a shell. The owner must explicitly attest that the CLI's tools are disabled. This attestation is an operator assertion, not a sandbox or proof that the CLI cannot access the network.
 
-No provider, model, endpoint, API key, or CLI command is configured by default. There is no silent paid fallback and no bundled free inference engine. With inference disabled, the system can still create role-specific manual work packets and preserve work in the queue, but it cannot autonomously generate specialist reports.
-
+No provider, model, endpoint, API key, or CLI command is configured by default.
+There is no silent paid fallback and no bundled free inference engine. With
+inference disabled, the worker remains alive and preserves queued work but will
+not generate specialist reports.
+ 
 ## Scheduling and dependency handling
 
 The scheduler inspects persisted company runs, reconciles blocked dependencies, and enqueues only pending steps whose dependencies have completed. Queue idempotency keys prevent duplicate dispatch for the same run step. The worker claims jobs using durable leases and applies bounded retry handling. A specialist step is marked blocked after its job exhausts retries.
