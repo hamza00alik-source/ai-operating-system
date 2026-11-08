@@ -39,3 +39,20 @@ OpenCompany also exposes its own read-only MCP server for compatible clients:
 - Resource: `opencompany://governance`.
 
 This initial server is intentionally stdio-only and read-only. It does not expose remote HTTP access or OAuth itself. Remote hosting must add MCP OAuth 2.1 resource-server authorization, protected-resource metadata, origin/host validation, per-agent authorization, rate limits, and audit enforcement before it is exposed to the internet. Do not expose the stdio server through an unauthenticated network tunnel.
+
+## Encrypted credential vault (server-side)
+
+The owner-only credential endpoints are available after deployment configures an encryption key:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Store the generated value as `AI_OS_CREDENTIAL_ENCRYPTION_KEY` in the hosting platform's secret manager. Do not commit it, put it in a public issue, or send it in chat. Back it up securely: losing the key makes previously stored credentials unreadable. The vault fails closed when the key is missing or invalid.
+
+- `POST /integrations/mcp/credentials`: accepts provider ID, label, secret type and a JSON secret object; encrypts the secret before persistence and returns only a vault reference.
+- `GET /integrations/mcp/credentials`: returns metadata only, never secret values.
+- `DELETE /integrations/mcp/credentials/{credential_id}`: revokes a stored credential.
+- Internal server code may resolve a vault reference; there is deliberately no API endpoint to retrieve decrypted credentials.
+- Production credential submission requires HTTPS. The application owner must also configure TLS correctly at the reverse proxy.
+- This vault is not yet wired into OAuth handshakes or the remote MCP client's Authorization header. A stored credential is not proof of a working provider connection.
