@@ -73,77 +73,110 @@ def _post(opener, endpoint: str, payload: dict, headers: dict):
         raise RuntimeError(f"MCP connection failed: {type(exc).__name__}") from exc
 
 
-def probe_mcp_server(server_id: str) -> dict:
+def _load_server(server_id: str):
     with connect() as db:
         row = db.execute("SELECT * FROM mcp_servers WHERE id=?", (server_id,)).fetchone()
     if row is None:
         raise LookupError("MCP server not found.")
     if not row["enabled"]:
-        raise ValueError("Enable this MCP server before testing its connection.")
-    endpoint = row["endpoint"]
+        raise ValueError("Enable this MCP server before using it.")
     env_names = json.loads(row["credential_env_json"])
     missing = [name for name in env_names if not os.getenv(name)]
     if missing:
         raise ValueError("Missing configured credential environment variables: " + ", ".join(missing))
-    _public_endpoint(endpoint)
+    _public_endpoint(row["endpoint"])
     headers = {}
     if env_names:
-        # The first configured secret is sent as a bearer token; additional
-        # values can be introduced as explicit auth schemes in a later version.
         headers["Authorization"] = "Bearer " + os.environ[env_names[0]]
+    return row, build_opener(_NoRedirect), headers
 
-    opener = build_opener(_NoRedirect)
+
+def _open_session(row, opener, headers):
+    endpoint = row["endpoint"]
     init_id = str(uuid4())
-    init_payload = {
+    response, response_headers = _post(opener, endpoint, {
         "jsonrpc": "2.0", "id": init_id, "method": "initialize",
-        "params": {
-            "protocolVersion": _PROTOCOL_VERSION,
-            "capabilities": {},
-            "clientInfo": {"name": "ai-operating-system", "version": "0.1.0"},
-        },
-    }
-    response, response_headers = _post(opener, endpoint, init_payload, headers)
+        "params": {"protocolVersion": _PROTOCOL_VERSION, "capabilities": {},
+                   "clientInfo": {"name": "ai-operating-system", "version": "0.1.0"}},
+    }, headers)
     if response.get("id") != init_id or "error" in response:
         raise RuntimeError("MCP initialize handshake was rejected.")
     result = response.get("result") or {}
     negotiated = result.get("protocolVersion")
     if not negotiated:
         raise RuntimeError("MCP initialize response omitted protocolVersion.")
-    session_id = response_headers.get("Mcp-Session-Id")
     session_headers = {**headers, "MCP-Protocol-Version": negotiated}
+    session_id = response_headers.get("Mcp-Session-Id")
     if session_id:
         session_headers["Mcp-Session-Id"] = session_id
-
-    initialized = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-    notify_request = Request(endpoint, data=json.dumps(initialized).encode(), headers={
-        "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
-        **session_headers,
-    }, method="POST")
+    notify = Request(endpoint, data=json.dumps({
+        "jsonrpc": "2.0", "method": "notifications/initialized"
+    }).encode(), headers={"Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream", **session_headers}, method="POST")
     try:
-        with opener.open(notify_request, timeout=_TIMEOUT_SECONDS) as response_stream:
-            response_stream.read(1000)
+        with opener.open(notify, timeout=_TIMEOUT_SECONDS) as stream:
+            stream.read(1000)
     except HTTPError as exc:
         raise RuntimeError(f"MCP initialized notification failed with HTTP {exc.code}.") from exc
+    return session_headers, negotiated, result
 
-    list_id = str(uuid4())
-    listed, _ = _post(opener, endpoint, {
-        "jsonrpc": "2.0", "id": list_id, "method": "tools/list", "params": {},
+
+def _list_tools(row, opener, session_headers):
+    request_id = str(uuid4())
+    listed, _ = _post(opener, row["endpoint"], {
+        "jsonrpc": "2.0", "id": request_id, "method": "tools/list", "params": {},
     }, session_headers)
-    if listed.get("id") != list_id or "error" in listed:
+    if listed.get("id") != request_id or "error" in listed:
         raise RuntimeError("MCP tools/list request failed.")
-    tools = (listed.get("result") or {}).get("tools") or []
+    return (listed.get("result") or {}).get("tools") or []
+
+
+def probe_mcp_server(server_id: str) -> dict:
+    row, opener, headers = _load_server(server_id)
+    session_headers, negotiated, result = _open_session(row, opener, headers)
+    tools = _list_tools(row, opener, session_headers)
     safe_tools = [{
         "name": str(tool.get("name", ""))[:120],
         "description": str(tool.get("description", ""))[:500],
         "input_schema": tool.get("inputSchema", {}),
     } for tool in tools[:100]]
     return {
-        "server_id": server_id,
-        "server_name": row["name"],
-        "connection_status": "connected",
-        "protocol_version": negotiated,
+        "server_id": server_id, "server_name": row["name"],
+        "connection_status": "connected", "protocol_version": negotiated,
         "server_info": result.get("serverInfo", {}),
-        "tool_count": len(tools),
-        "tools": safe_tools,
-        "tool_execution_enabled": False,
+        "tool_count": len(tools), "tools": safe_tools,
+        "tool_execution_enabled": True,
+        "execution_policy": "owner_approval_required",
     }
+
+
+def call_mcp_tool(server_id: str, tool_name: str, arguments: dict) -> dict:
+    """Invoke one remote tool; caller must consume a matching one-time approval first."""
+    row, opener, headers = _load_server(server_id)
+    session_headers, negotiated, _ = _open_session(row, opener, headers)
+    tools = _list_tools(row, opener, session_headers)
+    match = next((tool for tool in tools if tool.get("name") == tool_name), None)
+    if match is None:
+        raise LookupError("Requested tool is not currently advertised by this MCP server.")
+    schema = match.get("inputSchema") or {}
+    if schema.get("type") == "object" and not isinstance(arguments, dict):
+        raise ValueError("MCP tool arguments must be a JSON object.")
+    required = schema.get("required", [])
+    properties = schema.get("properties", {})
+    missing = [key for key in required if key not in arguments]
+    if missing:
+        raise ValueError("Missing required tool arguments: " + ", ".join(missing))
+    unknown = [key for key in arguments if schema.get("additionalProperties") is False and key not in properties]
+    if unknown:
+        raise ValueError("Unexpected tool arguments: " + ", ".join(unknown))
+    request_id = str(uuid4())
+    result, _ = _post(opener, row["endpoint"], {
+        "jsonrpc": "2.0", "id": request_id, "method": "tools/call",
+        "params": {"name": tool_name, "arguments": arguments},
+    }, session_headers)
+    if result.get("id") != request_id:
+        raise RuntimeError("MCP tool response did not match the request.")
+    if "error" in result:
+        raise RuntimeError("MCP tool execution failed: " + str(result["error"])[:500])
+    return {"server_id": server_id, "tool_name": tool_name,
+            "protocol_version": negotiated, "result": result.get("result")}
