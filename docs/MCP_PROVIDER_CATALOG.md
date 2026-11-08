@@ -6,7 +6,7 @@ OpenCompany ships a curated catalogue of 55 integration families at `/integratio
 
 1. The owner selects a provider in the Integrations UI.
 2. OpenCompany resolves a concrete MCP server and transport from the official [MCP Registry](https://registry.modelcontextprotocol.io) or the provider's documentation. Catalogue entries are not trusted as executable commands.
-3. The owner completes the provider's OAuth consent or supplies a scoped credential through the future encrypted server-side secret store.
+3. The owner supplies a scoped bearer token through the encrypted server-side vault. OAuth 2.1 authorization-code flow and refresh are not implemented yet.
 4. OpenCompany validates the endpoint, discovers tool metadata, and records the server/tool version.
 5. Each tool is mapped to a named agent with an explicit capability grant. Discovery alone never grants execution.
 6. Read operations are the default. Writes, messages, publishing, payments, refunds, deployments and destructive operations require an owner approval and an idempotency key, with audit logging.
@@ -55,4 +55,5 @@ Store the generated value as `AI_OS_CREDENTIAL_ENCRYPTION_KEY` in the hosting pl
 - `DELETE /integrations/mcp/credentials/{credential_id}`: revokes a stored credential.
 - Internal server code may resolve a vault reference; there is deliberately no API endpoint to retrieve decrypted credentials.
 - Production credential submission requires HTTPS. The application owner must also configure TLS correctly at the reverse proxy.
-- This vault is not yet wired into OAuth handshakes or the remote MCP client's Authorization header. A stored credential is not proof of a working provider connection.
+- Remote MCP discovery can now resolve a vault reference containing `{"access_token":"..."}` and send it as an HTTPS `Authorization: Bearer` header. Tokens remain server-side and are not returned to the browser.
+- This is static bearer-token authentication only. OAuth 2.1 authorization-code flow, protected-resource metadata discovery, issuer validation, audience/resource binding, refresh tokens, and scoped consent are not implemented yet. A stored token is not proof of a working provider connection.
