@@ -46,3 +46,23 @@ Approval requests bind the action, intended actor, target resource, structured p
 The API exposes protected `GET /audit/events`. Task and approval lifecycle events are inserted transactionally; MCP registry changes are also recorded. SQLite triggers reject ordinary updates/deletes to audit rows. This is not an external immutable compliance archive.
 
 The current API key authenticates one shared owner credential, not distinct human/agent principals. Approval `actor_id` remains caller-supplied metadata. Do not connect production credentials or external action executors until authenticated principals, per-tool approval enforcement, security review and durable backup are implemented.
+
+
+## Owner-triggered model connectivity check
+
+The Owner Control Room exposes a protected `POST /runtime/model-test` action. It sends one fixed, non-sensitive connectivity prompt and returns the provider/model label plus a short response. It does not create a task. The action is disabled at the API level unless model execution is explicitly enabled and both the endpoint and model are configured. Only an owner principal may call it.
+
+Example experimental keyless gateway configuration (not a production recommendation):
+
+```bash
+AI_OS_MODEL_ENABLED=true
+AI_OS_MODEL_PROVIDER=llmfaucet-experimental
+AI_OS_MODEL_BASE_URL=https://api.llmfaucet.dev/v1
+AI_OS_MODEL_NAME=auto
+AI_OS_MODEL_API_KEY=free
+AI_OS_AGENT_GRAPH_ENABLED=true
+```
+
+This is an optional example, not a built-in default. The public gateway documents anonymous access and a 20-request/day anonymous limit, but explicitly describes itself as experimental and warns that upstream capacity may change or disappear. Do not send private/customer data through it, do not treat it as production infrastructure, and verify its current service status before use. A successful connection test proves only that one response was returned; it does not prove three-agent execution or worker reliability.
+
+For the first end-to-end run, use only a synthetic internal task with no customer data. Keep the graph disabled until the owner has verified a model response, then enable it deliberately and inspect each persisted agent handoff.
