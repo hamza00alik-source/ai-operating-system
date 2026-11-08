@@ -87,3 +87,10 @@ class MCPServerOut(BaseModel):
     connection_status: Literal["not_connected"]
     created_at: datetime
     updated_at: datetime
+
+
+
+class MCPToolCall(BaseModel):
+    tool_name: str = Field(min_length=1, max_length=120)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    approval_id: str = Field(min_length=1, max_length=120)
