@@ -18,6 +18,9 @@ class TaskOut(BaseModel):
     department: str
     status: TaskStatus
     created_at: datetime
+    result: str | None = None
+    error: str | None = None
+    attempts: int = 0
 
 class ApprovalCreate(BaseModel):
     task_id: str | None = None
