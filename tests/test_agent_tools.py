@@ -19,6 +19,8 @@ def agent_tools_db(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'agent-tools.sqlite3'}")
     initialize_database()
     initialize_control_plane()
+    from ai_os.mcp_broker import initialize_mcp_broker_storage
+    initialize_mcp_broker_storage()
     clear_action_adapters_for_tests()
     register_builtin_agent_tools()
     yield
