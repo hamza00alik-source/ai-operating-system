@@ -56,3 +56,16 @@ def test_non_development_requires_api_key_at_startup(monkeypatch):
             raise AssertionError("Application startup should reject a missing API key")
     except RuntimeError as exc:
         assert "AI_OS_API_KEY" in str(exc)
+
+
+def test_task_memory_and_step_status_endpoints():
+    with TestClient(app) as client:
+        task = client.post("/tasks", json={"title": "Test memory endpoints"})
+        task_id = task.json()["id"]
+        memory = client.get(f"/tasks/{task_id}/memory")
+        steps = client.get(f"/tasks/{task_id}/steps")
+        assert memory.status_code == 200
+        assert memory.json() == []
+        assert steps.status_code == 200
+        assert steps.json() == []
+        assert client.get("/tasks/does-not-exist/memory").status_code == 404
