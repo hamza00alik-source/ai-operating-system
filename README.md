@@ -26,7 +26,7 @@ Open http://127.0.0.1:8000/docs.
 ## Current starter capabilities
 - Create and list work tasks.
 - Create, list, approve, and reject approval requests.
-- Persist records in SQLite.
+- Persist tasks, approval records, agent steps and task-scoped inter-agent handoffs in SQLite.\n- Optionally run the Researcher → Developer → Quality Reviewer workflow with `AI_OS_AGENT_GRAPH_ENABLED=true`; it is disabled by default and makes three sequential model requests per task.\n- Inspect task-scoped memory and workflow status through the protected `/tasks/{task_id}/memory` and `/tasks/{task_id}/steps` endpoints.
 - Health endpoint.
 - API-key protection for operational endpoints outside development.
 
