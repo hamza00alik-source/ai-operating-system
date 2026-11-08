@@ -53,6 +53,16 @@ class ApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
 
 
+class AuditEventOut(BaseModel):
+    id: int
+    event_type: str
+    actor_id: str | None
+    resource_type: str
+    resource_id: str
+    details: dict[str, Any]
+    created_at: datetime
+
+
 class MCPServerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     endpoint: str = Field(min_length=9, max_length=2048)
