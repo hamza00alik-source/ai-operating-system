@@ -67,3 +67,37 @@ def test_discovery_requires_enabled_mcp_endpoint(monkeypatch):
     )
     with pytest.raises(mcp_client.MCPDiscoveryError, match="explicitly enabled"):
         asyncio.run(mcp_client.discover_mcp_tools("ep"))
+
+
+def test_vault_backed_bearer_credential_is_converted_to_authorization_header(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {"access_token": "test-token-value"},
+    )
+    headers = mcp_client._authorization_headers({
+        "credential_ref": "vault:credential-123",
+    })
+    assert headers == {"Authorization": "Bearer test-token-value"}
+
+
+def test_bearer_credential_rejects_non_vault_reference():
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="encrypted credential vault"):
+        mcp_client._authorization_headers({"credential_ref": "plain-text-secret"})
+
+
+def test_bearer_credential_rejects_missing_access_token(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {"api_key": "not-a-bearer-token"},
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="access_token"):
+        mcp_client._authorization_headers({"credential_ref": "vault:credential-123"})
+
+
+def test_bearer_credential_rejects_header_injection(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {"access_token": "valid\\r\\nX-Injected: yes"},
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="header characters"):
+        mcp_client._authorization_headers({"credential_ref": "vault:credential-123"})
