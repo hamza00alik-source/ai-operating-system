@@ -20,3 +20,5 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python scripts/validate_agent_library.py
       - run: pytest
+      - name: Build production container image
+        run: docker build --tag ai-operating-system:test .
