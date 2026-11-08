@@ -22,7 +22,7 @@ from ai_os.service import (
     create_approval, create_task, decide_approval, list_approvals,
     list_audit_events, list_tasks, consume_approval,
     create_mcp_tool_request, list_mcp_tool_requests, approve_mcp_tool_request,
-    record_mcp_tool_request_result,
+    record_mcp_tool_request_result, record_mcp_tool_request_decision,
 )
 
 
@@ -127,6 +127,7 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision,
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
+    record_mcp_tool_request_decision(approval_id, decision=payload.decision, owner_id=principal.principal_id)
     return result
 
 
