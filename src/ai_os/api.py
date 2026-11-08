@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 
-from ai_os.auth import require_api_key
+from ai_os.agent_runtime import get_task_memory, list_task_steps\nfrom ai_os.auth import require_api_key
 from ai_os.config import get_settings
-from ai_os.db import initialize_database
+from ai_os.db import connect, initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
 
@@ -79,3 +79,28 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
     return result
+
+
+
+@app.get(
+    "/tasks/{task_id}/memory",
+    dependencies=[Depends(require_api_key)],
+)
+def get_task_memory_endpoint(task_id: str):
+    with connect() as db:
+        exists = db.execute("SELECT 1 FROM tasks WHERE id=?", (task_id,)).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return get_task_memory(task_id)
+
+
+@app.get(
+    "/tasks/{task_id}/steps",
+    dependencies=[Depends(require_api_key)],
+)
+def get_task_steps_endpoint(task_id: str):
+    with connect() as db:
+        exists = db.execute("SELECT 1 FROM tasks WHERE id=?", (task_id,)).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return list_task_steps(task_id)
