@@ -46,11 +46,21 @@ def create_run(task_id: str) -> dict:
         ).fetchone()
         if active:
             return dict(db.execute("SELECT * FROM agent_runs WHERE id=?", (active["id"],)).fetchone())
-        db.execute(
-            """INSERT INTO agent_runs
-            (id,task_id,status,created_at) VALUES(?,?,?,?)""",
-            (run_id, task_id, "queued", now),
-        )
+        # Older persistent databases may still require the legacy agent_type
+        # column. Detect it at runtime so both upgraded and fresh databases work.
+        run_columns = {row["name"] for row in db.execute("PRAGMA table_info(agent_runs)")}
+        if "agent_type" in run_columns:
+            db.execute(
+                """INSERT INTO agent_runs
+                (id,task_id,agent_type,status,created_at) VALUES(?,?,?,?,?)""",
+                (run_id, task_id, "specialist", "queued", now),
+            )
+        else:
+            db.execute(
+                """INSERT INTO agent_runs
+                (id,task_id,status,created_at) VALUES(?,?,?,?)""",
+                (run_id, task_id, "queued", now),
+            )
         db.execute(
             "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
             (run_id, "queued", "Task accepted by the AIOS execution queue.", now),
