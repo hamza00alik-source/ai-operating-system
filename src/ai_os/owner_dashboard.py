@@ -220,6 +220,15 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 <section id="scanHistory" class="panel section" data-view-panel="discovery"><h2>Recent scans</h2><div class="scroll"><table><thead><tr><th>Created</th><th>Categories</th><th>Status</th><th>Results</th><th>Error</th></tr></thead><tbody id="scanRows"><tr><td colspan="5" class="muted">No data loaded</td></tr></tbody></table></div></section>
 <section id="discoveredProjects" class="panel section" data-view-panel="discovery"><h2>Discovered projects</h2><div class="scroll"><table><thead><tr><th>Project</th><th>Category</th><th>License</th><th>Maintenance</th><th>Stars</th><th>Review state</th><th>Evidence</th></tr></thead><tbody id="candidateRows"><tr><td colspan="7" class="muted">No data loaded</td></tr></tbody></table></div></section>
 <p class="small section" data-view-panel="discovery">Cost, security, commercial-use rights, and provider terms remain unverified unless the evidence record explicitly says otherwise. A discovered project is not an approved integration.</p>
+<section id="freeApiCatalog" class="panel section" data-view-panel="discovery">
+<h2>Free API research catalog</h2>
+<p class="small">Read-only import of public provider research. AIOS records free-tier claims, primary-source links, privacy/training policy, commercial-use notes, verification dates, and upstream probe status. It does not connect, enable, or call these providers.</p>
+<div class="toolbar"><button id="syncFreeApiCatalog" type="button">Sync public API catalogs</button><button id="refreshFreeApiCatalog" class="secondary" type="button">Refresh catalog</button><span id="freeApiCatalogStatus" class="status">Catalog not synced yet.</span></div>
+<div class="grid"><div class="metric"><strong id="freeApiCount">—</strong><span>Provider records</span></div><div class="metric"><strong id="freeApiLive">—</strong><span>Upstream live probes</span></div><div class="metric"><strong id="freeApiReview">—</strong><span>Policy review needed</span></div><div class="metric"><strong id="freeApiFresh">—</strong><span>Last upstream status check</span></div></div>
+<div class="scroll"><table><thead><tr><th>Provider</th><th>Category</th><th>Free-tier evidence</th><th>Data policy</th><th>Commercial use</th><th>Upstream check</th><th>Sources</th></tr></thead><tbody id="freeApiRows"><tr><td colspan="7">Sync catalog to load provider records.</td></tr></tbody></table></div>
+<h3>Source quality decisions</h3><div id="freeApiSourceNotes" class="small">Source assessments load after sync.</div>
+</section>
+
 
 <section id="brain" class="panel section" data-view-panel="brain">
 <h2>Company AI Brain · persistent learning</h2>
@@ -275,6 +284,36 @@ async function refresh(){try{const [scans,candidates]=await Promise.all([api("/d
 $("scanRows").innerHTML=scans.length?scans.map(s=>'<tr><td>'+esc(date(s.created_at))+'</td><td>'+esc((s.categories||[]).join(", "))+'</td><td><span class="pill">'+esc(s.status)+'</span></td><td>'+esc(s.result_count)+'</td><td class="bad">'+esc(s.error||"—")+'</td></tr>').join():'<tr><td colspan="5">No scans yet</td></tr>';
 $("candidateRows").innerHTML=candidates.length?candidates.map(c=>'<tr><td><a target="_blank" rel="noopener" href="'+esc(c.canonical_url)+'">'+esc(c.full_name)+'</a><div class="small">'+esc(c.description)+'</div></td><td>'+esc(c.category)+'</td><td>'+esc(c.license)+'</td><td>'+esc(c.maintenance)+'</td><td>'+esc(c.stars)+'</td><td><span class="pill '+(c.review_state==="rejected"?"bad":c.review_state==="approved-for-sandbox"?"good":"warn")+'">'+esc(c.review_state||"pending")+'</span><div class="small">Metadata: '+esc(c.status)+'</div><button class="secondary" data-url="'+esc(c.canonical_url)+'" data-decision="approved-for-sandbox" onclick="reviewCandidate(this.dataset.url,this.dataset.decision)">Approve sandbox</button> <button class="secondary" data-url="'+esc(c.canonical_url)+'" data-decision="rejected" onclick="reviewCandidate(this.dataset.url,this.dataset.decision)">Reject</button></td><td><a target="_blank" rel="noopener" href="'+esc(c.evidence?.url||c.canonical_url)+'">Source</a><div class="small">Cost: '+esc(c.evidence?.cost||"unknown")+' · Security: '+esc(c.evidence?.security||"not-tested")+'</div></td></tr>').join():'<tr><td colspan="7">No candidates yet. Queue a scan to discover projects.</td></tr>';
 say("Live data loaded at "+new Date().toLocaleTimeString()+".");}catch(e){say(e.message)}}
+async function loadFreeApiCatalog(){
+ const el=$("freeApiCatalogStatus");if(el)el.textContent="Loading provider catalog…";
+ try{
+  const data=await api("/discovery/provider-catalog");
+  const rows=data.providers||[];
+  $("freeApiCount").textContent=rows.length;
+  $("freeApiLive").textContent=rows.filter(p=>p.status?.live?.state==="up").length;
+  $("freeApiReview").textContent=rows.filter(p=>(p.policy?.trains_on_your_data||"unknown")!=="no"||(p.policy?.commercial_use||"unknown")!=="yes"||p.confidence!=="verified").length;
+  const checked=rows.map(p=>p.status?.checked_at).filter(Boolean).sort().slice(-1)[0];
+  $("freeApiFresh").textContent=checked?date(checked):"No check";
+  $("freeApiRows").innerHTML=rows.length?rows.map(p=>{
+   const train=p.policy?.trains_on_your_data||"unknown",commercial=p.policy?.commercial_use||"unknown";
+   const live=p.status?.live?.state||"not-probed",docs=p.status?.docs?.state||"unknown";
+   const sources=p.probe?.docs_url||p.website||p.source_url;
+   return '<tr><td><strong>'+esc(p.name)+'</strong><div class="small">'+(p.website?'<a target="_blank" rel="noopener" href="'+esc(p.website)+'">Website</a>':'')+'</div></td><td>'+esc(p.category)+'</td><td>'+esc(p.free_tier?.headline||p.free_tier?.summary||"No summary supplied")+'<div class="small">Confidence: '+esc(p.confidence)+' · Last verified: '+esc(p.last_verified||"unknown")+'</div></td><td><span class="pill '+(train==="no"?"good":"warn")+'">Training: '+esc(train)+'</span><div class="small">'+esc(p.policy?.training_note||"No training detail")+'</div></td><td><span class="pill '+(commercial==="yes"?"good":"warn")+'">'+esc(commercial)+'</span><div class="small">'+esc(p.policy?.commercial_note||"No commercial-use detail")+'</div></td><td><span class="pill '+(live==="up"?"good":live==="down"?"bad":"warn")+'">'+esc(live)+'</span><div class="small">Docs: '+esc(docs)+' · '+esc(p.status?.live?.detail||p.status?.docs?.detail||"No probe detail")+'</div></td><td><a target="_blank" rel="noopener" href="'+esc(p.source_url)+'">Catalog</a>'+(sources?'<div class="small"><a target="_blank" rel="noopener" href="'+esc(sources)+'">Provider source</a></div>':'')+'</td></tr>';
+  }).join(""):'<tr><td colspan="7">No provider records. Sync the catalog.</td></tr>';
+  $("freeApiSourceNotes").innerHTML=(data.secondary_sources||[]).map(s=>'<p><strong>'+esc(s.repository)+'</strong> · '+esc(s.license)+' · <span class="pill">'+esc(s.decision)+'</span><br>'+esc(s.reason)+' <a target="_blank" rel="noopener" href="'+esc(s.url)+'">Open repository</a></p>').join("");
+  if(el)el.textContent="Loaded "+rows.length+" public provider records · synced "+(rows[0]?date(rows[0].synced_at):"not yet");
+ }catch(e){if(el)el.textContent="Catalog load failed: "+e.message}
+}
+$("refreshFreeApiCatalog").onclick=loadFreeApiCatalog;
+$("syncFreeApiCatalog").onclick=async()=>{
+ const b=$("syncFreeApiCatalog");b.disabled=true;
+ try{
+  const result=await api("/discovery/provider-catalog/sync",{method:"POST",body:"{}"});
+  $("freeApiCatalogStatus").textContent="Synced "+result.imported+" providers from "+result.source+" · status checked "+(result.status_checked_at||"unknown");
+  await loadFreeApiCatalog();
+ }catch(e){$("freeApiCatalogStatus").textContent="Sync failed: "+e.message}
+ finally{b.disabled=false}
+};
 async function checkGithubStatus(){const el=$("githubStatus");if(!el)return;el.textContent="Checking GitHub API…";try{const s=await api("/discovery/status");const g=s.github||{};el.textContent=g.connected?"GitHub API connected · "+g.authentication+" · search quota "+(g.search_remaining??"unknown")+"/"+(g.search_limit??"unknown")+" · discovery worker "+(s.worker_running?"running":"stopped"):"GitHub API unavailable · "+(g.error||"unknown error");el.className="status "+(g.connected&&s.worker_running?"good":"warn");}catch(e){el.textContent="GitHub check failed: "+e.message;el.className="status bad"}}
 $("githubCheck").onclick=checkGithubStatus;
 $("run").onclick=async()=>{const categories=[...document.querySelectorAll('input[name="cat"]:checked')].map(x=>x.value);if(!categories.length){say("Select at least one category.");return}try{$("run").disabled=true;const result=await api("/discovery/scans",{method:"POST",body:JSON.stringify({categories})});say("Scan queued: "+result.id+". The background worker must be running to process it.");await refresh()}catch(e){say(e.message)}finally{$("run").disabled=false}};
@@ -346,7 +385,7 @@ async function saveVaultProvider(){const provider=$("vaultProvider").value,api_k
 $("saveVaultProvider").onclick=saveVaultProvider;
 
 function showLogin(message=""){ $("loginPanel").style.display="flex"; $("loginStatus").textContent=message; $("loginKey").focus(); }
-async function startDashboard(){authenticated=true;$("loginPanel").style.display="none";refresh();checkGithubStatus();loadProviders();loadAgents();loadSources();loadOperations();loadBrain();api("/llm/credentials").then(x=>{$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.";const saved=Object.entries(x.providers||{}).filter(([id,v])=>v.configured).map(([id,v])=>id+" · "+v.model+" · "+(v.free_confirmed?"free-confirmed":"blocked"));$("vaultProviderStatus").textContent=saved.length?"Encrypted provider connections: "+saved.join(" | "):"No additional provider credentials saved yet."}).catch(e=>$("credentialStatus").textContent=e.message);if(!window.aiosRefreshTimer)window.aiosRefreshTimer=setInterval(refresh,10000)}
+async function startDashboard(){authenticated=true;$("loginPanel").style.display="none";refresh();checkGithubStatus();loadFreeApiCatalog();loadProviders();loadAgents();loadSources();loadOperations();loadBrain();api("/llm/credentials").then(x=>{$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.";const saved=Object.entries(x.providers||{}).filter(([id,v])=>v.configured).map(([id,v])=>id+" · "+v.model+" · "+(v.free_confirmed?"free-confirmed":"blocked"));$("vaultProviderStatus").textContent=saved.length?"Encrypted provider connections: "+saved.join(" | "):"No additional provider credentials saved yet."}).catch(e=>$("credentialStatus").textContent=e.message);if(!window.aiosRefreshTimer)window.aiosRefreshTimer=setInterval(refresh,10000)}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();const b=$("loginButton");b.disabled=true;$("loginStatus").textContent="Validating owner key…";try{const r=await fetch("/auth/session",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:$("loginKey").value})});if(!r.ok)throw Error("Owner key was rejected. Check the key in Railway Variables.");$("loginKey").value="";await startDashboard()}catch(err){$("loginStatus").textContent=err.message}finally{b.disabled=false}});
 $("logoutButton").onclick=async()=>{try{await fetch("/auth/session",{method:"DELETE",credentials:"same-origin"});}finally{authenticated=false;showLogin("You have been signed out.")}};
 fetch("/auth/session",{credentials:"same-origin"}).then(r=>r.json()).then(s=>{if(s.authenticated)startDashboard();else showLogin()}).catch(()=>showLogin("Sign in to continue."));
