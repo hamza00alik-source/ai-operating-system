@@ -12,10 +12,10 @@ class CredentialVaultUnavailable(RuntimeError):
 
 
 def _fernet() -> Fernet:
-    key = os.getenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", "").strip()
+    key = (os.getenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY") or os.getenv("AI_OS_CREDENTIALS_ENCRYPTION_KEY") or "").strip()
     if not key:
         raise CredentialVaultUnavailable(
-            "Credential vault is locked. Configure AI_OS_CREDENTIAL_ENCRYPTION_KEY on the hosting server."
+            "Credential vault is locked. Configure AI_OS_CREDENTIAL_ENCRYPTION_KEY (or AI_OS_CREDENTIALS_ENCRYPTION_KEY) on the hosting server."
         )
     try:
         return Fernet(key.encode("ascii"))
