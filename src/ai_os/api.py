@@ -13,6 +13,7 @@ from ai_os.discovery import create_scan, list_scans, list_candidates
 from ai_os.schemas import DiscoveryScanCreate
 from ai_os.llm_gateway import list_providers, generate, test_provider
 from ai_os.agent_runtime import enqueue_research_analyst, list_agent_runs
+from ai_os.credential_vault import initialize_vault, list_vault_providers, save_provider, delete_provider
 from pydantic import BaseModel, Field
 
 
@@ -22,6 +23,7 @@ async def lifespan(_: FastAPI):
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
     initialize_database()
+    initialize_vault()
     yield
 
 
@@ -36,6 +38,35 @@ app = FastAPI(
 @app.get("/owner", include_in_schema=False)
 def get_owner_dashboard():
     return owner_dashboard()
+
+
+class ProviderCredentialRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=160)
+    api_key: str = Field(min_length=1, max_length=4096)
+    free_confirmed: bool = False
+
+
+@app.get("/owner/providers", dependencies=[Depends(require_api_key)])
+def get_owner_providers():
+    return list_vault_providers()
+
+
+@app.put("/owner/providers/{provider_id}", dependencies=[Depends(require_api_key)])
+def put_owner_provider(provider_id: str, payload: ProviderCredentialRequest):
+    try:
+        return save_provider(provider_id, payload.model, payload.api_key, payload.free_confirmed)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/owner/providers/{provider_id}", dependencies=[Depends(require_api_key)])
+def delete_owner_provider(provider_id: str):
+    try:
+        return {"deleted": delete_provider(provider_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 class ModelRunRequest(BaseModel):
