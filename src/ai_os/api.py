@@ -280,6 +280,19 @@ def get_agent_run(run_id: str):
     return result
 
 
+@app.get("/agent-runs/{run_id}/events", dependencies=[Depends(require_api_key)])
+def get_agent_run_events(run_id: str):
+    """Return the persisted execution timeline for an owner-visible run."""
+    if get_run(run_id) is None:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id, stage, message, created_at FROM agent_run_events WHERE run_id=? ORDER BY id ASC",
+            (run_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 @app.post(
     "/approvals",
     response_model=ApprovalOut,
