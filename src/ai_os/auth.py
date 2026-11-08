@@ -5,7 +5,7 @@ from ai_os.config import get_settings
 
 
 def _check_owner_key(expected: str, supplied: str | None) -> None:
-    if not expected or not supplied or not secrets.compare_digest(supplied.strip(), expected):
+    if not expected or not supplied or not secrets.compare_digest(supplied.strip(), expected.strip()):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
             detail="A valid owner API key is required.",
             headers={"WWW-Authenticate": "ApiKey"})
