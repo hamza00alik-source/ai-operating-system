@@ -19,7 +19,7 @@ from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, generate, generate_with_fallback, test_provider
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
-from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
 from pydantic import BaseModel, Field
 
@@ -152,9 +152,15 @@ class OpenRouterCredentialRequest(BaseModel):
     confirm_free_only: bool
 
 
+class ProviderCredentialRequest(BaseModel):
+    api_key: str = Field(min_length=8, max_length=512)
+    model: str = Field(min_length=1, max_length=200)
+    confirm_free_only: bool
+
+
 @app.get("/llm/credentials", dependencies=[Depends(require_owner_key)])
 def get_llm_credentials():
-    return {"openrouter": credential_status()}
+    return {"openrouter": credential_status(), "providers": provider_credential_statuses()}
 
 
 @app.post("/llm/credentials/openrouter", dependencies=[Depends(require_owner_key)])
@@ -162,6 +168,17 @@ def post_openrouter_credentials(payload: OpenRouterCredentialRequest):
     try:
         save_openrouter(payload.api_key, payload.confirm_free_only)
         return {"saved": True, "provider": "openrouter", "storage": "encrypted"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/llm/credentials/{provider_id}", dependencies=[Depends(require_owner_key)])
+def post_provider_credentials(provider_id: str, payload: ProviderCredentialRequest):
+    try:
+        save_provider_credential(provider_id, payload.api_key, payload.model, payload.confirm_free_only)
+        return {"saved": True, "provider": provider_id, "storage": "encrypted"}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
