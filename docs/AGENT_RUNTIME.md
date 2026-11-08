@@ -45,9 +45,9 @@ not generate specialist reports.
  
 ## Scheduling and dependency handling
 
-The scheduler inspects persisted company runs, reconciles blocked dependencies, and enqueues only pending steps whose dependencies have completed. Queue idempotency keys prevent duplicate dispatch for the same run step. The worker claims jobs using durable leases and applies bounded retry handling. A specialist step is marked blocked after its job exhausts retries.
+The scheduler inspects persisted company runs, reconciles blocked dependencies, and enqueues only pending steps whose dependencies have completed. Completed dependency reports are included in downstream work packets as untrusted handoff context. Queue idempotency keys prevent duplicate dispatch for the same run step. The worker claims jobs using durable leases and applies bounded retry handling. A specialist step is marked blocked after its job exhausts retries.
 
-A successful model-backed step returns a structured report to the CEO. The worker does not give the model browser, shell, account, payment, publishing, customer, or deployment tools.
+When all specialist steps and delegated department-manager reviews are terminal, the scheduler queues a durable CEO review. The CEO consolidates the reports and may create a pending owner-approval request for a narrowly supported unpublished draft action. The CEO review does not approve or execute the action. A successful model-backed step returns a structured report to the CEO. The worker does not give the model browser, shell, account, payment, publishing, customer, or deployment tools.
 
 ## Governance and external actions
 
