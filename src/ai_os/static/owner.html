@@ -39,11 +39,11 @@ main{width:min(100% - 24px,1100px);margin:auto;padding:24px 0 54px}.top{display:
 </div>
 <section class="panel"><div class="row between"><h2>Agent handoffs</h2><span class="small" id="agent-summary">No task selected</span></div><div id="agent-cards" class="agents"><div class="empty" style="grid-column:1/-1">Agent activity will appear here when a worker processes a task.</div></div>
 <h2 style="margin-top:18px">Final result</h2><div id="final-result" class="handoff">No completed result yet.</div></section>
-<section class="panel"><h2>Agent MCP tool requests</h2><p>Agents may request tools. Review the exact arguments, create an approval, approve it separately, then explicitly execute it. Execution may change external systems.</p><div id="mcp-requests"><div class="empty">Connect as owner to load tool requests.</div></div><div class="small" id="mcp-message" role="status" aria-live="polite"></div></section>
+<section class="panel" id="mcp-requests-panel"><h2>Agent MCP tool requests</h2><p>Agents may request tools. Review the exact arguments, create an approval, approve it separately, then explicitly execute it. Execution may change external systems.</p><div id="mcp-requests"><div class="empty">Connect as owner to load tool requests.</div></div><div class="small" id="mcp-message" role="status" aria-live="polite"></div></section>
 <section class="panel"><h2>How to read this screen</h2>
 <ul class="small"><li><b>Queued:</b> task saved; a worker has not claimed it yet.</li><li><b>Running:</b> worker claimed the task; agent steps show actual persisted activity.</li><li><b>Completed:</b> final output is saved and visible above.</li><li><b>Failed / blocked:</b> inspect the error; blocked work requires owner review before retry.</li></ul>
 <p class="warn">Worker status comes from persisted heartbeats. Active means the process is reporting to the shared database; it does not prove the model provider is responding.</p>
-<div class="links"><a href="/workforce">Workforce view</a><a href="/integrations/mcp">MCP registry</a><a href="/docs">API documentation</a></div></section>
+<div class="links"><a href="/workforce">Workforce view</a><a href="#mcp-requests-panel">MCP tool approvals</a><a href="/docs">API documentation</a></div></section>
 </main>
 <script>
 (()=> {
