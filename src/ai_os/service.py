@@ -1,5 +1,6 @@
 """Task and approval business logic."""
 import hashlib
+import hmac
 import json
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -160,7 +161,7 @@ def consume_approval(
                 (approval_id,),
             )
             raise ValueError("Approval has expired")
-        if not row["action_fingerprint"] or not hashlib.compare_digest(
+        if not row["action_fingerprint"] or not hmac.compare_digest(
             row["action_fingerprint"], fingerprint
         ):
             raise ValueError("Proposed action does not match the approved action")
