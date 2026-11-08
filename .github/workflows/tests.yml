@@ -22,3 +22,23 @@ jobs:
       - run: pytest
       - name: Build production container image
         run: docker build --tag ai-operating-system:test .
+      - name: Smoke test container and persistent-volume permissions
+        run: |
+          set -eu
+          docker volume create aios-smoke-data
+          docker run -d --name aios-container-smoke \
+            -p 127.0.0.1:8000:8000 \
+            -e AI_OS_ENV=development \
+            -e AI_OS_DATABASE_URL=sqlite:////data/ai_os.db \
+            -v aios-smoke-data:/data \
+            ai-operating-system:test
+          trap 'docker rm -f aios-container-smoke >/dev/null 2>&1 || true; docker volume rm aios-smoke-data >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              docker exec aios-container-smoke sh -c 'test -s /data/ai_os.db'
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs aios-container-smoke
+          exit 1
