@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 
-from ai_os.agent_runtime import get_task_memory, list_task_steps\nfrom ai_os.auth import require_api_key
+from ai_os.agent_runtime import get_task_memory, list_task_steps
+from ai_os.auth import require_api_key
 from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
