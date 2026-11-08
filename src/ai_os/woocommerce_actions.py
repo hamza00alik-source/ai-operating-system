@@ -13,11 +13,7 @@ def register_woocommerce_draft_adapter() -> bool:
     enabled = (
         os.getenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "false").strip().lower() == "true"
         and os.getenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "false").strip().lower() == "true"
-        and all(os.getenv(name, "").strip() for name in (
-            "AI_OS_WOOCOMMERCE_URL",
-            "AI_OS_WOOCOMMERCE_CONSUMER_KEY",
-            "AI_OS_WOOCOMMERCE_CONSUMER_SECRET",
-        ))
+        and WooCommerceReadOnlyClient.status()["configured"]
     )
     if not enabled:
         return False
