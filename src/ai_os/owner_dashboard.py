@@ -62,7 +62,7 @@ say("Live data loaded at "+new Date().toLocaleTimeString()+".");}catch(e){say(e.
 $("run").onclick=async()=>{const categories=[...document.querySelectorAll('input[name="cat"]:checked')].map(x=>x.value);if(!categories.length){say("Select at least one category.");return}try{$("run").disabled=true;const result=await api("/discovery/scans",{method:"POST",body:JSON.stringify({categories})});say("Scan queued: "+result.id+". The background worker must be running to process it.");await refresh()}catch(e){say(e.message)}finally{$("run").disabled=false}};
 $("refresh").onclick=refresh;
 if(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";if(key)sessionStorage.setItem("aios_owner_key",key)}
-if(key)refresh();
+if(key){refresh();setInterval(refresh,10000)}
 </script></body></html>
 """
 
