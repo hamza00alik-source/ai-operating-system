@@ -188,6 +188,15 @@ def get_workforce_agents(department: str | None = None, q: str | None = None):
     }
 
 
+
+@app.get("/company/sources", dependencies=[Depends(require_api_key)])
+def get_company_sources():
+    manifest_path = Path(__file__).resolve().parents[2] / "data" / "repository_sources.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=503, detail="Repository source inventory is unavailable.")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
 @app.get("/company/overview", dependencies=[Depends(require_api_key)])
 def get_company_overview():
     with connect() as db:
