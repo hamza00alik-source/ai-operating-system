@@ -11,16 +11,16 @@ from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
 from ai_os.embedded_worker import start_embedded_worker
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
-from ai_os.mcp_client import probe_mcp_server
+from ai_os.mcp_client import probe_mcp_server, call_mcp_tool as probe_and_call_mcp_tool
 from ai_os.model_adapter import generate_text, get_model_status
 from ai_os.heartbeat import get_worker_status
 from ai_os.schemas import (
     ApprovalCreate, ApprovalDecision, ApprovalOut, AuditEventOut,
-    MCPServerCreate, MCPServerOut, TaskCreate, TaskOut,
+    MCPServerCreate, MCPServerOut, MCPToolCall, TaskCreate, TaskOut,
 )
 from ai_os.service import (
     create_approval, create_task, decide_approval, list_approvals,
-    list_audit_events, list_tasks,
+    list_audit_events, list_tasks, consume_approval,
 )
 
 
@@ -175,6 +175,36 @@ def post_mcp_server_test(server_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/mcp/servers/{server_id}/tools/call", dependencies=[Depends(require_owner)])
+def post_mcp_tool_call(server_id: str, payload: MCPToolCall,
+                       principal: Principal = Depends(require_owner)):
+    """Execute exactly one remote MCP tool after consuming a matching owner approval."""
+    action_payload = {
+        "server_id": server_id,
+        "tool_name": payload.tool_name,
+        "arguments": payload.arguments,
+    }
+    resource_id = f"{server_id}:{payload.tool_name}"
+    try:
+        consumed = consume_approval(
+            payload.approval_id, actor_id=principal.principal_id,
+            action="mcp.tool.call", resource_id=resource_id,
+            action_payload=action_payload,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if consumed is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+    try:
+        return probe_and_call_mcp_tool(server_id, payload.tool_name, payload.arguments)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
