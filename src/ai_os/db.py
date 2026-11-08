@@ -63,6 +63,15 @@ def initialize_database() -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
         CREATE INDEX IF NOT EXISTS idx_agent_runs_status_created ON agent_runs(status, created_at);
+        CREATE TABLE IF NOT EXISTS agent_run_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES agent_runs(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_run_events_run_id ON agent_run_events(run_id, id);
         CREATE TABLE IF NOT EXISTS owner_sessions (
             token_hash TEXT PRIMARY KEY,
             created_at TEXT NOT NULL,
