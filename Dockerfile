@@ -25,4 +25,4 @@ RUN pip install --no-cache-dir ".[mcp]" \
 
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "ai_os.api:app", "--host", "0.0.0.0", "--port", "8000"]
