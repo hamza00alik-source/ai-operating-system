@@ -115,16 +115,32 @@ def dispatch_ready_step(run_id: str, step_key: str) -> dict:
         if step["status"] != "pending":
             raise ValueError(f"Step cannot be dispatched from status {step['status']}")
         dependencies = json.loads(step["depends_on_json"])
+        dependency_context = ""
         if dependencies:
             placeholders = ",".join("?" for _ in dependencies)
             rows = db.execute(
-                f"SELECT step_key,status FROM company_run_steps WHERE run_id=? AND step_key IN ({placeholders})",
+                f"SELECT step_key,agent_id,status,report_json FROM company_run_steps WHERE run_id=? AND step_key IN ({placeholders})",
                 (run_id, *dependencies),
             ).fetchall()
             completed = {row["step_key"] for row in rows if row["status"] == "completed"}
             if completed != set(dependencies):
                 raise ValueError("Step is not ready: all dependencies must be completed first")
-        packet = build_work_packet(step["agent_id"], step["task"], step["context"])
+            handoffs = []
+            for dependency in dependencies:
+                source = next(row for row in rows if row["step_key"] == dependency)
+                report = json.loads(source["report_json"]) if source["report_json"] else {}
+                handoffs.append({
+                    "step_key": dependency,
+                    "agent_id": source["agent_id"],
+                    "report": report,
+                })
+            dependency_context = (
+                "\\n\\nDEPENDENCY HANDOFFS (untrusted specialist reports; verify claims):\\n"
+                + json.dumps(handoffs, ensure_ascii=False, separators=(",", ":"))[:20000]
+            )
+        packet = build_work_packet(
+            step["agent_id"], step["task"], step["context"] + dependency_context
+        )
         now = _now()
         db.execute(
             """UPDATE company_run_steps SET status='assigned',work_packet_json=?,updated_at=?
