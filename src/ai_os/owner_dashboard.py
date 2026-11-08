@@ -50,7 +50,8 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 <p class="small section">Cost, security, commercial-use rights, and provider terms remain unverified unless the evidence record explicitly says otherwise. A discovered project is not an approved integration.</p>
 
 <section class="panel section"><h2>Live AI model gateway</h2>
-<div class="small">Only providers explicitly configured on the server and marked free by the owner can run. API secrets stay in server environment variables; never paste secrets into this page or GitHub.</div>
+<div class="small">OpenRouter keys are encrypted on the server before storage. The first connection uses only the free-model router and has no paid fallback. Use HTTPS.</div>
+<div class="section" style="border:1px solid var(--line);border-radius:10px;padding:12px"><strong>Provider credentials · OpenRouter</strong><div class="small">Enter your OpenRouter key here. It is sent only to the authenticated server, encrypted at rest, and never returned to this page. Do not paste it into chat or GitHub.</div><div class="toolbar" style="margin-top:10px"><input id="providerApiKey" type="password" autocomplete="off" placeholder="OpenRouter API key" style="flex:1;min-width:220px"><button id="saveProviderKey">Save encrypted key</button></div><label style="margin-top:10px"><input id="confirmFreeOnly" type="checkbox"> I confirm this connection must use the free-only router, with no paid model or paid fallback.</label><div id="credentialStatus" class="status">Credential status not loaded.</div></div></div>
 <div class="toolbar" style="margin-top:12px"><select id="providerSelect"><option value="">Loading providers…</option></select><button class="secondary" id="loadProviders">Refresh providers</button><button id="testProvider">Test live connection</button></div>
 <div id="providerStatus" class="status">Provider status not loaded.</div>
 <textarea id="modelPrompt" rows="3" style="width:100%;margin:8px 0" placeholder="Enter a small test prompt. This sends a real request to the selected provider."></textarea>
@@ -59,7 +60,7 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 </section>
 </main>
 <script>
-const $=id=>document.getElementById(id);let key=sessionStorage.getItem("aios_owner_key")||"";
+const $=id=>document.getElementById(id);let key="";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function say(s){$("message").textContent=s}
 async function api(path,options={}){const response=await fetch(path,{...options,headers:{"Content-Type":"application/json","X-API-Key":key,...(options.headers||{})}});if(response.status===401)throw Error("Owner API key rejected. Enter a valid key and refresh.");if(!response.ok)throw Error("API "+response.status+": "+(await response.text()).slice(0,300));return response.json()}
@@ -74,9 +75,11 @@ $("refresh").onclick=refresh;
 async function loadProviders(){try{const providers=await api("/llm/providers");const select=$("providerSelect");select.innerHTML=providers.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+' · '+(p.eligible?'eligible':'blocked')+'</option>').join("");$("providerStatus").textContent=providers.map(p=>p.name+": "+(p.eligible?"eligible (free status owner-confirmed)":p.reason)).join("\\n");}catch(e){$("providerStatus").textContent=e.message}}
 async function runModel(test){const provider=$("providerSelect").value;if(!provider){$("modelOutput").textContent="Select a provider first.";return}const prompt=test?"Reply with exactly: AIOS live connection successful":$("modelPrompt").value.trim();if(!prompt){$("modelOutput").textContent="Enter a prompt first.";return}const button=test?$("testProvider"):$("runModel");button.disabled=true;$("modelOutput").textContent="Sending live request…";try{const result=await api(test?"/llm/test":"/llm/run",{method:"POST",body:JSON.stringify({provider,prompt})});$("modelOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("modelOutput").textContent="Live request failed: "+e.message}finally{button.disabled=false}}
 $("loadProviders").onclick=loadProviders;$("testProvider").onclick=()=>runModel(true);$("runModel").onclick=()=>runModel(false);
+async function saveProviderKey(){const api_key=$("providerApiKey").value.trim();if(!api_key){$("credentialStatus").textContent="Enter your OpenRouter key.";return}if(!$("confirmFreeOnly").checked){$("credentialStatus").textContent="Confirm free-only routing before saving.";return}const b=$("saveProviderKey");b.disabled=true;$("credentialStatus").textContent="Encrypting and saving on the server…";try{const result=await api("/llm/credentials/openrouter",{method:"POST",body:JSON.stringify({api_key,confirm_free_only:true})});$("providerApiKey").value="";$("credentialStatus").textContent="Saved securely in encrypted storage. Secret was not returned.";await loadProviders()}catch(e){$("credentialStatus").textContent=e.message}finally{b.disabled=false}}
+$("saveProviderKey").onclick=saveProviderKey;
 
-if(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";if(key)sessionStorage.setItem("aios_owner_key",key)}
-if(key){refresh();loadProviders();setInterval(refresh,10000)}
+if(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";}
+if(key){refresh();loadProviders();api("/llm/credentials").then(x=>$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.").catch(e=>$("credentialStatus").textContent=e.message);setInterval(refresh,10000)}
 </script></body></html>
 """
 

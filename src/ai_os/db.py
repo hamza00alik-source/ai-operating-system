@@ -43,6 +43,11 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT,
             result_count INTEGER NOT NULL DEFAULT 0, error TEXT
         );
+        CREATE TABLE IF NOT EXISTS provider_credentials (
+            provider TEXT PRIMARY KEY, encrypted_secret TEXT NOT NULL,
+            model TEXT NOT NULL, base_url TEXT NOT NULL,
+            free_confirmed INTEGER NOT NULL DEFAULT 0
+        );
         CREATE TABLE IF NOT EXISTS discovery_candidates (
             canonical_url TEXT PRIMARY KEY, full_name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL,
