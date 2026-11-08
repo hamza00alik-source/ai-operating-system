@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from ai_os.agent_runtime import agent_graph_enabled, run_agent_workflow
 from ai_os.db import connect
 from ai_os.model_adapter import generate_text
 
@@ -62,7 +63,10 @@ def run_once(*, worker_id: str, lease_seconds: int = 900) -> dict:
         "Task: " + task["title"] + "\nDetails: " + task["description"]
     )
     try:
-        output = generate_text(prompt)
+        if agent_graph_enabled():
+            output = run_agent_workflow(task, worker_id=worker_id)
+        else:
+            output = generate_text(prompt)
     except Exception as exc:
         with connect() as db:
             db.execute(
