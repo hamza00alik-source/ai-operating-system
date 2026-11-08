@@ -1,7 +1,8 @@
-"""Owner-triggered MCP discovery with optional vault-backed bearer authentication.
+"""Owner-triggered MCP discovery with vault-backed bearer and OAuth M2M authentication.
 
-Remote tool metadata remains untrusted and non-executable. This implements
-static bearer-token transport only; OAuth 2.1 discovery/refresh is separate.
+Remote tool metadata remains untrusted and non-executable. OAuth client
+credentials use the MCP SDK discovery and issuer validation; user PKCE consent
+and persistent refresh-token storage remain separate work.
 """
 from __future__ import annotations
 
@@ -138,7 +139,7 @@ def _oauth_client_auth(endpoint: dict, server_url: str):
         raise MCPDiscoveryError("OAuth client credential fields exceed their safety limits.")
     if any(ord(char) < 32 or ord(char) == 127 for char in client_id + client_secret + scope):
         raise MCPDiscoveryError("OAuth client credential contains control characters.")
-    if auth_method not in {"client_secret_basic", "client_secret_post"}:
+    if not isinstance(auth_method, str) or auth_method not in {"client_secret_basic", "client_secret_post"}:
         raise MCPDiscoveryError("Unsupported OAuth token endpoint authentication method.")
     # The authorization server is a separate network destination. It must be
     # HTTPS, publicly routable, and explicitly allowlisted just like the MCP host.
