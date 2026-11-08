@@ -34,17 +34,26 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
                 "agent_id": "product-trend-researcher",
                 "task": (
                     "Identify two plausible buyer needs for a downloadable desktop "
-                    "gaming utility. Clearly label any assumptions; do not claim live research."
+                    "gaming utility. Clearly label assumptions and do not claim live research."
                 ),
             },
             {
-                "step_key": "strategy",
-                "agent_id": "business-strategist",
+                "step_key": "development_plan",
+                "agent_id": "engineering-builder",
                 "task": (
-                    "Recommend one small downloadable product using the preceding "
-                    "research report. State risks and validation steps."
+                    "Using the research handoff, draft a minimal technical implementation "
+                    "plan for one downloadable desktop utility. Do not modify files or claim code was written."
                 ),
                 "depends_on": ["research"],
+            },
+            {
+                "step_key": "quality_review",
+                "agent_id": "testing-reality-checker",
+                "task": (
+                    "Review the proposed implementation plan. Identify security, usability, "
+                    "packaging and test gaps. Propose checks, but do not claim tests were run."
+                ),
+                "depends_on": ["development_plan"],
             },
         ],
     }
@@ -55,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
             if created.status_code != 201:
                 raise RuntimeError(f"Could not create test company run: HTTP {created.status_code}")
             run_id = created.json()["id"]
-            expected_jobs = ["execute_company_step", "execute_company_step", "review_company_run"]
+            expected_jobs = ["execute_company_step", "execute_company_step", "execute_company_step", "review_company_run"]
             completed_jobs = []
             for expected_type in expected_jobs:
                 response = client.post("/worker/run-once")
@@ -77,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
             if company_run.get("status") != "completed":
                 raise RuntimeError(f"Company run ended with status {company_run.get('status')}")
             if [step.get("status") for step in company_run.get("steps", [])] != [
-                "completed", "completed"
+                "completed", "completed", "completed"
             ]:
                 raise RuntimeError("Both specialist steps did not complete")
 
@@ -86,7 +95,7 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
                 raise RuntimeError("CEO review did not return a summary")
 
             print("PASS: live AIOS company workflow completed using the no-key public model.")
-            print("Verified: Researcher -> dependent Strategist -> automatic CEO review.")
+            print("Verified: Researcher -> Developer -> Quality Reviewer -> automatic CEO review.")
             print("Verified: durable queue, real model adapter, report handoff and final review.")
             print("No external store, customer, payment, publishing or deployment action was attempted.")
     except Exception as exc:
