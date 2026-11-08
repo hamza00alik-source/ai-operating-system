@@ -105,6 +105,7 @@ async def lifespan(_: FastAPI):
     initialize_commerce_storage()
     initialize_control_plane()
     initialize_credential_vault()
+    initialize_mcp_broker_storage()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
     register_builtin_agent_tools()
