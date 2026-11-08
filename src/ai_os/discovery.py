@@ -24,6 +24,44 @@ CATEGORIES = {
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+def github_api_status() -> dict:
+    """Perform a small live GitHub API check without exposing credentials."""
+    token = os.getenv("GITHUB_TOKEN", "").strip()
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "AIOS-Research-Discovery"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request("https://api.github.com/rate_limit", headers=headers)
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        resources = payload.get("resources", {})
+        core = resources.get("core", {})
+        search = resources.get("search", {})
+        return {
+            "connected": True,
+            "authentication": "authenticated" if token else "public-unauthenticated",
+            "token_configured": bool(token),
+            "core_limit": core.get("limit"),
+            "core_remaining": core.get("remaining"),
+            "search_limit": search.get("limit"),
+            "search_remaining": search.get("remaining"),
+            "checked_at": now(),
+            "error": None,
+        }
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        return {
+            "connected": False,
+            "authentication": "authenticated" if token else "public-unauthenticated",
+            "token_configured": bool(token),
+            "core_limit": None,
+            "core_remaining": None,
+            "search_limit": None,
+            "search_remaining": None,
+            "checked_at": now(),
+            "error": str(exc)[:300],
+        }
+
 def create_scan(categories: list[str]) -> dict:
     selected = sorted(set(categories))
     if not selected or any(item not in CATEGORIES for item in selected):
@@ -82,7 +120,10 @@ def evaluate_repository(repo: dict, category: str) -> dict:
     evidence = {"source": "GitHub repository metadata", "url": url,
                 "checked_at": now(), "license": license_name,
                 "archived": archived, "pushed_at": pushed,
-                "stars": repo.get("stargazers_count", 0),
+                "stars": repo.get("stargazers_count", 0), "language": repo.get("language"),
+                "fork": bool(repo.get("fork", False)), "updated_at": repo.get("updated_at"),
+                "open_issues": repo.get("open_issues_count"), "default_branch": repo.get("default_branch"),
+                "topics": repo.get("topics") or [],
                 "cost": "unknown", "security": "not-tested",
                 "commercial_use": "not-verified", "reason": reason}
     return {"canonical_url": url, "full_name": repo.get("full_name", ""),
@@ -92,7 +133,7 @@ def evaluate_repository(repo: dict, category: str) -> dict:
             "discovered_at": now(), "evidence": evidence}
 
 def _github_search(query: str) -> list[dict]:
-    params = urlencode({"q": query, "sort": "updated", "order": "desc", "per_page": 10})
+    params = urlencode({"q": query, "sort": "updated", "order": "desc", "per_page": 20})
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "AIOS-Research-Discovery"}
     token = os.getenv("GITHUB_TOKEN", "").strip()
     if token:
