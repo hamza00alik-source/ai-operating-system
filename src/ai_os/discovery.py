@@ -62,6 +62,143 @@ def github_api_status() -> dict:
             "error": str(exc)[:300],
         }
 
+
+
+FREE_API_CATALOG_SOURCE = {
+    "source_id": "idoY12-awesome-free-ai-apis",
+    "repository": "IdoY12/awesome-free-ai-apis",
+    "license": "CC0-1.0",
+    "source_url": "https://github.com/IdoY12/awesome-free-ai-apis",
+    "data_url": "https://raw.githubusercontent.com/IdoY12/awesome-free-ai-apis/main/data/providers.json",
+    "status_url": "https://raw.githubusercontent.com/IdoY12/awesome-free-ai-apis/main/data/status.json",
+    "assessment": "Primary-source-linked structured catalog; daily probes; provider terms still require independent review.",
+}
+
+SECONDARY_CATALOG_ASSESSMENTS = [
+    {
+        "repository": "bradAGI/awesome-free-inference",
+        "license": "MIT",
+        "decision": "secondary-only",
+        "reason": "Useful manual README and model directory, but its visible verification badge says March 2026 and the fetched repository has no machine-readable provider dataset. Do not treat its rate limits or free-tier claims as current without provider-source checks.",
+        "url": "https://github.com/bradAGI/awesome-free-inference",
+    },
+    {
+        "repository": "dhaulagani/awesome-free-ai-apis",
+        "license": "not-found",
+        "decision": "excluded-pending-evidence",
+        "reason": "README makes uptime, latency, quota, and production-readiness claims, but a repository LICENSE file was not found and the fetched README does not expose a structured provider dataset with linked primary-source evidence per provider.",
+        "url": "https://github.com/dhaulagani/awesome-free-ai-apis",
+    },
+]
+
+
+def _fetch_catalog_json(url: str, max_bytes: int = 2_000_000) -> dict:
+    request = Request(url, headers={
+        "Accept": "application/json",
+        "User-Agent": "AIOS-Free-API-Catalog/1.0",
+    })
+    with urlopen(request, timeout=20) as response:
+        raw = response.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise RuntimeError("Free API catalog exceeded the safe 2 MB import limit.")
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("Free API catalog returned an unexpected document shape.")
+    return payload
+
+
+def sync_free_api_catalog() -> dict:
+    """Import public catalog evidence only; never connect or call a provider API."""
+    source = FREE_API_CATALOG_SOURCE
+    catalog = _fetch_catalog_json(source["data_url"])
+    status_doc = _fetch_catalog_json(source["status_url"])
+    providers = catalog.get("providers")
+    if not isinstance(providers, list) or not providers or len(providers) > 500:
+        raise RuntimeError("Free API catalog provider list failed validation.")
+    status_results = status_doc.get("results") if isinstance(status_doc.get("results"), dict) else {}
+    synced_at = now()
+    imported = 0
+    with connect() as db:
+        for item in providers:
+            if not isinstance(item, dict):
+                continue
+            provider_id = str(item.get("id") or "").strip()[:120]
+            name = str(item.get("name") or "").strip()[:200]
+            category = str(item.get("category") or "unknown").strip()[:80]
+            if not provider_id or not name:
+                continue
+            provider_status = status_results.get(provider_id, {})
+            db.execute(
+                """INSERT INTO provider_catalog_entries
+                (source_id,provider_id,name,category,website,api_key_url,base_url,
+                 free_tier_json,policy_json,confidence,last_verified,probe_json,
+                 status_json,source_url,synced_at,review_state)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pending')
+                ON CONFLICT(source_id,provider_id) DO UPDATE SET
+                 name=excluded.name,category=excluded.category,website=excluded.website,
+                 api_key_url=excluded.api_key_url,base_url=excluded.base_url,
+                 free_tier_json=excluded.free_tier_json,policy_json=excluded.policy_json,
+                 confidence=excluded.confidence,last_verified=excluded.last_verified,
+                 probe_json=excluded.probe_json,status_json=excluded.status_json,
+                 source_url=excluded.source_url,synced_at=excluded.synced_at""",
+                (
+                    source["source_id"], provider_id, name, category,
+                    str(item.get("website") or "")[:500],
+                    str(item.get("api_key_url") or "")[:500],
+                    str(item.get("base_url") or "")[:500],
+                    json.dumps(item.get("free_tier") or {}, ensure_ascii=False),
+                    json.dumps(item.get("policy") or {}, ensure_ascii=False),
+                    str(item.get("confidence") or "unknown")[:40],
+                    str(item.get("last_verified") or "")[:40] or None,
+                    json.dumps(item.get("probe") or {}, ensure_ascii=False),
+                    json.dumps(provider_status or {}, ensure_ascii=False),
+                    source["source_url"], synced_at,
+                ),
+            )
+            imported += 1
+    summary = status_doc.get("summary") if isinstance(status_doc.get("summary"), dict) else {}
+    return {
+        "source": source["repository"],
+        "license": source["license"],
+        "imported": imported,
+        "catalog_review_date": (catalog.get("meta") or {}).get("last_full_review"),
+        "status_checked_at": summary.get("checked_at"),
+        "status_summary": {
+            "providers": summary.get("providers"),
+            "live_up": summary.get("live_up"),
+            "live_down": summary.get("live_down"),
+            "docs_broken": summary.get("docs_broken"),
+        },
+        "synced_at": synced_at,
+        "secondary_sources": SECONDARY_CATALOG_ASSESSMENTS,
+        "important": "Catalog evidence only. No provider credentials were saved, no inference APIs were called, and no provider was enabled.",
+    }
+
+
+def list_free_api_catalog(category: str | None = None) -> dict:
+    with connect() as db:
+        query = "SELECT * FROM provider_catalog_entries WHERE source_id=?"
+        params: list = [FREE_API_CATALOG_SOURCE["source_id"]]
+        if category:
+            query += " AND category=?"
+            params.append(category)
+        query += " ORDER BY category,name"
+        rows = db.execute(query, params).fetchall()
+    providers = []
+    for row in rows:
+        item = dict(row)
+        for field in ("free_tier_json", "policy_json", "probe_json", "status_json"):
+            item[field.removesuffix("_json")] = json.loads(item.pop(field) or "{}")
+        providers.append(item)
+    return {
+        "source": FREE_API_CATALOG_SOURCE,
+        "provider_count": len(providers),
+        "providers": providers,
+        "secondary_sources": SECONDARY_CATALOG_ASSESSMENTS,
+        "safety": "Unverified listings are research leads only; owner approval and a live provider test are required before credentials can be enabled.",
+    }
+
+
 def create_scan(categories: list[str]) -> dict:
     selected = sorted(set(categories))
     if not selected or any(item not in CATEGORIES for item in selected):
