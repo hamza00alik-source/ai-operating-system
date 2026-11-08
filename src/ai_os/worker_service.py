@@ -7,12 +7,14 @@ the worker. A service manager should still restart the process after host failur
 import logging
 import os
 import time
+from threading import Event, Thread
 from uuid import uuid4
 from collections.abc import Callable
 
 from ai_os.agent_runtime import schedule_ready_steps
 from ai_os.model_adapter import get_model_status
 from ai_os.worker import run_once
+from ai_os.heartbeat import record_worker_heartbeat
 
 logger = logging.getLogger("ai_os.worker_service")
 
@@ -27,29 +29,47 @@ def run_worker_loop(
     run: Callable[..., dict] = run_once,
     on_error: Callable[[Exception, int], None] | None = None,
 ) -> None:
-    """Run until stopped; exponentially back off after process-level failures."""
+    """Run under supervision and publish a heartbeat even during long model calls."""
     delay = max(1, min(int(poll_seconds), 60))
     failure_count = 0
-    while not stop_requested():
-        try:
-            scheduled = schedule()
-            result = run(worker_id=worker_id)
-            failure_count = 0
-            if result.get("processed") or scheduled.get("scheduled"):
-                continue
-            sleep(delay)
-        except Exception as exc:
-            failure_count += 1
-            backoff = min(60, delay * (2 ** min(failure_count - 1, 6)))
-            if on_error is not None:
-                on_error(exc, backoff)
-            else:
-                logger.exception(
-                    "Worker loop recovered from process-level failure; retry in %ss",
-                    backoff,
-                )
-            if not stop_requested():
-                sleep(backoff)
+    heartbeat_stop = Event()
+
+    def heartbeat_loop():
+        while not heartbeat_stop.is_set():
+            try:
+                record_worker_heartbeat(worker_id, "active")
+            except Exception:
+                logger.exception("Could not persist worker heartbeat")
+            heartbeat_stop.wait(5)
+
+    record_worker_heartbeat(worker_id, "active")
+    heartbeat_thread = Thread(target=heartbeat_loop, name="aios-heartbeat", daemon=True)
+    heartbeat_thread.start()
+    try:
+        while not stop_requested():
+            try:
+                scheduled = schedule()
+                result = run(worker_id=worker_id)
+                failure_count = 0
+                if result.get("processed") or scheduled.get("scheduled"):
+                    continue
+                sleep(delay)
+            except Exception as exc:
+                failure_count += 1
+                backoff = min(60, delay * (2 ** min(failure_count - 1, 6)))
+                if on_error is not None:
+                    on_error(exc, backoff)
+                else:
+                    logger.exception(
+                        "Worker loop recovered from process-level failure; retry in %ss",
+                        backoff,
+                    )
+                if not stop_requested():
+                    sleep(backoff)
+    finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=2)
+        record_worker_heartbeat(worker_id, "stopped")
 
 
 def main() -> None:
