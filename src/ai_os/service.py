@@ -262,7 +262,7 @@ def approve_mcp_tool_request(request_id: str, *, owner_id: str) -> dict:
     now = _now()
     with connect() as db:
         changed = db.execute(
-            """UPDATE mcp_tool_requests SET status='approved',approval_id=?,updated_at=?
+            """UPDATE mcp_tool_requests SET status='awaiting_approval',approval_id=?,updated_at=?
                WHERE id=? AND status='pending'""",
             (approval["id"], now, request_id),
         ).rowcount
@@ -292,3 +292,24 @@ def record_mcp_tool_request_result(request_id: str, *, result: dict | None = Non
                resource_type="mcp_tool_request", resource_id=request_id)
         row = db.execute("SELECT * FROM mcp_tool_requests WHERE id=?", (request_id,)).fetchone()
     return _mcp_request_dict(row)
+
+
+
+def record_mcp_tool_request_decision(approval_id: str, *, decision: str, owner_id: str) -> None:
+    if decision not in {"approved", "rejected"}:
+        raise ValueError("Invalid MCP request decision")
+    now = _now()
+    with connect() as db:
+        row = db.execute(
+            "SELECT id FROM mcp_tool_requests WHERE approval_id=? AND status='awaiting_approval'",
+            (approval_id,),
+        ).fetchone()
+        if row is None:
+            return
+        db.execute(
+            "UPDATE mcp_tool_requests SET status=?,updated_at=? WHERE id=? AND status='awaiting_approval'",
+            (decision, now, row["id"]),
+        )
+        _audit(db, f"mcp.tool_request.{decision}", actor_id=owner_id,
+               resource_type="mcp_tool_request", resource_id=row["id"],
+               details={"approval_id": approval_id})
