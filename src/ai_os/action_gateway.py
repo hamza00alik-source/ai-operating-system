@@ -87,6 +87,18 @@ def execute_approved_action(
     normalized = action_type.strip().lower() if isinstance(action_type, str) else ""
     if normalized not in OWNER_APPROVAL_ACTIONS:
         raise ActionGatewayError("Action is not in the owner-approval allowlist.")
+    if not isinstance(parameters, dict):
+        raise ActionGatewayError("Approved action parameters must be a JSON object.")
+    try:
+        parameter_json = json.dumps(
+            parameters, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ActionGatewayError("Approved action parameters must contain JSON-safe values.") from exc
+    if len(parameter_json.encode("utf-8")) > 65536:
+        raise ActionGatewayError("Approved action parameters exceed the 64 KiB safety limit.")
+    if not isinstance(execution_id, str) or not execution_id.strip() or len(execution_id) > 160:
+        raise ActionGatewayError("A valid bounded execution ID is required.")
     if os.getenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "false").strip().lower() != "true":
         raise ActionGatewayError("External action execution is disabled.")
     registered = _ADAPTERS.get(normalized)
@@ -121,6 +133,8 @@ def execute_approved_action(
             result, sort_keys=True, separators=(",", ":"),
             ensure_ascii=False, allow_nan=False, default=str,
         )
+        if len(encoded.encode("utf-8")) > 65536:
+            raise ActionGatewayError("Approved action result exceeds the 64 KiB safety limit.")
         result_hash = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
         append_event(
             "system:action-gateway", "approved_action_execution_completed",
