@@ -77,6 +77,24 @@ def test_discovery_scan_queue_and_read_endpoints():
         assert candidates.status_code == 200
 
 
+def test_discovery_status_reports_live_github_check_without_secret(monkeypatch):
+    from ai_os import api
+
+    monkeypatch.setattr(api, "github_api_status", lambda: {
+        "connected": True, "authentication": "public-unauthenticated",
+        "token_configured": False, "search_remaining": 10, "search_limit": 10,
+        "checked_at": "2026-11-09T00:00:00+00:00", "error": None,
+    })
+    with TestClient(app) as client:
+        response = client.get("/discovery/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["github"]["connected"] is True
+    assert payload["github"]["token_configured"] is False
+    assert "worker_running" in payload
+    assert "token" not in str(payload).lower() or payload["github"]["token_configured"] is False
+
+
 def test_discovery_scan_rejects_empty_categories():
     with TestClient(app) as client:
         response = client.post("/discovery/scans", json={"categories": []})
