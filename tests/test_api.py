@@ -193,6 +193,13 @@ def test_distinct_principals_and_role_permissions(monkeypatch):
         agent = {"X-API-Key": "agent-secret"}
         operator = {"X-API-Key": "operator-secret"}
         owner = {"X-API-Key": "owner-secret"}
+        monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+        monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://provider.example/v1")
+        monkeypatch.setenv("AI_OS_MODEL_NAME", "safe-test-model")
+        from ai_os import api
+        monkeypatch.setattr(api, "generate_text", lambda prompt, timeout: "AIOS_MODEL_CONNECTION_OK")
+        assert client.post("/runtime/model-test", headers=viewer, json={}).status_code == 403
+        assert client.post("/runtime/model-test", headers=owner, json={}).status_code == 200
         assert client.get("/tasks", headers=viewer).status_code == 200
         assert client.post("/tasks", headers=viewer, json={"title": "No"}).status_code == 403
         assert client.post("/tasks", headers=agent, json={"title": "Research"}).status_code == 201
