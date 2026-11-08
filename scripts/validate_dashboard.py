@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 html = Path("src/ai_os/dashboard.html").read_text(encoding="utf-8")
-scripts = re.findall(r"<script\\b[^>]*>(.*?)</script\\s*>", html, flags=re.IGNORECASE | re.DOTALL)
+scripts = re.findall(r"<script\b[^>]*>(.*?)</script\s*>", html, flags=re.IGNORECASE | re.DOTALL)
 if not scripts:
     raise SystemExit("Dashboard contains no inline script blocks.")
 
@@ -23,7 +23,7 @@ for index, source in enumerate(scripts, start=1):
         )
     if result.returncode:
         raise SystemExit(
-            f"Dashboard script block {index} failed JavaScript syntax validation:\\n"
+            f"Dashboard script block {index} failed JavaScript syntax validation:\n"
             + result.stderr[-5000:]
         )
 
