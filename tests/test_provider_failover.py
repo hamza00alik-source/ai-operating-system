@@ -67,3 +67,30 @@ def test_bad_request_does_not_rotate_providers(monkeypatch):
     with pytest.raises(llm_gateway.ProviderHTTPError):
         llm_gateway.generate_with_fallback("test prompt", preferred_provider="groq")
     assert calls == ["groq"]
+
+
+def test_empty_or_placeholder_output_uses_free_fallback(monkeypatch):
+    _enable(monkeypatch, "GROQ", "https://api.groq.com/openai/v1", "free-model")
+    _enable(monkeypatch, "GEMINI", "https://generativelanguage.googleapis.com", "gemini-flash")
+    calls = []
+
+    def fake_generate(provider_id, prompt):
+        calls.append(provider_id)
+        if provider_id == "groq":
+            raise RuntimeError("Groq returned empty or placeholder text; refusing to mark this agent stage complete")
+        return {
+            "provider": provider_id,
+            "model": "gemini-flash",
+            "response": "A valid CEO review from the backup free provider.",
+            "latency_ms": 12,
+            "usage": {},
+            "live": True,
+        }
+
+    monkeypatch.setattr(llm_gateway, "generate", fake_generate)
+    result = llm_gateway.generate_with_fallback("CEO review prompt", preferred_provider="groq")
+
+    assert calls == ["groq", "gemini"]
+    assert result["provider"] == "gemini"
+    assert result["fallback_used"] is True
+    assert result["provider_attempts"][0]["status"] == "invalid_or_empty_output"
