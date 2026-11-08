@@ -1,0 +1,68 @@
+"""Encrypted owner-managed provider credentials."""
+from __future__ import annotations
+
+import os
+from cryptography.fernet import Fernet, InvalidToken
+from ai_os.db import connect
+
+
+class CredentialVaultUnavailable(RuntimeError):
+    pass
+
+
+def _fernet() -> Fernet:
+    key = os.getenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", "").strip()
+    if not key:
+        raise CredentialVaultUnavailable(
+            "Credential vault is locked. Configure AI_OS_CREDENTIAL_ENCRYPTION_KEY on the hosting server."
+        )
+    try:
+        return Fernet(key.encode("ascii"))
+    except Exception as exc:
+        raise CredentialVaultUnavailable("Credential encryption key is invalid.") from exc
+
+
+def save_openrouter(api_key: str, free_confirmed: bool) -> None:
+    if not api_key or len(api_key) > 512:
+        raise ValueError("Enter a valid OpenRouter API key.")
+    if not free_confirmed:
+        raise ValueError("Confirm that the selected route is restricted to free models.")
+    encrypted = _fernet().encrypt(api_key.encode("utf-8")).decode("ascii")
+    with connect() as db:
+        db.execute(
+            """INSERT INTO provider_credentials(provider, encrypted_secret, model, base_url, free_confirmed)
+               VALUES('openrouter', ?, 'openrouter/free', 'https://openrouter.ai/api/v1', 1)
+               ON CONFLICT(provider) DO UPDATE SET encrypted_secret=excluded.encrypted_secret,
+               model=excluded.model, base_url=excluded.base_url,
+               free_confirmed=excluded.free_confirmed""",
+            (encrypted,),
+        )
+
+
+def get_openrouter() -> dict | None:
+    with connect() as db:
+        row = db.execute(
+            "SELECT encrypted_secret, model, base_url, free_confirmed FROM provider_credentials WHERE provider='openrouter'"
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        secret = _fernet().decrypt(row["encrypted_secret"].encode("ascii")).decode("utf-8")
+    except (InvalidToken, UnicodeError) as exc:
+        raise CredentialVaultUnavailable("Stored provider credential could not be decrypted.") from exc
+    return {
+        "secret": secret, "model": row["model"], "base_url": row["base_url"],
+        "free_confirmed": bool(row["free_confirmed"]),
+    }
+
+
+def credential_status() -> dict:
+    with connect() as db:
+        row = db.execute(
+            "SELECT model, free_confirmed FROM provider_credentials WHERE provider='openrouter'"
+        ).fetchone()
+    return {
+        "configured": row is not None,
+        "model": row["model"] if row else None,
+        "free_confirmed": bool(row["free_confirmed"]) if row else False,
+    }
