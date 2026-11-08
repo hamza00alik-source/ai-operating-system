@@ -22,3 +22,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.vercel]
+entrypoint = "src.ai_os.api:app"
