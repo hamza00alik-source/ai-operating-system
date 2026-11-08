@@ -51,3 +51,24 @@ class ApprovalOut(BaseModel):
 
 class ApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class MCPServerCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    endpoint: str = Field(min_length=9, max_length=2048)
+    credential_env: list[str] = Field(default_factory=list, max_length=20)
+    declared_capabilities: list[str] = Field(default_factory=list, max_length=50)
+    enabled: bool = False
+
+
+class MCPServerOut(BaseModel):
+    id: str
+    name: str
+    endpoint: str
+    transport: Literal["streamable_http"]
+    credential_env: list[str]
+    declared_capabilities: list[str]
+    enabled: bool
+    connection_status: Literal["not_connected"]
+    created_at: datetime
+    updated_at: datetime
