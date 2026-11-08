@@ -248,3 +248,68 @@ def test_owner_model_connection_test_refuses_when_disabled(monkeypatch):
     with TestClient(app) as client:
         response = client.post("/runtime/model-test", json={})
     assert response.status_code == 409
+
+
+
+def test_agent_mcp_tool_request_requires_owner_approval_before_execution(monkeypatch):
+    from ai_os import api
+
+    calls = []
+    monkeypatch.setattr(
+        api, "probe_and_call_mcp_tool",
+        lambda server_id, tool_name, arguments: calls.append((server_id, tool_name, arguments))
+        or {"server_id": server_id, "tool_name": tool_name, "result": {"content": [{"type": "text", "text": "ok"}]}},
+    )
+    with TestClient(app) as client:
+        server = client.post("/mcp/servers", json={
+            "name": "Request workflow MCP",
+            "endpoint": "https://request-workflow.example.com/mcp",
+        }).json()
+        assert client.post(f"/mcp/servers/{server['id']}/enabled?enabled=true").status_code == 200
+
+        requested = client.post("/mcp/tool-requests", json={
+            "server_id": server["id"], "tool_name": "search",
+            "arguments": {"query": "AIOS test"},
+        })
+        assert requested.status_code == 201
+        request = requested.json()
+        assert request["status"] == "pending"
+        assert calls == []
+
+        assert client.get("/mcp/tool-requests").json()[0]["id"] == request["id"]
+        owner_review = client.post(f"/mcp/tool-requests/{request['id']}/approve")
+        assert owner_review.status_code == 200
+        approval = owner_review.json()["approval"]
+        assert approval["status"] == "pending"
+        assert owner_review.json()["request"]["status"] == "approved"
+        assert calls == []
+
+        decision = client.post(
+            f"/approvals/{approval['id']}/decision", json={"decision": "approved"}
+        )
+        assert decision.status_code == 200
+        assert decision.json()["status"] == "approved"
+
+        wrong_args = client.post(f"/mcp/servers/{server['id']}/tools/call", json={
+            "tool_name": "search", "arguments": {"query": "tampered"},
+            "approval_id": approval["id"], "request_id": request["id"],
+        })
+        assert wrong_args.status_code == 409
+        assert calls == []
+
+        executed = client.post(f"/mcp/servers/{server['id']}/tools/call", json={
+            "tool_name": "search", "arguments": {"query": "AIOS test"},
+            "approval_id": approval["id"], "request_id": request["id"],
+        })
+        assert executed.status_code == 200
+        assert executed.json()["result"]["content"][0]["text"] == "ok"
+        assert calls == [(server["id"], "search", {"query": "AIOS test"})]
+        final_request = client.get("/mcp/tool-requests").json()[0]
+        assert final_request["status"] == "executed"
+        assert final_request["result"]["result"]["content"][0]["text"] == "ok"
+        replay = client.post(f"/mcp/servers/{server['id']}/tools/call", json={
+            "tool_name": "search", "arguments": {"query": "AIOS test"},
+            "approval_id": approval["id"], "request_id": request["id"],
+        })
+        assert replay.status_code == 409
+        assert len(calls) == 1
