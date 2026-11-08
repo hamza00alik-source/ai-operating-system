@@ -110,8 +110,9 @@ def schedule_ready_steps(*, limit: int = 20) -> dict:
             step["status"] in {"completed", "blocked"} for step in current_run["steps"]
         )
         manager_reviews_finished = all(plan["status"] != "delegated" for plan in plans)
+        auto_ceo_review = os.getenv("AI_OS_AUTO_CEO_REVIEW_ENABLED", "true").strip().lower() == "true"
         if (
-            all_steps_terminal and manager_reviews_finished
+            auto_ceo_review and all_steps_terminal and manager_reviews_finished
             and len(scheduled) + len(manager_reviews) + len(ceo_reviews) < limit
         ):
             job = enqueue_job(JobCreate(
