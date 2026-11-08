@@ -3,6 +3,8 @@
 Adapters are registered by trusted application startup code. They never perform
 publishing, writes, purchases, customer messaging, or payment actions.
 """
+import asyncio
+
 from ai_os.action_gateway import register_agent_tool_adapter
 from ai_os.free_research import collect_release_feed_candidates
 from ai_os.knowledge import retrieve_accepted_knowledge
@@ -59,6 +61,48 @@ def _store_order_statuses(parameters: dict) -> dict:
             "customer_personal_data_included": False}
 
 
+def _mcp_read(parameters: dict) -> dict:
+    """Call one explicitly owner-mapped MCP tool through the read-only broker."""
+    mapping_id = parameters.get("mapping_id")
+    arguments = parameters.get("arguments", {})
+    if not isinstance(mapping_id, str) or not mapping_id or len(mapping_id) > 120:
+        raise ValueError("mapping_id must identify an owner-approved MCP mapping.")
+    if not isinstance(arguments, dict):
+        raise ValueError("arguments must be a JSON object.")
+    from ai_os.mcp_broker import (
+        MCPBrokerError, get_mcp_tool_mapping, get_discovered_tool,
+        validate_mcp_tool_arguments,
+    )
+    from ai_os.mcp_client import MCPDiscoveryError, call_mcp_read_only_tool
+
+    mapping = get_mcp_tool_mapping(mapping_id)
+    if mapping is None or not mapping["enabled"] or mapping["access_mode"] != "read_only":
+        raise ValueError("MCP mapping is missing, disabled, or not read-only.")
+    discovered = get_discovered_tool(mapping["endpoint_id"], mapping["tool_name"])
+    if discovered is None:
+        raise ValueError("MCP tool metadata is missing; owner must rediscover and review it.")
+    validate_mcp_tool_arguments(discovered["input_schema"], arguments)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise ValueError("MCP read adapter must run in the supervised synchronous worker.")
+    try:
+        result = asyncio.run(call_mcp_read_only_tool(
+            mapping["endpoint_id"], mapping["tool_name"], arguments,
+            expected_schema=discovered["input_schema"],
+        ))
+    except (MCPBrokerError, MCPDiscoveryError) as exc:
+        raise ValueError(str(exc)) from exc
+    return {
+        "mapping_id": mapping_id,
+        "tool_name": mapping["tool_name"],
+        "read_only_mapping": True,
+        "result": result,
+    }
+
+
 def register_builtin_agent_tools() -> None:
     """Idempotently register only the built-in bounded read-only adapters."""
     register_agent_tool_adapter(
@@ -76,4 +120,8 @@ def register_builtin_agent_tools() -> None:
     register_agent_tool_adapter(
         "store.orders.read", capability="tool.store.read",
         adapter=_store_order_statuses,
+    )
+    register_agent_tool_adapter(
+        "mcp.read", capability="tool.mcp.read",
+        adapter=_mcp_read,
     )
