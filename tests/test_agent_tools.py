@@ -242,14 +242,14 @@ def test_specialist_prompt_includes_only_owner_approved_mcp_mappings(agent_tools
     _grant("research-synthesist", "tool.mcp.read")
     monkeypatch.setenv("AI_OS_AGENT_TOOL_CALLS_ENABLED", "true")
     prompts = []
-    monkeypatch.setattr(
-        agent_runtime, "generate_json",
-        lambda system, prompt: (
-            prompts.append(prompt) or
-            ({"status": "completed", "summary": "Done", "evidence": [], "blockers": []},
-             {"provider": "test"}),
-        ),
-    )
+    def fake_generate(system, prompt):
+        prompts.append(prompt)
+        return (
+            {"status": "completed", "summary": "Done", "evidence": [], "blockers": []},
+            {"provider": "test"},
+        )
+
+    monkeypatch.setattr(agent_runtime, "generate_json", fake_generate)
     agent_runtime._generate_specialist_response("research-synthesist", "system", "task")
     assert mapping["mapping_id"] in prompts[0]
     assert "Search approved public docs" in prompts[0]
