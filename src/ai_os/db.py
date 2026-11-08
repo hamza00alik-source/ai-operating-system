@@ -53,6 +53,15 @@ def initialize_database() -> None:
             status TEXT NOT NULL, stars INTEGER NOT NULL DEFAULT 0,
             discovered_at TEXT NOT NULL, evidence TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id TEXT PRIMARY KEY, agent_type TEXT NOT NULL,
+            goal TEXT NOT NULL, provider TEXT NOT NULL, model TEXT,
+            status TEXT NOT NULL, output TEXT NOT NULL DEFAULT '',
+            error TEXT, latency_ms INTEGER,
+            created_at TEXT NOT NULL, finished_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_created
+            ON agent_runs(created_at DESC);
         """)
         # Additive migration for databases created before worker leases existed.
         columns = {row[1] for row in connection.execute("PRAGMA table_info(discovery_scans)")}
