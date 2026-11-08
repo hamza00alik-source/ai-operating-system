@@ -72,3 +72,38 @@ Store the generated value as `AI_OS_CREDENTIAL_ENCRYPTION_KEY` in the hosting pl
 - Production credential submission requires HTTPS. The application owner must also configure TLS correctly at the reverse proxy.
 - Remote MCP discovery can now resolve a vault reference containing `{"access_token":"..."}` and send it as an HTTPS `Authorization: Bearer` header. Tokens remain server-side and are not returned to the browser.
 - This is static bearer-token authentication only. OAuth 2.1 authorization-code flow, protected-resource metadata discovery, issuer validation, audience/resource binding, refresh tokens, and scoped consent are not implemented yet. A stored token is not proof of a working provider connection.
+
+
+## Owner-approved read-only tool broker
+
+The control plane now persists discovered MCP tool metadata and exposes a
+narrow execution broker:
+
+- `GET /control-plane/mcp/tools` lists persisted discovery results.
+- `POST /control-plane/mcp/mappings` requires explicit
+  `owner_confirmed_read_only: true` and a tool previously discovered from an
+  owner-enabled endpoint.
+- `GET /control-plane/mcp/mappings` lists approved mappings.
+- `PATCH /control-plane/mcp/mappings/{mapping_id}` pauses or resumes a mapping.
+- `POST /control-plane/mcp/mappings/{mapping_id}/execute` requires an enabled
+  agent with an explicit `tool.mcp.read` capability grant.
+
+This first broker is deliberately read-only. It validates the JSON argument
+object against the discovered schema, re-fetches the remote tool list before
+each call and blocks execution if the schema has changed since approval.
+Only text results are returned; image, binary and embedded resource content is
+rejected. Inputs and outputs are size-limited and execution is time-limited.
+No generic write-capable tool execution is exposed. Publishing, customer
+messaging, payments, refunds, spending and deployment continue to use separate
+owner-approval workflows.
+
+Owner confirmation is a trust decision, not proof that a remote tool is
+actually side-effect-free. Review the provider's documentation and tool
+description before mapping. A malicious or compromised remote server can
+still misrepresent its behavior; do not approve a tool as read-only unless
+that risk is acceptable.
+
+OAuth 2.1 user authorization, token refresh, and agent runtime integration with
+this broker remain separate implementation tasks. Static bearer credentials
+are the only remote MCP authentication mode currently wired to discovery and
+the broker.
