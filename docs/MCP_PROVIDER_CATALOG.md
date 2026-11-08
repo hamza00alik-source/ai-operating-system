@@ -26,6 +26,7 @@ Developer platforms (GitHub, GitLab, Git); project management (Linear, Jira, Asa
 ## API
 
 - `GET /integrations/mcp/providers`: returns the curated provider catalogue and safe defaults.
+- `GET /integrations/mcp/registry/search?q=filesystem&limit=10`: searches the official registry using `version=latest`, bounded to 25 results and an 8-second timeout. It returns a minimal metadata projection; results are labelled unverified, never installable, and never executable. Redirects are not followed and oversized responses are rejected.
 - Existing endpoint discovery remains owner-triggered and allowlist-protected. Discovery results remain untrusted and non-executable.
 
 ## OpenCompany MCP server
