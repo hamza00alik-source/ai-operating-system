@@ -108,6 +108,31 @@ tool. When `AI_OS_AGENT_TOOL_CALLS_ENABLED=true` and the agent has an explicit
 `tool.mcp.read` grant, the model receives only that agent's approved mapping
 catalog and may request bounded read-only calls. The default remains disabled.
 OAuth 2.1 user authorization, token refresh, and public remote hosting of the
-OpenCompany MCP server remain separate implementation tasks. Static bearer
-credentials are the only remote MCP authentication mode currently wired to
-discovery and the broker.
+OpenCompany MCP server remain separate implementation tasks. Remote MCP authentication now supports static bearer tokens and OAuth 2.1
+client-credentials (machine-to-machine) grants through the MCP SDK. OAuth issuer
+hosts must be separately allowlisted; issuer validation and token acquisition
+are delegated to the SDK. M2M tokens are held in memory for the connection and
+are not persisted by AIOS. User authorization-code/PKCE consent, durable token
+refresh storage, and CIMD are not yet wired into the dashboard.
+
+
+### OAuth machine-to-machine credential format
+
+Store this JSON in the encrypted credential vault and select it on the MCP
+endpoint:
+
+```json
+{
+  "client_id": "provider-issued-client-id",
+  "client_secret": "provider-issued-client-secret",
+  "issuer": "https://auth.provider.example/",
+  "scope": "files:read"
+}
+```
+
+The optional `token_endpoint_auth_method` may be `client_secret_basic` (default)
+or `client_secret_post`. Add both the MCP hostname and OAuth issuer hostname
+to `AI_OS_MCP_ALLOWED_HOSTS`. The issuer must resolve to public IP addresses
+and use HTTPS. Do not put client secrets in endpoint URLs, source files, or
+chat. This mode is for providers that explicitly support the client-credentials
+grant; it does not replace interactive user consent for account-scoped APIs.
