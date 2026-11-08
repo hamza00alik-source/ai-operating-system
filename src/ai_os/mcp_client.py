@@ -132,12 +132,12 @@ def _oauth_client_auth(endpoint: dict, server_url: str):
     auth_method = secret.get("token_endpoint_auth_method", "client_secret_basic")
     if not all(isinstance(value, str) and value.strip() for value in (client_id, client_secret, issuer)):
         raise MCPDiscoveryError("OAuth credential requires non-empty client_id, client_secret and issuer.")
+    if not isinstance(scope, str):
+        raise MCPDiscoveryError("OAuth scope must be a space-separated string.")
     if len(client_id) > 512 or len(client_secret) > 8192 or len(scope) > 1000:
         raise MCPDiscoveryError("OAuth client credential fields exceed their safety limits.")
     if any(ord(char) < 32 or ord(char) == 127 for char in client_id + client_secret + scope):
         raise MCPDiscoveryError("OAuth client credential contains control characters.")
-    if not isinstance(scope, str):
-        raise MCPDiscoveryError("OAuth scope must be a space-separated string.")
     if auth_method not in {"client_secret_basic", "client_secret_post"}:
         raise MCPDiscoveryError("Unsupported OAuth token endpoint authentication method.")
     # The authorization server is a separate network destination. It must be
