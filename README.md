@@ -27,6 +27,16 @@ uvicorn ai_os.api:app --reload
 
 Open http://127.0.0.1:8000/docs.
 
+To process company runs continuously, start the worker in a second terminal
+using the same environment and database:
+
+```bash
+python -m ai_os.worker_service
+```
+
+For a single persistent deployment, use the Docker Compose API/worker pair
+described below rather than starting only the API.
+
 Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [docs/OWNER_DASHBOARD.md](docs/OWNER_DASHBOARD.md) for dashboard behavior, data definitions, security, and limitations. Enter the configured `AI_OS_API_TOKEN`; the dashboard reads agent, run, job, approval, runtime, and audit data from the protected API. The deployment key may be supplied as `AI_OS_API_KEY` for compatibility; `AI_OS_API_TOKEN` takes precedence when both are set. The dashboard shell itself is public, but its data APIs still require owner authentication.
 
 ## Hosting preparation
