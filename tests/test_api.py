@@ -124,3 +124,33 @@ def test_audit_pagination_uses_exclusive_cursor():
         second_page = client.get(f"/audit/events?limit=1&before_id={first_page[0]['id']}").json()
         assert len(second_page) == 1
         assert second_page[0]["id"] < first_page[0]["id"]
+
+
+def test_audit_events_are_immutable_and_mcp_changes_are_recorded():
+    import sqlite3
+    from ai_os.db import connect
+
+    with TestClient(app) as client:
+        server = client.post("/mcp/servers", json={
+            "name": "Audited MCP", "endpoint": "https://audit-mcp.example.com/mcp"
+        }).json()
+        client.post(f"/mcp/servers/{server['id']}/enabled?enabled=true")
+        events = client.get("/audit/events").json()
+        types = [event["event_type"] for event in events]
+        assert "mcp_server.registered" in types
+        assert "mcp_server.enabled" in types
+
+        with connect() as db:
+            event_id = db.execute("SELECT id FROM audit_events ORDER BY id DESC LIMIT 1").fetchone()["id"]
+            try:
+                db.execute("UPDATE audit_events SET event_type='tampered' WHERE id=?", (event_id,))
+            except sqlite3.IntegrityError as exc:
+                assert "immutable" in str(exc)
+            else:
+                raise AssertionError("Audit update should be rejected")
+            try:
+                db.execute("DELETE FROM audit_events WHERE id=?", (event_id,))
+            except sqlite3.IntegrityError as exc:
+                assert "immutable" in str(exc)
+            else:
+                raise AssertionError("Audit deletion should be rejected")
