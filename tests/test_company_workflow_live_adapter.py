@@ -87,12 +87,19 @@ def test_company_workflow_uses_model_adapter_and_passes_dependency_handoff(monke
         assert second.status_code == 200, second.text
         assert second.json()["job"]["status"] == "completed"
 
+        # The next worker cycle automatically schedules and executes the CEO review.
+        third = client.post("/worker/run-once")
+        assert third.status_code == 200, third.text
+        assert third.json()["job"]["status"] == "completed"
+        assert third.json()["job"]["job_type"] == "review_company_run"
+
         final = client.get(f"/company-runs/{run_id}").json()
 
-    assert len(requests) == 2
-    assert requests[0]["model"] == "integration-test-model"
-    assert requests[1]["model"] == "integration-test-model"
+    assert len(requests) == 3
+    assert all(request["model"] == "integration-test-model" for request in requests)
     assert "Adapter-backed specialist report 1" in requests[1]["messages"][1]["content"]
+    assert "Adapter-backed specialist report 1" in requests[2]["messages"][1]["content"]
+    assert "Adapter-backed specialist report 2" in requests[2]["messages"][1]["content"]
     assert final["status"] == "completed"
     assert [step["status"] for step in final["steps"]] == ["completed", "completed"]
     assert final["steps"][1]["report"]["reported_to"] == "company-orchestrator"
