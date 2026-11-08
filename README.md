@@ -50,6 +50,21 @@ python -m ai_os.discovery_worker
 
 The worker searches public GitHub repository metadata. Set `GITHUB_TOKEN` as a private environment variable to use authenticated GitHub API limits; never commit it. Without a token, GitHub documents a lower unauthenticated limit. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
 
+## Guarded live LLM gateway (new, requires owner configuration)
+
+The API now exposes a provider-independent gateway:
+- `GET /llm/providers` — provider configuration state (never returns secrets).
+- `POST /llm/test` — sends a real small prompt and reports the returned text and latency.
+- `POST /llm/run` — sends a user prompt to the selected provider.
+
+The Owner Dashboard includes provider status, a live connection test, and a real inference panel. Supported adapter protocols are Gemini, Cloudflare Workers AI, and OpenAI-compatible chat completions (including compatible providers such as Groq and Mistral when configured with their official base URL).
+
+**Fail-closed cost protection:** no provider is eligible by default. Configure the provider base URL, model ID, and secret as private server environment variables, then set its `*_FREE_CONFIRMED=true` only after checking the provider's current plan, model availability, quota, and billing settings. This flag is an owner assertion, not an automated guarantee that the provider will never bill. Do not attach a payment method or enable paid billing. Provider quotas can still be exhausted. The gateway never silently switches to a paid model.
+
+Secrets are not stored in SQLite, returned by status endpoints, or meant to be pasted into the dashboard/chat. Add them only through the hosting environment-variable panel. If no provider is configured, live inference correctly remains unavailable.
+
+See `.env.example` for the environment-variable names. The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner, MCP execution runtime, or background agent workforce.
+
 ## Hosting
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
 
