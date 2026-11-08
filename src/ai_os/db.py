@@ -20,6 +20,7 @@ def _database_path() -> str:
 def connect() -> sqlite3.Connection:
     connection = sqlite3.connect(_database_path(), check_same_thread=False)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
     return connection
 
 
@@ -42,62 +43,52 @@ def initialize_database() -> None:
         connection.executescript("""
         CREATE TABLE IF NOT EXISTS agent_steps (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id TEXT NOT NULL,
-            step_key TEXT NOT NULL,
-            agent_name TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'running',
-            prompt TEXT NOT NULL,
-            output TEXT,
-            error TEXT,
-            worker_id TEXT,
-            started_at TEXT NOT NULL,
-            finished_at TEXT,
-            UNIQUE(task_id, step_key),
+            task_id TEXT NOT NULL, step_key TEXT NOT NULL, agent_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running', prompt TEXT NOT NULL,
+            output TEXT, error TEXT, worker_id TEXT, started_at TEXT NOT NULL,
+            finished_at TEXT, UNIQUE(task_id, step_key),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
         CREATE TABLE IF NOT EXISTS agent_memory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_id TEXT NOT NULL,
-            memory_key TEXT NOT NULL,
-            source_agent TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            UNIQUE(task_id, memory_key),
+            id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
+            memory_key TEXT NOT NULL, source_agent TEXT NOT NULL, content TEXT NOT NULL,
+            created_at TEXT NOT NULL, UNIQUE(task_id, memory_key),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
         CREATE TABLE IF NOT EXISTS mcp_servers (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            endpoint TEXT NOT NULL UNIQUE,
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE,
             transport TEXT NOT NULL DEFAULT 'streamable_http',
             credential_env_json TEXT NOT NULL DEFAULT '[]',
             capabilities_json TEXT NOT NULL DEFAULT '[]',
-            enabled INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            actor_id TEXT,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            details_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_events_created
+            ON audit_events(created_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_events_resource
+            ON audit_events(resource_type, resource_id, id DESC);
         """)
-        # Additive migrations keep existing SQLite installations compatible.
-        task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
         approval_columns = {row["name"] for row in connection.execute("PRAGMA table_info(approvals)")}
         for name, sql_type in (
-            ("actor_id", "TEXT"),
-            ("resource_id", "TEXT"),
-            ("action_payload_json", "TEXT"),
-            ("action_fingerprint", "TEXT"),
-            ("expires_at", "TEXT"),
-            ("consumed_at", "TEXT"),
+            ("actor_id", "TEXT"), ("resource_id", "TEXT"),
+            ("action_payload_json", "TEXT"), ("action_fingerprint", "TEXT"),
+            ("expires_at", "TEXT"), ("consumed_at", "TEXT"),
         ):
             if name not in approval_columns:
                 connection.execute(f"ALTER TABLE approvals ADD COLUMN {name} {sql_type}")
-
+        task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
         for name, sql_type in (
-            ("worker_id", "TEXT"),
-            ("started_at", "TEXT"),
-            ("finished_at", "TEXT"),
-            ("result", "TEXT"),
-            ("error", "TEXT"),
-            ("lease_expires_at", "TEXT"),
+            ("worker_id", "TEXT"), ("started_at", "TEXT"), ("finished_at", "TEXT"),
+            ("result", "TEXT"), ("error", "TEXT"), ("lease_expires_at", "TEXT"),
         ):
             if name not in task_columns:
                 connection.execute(f"ALTER TABLE tasks ADD COLUMN {name} {sql_type}")
