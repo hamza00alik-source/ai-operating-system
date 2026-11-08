@@ -8,6 +8,14 @@ from ai_os.execution import mark_company_step_blocked
 from ai_os.queue import claim_next_job, fail_job, finish_job, renew_job_lease
 from ai_os.work_packets import build_work_packet
 from ai_os.model_adapter import ModelQuotaExceeded
+from ai_os.ceo_review import review_company_run
+
+
+def _review_company_run(payload: dict) -> dict:
+    run_id = payload.get("run_id")
+    if not isinstance(run_id, str):
+        raise ValueError("review_company_run requires run_id")
+    return review_company_run(run_id)
 
 
 def _review_department_plan(payload: dict) -> dict:
@@ -27,6 +35,7 @@ HANDLERS = {
     "build_work_packet": _build_work_packet,
     "execute_company_step": execute_company_step,
     "review_department_plan": _review_department_plan,
+    "review_company_run": _review_company_run,
 }
 
 
@@ -70,6 +79,7 @@ def run_once(worker_id: str | None = None) -> dict:
         notices = {
             "execute_company_step": "Specialist model task completed; no external action was attempted.",
             "review_department_plan": "Department manager review completed and recorded for the CEO; no external action was attempted.",
+            "review_company_run": "CEO review completed; any proposed draft actions remain pending owner approval.",
             "build_work_packet": "Work packet completed locally; no model or external service was called.",
         }
         notice = notices.get(job["job_type"], "Job completed safely.")
