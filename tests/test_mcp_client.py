@@ -193,3 +193,24 @@ def test_mcp_oauth_client_credentials_rejects_bad_scope_type(monkeypatch):
             {"credential_ref": "vault:credential-123"},
             "https://mcp.example.org/mcp",
         )
+
+
+
+def test_outbound_oauth_request_guard_checks_allowlisted_https_host(monkeypatch):
+    seen = []
+    monkeypatch.setattr(mcp_client, "_validate_destination", lambda url: seen.append(url) or url)
+    asyncio.run(mcp_client._guard_outbound_request(
+        SimpleNamespace(url="https://auth.example.org/oauth/token")
+    ))
+    assert seen == ["https://auth.example.org/oauth/token"]
+
+
+def test_outbound_oauth_request_guard_blocks_unallowlisted_destination(monkeypatch):
+    monkeypatch.setattr(
+        mcp_client, "_validate_destination",
+        lambda url: (_ for _ in ()).throw(mcp_client.MCPDiscoveryError("not allowlisted")),
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="blocked by the host allowlist"):
+        asyncio.run(mcp_client._guard_outbound_request(
+            SimpleNamespace(url="https://evil.example.org/token")
+        ))
