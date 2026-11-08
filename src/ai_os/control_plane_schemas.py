@@ -89,3 +89,17 @@ class CapabilityEvaluate(BaseModel):
 class EndpointEnableUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
+
+
+
+class MCPToolMappingCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint_id: str = Field(min_length=1, max_length=120)
+    tool_name: str = Field(min_length=1, max_length=120)
+    owner_confirmed_read_only: bool
+
+
+class MCPToolExecute(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(min_length=1, max_length=120)
+    arguments: dict = Field(default_factory=dict)
