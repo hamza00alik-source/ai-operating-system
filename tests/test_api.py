@@ -192,3 +192,14 @@ def test_visual_workforce_snapshot_uses_verified_worker_presence_and_redacts_pro
         assert "prompt" not in researcher
         assert "output" not in researcher
         assert any(item["department"] == "research" for item in snapshot["departments"])
+
+
+
+def test_workforce_dashboard_is_served_without_exposing_api_credentials():
+    with TestClient(app) as client:
+        response = client.get("/workforce")
+        assert response.status_code == 200
+        assert "Workforce overview" in response.text
+        assert "X-API-Key" in response.text
+        assert "localStorage" not in response.text
+        assert client.get("/visual-workforce").status_code == 200

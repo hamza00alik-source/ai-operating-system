@@ -1,7 +1,9 @@
 """FastAPI application."""
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from ai_os.agent_runtime import get_task_memory, list_task_steps
 from ai_os.auth import require_api_key
@@ -34,6 +36,13 @@ app = FastAPI(
     description="Human-supervised AI company workflow foundation.",
     lifespan=lifespan,
 )
+
+
+@app.get("/workforce", include_in_schema=False)
+def workforce_dashboard():
+    """Serve the static mobile workforce view; data remains behind API-key auth."""
+    page = Path(__file__).parent / "static" / "workforce.html"
+    return FileResponse(page, media_type="text/html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/health")

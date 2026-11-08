@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>AIOS · Workforce</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--line:#26364b;--muted:#9aabc0;--ink:#edf4fc;--accent:#76b7ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0%,#1a3150 0,transparent 45%),var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{width:min(100% - 28px,920px);margin:0 auto;padding:28px 0 48px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.eyebrow{color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{font-size:clamp(25px,6vw,38px);line-height:1.12;margin:6px 0}p{color:var(--muted);margin:6px 0}
+.panel,.agent,.dept{background:linear-gradient(145deg,#162337,#101a2a);border:1px solid var(--line);border-radius:16px}
+.panel{padding:16px;margin:22px 0}.auth{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}.auth input{flex:1;min-width:190px}
+input,button{font:inherit;border-radius:10px;padding:11px 13px;border:1px solid #344a64;background:#0b1524;color:var(--ink)}button{background:#245b91;border-color:#367ab7;font-weight:650;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:#8997a8;display:inline-block}.dot.ok{background:#45d49a}.dot.err{background:#ff7d7d}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.stat{padding:14px;background:#111e30;border:1px solid var(--line);border-radius:14px}.stat strong{display:block;font-size:26px}.stat span{color:var(--muted);font-size:12px}
+h2{font-size:17px;margin:24px 0 10px}.agents{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.agent{padding:15px}.agenthead{display:flex;align-items:center;gap:12px}.avatar{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:#203b59;color:#b9dcff;font-size:19px;font-weight:750}.agent h3{font-size:15px;margin:0}.agent small{color:var(--muted)}.state{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:99px;padding:4px 9px;font-size:12px;margin-top:14px;text-transform:capitalize}.state.working{color:#72d9ad}.state.attention{color:#ffb36e}.state.completed{color:#9cc5ff}.state.unknown{color:#b5c0ce}
+.depts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.dept{padding:13px}.dept strong{display:block}.dept span{font-size:12px;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin-top:22px}.hidden{display:none!important}
+@media(max-width:480px){main{width:min(100% - 20px,920px);padding-top:20px}.stats{gap:7px}.stat{padding:11px}.stat strong{font-size:22px}.auth button{width:100%}}
+</style>
+</head>
+<body><main>
+<header class="top"><div><div class="eyebrow">AI Operating System</div><h1>Workforce overview</h1><p>Verified workflow presence · read-only operations view</p></div><div class="meta"><span class="dot" id="connection-dot"></span><span id="connection">Not connected</span></div></header>
+<section class="panel" aria-label="Secure connection"><strong>Connect to your AIOS API</strong><p>Enter your owner API key. It stays in this page's memory and is not saved in browser storage.</p><div class="auth"><input id="api-key" type="password" autocomplete="off" placeholder="AIOS API key (leave blank in local development)" aria-label="AIOS API key"><button id="connect" type="button">Connect</button><button id="refresh" type="button">Refresh</button></div><p id="message" role="status" aria-live="polite"></p></section>
+<section class="stats" aria-label="Workforce counts"><div class="stat"><strong id="working-count">—</strong><span>Working (verified)</span></div><div class="stat"><strong id="attention-count">—</strong><span>Needs attention</span></div><div class="stat"><strong id="unknown-count">—</strong><span>Unknown / unverified</span></div></section>
+<h2>Workflow roles</h2><section class="agents" id="agents" aria-live="polite"><p>Connect to load verified role status.</p></section>
+<h2>Departments</h2><section class="depts" id="departments"><p>No department data loaded.</p></section>
+<p class="note">This view currently represents three persisted workflow role slots, not 283 independent agents. It does not start work, approve actions, or contact external services. Missing evidence is shown as unknown—not idle or online.</p>
+</main>
+<script>
+(() => {
+ let apiKey = "";
+ let pollHandle = null;
+ const el = id => document.getElementById(id);
+ const setMessage = (message, bad=false) => { el("message").textContent=message; el("connection").textContent=bad?"Connection error":"Connected"; el("connection-dot").className="dot "+(bad?"err":"ok"); };
+ const safeDate = value => { if(!value)return "No verified timestamp"; const d=new Date(value); return Number.isNaN(d.getTime())?"Timestamp unavailable":d.toLocaleString(); };
+ const make = (tag, cls, value) => { const node=document.createElement(tag); if(cls)node.className=cls; if(value!==undefined)node.textContent=value; return node; };
+ async function load() {
+   try {
+     const response=await fetch("/visual-workforce",{headers:apiKey?{"X-API-Key":apiKey}:{},cache:"no-store"});
+     if(!response.ok) throw new Error(response.status===401?"API key rejected or required":("API returned "+response.status));
+     const data=await response.json();
+     const agents=Array.isArray(data.agents)?data.agents:[];
+     el("working-count").textContent=agents.filter(a=>a.presence==="working").length;
+     el("attention-count").textContent=agents.filter(a=>a.presence==="attention").length;
+     el("unknown-count").textContent=agents.filter(a=>a.presence==="unknown").length;
+     const list=el("agents"); list.replaceChildren();
+     agents.forEach(agent=>{
+       const card=make("article","agent"),head=make("div","agenthead"),avatar=make("div","avatar",(agent.display_name||"?").slice(0,1).toUpperCase()),info=make("div","");
+       info.append(make("h3","",agent.display_name||"Unnamed role"),make("small","",agent.role_key||"Workflow role"));
+       head.append(avatar,info); card.append(head);
+       card.append(make("div","state "+(agent.presence||"unknown"),agent.presence||"unknown"));
+       card.append(make("p","",agent.department||"Department not recorded"));
+       card.append(make("small","",safeDate(agent.observed_at)));
+       if(Array.isArray(agent.active_task_ids)&&agent.active_task_ids.length) card.append(make("p","",agent.active_task_ids.length+" active task reference(s)"));
+       list.append(card);
+     });
+     const departments=el("departments"); departments.replaceChildren();
+     (data.departments||[]).forEach(dept=>{
+       const card=make("article","dept"); card.append(make("strong","",dept.department||"Unassigned"),make("span","",(dept.task_count||0)+" task(s)"));
+       const statuses=Object.entries(dept.by_status||{}).map(([key,val])=>key+": "+val).join(" · ");
+       card.append(make("p","",statuses||"No task status counts")); departments.append(card);
+     });
+     if(!departments.childElementCount)departments.append(make("p","","No department task records."));
+     setMessage("Snapshot updated "+safeDate(data.generated_at));
+   } catch(error) { setMessage(error.message||"Could not load workforce snapshot.",true); }
+ }
+ function connect(){apiKey=el("api-key").value.trim();load();if(pollHandle)clearInterval(pollHandle);pollHandle=setInterval(load,15000);}
+ el("connect").addEventListener("click",connect);
+ el("refresh").addEventListener("click",load);
+ el("api-key").addEventListener("keydown",event=>{if(event.key==="Enter")connect();});
+})();
+</script></body></html>
