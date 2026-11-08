@@ -232,3 +232,24 @@ def test_free_only_rejects_anonymous_ovh_endpoint_with_key_or_wrong_model(monkey
     _enable_ovh_anonymous_free_only(monkeypatch)
     monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://evil.example/v1")
     assert model_adapter.get_model_status()["enabled"] is False
+
+
+
+def test_anonymous_public_provider_enforces_minimum_request_interval(monkeypatch):
+    current = {"time": 100.0}
+    sleeps = []
+    monkeypatch.setattr(model_adapter, "_PUBLIC_MODEL_NEXT_ALLOWED", 0.0)
+    monkeypatch.setattr(model_adapter.time, "monotonic", lambda: current["time"])
+
+    def fake_sleep(seconds):
+        sleeps.append(seconds)
+        current["time"] += seconds
+
+    monkeypatch.setattr(model_adapter.time, "sleep", fake_sleep)
+    model_adapter._throttle_public_provider("ovhcloud-anonymous")
+    model_adapter._throttle_public_provider("ovhcloud-anonymous")
+
+    assert sleeps == [31.0]
+    assert model_adapter._PUBLIC_MODEL_NEXT_ALLOWED == 162.0
+    model_adapter._throttle_public_provider("another-provider")
+    assert sleeps == [31.0]
