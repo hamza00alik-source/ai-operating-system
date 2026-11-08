@@ -157,6 +157,11 @@ def _generate_specialist_response(agent_id: str, system_prompt: str,
             available_tools, ensure_ascii=False, separators=(",", ":")
         )
         if any(item["name"] == "mcp.read" for item in available_tools):
+            tool_context += (
+                "\nTo call mcp.read, set parameters to an object with exactly "
+                "mapping_id (one of the approved IDs below) and arguments "
+                "(an object matching that mapping's input_schema)."
+            )
             from ai_os.mcp_broker import get_discovered_tool, list_mcp_tool_mappings
             catalog = []
             catalog_bytes = 0
