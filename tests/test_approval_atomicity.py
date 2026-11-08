@@ -1,8 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
-import pytest
-
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision
 from ai_os.service import create_approval, decide_approval
