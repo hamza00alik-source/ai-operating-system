@@ -11,10 +11,14 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Role-based authorization and broader security review
 
 ## Phase 2 — Orchestration
-- [ ] Task dependencies and assignment
-- [ ] Agent interface and registry
-- [ ] Retry policy, timeouts, execution logs
-- [ ] Background worker and scheduler
+- [ ] Repair and test worker package (current worker service imports modules absent from the default-branch tree)
+- [ ] Task dependencies, assignment, leases, and cancellation
+- [ ] Agent interface, registry, typed inputs/outputs, and department routing
+- [ ] Retry policy, timeouts, concurrency limits, execution logs, and idempotency
+- [ ] Provider-neutral model adapter with zero-cost-first routing and hard cost ceilings
+- [ ] Central approval service enforced for every protected action
+- [ ] Optional LangGraph adapter after core queue/approval prerequisites pass (see [LangGraph decision](LANGGRAPH_ARCHITECTURE_DECISION.md))
+- [ ] Background worker and scheduler with restart/recovery tests
 
 ## Phase 3 — Memory and learning
 - [ ] Source-attributed company knowledge
@@ -23,7 +27,8 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Improvement proposals requiring human approval
 
 ## Phase 4 — Integrations
-- [ ] Provider-neutral LLM adapter
+- [ ] MCP server registry with allowlists, scoped credentials, timeouts, and audit logs
+- [ ] Provider and tool health checks; no automatic paid fallback
 - [ ] WooCommerce
 - [ ] Social adapters with mandatory approval
 - [ ] Email and support adapters
