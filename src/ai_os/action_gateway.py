@@ -238,3 +238,17 @@ def execute_agent_tool(agent_id: str, tool_name: str, parameters: dict) -> dict:
             {"capability": capability, "error_type": type(exc).__name__},
         )
         raise ActionGatewayError("Trusted agent tool adapter failed; inspect the audit trail.") from exc
+
+
+
+def list_available_agent_tools(agent_id: str) -> list[dict]:
+    """List only registered tools whose capability is currently granted to this agent."""
+    agent = get_effective_agent(agent_id)
+    if agent is None:
+        return []
+    available = []
+    for name, (capability, _) in sorted(_AGENT_TOOL_ADAPTERS.items()):
+        decision = evaluate_capability(agent_id, capability, agent.department)
+        if decision.get("allowed"):
+            available.append({"name": name, "capability": capability})
+    return available
