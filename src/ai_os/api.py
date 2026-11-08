@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException
 
 from ai_os.auth import require_api_key
+from ai_os.cascade import AllProvidersFailed, cascade_chat
+from ai_os.cascade_schemas import LLMChatRequest
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
 from ai_os.llm import load_providers, provider_status, test_provider
@@ -25,7 +27,6 @@ app = FastAPI(
     title="AI Operating System",
     version="0.1.0",
     description="Human-supervised AI company workflow foundation.",
-    lifespan=lifespan,
 )
 
 
@@ -55,6 +56,25 @@ async def post_llm_test(payload: LLMTestRequest):
     except RuntimeError as exc:
         status_code = 503 if str(exc).startswith("Missing API key") else 502
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@app.post("/llm/chat", dependencies=[Depends(require_api_key)])
+async def post_llm_chat(payload: LLMChatRequest):
+    try:
+        return await cascade_chat(
+            payload.prompt,
+            system=payload.system,
+            max_tokens=payload.max_tokens,
+            temperature=payload.temperature,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AllProvidersFailed as exc:
+        # Provider names and sanitized failure categories only; no keys or raw bodies.
+        raise HTTPException(status_code=502, detail={
+            "message": str(exc),
+            "failures": exc.failures,
+        }) from exc
 
 
 @app.post("/tasks", response_model=TaskOut, status_code=201, dependencies=[Depends(require_api_key)])
