@@ -62,7 +62,7 @@ async def cascade_chat(
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
         for provider in providers:
-            key = os.getenv(provider.api_key_env, "").strip()
+            key = os.getenv(provider.api_key_env, "").strip() if provider.api_key_env else ""
             url = f"{provider.base_url}/chat/completions"
             payload = {
                 "model": provider.model,
@@ -71,11 +71,10 @@ async def cascade_chat(
                 "max_tokens": max_tokens,
             }
             try:
-                response = await client.post(
-                    url,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json=payload,
-                )
+                headers = {"Content-Type": "application/json"}
+                if provider.auth_style != "none":
+                    headers["Authorization"] = f"Bearer {key}"
+                response = await client.post(url, headers=headers, json=payload)
                 if response.status_code >= 400:
                     # Do not expose provider response bodies; they can contain sensitive data.
                     failures.append({"provider": provider.name, "error": f"HTTP {response.status_code}"})
