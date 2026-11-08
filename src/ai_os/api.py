@@ -17,7 +17,7 @@ from ai_os.discovery import create_scan, list_scans, list_candidates, run_pendin
 from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
-from ai_os.llm_gateway import list_providers, generate, test_provider
+from ai_os.llm_gateway import list_providers, generate, generate_with_fallback, test_provider
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
 from ai_os.brain import brain_status, list_memories, review_memory
@@ -188,7 +188,7 @@ def post_llm_test(payload: ModelRunRequest):
 @app.post("/llm/run", dependencies=[Depends(require_api_key)])
 def post_llm_run(payload: ModelRunRequest):
     try:
-        return generate(payload.provider, payload.prompt)
+        return generate_with_fallback(payload.prompt) if payload.provider == "auto" else generate(payload.provider, payload.prompt)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
