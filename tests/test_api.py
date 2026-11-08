@@ -96,6 +96,38 @@ def test_discovery_status_reports_live_github_check_without_secret(monkeypatch):
     assert "authorization" not in payload["github"]
 
 
+def test_free_api_catalog_read_endpoint(monkeypatch):
+    from ai_os import api
+
+    monkeypatch.setattr(api, "list_free_api_catalog", lambda category=None: {
+        "provider_count": 1, "providers": [{"id": "sample"}],
+        "secondary_sources": [], "safety": "research leads only",
+    })
+    with TestClient(app) as client:
+        response = client.get("/discovery/provider-catalog")
+    assert response.status_code == 200
+    assert response.json()["provider_count"] == 1
+
+
+def test_free_api_catalog_sync_is_owner_controlled(monkeypatch):
+    from ai_os import api
+
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    monkeypatch.setattr(api, "sync_free_api_catalog", lambda: {
+        "imported": 79, "source": "IdoY12/awesome-free-ai-apis",
+        "important": "No provider was enabled.",
+    })
+    with TestClient(app) as client:
+        response = client.post(
+            "/discovery/provider-catalog/sync",
+            headers={"X-API-Key": "test-owner-key"},
+            json={},
+        )
+    assert response.status_code == 200
+    assert response.json()["imported"] == 79
+
+
 def test_discovery_scan_rejects_empty_categories():
     with TestClient(app) as client:
         response = client.post("/discovery/scans", json={"categories": []})
