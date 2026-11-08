@@ -177,3 +177,72 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
             "authentication does not implement OAuth authorization-code, refresh, or scopes."
         ),
     }
+
+
+
+async def call_mcp_read_only_tool(
+    endpoint_id: str, tool_name: str, arguments: dict,
+) -> dict:
+    """Call one mapped remote tool; caller must enforce owner mapping and capability."""
+    endpoint = _endpoint(endpoint_id)
+    url = _validate_destination(endpoint["base_url"])
+    headers = _authorization_headers(endpoint)
+    if not isinstance(arguments, dict):
+        raise MCPDiscoveryError("MCP tool arguments must be a JSON object.")
+    try:
+        encoded = json.dumps(arguments, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise MCPDiscoveryError("MCP tool arguments must be valid JSON.") from exc
+    if len(encoded.encode("utf-8")) > MAX_SCHEMA_BYTES:
+        raise MCPDiscoveryError("MCP tool arguments exceed the 32 KiB limit.")
+    try:
+        from mcp import Client
+        from mcp.client.streamable_http import streamable_http_client
+        import httpx2
+    except ImportError as exc:
+        raise MCPDiscoveryError("MCP SDK is not installed; install the optional [mcp] dependency.") from exc
+
+    try:
+        timeout = httpx2.Timeout(30.0, read=60.0)
+        async with httpx2.AsyncClient(
+            headers=headers, timeout=timeout, follow_redirects=False
+        ) as http_client:
+            transport = streamable_http_client(
+                url, http_client=http_client,
+                max_sse_event_size=MAX_SSE_EVENT_BYTES,
+            )
+            async with Client(transport) as client:
+                result = await asyncio.wait_for(
+                    client.call_tool(tool_name, arguments), timeout=45
+                )
+    except asyncio.TimeoutError as exc:
+        raise MCPDiscoveryError("MCP tool call timed out after 45 seconds.") from exc
+    except Exception as exc:
+        raise MCPDiscoveryError(
+            "MCP tool call failed. Check endpoint, TLS, authentication and tool schema."
+        ) from exc
+
+    if bool(getattr(result, "isError", False)):
+        raise MCPDiscoveryError("Remote MCP tool reported an error.")
+    content = []
+    for item in list(getattr(result, "content", []) or []):
+        item_type = getattr(item, "type", "")
+        if item_type != "text":
+            raise MCPDiscoveryError(
+                "Broker currently accepts text-only tool results; binary or embedded resources are blocked."
+            )
+        value = getattr(item, "text", "")
+        if not isinstance(value, str):
+            raise MCPDiscoveryError("Remote MCP tool returned an invalid text block.")
+        content.append(value[:16_000])
+    structured = getattr(result, "structuredContent", None)
+    response = {"content": content}
+    if structured is not None:
+        try:
+            json.dumps(structured, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise MCPDiscoveryError("Remote structured content is not valid JSON.") from exc
+        response["structured_content"] = structured
+    if len(json.dumps(response, ensure_ascii=False).encode("utf-8")) > 64 * 1024:
+        raise MCPDiscoveryError("Remote tool result exceeds the 64 KiB response limit.")
+    return response
