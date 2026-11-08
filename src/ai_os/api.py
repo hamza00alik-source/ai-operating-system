@@ -107,7 +107,16 @@ def models_providers():
     return list_providers()
 
 
-@app.get("/mcp/servers", dependencies=[Depends(require_api_key)])\ndef mcp_servers():\n    """List sanitized MCP connection manifests; does not connect or execute tools."""\n    try:\n        return list_mcp_servers()\n    except MCPRegistryError as exc:\n        raise HTTPException(status_code=422, detail=str(exc)) from exc\n\n\n@app.post("/models/test", dependencies=[Depends(require_api_key)])
+@app.get("/mcp/servers", dependencies=[Depends(require_api_key)])
+def mcp_servers():
+    """List sanitized MCP connection manifests; does not connect or execute tools."""
+    try:
+        return list_mcp_servers()
+    except MCPRegistryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/models/test", dependencies=[Depends(require_api_key)])
 def test_model(payload: ModelTestRequest):
     """Make one explicitly enabled model request; never auto-fallback to another provider."""
     try:
