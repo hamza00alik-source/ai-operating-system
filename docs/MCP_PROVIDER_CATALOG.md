@@ -103,7 +103,11 @@ description before mapping. A malicious or compromised remote server can
 still misrepresent its behavior; do not approve a tool as read-only unless
 that risk is acceptable.
 
-OAuth 2.1 user authorization, token refresh, and agent runtime integration with
-this broker remain separate implementation tasks. Static bearer credentials
-are the only remote MCP authentication mode currently wired to discovery and
-the broker.
+Agent runtime integration is now available through the registered `mcp.read`
+tool. When `AI_OS_AGENT_TOOL_CALLS_ENABLED=true` and the agent has an explicit
+`tool.mcp.read` grant, the model receives only that agent's approved mapping
+catalog and may request bounded read-only calls. The default remains disabled.
+OAuth 2.1 user authorization, token refresh, and public remote hosting of the
+OpenCompany MCP server remain separate implementation tasks. Static bearer
+credentials are the only remote MCP authentication mode currently wired to
+discovery and the broker.
