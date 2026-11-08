@@ -80,3 +80,9 @@ python -m ai_os.worker_service
 ```
 
 For a real run, ensure the API and worker share a persistent SQLite file and that the selected provider's current terms, quotas, and commercial-use rules have been reviewed.
+
+## MCP registry foundation
+
+`GET /mcp/servers` (protected by the AIOS API key) reports sanitized MCP server manifests supplied through `AI_OS_MCP_SERVERS_JSON`. The manifest supports HTTPS `streamable_http` and `sse` endpoints, optional credential *environment-variable names*, explicit tool allowlists, and disabled-by-default entries. Credential values are never returned; endpoints containing userinfo, query strings, or fragments are rejected.
+
+This is a registry and policy foundation only. It does not connect to MCP servers, discover remote tools, launch stdio processes, or execute tools. All future tool calls must remain approval-gated and must be implemented by a separate MCP client with per-tool authorization.
