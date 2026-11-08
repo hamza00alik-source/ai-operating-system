@@ -1,0 +1,48 @@
+# Background worker
+
+The worker is a separate process from the FastAPI web application.
+
+## Configuration
+
+Set these environment variables in the worker process only:
+
+| Variable | Purpose |
+|---|---|
+| `AI_OS_MODEL_ENABLED` | Must explicitly be `true` to permit model requests |
+| `AI_OS_MODEL_BASE_URL` | OpenAI-compatible API base URL, without `/chat/completions` |
+| `AI_OS_MODEL_NAME` | Model identifier accepted by the provider |
+| `AI_OS_MODEL_API_KEY` | Optional provider key; keep it secret |
+| `AI_OS_MODEL_PROVIDER` | Informational provider label |
+| `AI_OS_WORKER_POLL_SECONDS` | Poll interval, clamped to 1–60 seconds |
+| `AI_OS_AGENT_GRAPH_ENABLED` | Set to `true` for the three-agent workflow; defaults to `false` |
+| `AI_OS_DATABASE_URL` | Same persistent SQLite database used by the API |
+
+No provider is contacted by default. The worker exits before polling unless model execution is explicitly enabled and the base URL and model are configured.
+
+## Run
+
+```bash
+python -m ai_os.worker_service
+```
+
+Use a host process manager or platform worker service to restart the process after machine or process failure.
+
+## Current behavior and limits
+
+- Processes one queued task at a time. The opt-in three-agent graph makes three sequential model requests per task.
+- Uses an atomic SQLite write transaction to claim a task.
+- Persists task result, error, worker ID and timestamps.
+- Provider errors are not automatically retried to avoid duplicate or metered requests.
+- Claims have a 15-minute lease. Expired claims become `blocked` for manual review; there is no heartbeat or operator reconciliation endpoint yet.
+- Agent handoffs persist in `agent_steps` and task-scoped `agent_memory`; completed steps are reused on deliberate resume. Running/failed steps are not automatically retried.
+- The worker cannot publish content, spend money, contact customers or modify external systems.
+- API and worker must share the same persistent database.
+- Unit tests do not validate a live external model provider.
+
+## Approval and audit safeguards
+
+Approval requests bind the action, intended actor, target resource, structured payload and expiry. `consume_approval` atomically consumes a matching approved action but does not execute it. No external-action executor is connected yet.
+
+The API exposes protected `GET /audit/events`. Task and approval lifecycle events are inserted transactionally; MCP registry changes are also recorded. SQLite triggers reject ordinary updates/deletes to audit rows. This is not an external immutable compliance archive.
+
+The current API key authenticates one shared owner credential, not distinct human/agent principals. Approval `actor_id` remains caller-supplied metadata. Do not connect production credentials or external action executors until authenticated principals, per-tool approval enforcement, security review and durable backup are implemented.
