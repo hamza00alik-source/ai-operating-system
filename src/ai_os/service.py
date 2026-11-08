@@ -328,6 +328,25 @@ def record_mcp_tool_request_result(request_id: str, *, result: dict | None = Non
             return None
         _audit(db, f"mcp.tool_request.{status}", actor_id="owner",
                resource_type="mcp_tool_request", resource_id=request_id)
+        task_row = db.execute(
+            "SELECT task_id FROM mcp_tool_requests WHERE id=?", (request_id,)
+        ).fetchone()
+        if task_row and task_row["task_id"]:
+            if status == "executed":
+                db.execute(
+                    "UPDATE tasks SET status='queued',error=NULL,finished_at=NULL,worker_id=NULL,"
+                    "lease_expires_at=NULL WHERE id=? AND status='awaiting_approval'",
+                    (task_row["task_id"],),
+                )
+                _audit(db, "task.resumed_after_mcp", actor_id="owner",
+                       resource_type="task", resource_id=task_row["task_id"],
+                       details={"mcp_tool_request_id": request_id})
+            elif status == "failed":
+                db.execute(
+                    "UPDATE tasks SET status='blocked',error=?,finished_at=? "
+                    "WHERE id=? AND status='awaiting_approval'",
+                    (error or "MCP tool execution failed", now, task_row["task_id"]),
+                )
         row = db.execute("SELECT * FROM mcp_tool_requests WHERE id=?", (request_id,)).fetchone()
     return _mcp_request_dict(row)
 
