@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from cryptography.fernet import Fernet
 
 from ai_os import mcp_client
 
@@ -214,3 +215,40 @@ def test_outbound_oauth_request_guard_blocks_unallowlisted_destination(monkeypat
         asyncio.run(mcp_client._guard_outbound_request(
             SimpleNamespace(url="https://evil.example.org/token")
         ))
+
+
+
+def test_oauth_token_storage_persists_tokens_encrypted_in_vault(monkeypatch, tmp_path):
+    from mcp.shared.auth import OAuthToken
+    from ai_os.credential_vault import (
+        initialize_credential_vault, store_credential, resolve_credential, list_credentials,
+    )
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'mcp-oauth-vault.db'}")
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    initialize_credential_vault()
+    stored = store_credential(
+        provider_id="mcp-provider",
+        label="MCP OAuth client",
+        secret_type="oauth_client",
+        secret={
+            "client_id": "client-123",
+            "client_secret": "client-secret",
+            "issuer": "https://auth.example.org/",
+        },
+    )
+    storage = mcp_client._VaultOAuthTokenStorage(stored["credential_ref"])
+    token = OAuthToken(
+        access_token="persisted-oauth-access-token",
+        token_type="Bearer",
+        expires_in=3600,
+        scope="files:read",
+    )
+    asyncio.run(storage.set_tokens(token))
+    loaded = asyncio.run(storage.get_tokens())
+
+    assert loaded.access_token == "persisted-oauth-access-token"
+    assert loaded.scope == "files:read"
+    secret = resolve_credential(stored["credential_ref"])
+    assert secret["oauth_tokens"]["access_token"] == "persisted-oauth-access-token"
+    assert "persisted-oauth-access-token" not in str(list_credentials())
