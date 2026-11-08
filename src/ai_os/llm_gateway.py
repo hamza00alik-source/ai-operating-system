@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -118,6 +119,9 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
             if saved:
                 model, secret, _free = saved
                 base = PROVIDER_META[provider.key]["base_url"]
+    except sqlite3.OperationalError:
+        # Fresh test/local databases may not have run the vault migration yet.
+        pass
     except Exception as exc:
         raise RuntimeError("Could not load encrypted provider credentials.") from exc
     started = time.monotonic()
