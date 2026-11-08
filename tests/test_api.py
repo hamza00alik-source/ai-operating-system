@@ -384,9 +384,12 @@ def test_owner_dashboard_shell_is_available_but_data_api_remains_protected(monke
     monkeypatch.setenv("AI_OS_API_TOKEN", token)
     with TestClient(app) as client:
         page = client.get("/dashboard")
+        workforce = client.get("/workforce")
         denied = client.get("/agents")
         allowed = client.get("/agents", headers={"Authorization": "Bearer " + token})
     assert page.status_code == 200
+    assert workforce.status_code == 200
+    assert workforce.text == page.text
     assert "Owner dashboard" in page.text
     assert "Agent directory" in page.text
     assert denied.status_code == 401
