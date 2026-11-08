@@ -19,6 +19,7 @@ def _run_payload():
 def test_background_worker_executes_dependency_ordered_specialists(monkeypatch):
     monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_AUTO_CEO_REVIEW_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
     monkeypatch.setenv("AI_OS_MODEL_NAME", "free-compatible-test-model")
     calls = []
