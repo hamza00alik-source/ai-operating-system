@@ -48,6 +48,12 @@ def initialize_database() -> None:
             model TEXT NOT NULL, base_url TEXT NOT NULL,
             free_confirmed INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS owner_sessions (
+            token_hash TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS discovery_candidates (
             canonical_url TEXT PRIMARY KEY, full_name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL,
