@@ -55,6 +55,8 @@ def test_background_worker_executes_dependency_ordered_specialists(monkeypatch):
         final = client.get(f"/company-runs/{run_id}").json()
 
     assert len(calls) == 2
+    assert "Completed specialist report 1" in calls[1]
+    assert "DEPENDENCY HANDOFFS" in calls[1]
     assert final["status"] == "completed"
     assert [step["status"] for step in final["steps"]] == ["completed", "completed"]
     assert all(step["report"]["reported_to"] == "company-orchestrator" for step in final["steps"])
