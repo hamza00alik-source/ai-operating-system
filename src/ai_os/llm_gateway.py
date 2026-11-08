@@ -28,6 +28,8 @@ class Provider:
 PROVIDERS = (
     Provider("gemini", "Google Gemini", "AI_OS_GEMINI_BASE_URL", "AI_OS_GEMINI_MODEL",
              "AI_OS_GEMINI_API_KEY", "AI_OS_GEMINI_FREE_CONFIRMED", "gemini"),
+    Provider("openrouter", "OpenRouter", "AI_OS_OPENROUTER_BASE_URL", "AI_OS_OPENROUTER_MODEL",
+             "AI_OS_OPENROUTER_API_KEY", "AI_OS_OPENROUTER_FREE_CONFIRMED"),
     Provider("groq", "Groq", "AI_OS_GROQ_BASE_URL", "AI_OS_GROQ_MODEL",
              "AI_OS_GROQ_API_KEY", "AI_OS_GROQ_FREE_CONFIRMED"),
     Provider("mistral", "Mistral", "AI_OS_MISTRAL_BASE_URL", "AI_OS_MISTRAL_MODEL",
@@ -96,7 +98,7 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
 
 
 def generate(provider_id: str, prompt: str) -> dict[str, Any]:
-    provider, config = _resolve(provider_id)
+    provider, _ = _resolve(provider_id)
     base = os.getenv(provider.base_url_env, "").strip().rstrip("/")
     model = os.getenv(provider.model_env, "").strip()
     secret = os.getenv(provider.secret_env, "").strip()
@@ -109,29 +111,47 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
         candidates = data.get("candidates") or []
         parts = ((candidates[0].get("content") or {}).get("parts") or []) if candidates else []
         answer = "\n".join(str(p.get("text", "")) for p in parts).strip()
-        if not answer:
-            raise RuntimeError("Gemini returned no text content")
+        usage = data.get("usageMetadata") or {}
+        input_tokens = usage.get("promptTokenCount")
+        output_tokens = usage.get("candidatesTokenCount")
     elif provider.protocol == "cloudflare":
         url = f"{base}/{model}"
         data = _post(url, {"messages": [{"role": "user", "content": prompt}]},
                      {"Authorization": f"Bearer {secret}"}, timeout=45)
         answer = str(data.get("result", {}).get("response", "")).strip()
-        if not answer:
-            raise RuntimeError("Cloudflare returned no text content")
+        usage = data.get("result", {}).get("usage") or {}
+        input_tokens = usage.get("input_tokens")
+        output_tokens = usage.get("output_tokens")
     else:
         url = f"{base}/chat/completions"
+        headers = {"Authorization": f"Bearer {secret}"}
+        if provider.protocol == "openai" and provider.key == "openrouter":
+            headers.update({
+                "HTTP-Referer": os.getenv("AI_OS_OPENROUTER_REFERER", "https://github.com/hamza00alik-source/ai-operating-system"),
+                "X-Title": "AI Operating System",
+            })
         data = _post(url, {
             "model": model, "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2, "max_tokens": 512
-        }, {"Authorization": f"Bearer {secret}"}, timeout=45)
+        }, headers, timeout=45)
         choices = data.get("choices") or []
         answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
-        if not answer:
-            raise RuntimeError("Provider returned no text content")
+        usage = data.get("usage") or {}
+        input_tokens = usage.get("prompt_tokens")
+        output_tokens = usage.get("completion_tokens")
+
+    if not answer:
+        raise RuntimeError(f"{provider.label} returned no text content")
 
     return {
         "provider": provider.key, "model": model, "response": answer,
         "latency_ms": round((time.monotonic() - started) * 1000),
+        "usage": {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": usage.get("total_tokens") if isinstance(usage, dict) else None,
+            "reported_by_provider": bool(input_tokens is not None or output_tokens is not None),
+        },
         "cost_guard": "free-confirmed-by-owner; provider limits still apply",
         "live": True,
     }
