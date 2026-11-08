@@ -107,6 +107,12 @@ def initialize_database() -> None:
             review_updated_at TEXT
         );
         """)
+        # Backward-compatible migration for databases created before agent-run
+        # task linkage. CREATE TABLE IF NOT EXISTS does not alter an existing
+        # SQLite table, so older persistent volumes need an explicit migration.
+        agent_run_columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_runs)")}
+        if "task_id" not in agent_run_columns:
+            connection.execute("ALTER TABLE agent_runs ADD COLUMN task_id TEXT")
         # Backward-compatible migration for databases created before owner review.
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(discovery_candidates)")}
         if "review_state" not in columns:
