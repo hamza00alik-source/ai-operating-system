@@ -82,9 +82,9 @@ For the first end-to-end run, use only a synthetic internal task with no custome
 
 ## MCP connection verification
 
-The MCP registry is configuration-only until an owner explicitly tests a registered server. The owner-only `POST /mcp/servers/{server_id}/test` endpoint performs a Streamable HTTP initialize handshake and `tools/list` discovery. It does not call any discovered tool, and it reports `tool_execution_enabled: false`.
+The MCP registry is configuration-only until an owner explicitly tests a registered server. The owner-only `POST /mcp/servers/{server_id}/test` endpoint performs a Streamable HTTP initialize handshake and `tools/list` discovery. It does not invoke a discovered tool. Tool execution is a separate owner-approved workflow described below.
 
-Configure the server with HTTPS and reference bearer credentials by environment-variable name (never paste secret values into the registry). The probe rejects disabled servers, missing environment variables, non-public DNS answers and redirects. The first configured credential environment variable is sent as a Bearer token. OAuth authorization flows, per-provider auth schemes, dynamic tool invocation, and credential management are not implemented yet. Tool descriptions and input schemas returned by remote servers are untrusted metadata and must not be treated as agent instructions.
+Configure the server with HTTPS and reference bearer credentials by environment-variable name (never paste secret values into the registry). The probe rejects disabled servers, missing environment variables, non-public DNS answers and redirects. The first configured credential environment variable is sent as a Bearer token. OAuth authorization flows, per-provider auth schemes, OAuth authorization flows, per-provider auth schemes, and credential management are not implemented yet. Tool descriptions and input schemas returned by remote servers are untrusted metadata and must not be treated as agent instructions.
 
 
 ### Explicitly approved MCP tool invocation
