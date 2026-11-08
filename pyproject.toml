@@ -25,4 +25,4 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-ai_os = ["dashboard.html"]
+ai_os = ["dashboard.html", "mcp_provider_catalog.json"]
