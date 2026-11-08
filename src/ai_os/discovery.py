@@ -92,6 +92,11 @@ SECONDARY_CATALOG_ASSESSMENTS = [
 ]
 
 
+def _safe_https_url(value: object) -> str:
+    text = str(value or "").strip()
+    return text[:500] if text.startswith("https://") else ""
+
+
 def _fetch_catalog_json(url: str, max_bytes: int = 2_000_000) -> dict:
     request = Request(url, headers={
         "Accept": "application/json",
@@ -132,8 +137,8 @@ def sync_free_api_catalog() -> dict:
                 """INSERT INTO provider_catalog_entries
                 (source_id,provider_id,name,category,website,api_key_url,base_url,
                  free_tier_json,policy_json,confidence,last_verified,probe_json,
-                 status_json,source_url,synced_at,review_state)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pending')
+                 status_json,sources_json,source_url,synced_at,review_state)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pending')
                 ON CONFLICT(source_id,provider_id) DO UPDATE SET
                  name=excluded.name,category=excluded.category,website=excluded.website,
                  api_key_url=excluded.api_key_url,base_url=excluded.base_url,
@@ -143,15 +148,25 @@ def sync_free_api_catalog() -> dict:
                  source_url=excluded.source_url,synced_at=excluded.synced_at""",
                 (
                     source["source_id"], provider_id, name, category,
-                    str(item.get("website") or "")[:500],
-                    str(item.get("api_key_url") or "")[:500],
-                    str(item.get("base_url") or "")[:500],
+                    _safe_https_url(item.get("website")),
+                    _safe_https_url(item.get("api_key_url")),
+                    _safe_https_url(item.get("base_url")),
                     json.dumps(item.get("free_tier") or {}, ensure_ascii=False),
                     json.dumps(item.get("policy") or {}, ensure_ascii=False),
                     str(item.get("confidence") or "unknown")[:40],
                     str(item.get("last_verified") or "")[:40] or None,
-                    json.dumps(item.get("probe") or {}, ensure_ascii=False),
+                    json.dumps({
+                        **(item.get("probe") or {}),
+                        "docs_url": _safe_https_url((item.get("probe") or {}).get("docs_url")),
+                    }, ensure_ascii=False),
                     json.dumps(provider_status or {}, ensure_ascii=False),
+                    json.dumps([
+                        { "title": str(source_item.get("title") or "")[:200],
+                          "url": _safe_https_url(source_item.get("url")),
+                          "accessed": str(source_item.get("accessed") or "")[:40] }
+                        for source_item in (item.get("sources") or [])
+                        if isinstance(source_item, dict) and _safe_https_url(source_item.get("url"))
+                    ][:20], ensure_ascii=False),
                     source["source_url"], synced_at,
                 ),
             )
@@ -187,7 +202,7 @@ def list_free_api_catalog(category: str | None = None) -> dict:
     providers = []
     for row in rows:
         item = dict(row)
-        for field in ("free_tier_json", "policy_json", "probe_json", "status_json"):
+        for field in ("free_tier_json", "policy_json", "probe_json", "status_json", "sources_json"):
             item[field.removesuffix("_json")] = json.loads(item.pop(field) or "{}")
         providers.append(item)
     return {
