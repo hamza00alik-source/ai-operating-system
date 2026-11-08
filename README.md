@@ -42,11 +42,7 @@ The visual owner console at \`/owner\` can queue GitHub repository discovery sca
 - \`GET /discovery/scans\`
 - \`GET /discovery/candidates\`
 
-Run the separate discovery worker alongside the API (both processes must remain running):
-
-\`\`\`bash
-python -m ai_os.discovery_worker
-\`\`\`
+The production API starts the discovery polling worker in its FastAPI lifespan and uses the same persistent SQLite database. It retries after transient errors. This is currently a single-service worker design; multi-replica locking/leases still need hardening.
 
 The worker searches public GitHub repository metadata. Set \`GITHUB_TOKEN\` as a private environment variable to use authenticated GitHub API limits; never commit it. Without a token, GitHub documents a lower unauthenticated limit. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
 
@@ -65,7 +61,13 @@ The Owner Dashboard includes provider status, a live connection test, and a real
 
 Secrets are not stored in SQLite, returned by status endpoints, or meant to be pasted into the dashboard/chat. Add them only through the hosting environment-variable panel. If no provider is configured, live inference correctly remains unavailable. Provider token counts are returned only when the upstream API reports them; this release does not yet maintain a durable aggregate usage ledger.
 
-The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner, MCP execution runtime, or background agent workforce.
+The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner or MCP execution runtime.
+
+## Agency workforce catalog and owner console
+
+The Owner Console includes a catalog of 283 specialist definitions across 18 departments from the MIT-licensed \`hamza00alik-source/agency-agents\` repository, plus a 12-repository source inventory including the separate Automaton runtime reference and ten company/platform comparison repositories. These are source catalogs and architecture references, not 283 running processes. Each specialist prompt is inspectable from its source link. The current general-purpose agent execution runtime is still under development.
+
+The Owner Console supports a secure browser session: sign in once with \`AI_OS_API_KEY\`, then use the HttpOnly, Secure, SameSite=Strict session cookie for up to 14 days (or until logout/cookie clearing). The raw owner key is not saved in browser storage. API-key header authentication remains available for external clients.
 
 ## Hosting
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
