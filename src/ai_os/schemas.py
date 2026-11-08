@@ -18,6 +18,7 @@ class TaskOut(BaseModel):
     department: str
     status: TaskStatus
     created_at: datetime
+    assigned_agent: str | None = None
 
 class ApprovalCreate(BaseModel):
     task_id: str | None = None
@@ -35,3 +36,43 @@ class ApprovalOut(BaseModel):
 
 class ApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class AgentRegister(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=120)
+    role: str = Field(min_length=1, max_length=80)
+
+
+class AgentOut(BaseModel):
+    agent_id: str
+    name: str
+    role: str
+    status: Literal["active", "paused"] 
+    last_seen: datetime
+
+
+class MemoryCreate(BaseModel):
+    key: str = Field(min_length=1, max_length=160)
+    content: str = Field(min_length=1, max_length=10000)
+    source: str = Field(default="", max_length=500)
+    created_by: str = Field(min_length=1, max_length=100)
+
+
+class MemoryOut(BaseModel):
+    id: str
+    key: str
+    content: str
+    source: str
+    created_by: str
+    created_at: datetime
+
+
+class AuditEventOut(BaseModel):
+    id: str
+    event_type: str
+    actor_id: str
+    entity_type: str
+    entity_id: str
+    payload: dict
+    created_at: datetime
