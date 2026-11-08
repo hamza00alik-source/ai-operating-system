@@ -25,3 +25,34 @@ def test_scan_rejects_unknown_categories():
     initialize_database()
     with pytest.raises(ValueError):
         create_scan(["made-up-category"])
+
+
+def test_discovery_scan_claim_is_exclusive_and_expired_lease_recovers(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'queue.db'}")
+    initialize_database()
+    scan = create_scan(["agent-frameworks"])
+
+    from ai_os.discovery import _claim_scan
+    first = _claim_scan(worker_id="worker-a")
+    assert first is not None
+    assert first["id"] == scan["id"]
+    assert first["lease_owner"] == "worker-a"
+    assert _claim_scan(worker_id="worker-b") is None
+
+    from ai_os.db import connect
+    with connect() as db:
+        db.execute(
+            "UPDATE discovery_scans SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE id=?",
+            (scan["id"],),
+        )
+
+    recovered = _claim_scan(worker_id="worker-b")
+    assert recovered is not None
+    assert recovered["id"] == scan["id"]
+    assert recovered["lease_owner"] == "worker-b"
+    assert recovered["attempts"] == 2
+
+
+def test_legacy_worker_service_imports_without_missing_agent_modules():
+    import ai_os.worker_service as worker_service
+    assert callable(worker_service.main)

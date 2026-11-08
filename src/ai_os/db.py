@@ -41,7 +41,9 @@ def initialize_database() -> None:
         CREATE TABLE IF NOT EXISTS discovery_scans (
             id TEXT PRIMARY KEY, categories TEXT NOT NULL, status TEXT NOT NULL,
             created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT,
-            result_count INTEGER NOT NULL DEFAULT 0, error TEXT
+            result_count INTEGER NOT NULL DEFAULT 0, error TEXT,
+            lease_owner TEXT, lease_expires_at TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS discovery_candidates (
             canonical_url TEXT PRIMARY KEY, full_name TEXT NOT NULL,
@@ -51,4 +53,40 @@ def initialize_database() -> None:
             status TEXT NOT NULL, stars INTEGER NOT NULL DEFAULT 0,
             discovered_at TEXT NOT NULL, evidence TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id TEXT PRIMARY KEY, agent_type TEXT NOT NULL,
+            goal TEXT NOT NULL, provider TEXT NOT NULL, model TEXT,
+            status TEXT NOT NULL, output TEXT NOT NULL DEFAULT '',
+            error TEXT, latency_ms INTEGER,
+            created_at TEXT NOT NULL, finished_at TEXT,
+            lease_owner TEXT, lease_expires_at TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_created
+            ON agent_runs(created_at DESC);
         """)
+        # Additive migration for databases created before worker leases existed.
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(discovery_scans)")}
+        for name, declaration in (
+            ("lease_owner", "TEXT"),
+            ("lease_expires_at", "TEXT"),
+            ("attempts", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if name not in columns:
+                connection.execute(f"ALTER TABLE discovery_scans ADD COLUMN {name} {declaration}")
+        agent_columns = {row[1] for row in connection.execute("PRAGMA table_info(agent_runs)")}
+        for name, declaration in (
+            ("lease_owner", "TEXT"),
+            ("lease_expires_at", "TEXT"),
+            ("attempts", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if name not in agent_columns:
+                connection.execute(f"ALTER TABLE agent_runs ADD COLUMN {name} {declaration}")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_discovery_scan_queue "
+            "ON discovery_scans(status, created_at, lease_expires_at)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_run_queue "
+            "ON agent_runs(status, created_at, lease_expires_at)"
+        )

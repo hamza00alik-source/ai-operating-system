@@ -57,6 +57,15 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 <button id="runModel">Run real model request</button>
 <pre id="modelOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1425;border:1px solid var(--line);border-radius:9px;padding:12px;min-height:60px">No live inference run yet.</pre>
 </section>
+
+<section class="panel section"><h2>Research Analyst agent</h2>
+<div class="small">A model-backed agent run. It is queued durably and processed by the background worker (<code>python -m ai_os.worker_service</code>). Results and run status are saved in the database. Analysis-only: no browsing, shell, external tools, publishing, spending, or customer contact.</div>
+<textarea id="agentGoal" rows="4" style="width:100%;margin:10px 0" placeholder="Describe a research or business question for the agent to analyze…"></textarea>
+<div class="toolbar"><button id="runAgent">Run Research Analyst</button><button class="secondary" id="refreshAgentRuns">Refresh agent history</button></div>
+<div id="agentStatus" class="status">Select a configured eligible provider above, then submit a brief.</div>
+<pre id="agentOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1425;border:1px solid var(--line);border-radius:9px;padding:12px;min-height:80px">No agent output yet.</pre>
+<h2 style="margin-top:18px">Saved agent runs</h2><div class="scroll"><table><thead><tr><th>Created</th><th>Agent</th><th>Provider</th><th>Status</th><th>Result</th></tr></thead><tbody id="agentRunRows"><tr><td colspan="5">No runs loaded</td></tr></tbody></table></div>
+</section>
 </main>
 <script>
 const $=id=>document.getElementById(id);let key=sessionStorage.getItem("aios_owner_key")||"";
@@ -75,8 +84,12 @@ async function loadProviders(){try{const providers=await api("/llm/providers");c
 async function runModel(test){const provider=$("providerSelect").value;if(!provider){$("modelOutput").textContent="Select a provider first.";return}const prompt=test?"Reply with exactly: AIOS live connection successful":$("modelPrompt").value.trim();if(!prompt){$("modelOutput").textContent="Enter a prompt first.";return}const button=test?$("testProvider"):$("runModel");button.disabled=true;$("modelOutput").textContent="Sending live request…";try{const result=await api(test?"/llm/test":"/llm/run",{method:"POST",body:JSON.stringify({provider,prompt})});$("modelOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("modelOutput").textContent="Live request failed: "+e.message}finally{button.disabled=false}}
 $("loadProviders").onclick=loadProviders;$("testProvider").onclick=()=>runModel(true);$("runModel").onclick=()=>runModel(false);
 
-if(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";if(key)sessionStorage.setItem("aios_owner_key",key)}
-if(key){refresh();loadProviders();setInterval(refresh,10000)}
+
+async function refreshAgentRuns(){try{const runs=await api("/agents/runs");$("agentRunRows").innerHTML=runs.length?runs.map(r=>'<tr><td>'+esc(date(r.created_at))+'</td><td>'+esc(r.agent_type)+'</td><td>'+esc(r.provider)+'</td><td><span class="pill">'+esc(r.status)+'</span></td><td>'+esc((r.output||r.error||"").slice(0,220))+'</td></tr>').join():'<tr><td colspan="5">No agent runs yet</td></tr>';}catch(e){$("agentStatus").textContent=e.message}}
+async function runResearchAgent(){const provider=$("providerSelect").value;const goal=$("agentGoal").value.trim();if(!provider){$("agentStatus").textContent="Choose an eligible provider in Live AI model gateway first.";return}if(goal.length<10){$("agentStatus").textContent="Enter a brief of at least 10 characters.";return}const button=$("runAgent");button.disabled=true;$("agentStatus").textContent="Agent is working…";$("agentOutput").textContent="Waiting for model response and saving run…";try{const run=await api("/agents/runs",{method:"POST",body:JSON.stringify({provider,goal})});$("agentStatus").textContent="Run "+run.id+" queued. The background worker will process it."; $("agentOutput").textContent="Queued. This panel refreshes run history automatically while the owner console is open.";await refreshAgentRuns()}catch(e){$("agentStatus").textContent="Agent run failed: "+e.message;$("agentOutput").textContent=e.message;await refreshAgentRuns()}finally{button.disabled=false}}
+$("runAgent").onclick=runResearchAgent;$("refreshAgentRuns").onclick=refreshAgentRuns;
+\nif(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";if(key)sessionStorage.setItem("aios_owner_key",key)}
+if(key){refresh();loadProviders();refreshAgentRuns();setInterval(refresh,10000);setInterval(refreshAgentRuns,5000)}
 </script></body></html>
 """
 

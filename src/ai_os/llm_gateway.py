@@ -87,8 +87,9 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
             raw = response.read(1_000_000).decode("utf-8")
             return json.loads(raw)
     except urllib.error.HTTPError as exc:
-        detail = exc.read(2000).decode("utf-8", errors="replace")
-        raise RuntimeError(f"Provider HTTP {exc.code}: {detail}") from exc
+        # Provider response bodies can echo request data or credential material.
+        # Keep owner-facing errors useful without returning untrusted response text.
+        raise RuntimeError(f"Provider returned HTTP {exc.code}. Check server-side provider logs.") from None
     except (urllib.error.URLError, TimeoutError) as exc:
         raise RuntimeError(f"Provider connection failed: {exc}") from exc
     except json.JSONDecodeError as exc:
@@ -103,9 +104,9 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     started = time.monotonic()
 
     if provider.protocol == "gemini":
-        url = f"{base}/v1beta/models/{model}:generateContent?key={secret}"
+        url = f"{base}/v1beta/models/{model}:generateContent"
         data = _post(url, {"contents": [{"parts": [{"text": prompt}]}]},
-                     {}, timeout=45)
+                     {"x-goog-api-key": secret}, timeout=45)
         candidates = data.get("candidates") or []
         parts = ((candidates[0].get("content") or {}).get("parts") or []) if candidates else []
         answer = "\n".join(str(p.get("text", "")) for p in parts).strip()

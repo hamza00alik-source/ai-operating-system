@@ -81,3 +81,30 @@ def test_discovery_scan_rejects_empty_categories():
     with TestClient(app) as client:
         response = client.post("/discovery/scans", json={"categories": []})
     assert response.status_code == 422
+
+
+def test_research_analyst_endpoint_queues_run(monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+    from ai_os.db import initialize_database
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'api-agents.db'}")
+    initialize_database()
+    saved_run = {
+        "id": "test-run-id", "agent_type": "research_analyst",
+        "goal": "Evaluate a small downloadable digital product idea.",
+        "provider": "groq", "status": "queued",
+        "output": "", "created_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": None,
+    }
+    monkeypatch.setattr("ai_os.api.enqueue_research_analyst", lambda provider, goal: saved_run)
+    monkeypatch.setattr("ai_os.api.list_agent_runs", lambda: [saved_run])
+    with TestClient(app) as client:
+        response = client.post("/agents/runs", json={
+            "provider": "groq",
+            "goal": "Evaluate a small downloadable digital product idea.",
+        })
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        history = client.get("/agents/runs")
+        assert history.status_code == 200
+        assert history.json()[0]["id"] == "test-run-id"

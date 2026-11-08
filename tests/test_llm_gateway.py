@@ -57,3 +57,39 @@ def test_llm_endpoint_blocks_unconfigured_provider(monkeypatch):
     with TestClient(app) as client:
         response = client.post("/llm/test", json={"provider": "groq", "prompt": "hello"})
     assert response.status_code == 403
+
+
+def test_gemini_secret_is_sent_in_header_not_query_string(monkeypatch):
+    monkeypatch.setenv("AI_OS_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com")
+    monkeypatch.setenv("AI_OS_GEMINI_MODEL", "gemini-test")
+    monkeypatch.setenv("AI_OS_GEMINI_API_KEY", "private-test-key")
+    monkeypatch.setenv("AI_OS_GEMINI_FREE_CONFIRMED", "true")
+    captured = {}
+
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, headers=headers)
+        return {"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}
+
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.generate("gemini", "test")
+    assert result["response"] == "hello"
+    assert "private-test-key" not in captured["url"]
+    assert "?" not in captured["url"]
+    assert captured["headers"]["x-goog-api-key"] == "private-test-key"
+
+
+def test_provider_http_error_does_not_echo_response_body(monkeypatch):
+    import io
+    import urllib.error
+
+    def fail_request(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            "https://provider.invalid", 401, "Unauthorized", None,
+            io.BytesIO(b"credential private-test-key"),
+        )
+
+    monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", fail_request)
+    with pytest.raises(RuntimeError) as exc:
+        llm_gateway._post("https://provider.invalid", {}, {})
+    assert "private-test-key" not in str(exc.value)
+    assert "HTTP 401" in str(exc.value)
