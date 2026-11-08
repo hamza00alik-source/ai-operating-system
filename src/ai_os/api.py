@@ -6,7 +6,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from ai_os.auth import require_api_key
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
-from ai_os.model_adapter import ModelAdapterError, chat_completion, get_model_status\nfrom ai_os.mcp_registry import MCPRegistryError, list_mcp_servers
+from ai_os.model_adapter import ModelAdapterError, chat_completion, get_model_status
+from ai_os.mcp_registry import MCPRegistryError, list_mcp_servers
 from ai_os.provider_catalog import list_providers
 from ai_os.schemas import (
     ApprovalCreate,
