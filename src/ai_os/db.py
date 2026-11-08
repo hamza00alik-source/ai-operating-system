@@ -59,6 +59,17 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL, UNIQUE(task_id, memory_key),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
+        CREATE TABLE IF NOT EXISTS mcp_tool_requests (
+            id TEXT PRIMARY KEY, task_id TEXT, requester_id TEXT NOT NULL,
+            server_id TEXT NOT NULL, tool_name TEXT NOT NULL,
+            arguments_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+            approval_id TEXT, result_json TEXT, error TEXT,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            FOREIGN KEY(task_id) REFERENCES tasks(id),
+            FOREIGN KEY(server_id) REFERENCES mcp_servers(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_tool_requests_status
+            ON mcp_tool_requests(status, created_at);
         CREATE TABLE IF NOT EXISTS mcp_servers (
             id TEXT PRIMARY KEY, name TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE,
             transport TEXT NOT NULL DEFAULT 'streamable_http',
