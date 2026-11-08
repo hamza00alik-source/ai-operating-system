@@ -109,17 +109,68 @@ def _github_search(query: str) -> list[dict]:
     except (URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"GitHub discovery request failed: {exc}") from exc
 
-def run_scan(scan_id: str) -> dict:
+def _claim_scan(scan_id: str | None = None, worker_id: str | None = None) -> dict | None:
+    """Atomically claim one queued or expired scan; safe across worker processes."""
+    from datetime import timedelta
+
+    worker_id = worker_id or f"discovery-{uuid4()}"
+    current = datetime.now(timezone.utc)
+    timestamp = current.isoformat()
+    lease_until = (current + timedelta(minutes=15)).isoformat()
     with connect() as db:
-        row = db.execute("SELECT * FROM discovery_scans WHERE id=?", (scan_id,)).fetchone()
+        db.execute("BEGIN IMMEDIATE")
+        where_id = " AND id=?" if scan_id else ""
+        params = [timestamp]
+        if scan_id:
+            params.append(scan_id)
+        row = db.execute(
+            "SELECT * FROM discovery_scans WHERE "
+            "(status='queued' OR (status='running' AND "
+            "(lease_expires_at IS NULL OR lease_expires_at < ?)))"
+            + where_id + " ORDER BY created_at LIMIT 1",
+            tuple(params),
+        ).fetchone()
         if row is None:
-            raise LookupError("Discovery scan not found.")
-        if row["status"] != "queued":
-            raise ValueError("Only queued scans can be run.")
-        db.execute("UPDATE discovery_scans SET status='running',started_at=? WHERE id=?", (now(), scan_id))
+            return None
+        changed = db.execute(
+            """UPDATE discovery_scans
+               SET status='running', started_at=?, finished_at=NULL,
+                   lease_owner=?, lease_expires_at=?, attempts=COALESCE(attempts,0)+1,
+                   error=NULL
+               WHERE id=? AND (
+                   status='queued' OR (status='running' AND
+                   (lease_expires_at IS NULL OR lease_expires_at < ?))
+               )""",
+            (timestamp, worker_id, lease_until, row["id"], timestamp),
+        ).rowcount
+        if changed != 1:
+            return None
+        claimed = db.execute(
+            "SELECT * FROM discovery_scans WHERE id=?", (row["id"],)
+        ).fetchone()
+        return dict(claimed)
+
+
+def _heartbeat(scan_id: str, worker_id: str) -> None:
+    from datetime import timedelta
+
+    lease_until = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
+    with connect() as db:
+        changed = db.execute(
+            """UPDATE discovery_scans SET lease_expires_at=?
+               WHERE id=? AND status='running' AND lease_owner=?""",
+            (lease_until, scan_id, worker_id),
+        ).rowcount
+    if changed != 1:
+        raise RuntimeError("Discovery scan lease was lost; stopping this worker.")
+
+
+def _process_claimed_scan(scan: dict) -> dict:
+    scan_id = scan["id"]
+    worker_id = scan["lease_owner"]
     count = 0
     try:
-        categories = json.loads(row["categories"])
+        categories = json.loads(scan["categories"])
         for category in categories:
             for repo in _github_search(CATEGORIES[category]):
                 candidate = evaluate_repository(repo, category)
@@ -135,22 +186,43 @@ def run_scan(scan_id: str) -> dict:
                       stars=excluded.stars,discovered_at=excluded.discovered_at,evidence=excluded.evidence""",
                       {**candidate, "evidence": json.dumps(candidate["evidence"])})
                 count += 1
+                _heartbeat(scan_id, worker_id)
+            _heartbeat(scan_id, worker_id)
             time.sleep(1)
         with connect() as db:
-            db.execute("UPDATE discovery_scans SET status='completed',finished_at=?,result_count=? WHERE id=?", (now(), count, scan_id))
+            db.execute(
+                """UPDATE discovery_scans
+                   SET status='completed',finished_at=?,result_count=?,
+                       lease_owner=NULL,lease_expires_at=NULL
+                   WHERE id=? AND status='running' AND lease_owner=?""",
+                (now(), count, scan_id, worker_id),
+            )
     except Exception as exc:
         with connect() as db:
-            db.execute("UPDATE discovery_scans SET status='failed',finished_at=?,result_count=?,error=? WHERE id=?",
-                       (now(), count, str(exc)[:1000], scan_id))
+            db.execute(
+                """UPDATE discovery_scans
+                   SET status='queued',finished_at=?,result_count=?,error=?,
+                       lease_owner=NULL,lease_expires_at=NULL
+                   WHERE id=? AND status='running' AND lease_owner=?""",
+                (now(), count, str(exc)[:1000], scan_id, worker_id),
+            )
         raise
     with connect() as db:
         result = db.execute("SELECT * FROM discovery_scans WHERE id=?", (scan_id,)).fetchone()
     return dict(result)
 
-def run_pending_once() -> bool:
-    with connect() as db:
-        row = db.execute("SELECT id FROM discovery_scans WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
-    if not row:
+
+def run_scan(scan_id: str) -> dict:
+    """Claim and process a specific scan; concurrent callers cannot duplicate it."""
+    claimed = _claim_scan(scan_id=scan_id)
+    if claimed is None:
+        raise ValueError("Scan is not queued or its worker lease is still active.")
+    return _process_claimed_scan(claimed)
+
+
+def run_pending_once(worker_id: str | None = None) -> bool:
+    claimed = _claim_scan(worker_id=worker_id)
+    if claimed is None:
         return False
-    run_scan(row["id"])
+    _process_claimed_scan(claimed)
     return True
