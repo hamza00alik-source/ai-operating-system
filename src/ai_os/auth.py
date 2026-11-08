@@ -1,6 +1,7 @@
 """API-key and persistent owner-session authentication."""
 import hashlib
 import secrets
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Header, HTTPException, Request, status
@@ -64,7 +65,13 @@ def _valid_session(request: Request) -> bool:
     # SameSite=Strict is the primary CSRF barrier; also validate Origin on unsafe cookie-authenticated requests.
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
-        if not origin or origin.rstrip("/") != str(request.base_url).rstrip("/"):
+        forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+        host = request.headers.get("host", "")
+        try:
+            parsed_origin = urlsplit(origin or "")
+        except ValueError:
+            return False
+        if not origin or parsed_origin.scheme != forwarded_proto or parsed_origin.netloc != host:
             return False
     return True
 
