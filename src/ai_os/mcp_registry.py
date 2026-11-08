@@ -47,18 +47,18 @@ def _row_to_dict(row):
     }
 
 
-def _audit(db, event_type: str, server_id: str, details: dict) -> None:
+def _audit(db, event_type: str, server_id: str, details: dict, *, actor_id: str) -> None:
     db.execute(
         """INSERT INTO audit_events
            (event_type,actor_id,resource_type,resource_id,details_json,created_at)
            VALUES (?,?,?,?,?,?)""",
-        (event_type, "api", "mcp_server", server_id,
+        (event_type, actor_id, "mcp_server", server_id,
          json.dumps(details, sort_keys=True, separators=(",", ":")),
          datetime.now(timezone.utc).isoformat()),
     )
 
 
-def create_mcp_server(payload: MCPServerCreate) -> dict:
+def create_mcp_server(payload: MCPServerCreate, *, actor_id: str = "api") -> dict:
     endpoint = _validate_endpoint(payload.endpoint)
     env_names = sorted(set(payload.credential_env))
     if any(not _ENV_NAME.fullmatch(name) for name in env_names):
@@ -79,7 +79,7 @@ def create_mcp_server(payload: MCPServerCreate) -> dict:
                  json.dumps(capabilities), int(payload.enabled), now, now),
             )
             _audit(db, "mcp_server.registered", server_id,
-                   {"name": payload.name.strip(), "endpoint": endpoint, "enabled": payload.enabled})
+                   {"name": payload.name.strip(), "endpoint": endpoint, "enabled": payload.enabled}, actor_id=actor_id)
             row = db.execute("SELECT * FROM mcp_servers WHERE id=?", (server_id,)).fetchone()
     except Exception as exc:
         if "UNIQUE constraint failed" in str(exc):
@@ -94,7 +94,7 @@ def list_mcp_servers() -> list[dict]:
     return [_row_to_dict(row) for row in rows]
 
 
-def set_mcp_server_enabled(server_id: str, enabled: bool) -> dict | None:
+def set_mcp_server_enabled(server_id: str, enabled: bool, *, actor_id: str = "api") -> dict | None:
     now = datetime.now(timezone.utc).isoformat()
     with connect() as db:
         cursor = db.execute(
@@ -104,6 +104,6 @@ def set_mcp_server_enabled(server_id: str, enabled: bool) -> dict | None:
         if cursor.rowcount != 1:
             return None
         _audit(db, "mcp_server.enabled" if enabled else "mcp_server.disabled",
-               server_id, {"enabled": enabled})
+               server_id, {"enabled": enabled}, actor_id=actor_id)
         row = db.execute("SELECT * FROM mcp_servers WHERE id=?", (server_id,)).fetchone()
     return _row_to_dict(row)

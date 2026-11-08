@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from ai_os.agent_runtime import get_task_memory, list_task_steps
-from ai_os.auth import Principal, require_api_key, require_operator, require_owner, require_reader, require_task_writer
+from ai_os.auth import Principal, require_operator, require_owner, require_reader, require_task_writer
 from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
@@ -31,6 +31,7 @@ app = FastAPI(
     title="AI Operating System",
     version="0.1.0",
     description="Human-supervised AI company workflow foundation.",
+    lifespan=lifespan,
 )
 
 
@@ -104,9 +105,9 @@ def get_task_steps_endpoint(task_id: str):
 
 
 @app.post("/mcp/servers", response_model=MCPServerOut, status_code=201)
-def post_mcp_server(payload: MCPServerCreate, _: Principal = Depends(require_owner)):
+def post_mcp_server(payload: MCPServerCreate, principal: Principal = Depends(require_owner)):
     try:
-        return create_mcp_server(payload)
+        return create_mcp_server(payload, actor_id=principal.principal_id)
     except ValueError as exc:
         raise HTTPException(status_code=409 if "already registered" in str(exc) else 422, detail=str(exc)) from exc
 
@@ -117,8 +118,8 @@ def get_mcp_servers():
 
 
 @app.post("/mcp/servers/{server_id}/enabled", response_model=MCPServerOut)
-def post_mcp_server_enabled(server_id: str, enabled: bool, _: Principal = Depends(require_owner)):
-    result = set_mcp_server_enabled(server_id, enabled)
+def post_mcp_server_enabled(server_id: str, enabled: bool, principal: Principal = Depends(require_owner)):
+    result = set_mcp_server_enabled(server_id, enabled, actor_id=principal.principal_id)
     if result is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
     return result
