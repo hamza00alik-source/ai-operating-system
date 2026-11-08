@@ -68,3 +68,10 @@ def test_model_endpoints_are_safe_and_disabled_by_default(monkeypatch):
         assert all(item["default_enabled"] is False for item in providers.json())
         response = client.post("/models/test", json={"prompt": "test"})
         assert response.status_code == 503
+
+
+def test_mcp_registry_endpoint_is_protected_and_empty_by_default(monkeypatch):
+    monkeypatch.delenv("AI_OS_MCP_SERVERS_JSON", raising=False)
+    with TestClient(app) as client:
+        assert client.get("/mcp/servers").status_code == 200
+        assert client.get("/mcp/servers").json() == []
