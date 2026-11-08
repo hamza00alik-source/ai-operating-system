@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel, Field
 from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import require_api_key
@@ -11,6 +12,13 @@ from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCre
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
 from ai_os.discovery import create_scan, list_scans, list_candidates
 from ai_os.schemas import DiscoveryScanCreate
+from ai_os.model_gateway import ModelGatewayError, chat_test, provider_status
+
+
+class ModelTestRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=40)
+    model: str = Field(min_length=1, max_length=160)
+    prompt: str = Field(min_length=1, max_length=4000)
 
 
 @asynccontextmanager
@@ -103,3 +111,18 @@ def get_discovery_scans():
 @app.get("/discovery/candidates", dependencies=[Depends(require_api_key)])
 def get_discovery_candidates():
     return list_candidates()
+
+
+@app.get("/models/providers", dependencies=[Depends(require_api_key)])
+def get_model_providers():
+    """Return provider readiness without exposing credentials."""
+    return provider_status()
+
+
+@app.post("/models/test", dependencies=[Depends(require_api_key)])
+def post_model_test(payload: ModelTestRequest):
+    """Make one real, capped inference call; never falls back to paid providers."""
+    try:
+        return chat_test(payload.provider, payload.model, payload.prompt)
+    except ModelGatewayError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
