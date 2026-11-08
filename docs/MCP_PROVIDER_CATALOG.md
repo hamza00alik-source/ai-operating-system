@@ -27,3 +27,14 @@ Developer platforms (GitHub, GitLab, Git); project management (Linear, Jira, Asa
 
 - `GET /integrations/mcp/providers`: returns the curated provider catalogue and safe defaults.
 - Existing endpoint discovery remains owner-triggered and allowlist-protected. Discovery results remain untrusted and non-executable.
+
+## OpenCompany MCP server
+
+OpenCompany also exposes its own read-only MCP server for compatible clients:
+
+- Install: `pip install -e '.[mcp]'` (the development extra includes the SDK for CI).
+- Run: `ai-os-mcp` (stdio transport; launch it as a local MCP server in the compatible host's configuration).
+- Tools: `get_company_status`, `list_company_departments`, `list_company_agents`, and `list_mcp_integrations`.
+- Resource: `opencompany://governance`.
+
+This initial server is intentionally stdio-only and read-only. It does not expose remote HTTP access or OAuth itself. Remote hosting must add MCP OAuth 2.1 resource-server authorization, protected-resource metadata, origin/host validation, per-agent authorization, rate limits, and audit enforcement before it is exposed to the internet. Do not expose the stdio server through an unauthenticated network tunnel.
