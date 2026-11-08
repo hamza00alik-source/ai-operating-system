@@ -72,7 +72,7 @@ def test_failed_agent_step_is_not_automatically_retried(monkeypatch, tmp_path):
     with pytest.raises(TimeoutError, match="timed out"):
         run_agent_workflow(task, worker_id="agent-worker-a")
     assert len(get_task_memory(task["id"])) == 1
-    assert [item["status"] for item in list_task_steps(task["id"])] == ["completed", "running"]
+    assert [item["status"] for item in list_task_steps(task["id"])] == ["completed", "failed"]
     with pytest.raises(RuntimeError, match="manual review"):
         run_agent_workflow(task, worker_id="agent-worker-b")
     assert len(calls) == 2
