@@ -16,6 +16,7 @@ from ai_os.service import (
     create_approval, create_task, decide_approval, list_approvals,
     list_audit_events, list_tasks,
 )
+from ai_os.visual_workforce import get_visual_workforce
 
 
 @asynccontextmanager
@@ -31,7 +32,6 @@ app = FastAPI(
     title="AI Operating System",
     version="0.1.0",
     description="Human-supervised AI company workflow foundation.",
-    lifespan=lifespan,
 )
 
 
@@ -99,6 +99,12 @@ def get_task_steps_endpoint(task_id: str):
     if not exists:
         raise HTTPException(status_code=404, detail="Task not found")
     return list_task_steps(task_id)
+
+
+@app.get("/visual-workforce", dependencies=[Depends(require_api_key)])
+def get_visual_workforce_endpoint():
+    """Read-only workforce snapshot for dashboard/3D clients; never executes actions."""
+    return get_visual_workforce()
 
 
 @app.post("/mcp/servers", response_model=MCPServerOut, status_code=201, dependencies=[Depends(require_api_key)])
