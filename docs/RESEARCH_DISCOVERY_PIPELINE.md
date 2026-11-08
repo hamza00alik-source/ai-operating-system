@@ -75,15 +75,13 @@ Do not expose provider secrets in candidate details or logs.
 - Candidate approval is a review-state change only; it does not install, connect, or execute repository code.
 - The test suite covers queueing and conservative metadata evaluation, but production end-to-end scans still need a live owner-triggered verification after deployment.
 
-## Delivery sequence
+## Remaining delivery sequence
 
-1. Repair or remove the currently dangling worker entry point; add a clean-start worker test.
-2. Implement persistent discovery scan/candidate tables and typed schemas.
-3. Add a provider-neutral GitHub discovery adapter with bounded rate limits and provenance.
-4. Add deterministic evaluation gates; unknown cost/license/security facts fail closed to review.
-5. Add authenticated owner-facing API endpoints and a visible dashboard page.
-6. Add sandbox-only integration tests and CI coverage.
-7. Connect a scheduled scan only after the owner can inspect results and disable it.
+1. Run a live scan from the authenticated owner dashboard and verify completed scan records and persisted candidates.
+2. Add repository README/source inspection with bounded file-size and request limits; treat all repository content as untrusted input.
+3. Add authoritative vendor documentation checks for API pricing, free quotas, commercial-use terms, privacy, and security.
+4. Add scheduled recurring scans only after scan controls, rate-limit handling, and worker restart behavior are proven.
+5. Add sandbox compatibility tests before any integration is approved.
 
 ## Definition of done
 
