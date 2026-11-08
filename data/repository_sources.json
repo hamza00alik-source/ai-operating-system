@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "policy": "Reference repositories are not dependencies and are not installed or executed without owner approval.",
+  "sources": [
+    {
+      "repository": "hamza00alik-source/agency-agents",
+      "role": "Specialist workforce catalog",
+      "status": "catalogued",
+      "purpose": "283 specialist role definitions across 18 departments; instructions and runbooks, not executable workers.",
+      "license": "MIT",
+      "priority": "core-workforce"
+    },
+    {
+      "repository": "hamza00alik-source/automaton",
+      "role": "Runtime architecture reference",
+      "status": "reference-only",
+      "purpose": "Agent loop, heartbeat and scheduling, task graph, local workers, model routing, persistent memory, policy engine and audit trail.",
+      "license": "verify-current",
+      "priority": "runtime-reference"
+    },
+    {
+      "repository": "saurav-yirifi/blueprint-ai-first-company",
+      "role": "Company workflow reference",
+      "status": "reference-only",
+      "purpose": "Research and quality-control workflows.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "itsPremkumar/ai-company",
+      "role": "Company structure reference",
+      "status": "reference-only",
+      "purpose": "Department structure and cost planning.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "RagaviDevX/ai-company-agent-platform",
+      "role": "Platform architecture reference",
+      "status": "reference-only",
+      "purpose": "Authentication, middleware and CI patterns.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "bdno1agency/ai-tech-team-company-live",
+      "role": "Documentation reference",
+      "status": "reference-only",
+      "purpose": "README and architecture review only; no implementation approved.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "psorii/one-person-ai-company-starter",
+      "role": "Business workflow reference",
+      "status": "reference-only",
+      "purpose": "Free starter workflows and pre-publication checklists.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "paulswarna794-boop/ai-automation-company-setup",
+      "role": "Operations reference",
+      "status": "reference-only",
+      "purpose": "Operations and automation setup patterns.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "qaptanjes/claude-code-ai-company",
+      "role": "Role organization reference",
+      "status": "reference-only",
+      "purpose": "Role and department organization patterns.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "StellarRequiem/verified-ai-labor",
+      "role": "Governance reference",
+      "status": "reference-only",
+      "purpose": "Hash-chained audit and human approval gates.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "complianceguardaireports-wq/MavadoClaw-Worker001",
+      "role": "Worker and approvals reference",
+      "status": "reference-only",
+      "purpose": "Approval loops and scheduling patterns.",
+      "license": "verify-current"
+    },
+    {
+      "repository": "bmacbuilds/bmac.one",
+      "role": "Documentation reference",
+      "status": "reference-only",
+      "purpose": "README and license review only.",
+      "license": "verify-current"
+    }
+  ]
+}
