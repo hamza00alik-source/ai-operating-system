@@ -105,7 +105,7 @@ def test_bearer_credential_rejects_header_injection(monkeypatch):
 
 
 def test_mcp_oauth_client_credentials_uses_sdk_provider_and_allowlisted_issuer(monkeypatch):
-    from mcp.client import auth as mcp_auth
+    from mcp.client.auth.extensions import client_credentials as mcp_auth
 
     monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org,auth.example.org")
     monkeypatch.setattr(
