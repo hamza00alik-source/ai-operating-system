@@ -28,4 +28,4 @@ def test_owner_can_queue_bounded_agent_run(monkeypatch, tmp_path):
         assert detail.json()["status"] == "queued"
 
         overview = client.get("/company/overview").json()
-        assert overview["execution_runtime"] == "bounded-specialist-plus-ceo-review-worker"
+        assert overview["execution_runtime"] == "shared-worker-on-demand-specialist-plus-ceo-review"
