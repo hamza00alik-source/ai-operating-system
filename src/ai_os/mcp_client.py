@@ -180,3 +180,23 @@ def call_mcp_tool(server_id: str, tool_name: str, arguments: dict) -> dict:
         raise RuntimeError("MCP tool execution failed: " + str(result["error"])[:500])
     return {"server_id": server_id, "tool_name": tool_name,
             "protocol_version": negotiated, "result": result.get("result")}
+
+
+def discover_enabled_tool_catalog() -> list[dict]:
+    """Discover current tools on enabled servers; never execute them."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id,name FROM mcp_servers WHERE enabled=1 ORDER BY name,id"
+        ).fetchall()
+    catalog = []
+    for row in rows:
+        discovered = probe_mcp_server(row["id"])
+        for tool in discovered["tools"]:
+            catalog.append({
+                "server_id": row["id"],
+                "server_name": row["name"],
+                "tool_name": tool["name"],
+                "description": tool.get("description", ""),
+                "input_schema": tool.get("input_schema") or {"type": "object", "properties": {}},
+            })
+    return catalog
