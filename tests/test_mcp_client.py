@@ -97,7 +97,7 @@ def test_bearer_credential_rejects_missing_access_token(monkeypatch):
 def test_bearer_credential_rejects_header_injection(monkeypatch):
     monkeypatch.setattr(
         "ai_os.credential_vault.resolve_credential",
-        lambda ref: {"access_token": "valid\\r\\nX-Injected: yes"},
+        lambda ref: {"access_token": "valid\r\nX-Injected: yes"},
     )
     with pytest.raises(mcp_client.MCPDiscoveryError, match="header characters"):
         mcp_client._authorization_headers({"credential_ref": "vault:credential-123"})
