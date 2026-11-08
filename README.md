@@ -41,10 +41,11 @@ The visual owner console at \`/owner\` can queue GitHub repository discovery sca
 - \`POST /discovery/scans\` with \`{"categories":["agent-frameworks","mcp-servers"]}\`
 - \`GET /discovery/scans\`
 - \`GET /discovery/candidates\`
+- \`GET /discovery/status\` — live GitHub API connectivity, public/authenticated quota, and worker status (never returns the token).
 
 The production API starts the discovery polling worker in its FastAPI lifespan and uses the same persistent SQLite database. It retries after transient errors. This is currently a single-service worker design; multi-replica locking/leases still need hardening.
 
-The worker searches public GitHub repository metadata. Set \`GITHUB_TOKEN\` as a private environment variable to use authenticated GitHub API limits; never commit it. Without a token, GitHub documents a lower unauthenticated limit. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
+The worker searches public GitHub repository metadata. The Technology Discovery panel includes **Test GitHub API** and reports connectivity, quota, and worker status without exposing credentials. Set \`GITHUB_TOKEN\` as a private environment variable only if higher authenticated API limits are needed; never commit it. Public repository discovery works without a token, subject to GitHub's lower unauthenticated limits. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
 
 ## Guarded live LLM gateway
 
