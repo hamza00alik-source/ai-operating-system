@@ -89,6 +89,19 @@ def initialize_database() -> None:
             UNIQUE(run_id, sequence_no)
         );
         CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run_id ON agent_run_steps(run_id, sequence_no);
+        CREATE TABLE IF NOT EXISTS brain_experiences (
+            id TEXT PRIMARY KEY, run_id TEXT, task_id TEXT, department TEXT NOT NULL DEFAULT 'general',
+            task_title TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_brain_experiences_department ON brain_experiences(department, created_at);
+        CREATE TABLE IF NOT EXISTS brain_memories (
+            id TEXT PRIMARY KEY, category TEXT NOT NULL DEFAULT 'lesson',
+            department TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL,
+            content TEXT NOT NULL, source_run_id TEXT, status TEXT NOT NULL DEFAULT 'proposed',
+            confidence REAL NOT NULL DEFAULT 0.5, created_at TEXT NOT NULL,
+            reviewed_at TEXT, review_note TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_brain_memories_status_department ON brain_memories(status, department, created_at);
         CREATE TABLE IF NOT EXISTS owner_sessions (
             token_hash TEXT PRIMARY KEY,
             created_at TEXT NOT NULL,
