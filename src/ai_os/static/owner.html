@@ -25,6 +25,10 @@ main{width:min(100% - 24px,1100px);margin:auto;padding:24px 0 54px}.top{display:
 </div>
 <div class="warn" id="runtime-note">Connect to inspect configuration. A green API connection alone does not mean the worker or model is running.</div>
 </section>
+<section class="panel"><div class="row between"><h2>Real model connection test</h2><span class="small">Owner-triggered · fixed harmless prompt</span></div>
+<p>This sends one short, fixed connectivity prompt to the configured model provider. Do not use this test for private data. No task is created.</p>
+<div class="row"><button id="model-test" class="secondary" disabled>Test model connection</button><span class="small" id="model-test-message">Connect first.</span></div>
+<div class="handoff" id="model-test-output">No live provider response yet.</div></section>
 <section class="panel"><div class="row between"><h2>Run a safe visual test</h2><span class="small">Creates a normal queued task</span></div>
 <p>This submits a harmless internal research task. It does not publish, spend, message customers or call external tools. The worker must already be running and configured to process it.</p>
 <div class="row"><button id="run-test" disabled>Queue test task</button><span class="small" id="test-message">Connect first.</span></div>
@@ -37,7 +41,7 @@ main{width:min(100% - 24px,1100px);margin:auto;padding:24px 0 54px}.top{display:
 <h2 style="margin-top:18px">Final result</h2><div id="final-result" class="handoff">No completed result yet.</div></section>
 <section class="panel"><h2>How to read this screen</h2>
 <ul class="small"><li><b>Queued:</b> task saved; a worker has not claimed it yet.</li><li><b>Running:</b> worker claimed the task; agent steps show actual persisted activity.</li><li><b>Completed:</b> final output is saved and visible above.</li><li><b>Failed / blocked:</b> inspect the error; blocked work requires owner review before retry.</li></ul>
-<p class="warn">Worker heartbeat is not implemented in this runtime yet. This page will not pretend the worker is online. It reports task and agent evidence from the database instead.</p>
+<p class="warn">Worker status comes from persisted heartbeats. Active means the process is reporting to the shared database; it does not prove the model provider is responding.</p>
 <div class="links"><a href="/workforce">Workforce view</a><a href="/integrations/mcp">MCP registry</a><a href="/docs">API documentation</a></div></section>
 </main>
 <script>
@@ -64,9 +68,9 @@ async function refresh(){
   else if(worker.status==="stopped")notes.push("A worker was seen previously but has reported a clean stop.");
   else notes.push("No worker heartbeat has been recorded yet.");
   setText("runtime-note",notes.join(" "));
-  $("run-test").disabled=false;renderTasks();
+  $("run-test").disabled=false;$("model-test").disabled=false;renderTasks();
   if(selected&&cache.some(t=>t.id===selected))await selectTask(selected);else if(cache.length)await selectTask(cache[0].id);
- }catch(e){setConnection(false,e.message);$("run-test").disabled=true}
+ }catch(e){setConnection(false,e.message);$("run-test").disabled=true;$("model-test").disabled=true}
 }
 function renderTasks(){
  const root=$("task-list");root.replaceChildren();
@@ -99,6 +103,18 @@ async function selectTask(id){
 }
 $("connect").addEventListener("click",async()=>{key=$("api-key").value.trim();setText("connection-message","Checking access…");await refresh();if(timer)clearInterval(timer);timer=setInterval(refresh,5000)});
 $("refresh").addEventListener("click",refresh);
+$("model-test").addEventListener("click",async()=>{
+ const b=$("model-test");b.disabled=true;setText("model-test-message","Sending fixed connectivity check…");
+ setText("model-test-output","Waiting for provider response…");
+ try{
+  const result=await api("/runtime/model-test",{method:"POST",body:"{}"});
+  setText("model-test-message","Connected · "+result.provider+" · "+result.model);
+  setText("model-test-output",result.output||"Provider returned an empty result.");
+ }catch(e){
+  setText("model-test-message","Connection test failed: "+e.message);
+  setText("model-test-output","No successful model response was received.");
+ }finally{b.disabled=false}
+});
 $("run-test").addEventListener("click",async()=>{
  const b=$("run-test");b.disabled=true;setText("test-message","Creating a harmless research task…");
  try{const task=await api("/tasks",{method:"POST",body:JSON.stringify({title:"AIOS visual verification: digital product research",department:"research",description:"Produce a concise internal test report covering three digital-product categories, likely customer demand, and one validation question for each. Clearly label assumptions. This is a simulation of internal research only; do not browse, publish, spend, contact anyone, or use external tools."})});setText("test-message","Task queued: "+task.id);await refresh();await selectTask(task.id)}
