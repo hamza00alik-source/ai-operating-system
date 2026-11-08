@@ -16,9 +16,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: python scripts/validate_agent_library.py
+      - run: python scripts/validate_dashboard.py
       - run: pytest
       - name: Build production container image
         run: docker build --tag ai-operating-system:test .
