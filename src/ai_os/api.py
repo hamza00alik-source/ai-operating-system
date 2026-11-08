@@ -73,7 +73,7 @@ from ai_os.training_data import (create_training_example, list_training_examples
 from ai_os.action_gateway import get_action_gateway_status
 from ai_os.commerce import router as commerce_router, initialize_commerce_storage
 from ai_os.agent_tools import register_builtin_agent_tools
-from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
+from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools, call_mcp_read_only_tool
 from ai_os.mcp_catalog import load_mcp_provider_catalog
 from ai_os.mcp_registry import MCPRegistryError, search_official_registry
 from ai_os.credential_vault import (CredentialVaultError, initialize_credential_vault, store_credential, list_credentials, revoke_credential)
@@ -85,7 +85,7 @@ from ai_os.control_plane import (initialize_control_plane, control_plane_overvie
     is_control_plane_agent_enabled, grant_capability, list_capability_grants,
     revoke_capability_grant, evaluate_capability, evaluate_broker_route,
     set_control_plane_endpoint_enabled)
-from ai_os.control_plane_schemas import (AgentEnableUpdate, EndpointCreate,
+from ai_os.mcp_broker import (MCPBrokerError, initialize_mcp_broker_storage,\n    save_discovered_tools, list_discovered_tools, create_read_only_mapping,\n    list_mcp_tool_mappings, set_mcp_tool_mapping_enabled, get_mcp_tool_mapping)\nfrom ai_os.control_plane_schemas import (MCPToolMappingCreate, MCPToolExecute,\n    AgentEnableUpdate, EndpointCreate,
     RuntimeCreate, RuntimeHeartbeat, CapabilityGrantCreate,
     BrokerRouteEvaluate, CapabilityEvaluate, EndpointEnableUpdate)
 
@@ -1307,6 +1307,7 @@ async def post_control_plane_mcp_discovery(endpoint_id: str, request: Request):
     """Owner-triggered MCP tool discovery; returned remote metadata remains untrusted."""
     try:
         result = await discover_mcp_tools(endpoint_id)
+        save_discovered_tools(endpoint_id, result["tools"])
     except MCPDiscoveryError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     append_event(
@@ -1316,6 +1317,71 @@ async def post_control_plane_mcp_discovery(endpoint_id: str, request: Request):
          "tool_names": [item["name"] for item in result["tools"]]},
     )
     return result
+
+
+@app.get("/control-plane/mcp/tools")
+def get_discovered_mcp_tools(endpoint_id: str | None = Query(default=None, max_length=120)):
+    return {"tools": list_discovered_tools(endpoint_id),
+            "notice": "Remote schemas and descriptions are untrusted; they are not executable by discovery alone."}
+
+
+@app.get("/control-plane/mcp/mappings")
+def get_mcp_tool_mappings(endpoint_id: str | None = Query(default=None, max_length=120)):
+    return {"mappings": list_mcp_tool_mappings(endpoint_id)}
+
+
+@app.post("/control-plane/mcp/mappings", status_code=201)
+def post_mcp_tool_mapping(payload: MCPToolMappingCreate, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        mapping = create_read_only_mapping(
+            endpoint_id=payload.endpoint_id,
+            tool_name=payload.tool_name,
+            owner_confirmed_read_only=payload.owner_confirmed_read_only,
+            approved_by=actor,
+        )
+    except MCPBrokerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(actor, "mcp_read_only_mapping_approved", "mcp_tool_mapping",
+                 mapping["mapping_id"], {"endpoint_id": mapping["endpoint_id"],
+                 "tool_name": mapping["tool_name"], "access_mode": "read_only"})
+    return mapping
+
+
+@app.patch("/control-plane/mcp/mappings/{mapping_id}")
+def patch_mcp_tool_mapping(mapping_id: str, payload: EndpointEnableUpdate, request: Request):
+    mapping = set_mcp_tool_mapping_enabled(mapping_id, payload.enabled)
+    if mapping is None:
+        raise HTTPException(status_code=404, detail="MCP tool mapping not found")
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "mcp_tool_mapping_enabled" if payload.enabled else "mcp_tool_mapping_disabled",
+                 "mcp_tool_mapping", mapping_id,
+                 {"endpoint_id": mapping["endpoint_id"], "tool_name": mapping["tool_name"]})
+    return mapping
+
+
+@app.post("/control-plane/mcp/mappings/{mapping_id}/execute")
+async def post_mcp_tool_execution(mapping_id: str, payload: MCPToolExecute, request: Request):
+    mapping = get_mcp_tool_mapping(mapping_id)
+    if mapping is None or not mapping["enabled"] or mapping["access_mode"] != "read_only":
+        raise HTTPException(status_code=403, detail="Only enabled owner-approved read-only mappings may execute.")
+    capability = evaluate_capability(payload.agent_id, "tool.mcp.read", None)
+    if not capability.get("allowed"):
+        raise HTTPException(status_code=403, detail=capability.get("reason", "MCP read capability denied."))
+    try:
+        result = await call_mcp_read_only_tool(
+            mapping["endpoint_id"], mapping["tool_name"], payload.arguments
+        )
+    except MCPDiscoveryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "mcp_read_only_tool_executed", "mcp_tool_mapping", mapping_id,
+                 {"agent_id": payload.agent_id, "tool_name": mapping["tool_name"],
+                  "argument_keys": sorted(payload.arguments.keys()),
+                  "result_text_blocks": len(result.get("content", []))})
+    return {"mapping_id": mapping_id, "agent_id": payload.agent_id,
+            "tool_name": mapping["tool_name"], "result": result,
+            "notice": "Read-only mapping execution only. Write-capable MCP tools are not supported by this broker."}
 
 
 @app.post("/control-plane/endpoints", status_code=201)
