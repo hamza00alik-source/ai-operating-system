@@ -45,3 +45,44 @@ def test_llm_test_blocks_unconfirmed_paid_provider(client, monkeypatch):
     }]))
     response = client.post("/llm/test", json={"provider": "test-provider", "prompt": "hello"})
     assert response.status_code == 403
+
+
+def test_llm_test_returns_completion_from_provider(client, monkeypatch):
+    from ai_os import llm
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        @staticmethod
+        def json():
+            return {
+                "choices": [{"message": {"content": "AIOS connection test passed."}}],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 6, "total_tokens": 14},
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, headers, json):
+            assert url == "https://api.example.test/v1/chat/completions"
+            assert headers["Authorization"] == "Bearer test-secret"
+            assert json["model"] == "test-model"
+            return FakeResponse()
+
+    monkeypatch.setattr(llm.httpx, "AsyncClient", FakeAsyncClient)
+    response = client.post(
+        "/llm/test",
+        json={"provider": "test-provider", "prompt": "Say the test passed."},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["response"] == "AIOS connection test passed."
+    assert response.json()["usage"]["total_tokens"] == 14
