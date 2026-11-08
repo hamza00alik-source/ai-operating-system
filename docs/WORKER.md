@@ -13,7 +13,7 @@ Set these environment variables in the worker process only:
 | `AI_OS_MODEL_NAME` | Model identifier accepted by the provider |
 | `AI_OS_MODEL_API_KEY` | Optional provider key; keep it secret |
 | `AI_OS_MODEL_PROVIDER` | Informational provider label |
-| `AI_OS_WORKER_POLL_SECONDS` | Poll interval, clamped to 1–60 seconds |
+| `AI_OS_WORKER_POLL_SECONDS` | Poll interval, clamped to 1–60 seconds |\n| `AI_OS_AGENT_GRAPH_ENABLED` | Set to `true` to run the three-agent Researcher → Developer → Quality Reviewer workflow; defaults to `false` |
 | `AI_OS_DATABASE_URL` | Same persistent SQLite database used by the API |
 
 No provider is contacted by default. The worker exits before polling unless model execution is explicitly enabled and the base URL and model are configured.
@@ -30,16 +30,16 @@ Use a host process manager or platform worker service to restart the process aft
 
 ## Current behavior and limits
 
-- Processes one queued task at a time.
+- Processes one queued task at a time. With `AI_OS_AGENT_GRAPH_ENABLED=true`, one task uses three sequential model requests (Researcher, Developer, Quality Reviewer); this is opt-in because it increases provider usage. With the flag off, the original single-call worker path remains active.
 - Uses an atomic SQLite write transaction to claim a task.
 - Persists task result, error, worker ID and timestamps.
 - Provider errors mark a task failed. They are not automatically retried, to avoid accidental repeated or metered model requests.
 - Claims carry a 15-minute lease by default. When a later worker pass detects an expired lease, it moves the task to `blocked` for human review; it never automatically requeues the task because the provider may already have received the request. Older `running` rows without lease metadata are checked using `started_at`.
 - There is no lease heartbeat or operator reconciliation endpoint yet. A task that runs longer than its lease may be blocked; a late worker cannot overwrite that blocked state. Review the task before any manual retry.
-- The runtime scheduling hook currently schedules no multi-step agent graph.
+- Agent handoffs are persisted in `agent_steps` and task-scoped `agent_memory` tables. The next agent reads prior handoffs directly from SQLite; no manual copying is required. Completed steps are reused on a deliberate resume. A step left `running` or `failed` is not automatically retried because the provider may already have received its request.
 - This worker cannot publish content, spend money, contact customers or modify external systems.
 - Run the API and worker against the same persistent database file.
-- Tests cover worker-loop behavior, default-disabled model execution, successful task persistence, provider-failure persistence, expired-lease blocking and legacy stale-task recovery. Approval decisions are also tested for concurrent single-use behavior. Tests do not validate a live external model provider.
+- Protected API endpoints `/tasks/{task_id}/memory` and `/tasks/{task_id}/steps` expose task-scoped handoffs and step status. Tests cover worker-loop behavior, default-disabled model execution, worker persistence, provider failure, lease recovery, action-bound approval consumption and persistent agent handoffs. Tests do not validate a live external model provider.
 
 ## Next engineering gates
 
