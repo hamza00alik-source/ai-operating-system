@@ -141,7 +141,7 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
             })
         data = _post(url, {
             "model": model, "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2, "max_tokens": 512
+            "temperature": 0.2, "max_tokens": 1200
         }, headers, timeout=45)
         choices = data.get("choices") or []
         answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
@@ -149,8 +149,8 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
         input_tokens = usage.get("prompt_tokens")
         output_tokens = usage.get("completion_tokens")
 
-    if not answer:
-        raise RuntimeError(f"{provider.label} returned no text content")
+    if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 24:
+        raise RuntimeError(f"{provider.label} returned empty or placeholder text; refusing to mark this agent stage complete")
 
     return {
         "provider": provider.key, "model": data.get("model", model), "response": answer,
