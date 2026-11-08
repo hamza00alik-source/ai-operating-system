@@ -25,6 +25,26 @@ persistent volume. Configure the host/process manager to restart the worker
 after failure. A web-only deployment without the worker will not continuously
 process company tasks.
 
+## Docker Compose deployment
+
+The repository now includes a Dockerfile and `compose.yaml` with separate API
+and worker services sharing a named persistent data volume.
+
+On a Docker-capable host:
+
+```bash
+git clone --recurse-submodules https://github.com/hamza00alik-source/ai-operating-system.git
+cd ai-operating-system
+cp .env.example .env
+# Edit .env privately: set production owner/signing/encryption secrets.
+docker compose up -d --build
+```
+
+The API is exposed on port 8000. The worker runs continuously in its own
+container. Both use the same `/data/ai_os.db` on the named `aios-data` volume.
+Back up that volume and test restoration before using real business data. Do
+not commit the resulting `.env` file.
+
 ## Required environment variables
 
 Set these privately in the hosting panel. Never commit real values.
