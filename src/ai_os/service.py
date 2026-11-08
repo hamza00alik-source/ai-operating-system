@@ -30,13 +30,10 @@ def list_audit_events(*, limit: int = 100, before_id: int | None = None) -> list
     limit = max(1, min(int(limit), 500))
     with connect() as db:
         if before_id is None:
-            rows = db.execute(
-                "SELECT * FROM audit_events ORDER BY id DESC LIMIT ?", (limit,)
-            ).fetchall()
+            rows = db.execute("SELECT * FROM audit_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         else:
             rows = db.execute(
-                "SELECT * FROM audit_events WHERE id < ? ORDER BY id DESC LIMIT ?",
-                (before_id, limit),
+                "SELECT * FROM audit_events WHERE id < ? ORDER BY id DESC LIMIT ?", (before_id, limit)
             ).fetchall()
     events = []
     for row in rows:
@@ -54,7 +51,7 @@ def _canonical_action(action: str, actor_id: str, resource_id: str, payload: dic
     return payload_json, fingerprint
 
 
-def create_task(payload: TaskCreate) -> dict:
+def create_task(payload: TaskCreate, *, actor_id: str = "api") -> dict:
     task = {
         "id": str(uuid4()), "title": payload.title, "description": payload.description,
         "department": payload.department, "status": "queued", "created_at": _now(),
@@ -64,7 +61,7 @@ def create_task(payload: TaskCreate) -> dict:
             """INSERT INTO tasks (id,title,description,department,status,created_at)
                VALUES (:id,:title,:description,:department,:status,:created_at)""", task,
         )
-        _audit(db, "task.created", actor_id="api", resource_type="task",
+        _audit(db, "task.created", actor_id=actor_id, resource_type="task",
                resource_id=task["id"], details={"department": task["department"]})
     return task
 
@@ -124,7 +121,7 @@ def list_approvals() -> list[dict]:
     return [_approval_dict(row) for row in rows]
 
 
-def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
+def decide_approval(approval_id: str, payload: ApprovalDecision, *, actor_id: str = "api") -> dict | None:
     decided_at = _now()
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -136,8 +133,7 @@ def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
         expires_at = row["expires_at"]
         if expires_at and expires_at <= decided_at:
             db.execute("UPDATE approvals SET status='expired' WHERE id=? AND status='pending'", (approval_id,))
-            _audit(db, "approval.expired", actor_id="api", resource_type="approval",
-                   resource_id=approval_id)
+            _audit(db, "approval.expired", actor_id=actor_id, resource_type="approval", resource_id=approval_id)
             db.commit()
             raise ValueError("This approval request has expired")
         changed = db.execute(
@@ -147,7 +143,7 @@ def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
         ).rowcount
         if changed != 1:
             raise ValueError("This approval request is no longer pending or has expired")
-        _audit(db, f"approval.{payload.decision}", actor_id=row["actor_id"],
+        _audit(db, f"approval.{payload.decision}", actor_id=actor_id,
                resource_type="approval", resource_id=approval_id,
                details={"action": row["action"], "fingerprint": row["action_fingerprint"]})
         updated = db.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
@@ -168,8 +164,7 @@ def consume_approval(approval_id: str, *, actor_id: str, action: str,
             raise ValueError("Approval is not approved or has already been consumed")
         if not row["expires_at"] or row["expires_at"] <= now:
             db.execute("UPDATE approvals SET status='expired' WHERE id=? AND status='approved'", (approval_id,))
-            _audit(db, "approval.expired", actor_id=actor_id,
-                   resource_type="approval", resource_id=approval_id)
+            _audit(db, "approval.expired", actor_id=actor_id, resource_type="approval", resource_id=approval_id)
             db.commit()
             raise ValueError("Approval has expired")
         if not row["action_fingerprint"] or not hmac.compare_digest(row["action_fingerprint"], fingerprint):

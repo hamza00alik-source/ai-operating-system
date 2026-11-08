@@ -11,7 +11,7 @@ A feature is complete only when tested and its operating limits are documented.
 - [x] CI test execution (GitHub Actions)
 - [x] API-key authentication for operational endpoints outside development
 - [x] Append-only audit events for task creation and approval create/decide/consume/expiry
-- [ ] Authenticated distinct principals and role-based authorization
+- [x] Configurable distinct API-key principals and role-based route permissions
 - [ ] Broader security review
 
 ## Phase 2 — Orchestration
@@ -50,8 +50,11 @@ A feature is complete only when tested and its operating limits are documented.
 
 No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases. Agent graph execution is disabled by default and makes three model requests per task when explicitly enabled. Approval consumption is not yet connected to an external-action executor.
 
+### Authentication boundary
+Outside development, API tokens map to server-configured principal IDs and one of four roles: owner, operator, agent, or viewer. The legacy single `AI_OS_API_KEY` remains an owner credential. Task and approval creation audit events derive actor identity from the authenticated principal; approval decisions and MCP configuration changes are owner-only. This is API-key authentication, not OAuth, per-customer tenancy, or a substitute for deployment secret management.
+
 ### Audit log
-Audit events are written in the same SQLite transaction as the associated task, approval or MCP registry state change. The API exposes protected, newest-first pagination at `GET /audit/events`. SQLite triggers reject ordinary update and delete statements against audit rows. This is tamper-resistant against accidental application writes, not a cryptographically signed or externally immutable compliance log; a database administrator can still replace the database file. Actor labels are not independently authenticated yet.
+Audit events are written in the same SQLite transaction as the associated task, approval or MCP registry state change. The API exposes protected, newest-first pagination at `GET /audit/events`. SQLite triggers reject ordinary update and delete statements against audit rows. This is tamper-resistant against accidental application writes, not a cryptographically signed or externally immutable compliance log; a database administrator can still replace the database file.
 
 ### MCP registry boundary
 The registry stores remote Streamable HTTP endpoint configuration, environment-variable *names* for credentials, and operator-declared capabilities. It never stores credential values or makes outbound network requests. A listed capability is not verified until a future MCP client performs protocol discovery. Enabling a registry entry only enables its configuration; it does not establish a connection or grant permission to execute tools. Local stdio servers, OAuth flows, endpoint health checks, and tool execution remain future work. Production connection code must add DNS/IP revalidation and per-tool approval enforcement to prevent SSRF and unsafe actions.

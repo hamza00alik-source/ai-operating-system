@@ -16,10 +16,11 @@ def test_task_and_approval_flow():
         assert task.status_code == 201
         approval = client.post("/approvals", json={
             "task_id": task.json()["id"], "action": "publish_content",
-            "actor_id": "owner", "resource_id": "wordpress:site-1",
+            "actor_id": "spoofed-client-value", "resource_id": "wordpress:site-1",
             "action_payload": {"post_id": "draft-7", "visibility": "public"}
         })
         assert approval.status_code == 201
+        assert approval.json()["actor_id"] == "local-development"
         aid = approval.json()["id"]
         decision = client.post(f"/approvals/{aid}/decision", json={"decision": "rejected"})
         assert decision.status_code == 200
@@ -37,6 +38,7 @@ def test_approval_cannot_be_decided_twice():
 def test_production_routes_require_api_key(monkeypatch):
     monkeypatch.setenv("AI_OS_ENV", "production")
     monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    monkeypatch.delenv("AI_OS_API_KEYS", raising=False)
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
         assert client.get("/tasks").status_code == 401
@@ -47,11 +49,12 @@ def test_production_routes_require_api_key(monkeypatch):
 def test_non_development_requires_api_key_at_startup(monkeypatch):
     monkeypatch.setenv("AI_OS_ENV", "production")
     monkeypatch.delenv("AI_OS_API_KEY", raising=False)
+    monkeypatch.delenv("AI_OS_API_KEYS", raising=False)
     try:
         with TestClient(app):
             raise AssertionError("Application startup should reject a missing API key")
     except RuntimeError as exc:
-        assert "AI_OS_API_KEY" in str(exc)
+        assert "AI_OS_API_KEY" in str(exc) or "AI_OS_API_KEYS" in str(exc)
 
 
 def test_task_memory_and_step_status_endpoints():
@@ -112,7 +115,6 @@ def test_audit_events_capture_task_and_approval_lifecycle():
         assert "task.created" in event_types
         assert "approval.created" in event_types
         assert "approval.approved" in event_types
-        assert client.get("/audit/events?limit=1").status_code == 200
 
 
 def test_audit_pagination_uses_exclusive_cursor():
@@ -154,3 +156,36 @@ def test_audit_events_are_immutable_and_mcp_changes_are_recorded():
                 assert "immutable" in str(exc)
             else:
                 raise AssertionError("Audit deletion should be rejected")
+
+
+def test_distinct_principals_and_role_permissions(monkeypatch):
+    import json
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.delenv("AI_OS_API_KEY", raising=False)
+    monkeypatch.setenv("AI_OS_API_KEYS", json.dumps({
+        "owner-secret": {"principal_id": "owner-1", "role": "owner"},
+        "viewer-secret": {"principal_id": "auditor-1", "role": "viewer"},
+        "agent-secret": {"principal_id": "research-agent", "role": "agent"},
+    }))
+    with TestClient(app) as client:
+        viewer = {"X-API-Key": "viewer-secret"}
+        agent = {"X-API-Key": "agent-secret"}
+        owner = {"X-API-Key": "owner-secret"}
+        assert client.get("/tasks", headers=viewer).status_code == 200
+        assert client.post("/tasks", headers=viewer, json={"title": "No"}).status_code == 403
+        assert client.post("/tasks", headers=agent, json={"title": "Research"}).status_code == 201
+        task = client.post("/tasks", headers=agent, json={"title": "Attributed"}).json()
+        event = client.get("/audit/events", headers=viewer).json()[0]
+        assert event["actor_id"] == "research-agent"
+        approval = client.post("/approvals", headers=agent, json={
+            "action": "publish", "actor_id": "spoofed", "resource_id": "site:1",
+            "action_payload": {"draft": "x"}
+        })
+        assert approval.status_code == 403
+        assert client.post("/mcp/servers", headers=viewer, json={
+            "name": "blocked", "endpoint": "https://blocked.example.com/mcp"
+        }).status_code == 403
+        assert client.post("/approvals", headers=owner, json={
+            "action": "publish", "actor_id": "spoofed", "resource_id": "site:1",
+            "action_payload": {"draft": "x"}
+        }).json()["actor_id"] == "owner-1"
