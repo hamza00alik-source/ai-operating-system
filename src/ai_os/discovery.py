@@ -156,7 +156,7 @@ def sync_free_api_catalog() -> dict:
                     str(item.get("confidence") or "unknown")[:40],
                     str(item.get("last_verified") or "")[:40] or None,
                     json.dumps({
-                        **(item.get("probe") or {}),
+                        "type": str((item.get("probe") or {}).get("type") or "")[:40],
                         "docs_url": _safe_https_url((item.get("probe") or {}).get("docs_url")),
                     }, ensure_ascii=False),
                     json.dumps(provider_status or {}, ensure_ascii=False),
