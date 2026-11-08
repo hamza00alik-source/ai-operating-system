@@ -154,3 +154,41 @@ def test_audit_events_are_immutable_and_mcp_changes_are_recorded():
                 assert "immutable" in str(exc)
             else:
                 raise AssertionError("Audit deletion should be rejected")
+
+
+def test_visual_workforce_snapshot_uses_verified_worker_presence_and_redacts_prompts():
+    from datetime import datetime, timedelta, timezone
+    from ai_os.db import connect
+
+    with TestClient(app) as client:
+        task = client.post("/tasks", json={
+            "title": "Visual workforce test", "department": "research"
+        }).json()
+        now = datetime.now(timezone.utc)
+        started = now.isoformat()
+        lease = (now + timedelta(minutes=5)).isoformat()
+        with connect() as db:
+            db.execute(
+                """UPDATE tasks SET status='running', worker_id='visual-test-worker',
+                   started_at=?, lease_expires_at=? WHERE id=?""",
+                (started, lease, task["id"]),
+            )
+            db.execute(
+                """INSERT INTO agent_steps
+                   (task_id,step_key,agent_name,status,prompt,worker_id,started_at)
+                   VALUES (?,?,?,'running','private test prompt','visual-test-worker',?)""",
+                (task["id"], "researcher", "Researcher", started),
+            )
+
+        response = client.get("/visual-workforce")
+        assert response.status_code == 200
+        snapshot = response.json()
+        assert snapshot["mode"] == "read_only"
+        assert snapshot["agent_registry_scope"] == "three_persisted_workflow_role_slots"
+        researcher = next(agent for agent in snapshot["agents"] if agent["role_key"] == "researcher")
+        assert researcher["presence"] == "working"
+        assert researcher["presence_source"] == "active_step_and_unexpired_task_lease"
+        assert task["id"] in researcher["active_task_ids"]
+        assert "prompt" not in researcher
+        assert "output" not in researcher
+        assert any(item["department"] == "research" for item in snapshot["departments"])
