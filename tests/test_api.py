@@ -58,46 +58,36 @@ def test_task_memory_and_step_status_endpoints():
     with TestClient(app) as client:
         task = client.post("/tasks", json={"title": "Test memory endpoints"})
         task_id = task.json()["id"]
-        memory = client.get(f"/tasks/{task_id}/memory")
-        steps = client.get(f"/tasks/{task_id}/steps")
-        assert memory.status_code == 200
-        assert memory.json() == []
-        assert steps.status_code == 200
-        assert steps.json() == []
-        assert client.get("/tasks/does-not-exist/memory").status_code == 404
+        assert client.get(f"/tasks/{task_id}/memory").json() == []
+        assert client.get(f"/tasks/{task_id}/steps").json() == []
+        assert client.get(f"/tasks/does-not-exist/memory").status_code == 404
 
 
 def test_mcp_server_registry_lifecycle_without_secrets():
     with TestClient(app) as client:
         created = client.post("/mcp/servers", json={
-            "name": "Example MCP",
-            "endpoint": "https://mcp.example.com/v1",
-            "credential_env": ["EXAMPLE_MCP_TOKEN"],
-            "declared_capabilities": ["search", "read"],
+            "name": "Example MCP", "endpoint": "https://mcp.example.com/v1",
+            "credential_env": ["EXAMPLE_MCP_TOKEN"], "declared_capabilities": ["search", "read"],
         })
         assert created.status_code == 201
         server = created.json()
         assert server["connection_status"] == "not_connected"
         assert server["credential_env"] == ["EXAMPLE_MCP_TOKEN"]
-        assert "token" not in str(server).lower() or "EXAMPLE_MCP_TOKEN" in str(server)
         assert client.get("/mcp/servers").json()[0]["id"] == server["id"]
         toggled = client.post(f"/mcp/servers/{server['id']}/enabled?enabled=true")
-        assert toggled.status_code == 200
-        assert toggled.json()["enabled"] is True
-        assert client.post(f"/mcp/servers/missing/enabled?enabled=false").status_code == 404
+        assert toggled.status_code == 200 and toggled.json()["enabled"] is True
+        assert client.post("/mcp/servers/missing/enabled?enabled=false").status_code == 404
 
 
 def test_mcp_registry_rejects_unsafe_endpoints_and_secret_values():
     with TestClient(app) as client:
-        bad_url = client.post("/mcp/servers", json={
+        assert client.post("/mcp/servers", json={
             "name": "Local", "endpoint": "http://127.0.0.1:8000/mcp"
-        })
-        assert bad_url.status_code == 422
-        bad_secret = client.post("/mcp/servers", json={
+        }).status_code == 422
+        assert client.post("/mcp/servers", json={
             "name": "Bad credential", "endpoint": "https://mcp.example.com",
             "credential_env": ["actual-secret-value"]
-        })
-        assert bad_secret.status_code == 422
+        }).status_code == 422
 
 
 def test_mcp_registry_rejects_duplicate_endpoint():
@@ -105,3 +95,32 @@ def test_mcp_registry_rejects_duplicate_endpoint():
         body = {"name": "Duplicate", "endpoint": "https://duplicate.example.com/mcp"}
         assert client.post("/mcp/servers", json=body).status_code == 201
         assert client.post("/mcp/servers", json=body).status_code == 409
+
+
+def test_audit_events_capture_task_and_approval_lifecycle():
+    with TestClient(app) as client:
+        task = client.post("/tasks", json={"title": "Audit me"}).json()
+        approval = client.post("/approvals", json={
+            "task_id": task["id"], "action": "publish", "actor_id": "owner",
+            "resource_id": "store:demo", "action_payload": {"draft_id": "draft-1"}
+        }).json()
+        decision = client.post(f"/approvals/{approval['id']}/decision",
+                               json={"decision": "approved"})
+        assert decision.status_code == 200
+        events = client.get("/audit/events").json()
+        event_types = [event["event_type"] for event in events]
+        assert "task.created" in event_types
+        assert "approval.created" in event_types
+        assert "approval.approved" in event_types
+        assert client.get("/audit/events?limit=1").status_code == 200
+
+
+def test_audit_pagination_uses_exclusive_cursor():
+    with TestClient(app) as client:
+        client.post("/tasks", json={"title": "First"})
+        client.post("/tasks", json={"title": "Second"})
+        first_page = client.get("/audit/events?limit=1").json()
+        assert len(first_page) == 1
+        second_page = client.get(f"/audit/events?limit=1&before_id={first_page[0]['id']}").json()
+        assert len(second_page) == 1
+        assert second_page[0]["id"] < first_page[0]["id"]
