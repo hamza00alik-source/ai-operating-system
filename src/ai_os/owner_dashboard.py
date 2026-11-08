@@ -65,7 +65,7 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 <div id="vaultRows" class="small">Saved provider status will appear here. Secret values are never displayed.</div>
 </section>
 <section class="panel section"><h2>Live AI model gateway</h2>
-<div class="small">Only providers explicitly configured on the server and marked free by the owner can run. API secrets stay in server environment variables; never paste secrets into this page or GitHub.</div>
+<div class="small">Only providers explicitly configured on the server and marked free by the owner can run. Provider secrets are encrypted in the owner credential vault; never paste secrets into GitHub.</div>
 <div class="toolbar" style="margin-top:12px"><select id="providerSelect"><option value="">Loading providers…</option></select><button class="secondary" id="loadProviders">Refresh providers</button><button id="testProvider">Test live connection</button></div>
 <div id="providerStatus" class="status">Provider status not loaded.</div>
 <textarea id="modelPrompt" rows="3" style="width:100%;margin:8px 0" placeholder="Enter a small test prompt. This sends a real request to the selected provider."></textarea>
