@@ -3,10 +3,10 @@ from contextlib import asynccontextmanager
 import logging
 import threading
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from ai_os.owner_dashboard import owner_dashboard
 
-from ai_os.auth import require_api_key, require_owner_key
+from ai_os.auth import (require_api_key, require_owner_key, create_owner_session, revoke_owner_session, SESSION_COOKIE, SESSION_TTL_DAYS)
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
@@ -72,6 +72,37 @@ app = FastAPI(
 @app.get("/owner", include_in_schema=False)
 def get_owner_dashboard():
     return owner_dashboard()
+
+
+class OwnerLoginRequest(BaseModel):
+    api_key: str = Field(min_length=8, max_length=512)
+
+
+@app.post("/auth/session")
+def create_session(payload: OwnerLoginRequest, response: Response):
+    try:
+        token, expires_at = create_owner_session(payload.api_key)
+    except HTTPException:
+        raise
+    response.set_cookie(
+        key=SESSION_COOKIE, value=token, max_age=SESSION_TTL_DAYS * 86400,
+        httponly=True, secure=True, samesite="strict", path="/",
+    )
+    return {"authenticated": True, "expires_at": expires_at, "session_days": SESSION_TTL_DAYS}
+
+
+@app.delete("/auth/session")
+def delete_session(request: Request, response: Response):
+    revoke_owner_session(request.cookies.get(SESSION_COOKIE))
+    response.delete_cookie(key=SESSION_COOKIE, path="/", secure=True, httponly=True, samesite="strict")
+    return {"authenticated": False}
+
+
+@app.get("/auth/session")
+def session_status(request: Request):
+    # This endpoint intentionally returns status only; no session token or API key is exposed.
+    from ai_os.auth import _valid_session
+    return {"authenticated": _valid_session(request)}
 
 
 class ModelRunRequest(BaseModel):
