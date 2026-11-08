@@ -48,6 +48,15 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 <section class="panel section"><h2>Recent scans</h2><div class="scroll"><table><thead><tr><th>Created</th><th>Categories</th><th>Status</th><th>Results</th><th>Error</th></tr></thead><tbody id="scanRows"><tr><td colspan="5" class="muted">No data loaded</td></tr></tbody></table></div></section>
 <section class="panel section"><h2>Discovered projects</h2><div class="scroll"><table><thead><tr><th>Project</th><th>Category</th><th>License</th><th>Maintenance</th><th>Stars</th><th>Review state</th><th>Evidence</th></tr></thead><tbody id="candidateRows"><tr><td colspan="7" class="muted">No data loaded</td></tr></tbody></table></div></section>
 <p class="small section">Cost, security, commercial-use rights, and provider terms remain unverified unless the evidence record explicitly says otherwise. A discovered project is not an approved integration.</p>
+
+<section class="panel section"><h2>Live AI model gateway</h2>
+<div class="small">Only providers explicitly configured on the server and marked free by the owner can run. API secrets stay in server environment variables; never paste secrets into this page or GitHub.</div>
+<div class="toolbar" style="margin-top:12px"><select id="providerSelect"><option value="">Loading providers…</option></select><button class="secondary" id="loadProviders">Refresh providers</button><button id="testProvider">Test live connection</button></div>
+<div id="providerStatus" class="status">Provider status not loaded.</div>
+<textarea id="modelPrompt" rows="3" style="width:100%;margin:8px 0" placeholder="Enter a small test prompt. This sends a real request to the selected provider."></textarea>
+<button id="runModel">Run real model request</button>
+<pre id="modelOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1425;border:1px solid var(--line);border-radius:9px;padding:12px;min-height:60px">No live inference run yet.</pre>
+</section>
 </main>
 <script>
 const $=id=>document.getElementById(id);let key=sessionStorage.getItem("aios_owner_key")||"";
@@ -61,8 +70,13 @@ $("candidateRows").innerHTML=candidates.length?candidates.map(c=>'<tr><td><a tar
 say("Live data loaded at "+new Date().toLocaleTimeString()+".");}catch(e){say(e.message)}}
 $("run").onclick=async()=>{const categories=[...document.querySelectorAll('input[name="cat"]:checked')].map(x=>x.value);if(!categories.length){say("Select at least one category.");return}try{$("run").disabled=true;const result=await api("/discovery/scans",{method:"POST",body:JSON.stringify({categories})});say("Scan queued: "+result.id+". The background worker must be running to process it.");await refresh()}catch(e){say(e.message)}finally{$("run").disabled=false}};
 $("refresh").onclick=refresh;
+
+async function loadProviders(){try{const providers=await api("/llm/providers");const select=$("providerSelect");select.innerHTML=providers.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+' · '+(p.eligible?'eligible':'blocked')+'</option>').join("");$("providerStatus").textContent=providers.map(p=>p.name+": "+(p.eligible?"eligible (free status owner-confirmed)":p.reason)).join("\\n");}catch(e){$("providerStatus").textContent=e.message}}
+async function runModel(test){const provider=$("providerSelect").value;if(!provider){$("modelOutput").textContent="Select a provider first.";return}const prompt=test?"Reply with exactly: AIOS live connection successful":$("modelPrompt").value.trim();if(!prompt){$("modelOutput").textContent="Enter a prompt first.";return}const button=test?$("testProvider"):$("runModel");button.disabled=true;$("modelOutput").textContent="Sending live request…";try{const result=await api(test?"/llm/test":"/llm/run",{method:"POST",body:JSON.stringify({provider,prompt})});$("modelOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("modelOutput").textContent="Live request failed: "+e.message}finally{button.disabled=false}}
+$("loadProviders").onclick=loadProviders;$("testProvider").onclick=()=>runModel(true);$("runModel").onclick=()=>runModel(false);
+
 if(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";if(key)sessionStorage.setItem("aios_owner_key",key)}
-if(key){refresh();setInterval(refresh,10000)}
+if(key){refresh();loadProviders();setInterval(refresh,10000)}
 </script></body></html>
 """
 
