@@ -165,14 +165,37 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 .stage-empty{grid-column:1/-1;padding:18px;border:1px dashed rgba(108,233,255,.2);border-radius:12px;color:#9eb2d1;font-size:12px}
 @media(max-width:900px){.employee-stage{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.command-stage{padding:15px}.employee-stage{grid-template-columns:1fr}.employee-card{min-height:112px}.stage-title{font-size:18px}}
 
-</style></head>
+</style><style>
+.office-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}
+.office-viewport{height:480px;position:relative;overflow:hidden;border:1px solid rgba(108,233,255,.28);border-radius:16px;background:radial-gradient(ellipse at 50% 10%,#1b3154,#080e1b 70%);isolation:isolate}
+#officeCanvas{display:block;width:100%;height:100%;touch-action:pan-y}
+.office-hud{position:absolute;top:12px;left:14px;right:14px;display:flex;justify-content:space-between;pointer-events:none;color:#a9dfff;font-size:10px;letter-spacing:.16em;font-weight:800;text-shadow:0 0 12px #43cfff}
+.office-fallback{position:absolute;inset:0;display:grid;place-items:center;color:#a9bbd9;font-size:13px;pointer-events:none}
+.office-legend{display:flex;gap:18px;flex-wrap:wrap;margin:12px 0;color:var(--muted);font-size:12px}
+.office-legend span{display:flex;align-items:center;gap:7px}.dot{width:8px;height:8px;border-radius:50%;display:inline-block}.dot.idle{background:#7896bc}.dot.working{background:#55e0ae;box-shadow:0 0 10px #55e0ae}.dot.review{background:#ffd27b}
+.office-roster{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.office-employee{padding:11px;border:1px solid rgba(112,140,190,.2);border-radius:11px;background:rgba(8,15,28,.5);min-width:0}
+.office-employee strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.office-employee span{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+@media(max-width:760px){.office-viewport{height:350px}.office-roster{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){.office-viewport{scroll-behavior:auto}}
+</style>
+</head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Your AI company, workforce, research pipeline and approvals — in one supervised workspace.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><span id="apiHealth" class="tag">Checking API…</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#brain" data-view="brain">AI Brain</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a></nav>
 <section class="command-stage" aria-label="AI employee command stage">
  <div class="stage-head"><div><div class="eyebrow">Neural command deck / workforce visualization</div><div class="stage-title">Meet the AI workforce</div><div class="stage-note">Stylized role representations generated from the live workforce catalogue — not fabricated active-worker status.</div></div><span id="stageRuntime" class="stage-indicator">Runtime status loading</span></div>
  <div id="employeeStage" class="employee-stage"><div class="stage-empty">Loading real specialist roles from the AIOS workforce catalogue…</div></div>
  <div class="stage-footer"><span>ROLE STATUS · ON-DEMAND INVOCATION</span><span>Owner-supervised execution · no external actions without approval</span></div>
+</section>
+<section id="virtual-office" class="panel section" data-view-panel="virtual-office">
+<h2>Virtual AI headquarters · live workforce</h2>
+<p class="small">A lightweight 3D anime-inspired office. Character activity is driven by the live AIOS task/run feed; idle characters do not imply active work.</p>
+<div class="office-toolbar"><span id="officeConnection" class="pill warn">Connecting to operations…</span><span id="officeActivity" class="small">Waiting for live run data</span><button id="officeRefresh" class="secondary">Refresh activity</button></div>
+<div id="officeViewport" class="office-viewport"><canvas id="officeCanvas" aria-label="Interactive 3D virtual office with animated AI employees"></canvas><div class="office-hud"><span>AIOS · VIRTUAL HQ</span><span id="officeClock">LIVE SCENE</span></div><div id="officeFallback" class="office-fallback">Loading 3D office…</div></div>
+<div class="office-legend"><span><i class="dot idle"></i> Available</span><span><i class="dot working"></i> Working on live run</span><span><i class="dot review"></i> Review / coordination</span></div>
+<div id="officeRoster" class="office-roster"><div class="small">Loading employee activity…</div></div>
+<p class="small">First build uses procedural 3D characters and locally animated motion rather than downloaded rigged VRM/GLB anime models. It requires no paid 3D asset service. High-detail custom character models and lip-synced conversations are a later upgrade.</p>
 </section>
 <section id="overview" class="panel section" data-view-panel="overview"><h2>Company operations</h2><div class="grid" style="margin:10px 0"><div class="metric"><strong id="workforceCount">283</strong><span>Catalogued specialists</span></div><div class="metric"><strong id="departmentCount">18</strong><span>Departments</span></div><div class="metric"><strong id="taskCount">—</strong><span>Tasks</span></div><div class="metric"><strong id="approvalCount">—</strong><span>Pending approvals</span></div></div><div id="companyStatus" class="small">Workforce catalog loaded. Bounded specialist execution and CEO review are available for text-only tasks; external actions remain disabled.</div><div id="runtimeStatus" class="small" role="status">Checking agent worker health…</div></section>
 <section id="workforce" class="panel section" data-view-panel="workforce"><h2>Agency workforce · 283 specialists</h2><p class="small">18 departments · 284 roles including CEO. Source: <a href="https://github.com/hamza00alik-source/agency-agents" target="_blank" rel="noopener">Agency Agents repository</a> · MIT. Roles are invoked on demand by a shared worker; they are not 283 always-on processes.</p><div class="toolbar"><input id="agentSearch" placeholder="Search 283 specialists…" style="flex:1;min-width:180px"><select id="departmentFilter"><option value="">All departments</option></select><button id="loadAgents" class="secondary">Refresh roster</button></div><div id="departmentChips" class="toolbar section"></div><div class="scroll section"><table><thead><tr><th>Specialist</th><th>Department</th><th>Runtime state</th><th>Source</th></tr></thead><tbody id="agentRows"><tr><td colspan="4">Loading workforce catalog…</td></tr></tbody></table></div></section>
@@ -324,6 +347,54 @@ async function startDashboard(){authenticated=true;$("loginPanel").style.display
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();const b=$("loginButton");b.disabled=true;$("loginStatus").textContent="Validating owner key…";try{const r=await fetch("/auth/session",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:$("loginKey").value})});if(!r.ok)throw Error("Owner key was rejected. Check the key in Railway Variables.");$("loginKey").value="";await startDashboard()}catch(err){$("loginStatus").textContent=err.message}finally{b.disabled=false}});
 $("logoutButton").onclick=async()=>{try{await fetch("/auth/session",{method:"DELETE",credentials:"same-origin"});}finally{authenticated=false;showLogin("You have been signed out.")}};
 fetch("/auth/session",{credentials:"same-origin"}).then(r=>r.json()).then(s=>{if(s.authenticated)startDashboard();else showLogin()}).catch(()=>showLogin("Sign in to continue."));
+</script><script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+(()=>{
+const canvas=document.getElementById("officeCanvas"),fallback=document.getElementById("officeFallback");
+if(!canvas)return;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x080f1e);scene.fog=new THREE.Fog(0x080f1e,18,34);
+const camera=new THREE.PerspectiveCamera(43,1,.1,100);camera.position.set(0,8.8,15.8);camera.lookAt(0,1.2,0);
+const renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:false,powerPreference:"low-power"});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));renderer.outputColorSpace=THREE.SRGBColorSpace;
+scene.add(new THREE.HemisphereLight(0xb9d9ff,0x182238,2.1));
+const key=new THREE.DirectionalLight(0x9bc9ff,2.2);key.position.set(-5,10,7);scene.add(key);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,22),new THREE.MeshStandardMaterial({color:0x101d31,roughness:.8,metalness:.25}));floor.rotation.x=-Math.PI/2;floor.position.y=-.04;scene.add(floor);
+const grid=new THREE.GridHelper(30,30,0x245477,0x1a2e49);grid.position.y=.005;scene.add(grid);
+function box(w,h,d,color,x,y,z,mat=0.55){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness:mat,metalness:.18}));m.position.set(x,y,z);scene.add(m);return m}
+function label(text,x,y,z,color="#8beaff"){const c=document.createElement("canvas");c.width=512;c.height=96;const ctx=c.getContext("2d");ctx.fillStyle="rgba(4,12,24,.78)";ctx.fillRect(0,0,512,96);ctx.strokeStyle="#35658c";ctx.strokeRect(2,2,508,92);ctx.font="bold 34px system-ui";ctx.fillStyle=color;ctx.textAlign="center";ctx.fillText(text,256,61);const tex=new THREE.CanvasTexture(c);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));sp.position.set(x,y,z);sp.scale.set(3.1,.58,1);scene.add(sp)}
+// Department pods and holographic screens
+const stations=[{x:-5.5,z:-1.4,name:"RESEARCH",color:0x4c8fff},{x:-1.8,z:-1.4,name:"STRATEGY",color:0x9a83ff},{x:1.8,z:-1.4,name:"CREATIVE",color:0x45d9c2},{x:5.5,z:-1.4,name:"CEO REVIEW",color:0xf0bd68}];
+stations.forEach(s=>{box(2.45,.16,1.55,0x203653,s.x,.72,s.z);box(2.25,.08,1.38,0x0b1728,s.x,.83,s.z);box(1.18,.78,.09,s.color,s.x,1.45,s.z-.58,.25);box(.98,.58,.035,0x09172a,s.x,1.45,s.z-.515,.2);label(s.name,s.x,2.15,s.z-.2);});
+function limb(parent,r1,r2,len,color,x,y,z){const pivot=new THREE.Group();pivot.position.set(x,y,z);parent.add(pivot);const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r2,r1,len,8),new THREE.MeshStandardMaterial({color,roughness:.7}));mesh.position.y=-len/2;pivot.add(mesh);return pivot}
+function makePerson(index,x,z,hair,coat,skin){
+ const root=new THREE.Group();root.position.set(x,0,z);scene.add(root);
+ const body=new THREE.Group();root.add(body);
+ const mat=(c,rough=.65)=>new THREE.MeshStandardMaterial({color:c,roughness:rough});
+ const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.32,.55,4,8),mat(coat));torso.position.y=1.13;body.add(torso);
+ const neck=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.19,8),mat(skin));neck.position.y=1.58;body.add(neck);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.34,12,10),mat(skin));head.scale.set(1,.98,.88);head.position.set(0,1.91,0);body.add(head);
+ const haircap=new THREE.Mesh(new THREE.SphereGeometry(.355,12,8,0,Math.PI*2,0,Math.PI*.62),mat(hair));haircap.position.set(0,2.02,-.025);body.add(haircap);
+ const fringe=new THREE.Mesh(new THREE.SphereGeometry(.23,10,7),mat(hair));fringe.scale.set(1,.48,.55);fringe.position.set(0,1.99,.235);body.add(fringe);
+ const eyeMat=mat(0x17253d,.25);[-.12,.12].forEach(ex=>{const eye=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),eyeMat);eye.position.set(ex,1.94,.298);body.add(eye)});
+ const smile=new THREE.Mesh(new THREE.BoxGeometry(.09,.012,.012),mat(0x9b5364));smile.position.set(0,1.82,.3);body.add(smile);
+ const arms=[limb(body,.105,.085,.48,skin,-.39,1.4,0),limb(body,.105,.085,.48,skin,.39,1.4,0)];
+ const sleeves=[limb(body,.14,.12,.42,coat,-.36,1.43,0),limb(body,.14,.12,.42,coat,.36,1.43,0)];
+ const legs=[limb(body,.14,.12,.58,0x263954,-.16,.67,0),limb(body,.14,.12,.58,0x263954,.16,.67,0)];
+ const badge=new THREE.Mesh(new THREE.SphereGeometry(.075,8,8),mat(stations[index].color));badge.position.set(.22,1.35,.27);body.add(badge);
+ return {root,body,arms,sleeves,legs,station:stations[index],phase:index*1.6,mode:"idle",targetX:x,targetZ:z};
+}
+const people=[makePerson(0,-5.5,.9,0x283d75,0x4267a6,0xffd3bd),makePerson(1,-1.8,.9,0x5b2e58,0x6b4b9c,0xf2c8ae),makePerson(2,1.8,.9,0x9a5d35,0x268c88,0xffd6bd),makePerson(3,5.5,.9,0x263d48,0x9a7544,0xf1c8ad)];
+const deskLabels=[];
+people.forEach((p,i)=>{box(.65,.12,.42,0x314968,p.station.x,.53,1.1);box(.58,.045,.34,0x0a1424,p.station.x,.62,1.1);label(["NOVA · RESEARCH","KIRA · STRATEGY","MIO · CREATIVE","ARIA · CEO"][i],p.station.x,2.7,1.0);});
+const rings=[];people.forEach(p=>{const ring=new THREE.Mesh(new THREE.TorusGeometry(.56,.018,6,40),new THREE.MeshBasicMaterial({color:p.station.color,transparent:true,opacity:.6}));ring.rotation.x=Math.PI/2;ring.position.set(p.root.position.x,.025,p.root.position.z);scene.add(ring);rings.push(ring)});
+let runs=[],overview=null,lastFetch=0;
+function setModeFromRuns(){const active=runs.filter(r=>["queued","running","in_progress"].includes(String(r.status).toLowerCase()));people.forEach((p,i)=>{if(active.length){p.mode=i===3?"review":"working";p.targetX=p.station.x+(i===0?-.3:i===1?.1:i===2?.25:0);p.targetZ=p.station.z+.15}else{p.mode="idle";p.targetX=p.station.x;p.targetZ=.9}});document.getElementById("officeActivity").textContent=active.length?active.length+" active AI run(s) · movement linked to live run status":"No active runs · workforce on standby";document.getElementById("officeConnection").textContent=overview?.agent_worker_running?"API + worker online":"API connected · worker status unavailable";document.getElementById("officeConnection").className="pill "+(overview?.agent_worker_running?"good":"warn");document.getElementById("officeRoster").innerHTML=people.map((p,i)=>'<div class="office-employee"><strong>'+["Nova · Research","Kira · Strategy","Mio · Creative","Aria · CEO"][i]+'</strong><span>'+(active.length?(i===3?"Reviewing team output":"Working · live run detected"):"Available · on standby")+'</span></div>').join("")}
+async function refresh(){try{const [r,o]=await Promise.all([fetch("/agent-runs",{credentials:"same-origin"}),fetch("/company/overview",{credentials:"same-origin"})]);if(!r.ok||!o.ok)throw Error("Owner session or API unavailable");runs=await r.json();overview=await o.json();setModeFromRuns();lastFetch=Date.now()}catch(e){document.getElementById("officeConnection").textContent="Live activity unavailable";document.getElementById("officeConnection").className="pill warn";document.getElementById("officeActivity").textContent=e.message}}
+document.getElementById("officeRefresh").addEventListener("click",refresh);
+const resize=()=>{const w=canvas.clientWidth,h=canvas.clientHeight;if(w&&h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}};new ResizeObserver(resize).observe(canvas);resize();
+function animate(t){requestAnimationFrame(animate);const time=t*.001;people.forEach((p,i)=>{p.root.position.x+=(p.targetX-p.root.position.x)*.025;p.root.position.z+=(p.targetZ-p.root.position.z)*.025;const active=p.mode==="working"||p.mode==="review";p.body.position.y=Math.sin(time*2+p.phase)*.035;p.body.rotation.y=Math.sin(time*.7+p.phase)*.035;p.arms.forEach((a,j)=>{a.rotation.z=active?Math.sin(time*9+p.phase+j)*.22+(j===0?-.35:.35):Math.sin(time*1.7+p.phase+j)*.06});p.sleeves.forEach((a,j)=>{a.rotation.z=active?Math.sin(time*9+p.phase+j)*.18+(j===0?-.28:.28):Math.sin(time*1.7+p.phase+j)*.05});p.legs.forEach((l,j)=>{l.rotation.x=active?Math.sin(time*5+p.phase+j)*.04:Math.sin(time*1.5+p.phase+j)*.025});rings[i].material.opacity=.35+Math.sin(time*2+i)*.18});renderer.render(scene,camera);if(Date.now()-lastFetch>6000)refresh();document.getElementById("officeClock").textContent="SYNC "+new Date().toLocaleTimeString()}
+requestAnimationFrame(animate);refresh();fallback.style.display="none";
+})().catch(e=>{const f=document.getElementById("officeFallback");if(f)f.textContent="3D scene could not load. Check network access to the Three.js CDN.";});
 </script></body></html>
 """
 
