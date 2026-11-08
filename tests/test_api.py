@@ -203,3 +203,12 @@ def test_workforce_dashboard_is_served_without_exposing_api_credentials():
         assert "X-API-Key" in response.text
         assert "localStorage" not in response.text
         assert client.get("/visual-workforce").status_code == 200
+
+
+def test_mcp_owner_dashboard_is_served_and_registry_api_remains_protected():
+    with TestClient(app) as client:
+        page = client.get("/integrations/mcp")
+        assert page.status_code == 200
+        assert "MCP integrations" in page.text
+        assert "not connected" in page.text.lower()
+        assert client.get("/mcp/servers").status_code == 200
