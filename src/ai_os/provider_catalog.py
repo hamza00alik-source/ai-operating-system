@@ -41,6 +41,15 @@ PROVIDER_CATALOG = [
         "official_url": "https://ai.google.dev/gemini-api/docs",
     },
     {
+        "id": "github_models",
+        "name": "GitHub Models",
+        "protocol": "openai_compatible",
+        "credential": "github_token",
+        "free_tier_possible": True,
+        "default_enabled": False,
+        "official_url": "https://docs.github.com/en/github-models",
+    },
+    {
         "id": "huggingface",
         "name": "Hugging Face Inference",
         "protocol": "provider_specific_or_openai_compatible",
