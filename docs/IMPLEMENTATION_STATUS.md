@@ -30,6 +30,9 @@ Last checked: 2026-11-08. This status describes the feature branch
 - MCP provider catalogue, official registry metadata search, encrypted
   credential vault, HTTPS host allowlist, static bearer support and
   metadata-only remote discovery.
+- Owner-approved read-only MCP tool mappings, per-agent capability grants,
+  strict argument checks, live schema-drift checks, text-only bounded results,
+  and an opt-in `mcp.read` specialist tool-call adapter.
 - Docker Compose API + worker services sharing a persistent data volume.
 - Multi-storefront commerce catalogue, listing packets, normalized order
   ledger, webhook verification and manual fulfillment review foundations.
@@ -37,7 +40,7 @@ Last checked: 2026-11-08. This status describes the feature branch
 ## Not yet production-complete
 
 - MCP OAuth 2.1 authorization-code/PKCE, token refresh and scoped consent.
-- Owner-approved remote MCP tool mappings and safe remote tool execution.
+- Generic write-capable remote MCP tool execution; only owner-approved read-only mappings are supported.
 - Public remote hosting for the OpenCompany MCP server; it remains local stdio.
 - Live marketplace OAuth/account verification and automated listing publication.
 - Automated digital-file hosting, licensing, download delivery and refund/dispute
