@@ -209,13 +209,14 @@ def generate_with_fallback(prompt: str, preferred_provider: str = "openrouter") 
             if exc.status_code not in retryable_statuses:
                 raise
         except RuntimeError as exc:
-            # Connection failures and malformed upstream responses can be bypassed
-            # with another explicitly free-confirmed provider. Content-quality
-            # failures are not retried because they are not transport failures.
+            # Empty/placeholder model output is an upstream provider failure too.
+            # Try the next explicitly free-confirmed provider; never accept the
+            # bad response as a completed stage and never route to paid providers.
             message = str(exc).casefold()
             if "returned empty or placeholder text" in message:
-                raise
-            attempts.append({"provider": provider.key, "status": "connection_or_response_error"})
+                attempts.append({"provider": provider.key, "status": "invalid_or_empty_output"})
+            else:
+                attempts.append({"provider": provider.key, "status": "connection_or_response_error"})
             last_error = exc
 
     detail = str(last_error)[:700] if last_error else "No provider returned a usable response."
