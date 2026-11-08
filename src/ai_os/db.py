@@ -65,6 +65,17 @@ def initialize_database() -> None:
             UNIQUE(task_id, memory_key),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            endpoint TEXT NOT NULL UNIQUE,
+            transport TEXT NOT NULL DEFAULT 'streamable_http',
+            credential_env_json TEXT NOT NULL DEFAULT '[]',
+            capabilities_json TEXT NOT NULL DEFAULT '[]',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         """)
         # Additive migrations keep existing SQLite installations compatible.
         task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
@@ -90,4 +101,3 @@ def initialize_database() -> None:
         ):
             if name not in task_columns:
                 connection.execute(f"ALTER TABLE tasks ADD COLUMN {name} {sql_type}")
-
