@@ -36,7 +36,7 @@ Open http://127.0.0.1:8000/docs.
 ### MCP registry (configuration only)
 Use `POST /mcp/servers` with a name, HTTPS endpoint, optional credential environment-variable names, and operator-declared capabilities. Use `GET /mcp/servers` to list entries and `POST /mcp/servers/{id}/enabled?enabled=true|false` to toggle a configuration. Entries report `connection_status: not_connected`. Enabling an entry does not connect to it or execute tools. The registry rejects non-HTTPS, localhost/private-IP endpoints and credential values supplied where environment-variable names are expected.
 
-### Read-only workforce dashboard
+### Owner MCP integration dashboard\n\nOpen `/integrations/mcp` to manage the MCP server registry from the owner dashboard. The page keeps the owner API key in memory only and supports registering HTTPS Streamable HTTP endpoints, listing them, and enabling/disabling configurations. This is configuration management only: live MCP handshakes, OAuth/account authorization, credential vaulting, tool discovery, and tool execution are not implemented yet. `credential_env` accepts environment-variable names only, never secret values.\n\n### Read-only workforce dashboard
 
 Open `/workforce` on the same AIOS host for a mobile-friendly workforce overview. In development, the page can load without a key. In staging/production, enter the owner key in the page; it is held in page memory only and sent to the protected `/visual-workforce` endpoint in the `X-API-Key` header. Reloading the page clears the key. The dashboard is read-only and refreshes its snapshot every 15 seconds. It currently shows the three persisted workflow role slots, not a larger independent-agent registry. Serve the application over HTTPS outside local development.
 
