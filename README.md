@@ -71,3 +71,10 @@ The gateway is an inference transport layer; it does not yet constitute a full m
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+
+## Private provider credential vault
+
+OpenRouter credentials can be entered in the Owner Dashboard under **Provider credentials**. The server encrypts the key with Fernet before writing it to SQLite; the key is never returned by the API. Configure `AI_OS_CREDENTIAL_ENCRYPTION_KEY` and `AI_OS_API_KEY` as private hosting environment variables first. Credential writes require the owner key even in development.
+
+The first route is hard-pinned to OpenRouter's `openrouter/free` free-model router. It does not configure a paid model fallback. OpenRouter controls free model availability and rate limits. Keep the encryption key backed up securely; losing it makes stored credentials unrecoverable. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
