@@ -230,13 +230,15 @@ def get_company_overview():
         approvals = db.execute("SELECT status, COUNT(*) AS n FROM approvals GROUP BY status").fetchall()
         scans = db.execute("SELECT status, COUNT(*) AS n FROM discovery_scans GROUP BY status").fetchall()
         candidates = db.execute("SELECT COUNT(*) AS n FROM discovery_candidates").fetchone()["n"]
+        agent_runs = db.execute("SELECT status, COUNT(*) AS n FROM agent_runs GROUP BY status").fetchall()
     return {
-        "workforce": {"agents": 283, "departments": 18, "roles_including_ceo": 284, "runtime_ready": False},
+        "workforce": {"agents": 283, "departments": 18, "roles_including_ceo": 284, "runtime_ready": True, "runtime_scope": "bounded text-task execution; no external side effects"},
         "tasks": {r["status"]: r["n"] for r in tasks},
         "approvals": {r["status"]: r["n"] for r in approvals},
         "discovery_scans": {r["status"]: r["n"] for r in scans},
         "discovered_repositories": candidates,
-        "execution_runtime": "not-yet-connected",
+        "agent_runs": {r["status"]: r["n"] for r in agent_runs},
+        "execution_runtime": "bounded-specialist-plus-ceo-review-worker",
     }
 
 
