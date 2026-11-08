@@ -135,6 +135,21 @@ def resolve_credential(credential_ref: str) -> dict:
     return value
 
 
+def resolve_unique_provider_credential(provider_id: str) -> dict:
+    """Resolve one active provider credential; fail closed if absent or ambiguous."""
+    entries = [
+        item for item in list_credentials(provider_id=provider_id)
+        if item["status"] != "revoked"
+    ]
+    if not entries:
+        raise CredentialVaultError("No active credential is stored for this provider.")
+    if len(entries) != 1:
+        raise CredentialVaultError(
+            "More than one active credential is stored for this provider; select an explicit store reference."
+        )
+    return resolve_credential(entries[0]["credential_ref"])
+
+
 def revoke_credential(credential_ref: str) -> dict | None:
     if not isinstance(credential_ref, str) or not credential_ref.startswith("vault:"):
         raise ValueError("Credential reference must use vault:...")
