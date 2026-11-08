@@ -54,3 +54,17 @@ def test_non_development_requires_api_key_at_startup(monkeypatch):
             raise AssertionError("Application startup should reject a missing API key")
     except RuntimeError as exc:
         assert "AI_OS_API_KEY" in str(exc)
+
+def test_model_endpoints_are_safe_and_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("AI_OS_MODEL_ENABLED", raising=False)
+    monkeypatch.delenv("AI_OS_MODEL_API_KEY", raising=False)
+    with TestClient(app) as client:
+        status = client.get("/models/status")
+        assert status.status_code == 200
+        assert status.json()["ready"] is False
+        assert "api_key" not in status.json()
+        providers = client.get("/models/providers")
+        assert providers.status_code == 200
+        assert all(item["default_enabled"] is False for item in providers.json())
+        response = client.post("/models/test", json={"prompt": "test"})
+        assert response.status_code == 503
