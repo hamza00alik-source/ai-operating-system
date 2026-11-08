@@ -294,7 +294,8 @@ async def call_mcp_read_only_tool(
         timeout = httpx2.Timeout(30.0, read=60.0)
         oauth_auth = _oauth_client_auth(endpoint, url)
         async with httpx2.AsyncClient(
-            headers=headers, auth=oauth_auth, timeout=timeout, follow_redirects=False
+            headers=headers, auth=oauth_auth, timeout=timeout, follow_redirects=False,
+            event_hooks={"request": [_guard_outbound_request]},
         ) as http_client:
             transport = streamable_http_client(
                 url, http_client=http_client,
