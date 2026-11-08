@@ -81,3 +81,42 @@ def test_discovery_scan_rejects_empty_categories():
     with TestClient(app) as client:
         response = client.post("/discovery/scans", json={"categories": []})
     assert response.status_code == 422
+
+
+def test_recover_interrupted_agent_run(monkeypatch, tmp_path):
+    from ai_os.agent_runtime import recover_interrupted_runs
+    from ai_os.db import connect, initialize_database
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "agent-recovery.db"))
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO tasks (id,title,description,department,status,created_at) VALUES (?,?,?,?,?,?)",
+            ("task-1", "Research", "", "research", "running", "2026-01-01T00:00:00+00:00"),
+        )
+        db.execute(
+            "INSERT INTO agent_runs (id,task_id,status,created_at,started_at) VALUES (?,?,?,?,?)",
+            ("run-1", "task-1", "running", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:01+00:00"),
+        )
+        db.execute(
+            """INSERT INTO agent_run_steps
+            (run_id,sequence_no,role,agent_id,agent_name,status,input_summary,created_at)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            ("run-1", 1, "Lead specialist", "researcher", "Researcher", "running", "Research", "2026-01-01T00:00:02+00:00"),
+        )
+
+    assert recover_interrupted_runs() == 1
+    assert recover_interrupted_runs() == 0
+    with connect() as db:
+        run = db.execute("SELECT status,error,finished_at FROM agent_runs WHERE id='run-1'").fetchone()
+        task = db.execute("SELECT status FROM tasks WHERE id='task-1'").fetchone()
+        step = db.execute("SELECT status,error,finished_at FROM agent_run_steps WHERE run_id='run-1'").fetchone()
+        event = db.execute("SELECT stage FROM agent_run_events WHERE run_id='run-1' ORDER BY id DESC LIMIT 1").fetchone()
+
+    assert run["status"] == "failed"
+    assert "interrupted" in run["error"].lower()
+    assert run["finished_at"]
+    assert task["status"] == "failed"
+    assert step["status"] == "failed"
+    assert step["finished_at"]
+    assert event["stage"] == "interrupted"
