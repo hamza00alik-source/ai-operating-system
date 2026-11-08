@@ -1,5 +1,6 @@
 """FastAPI application."""
 import logging
+import os
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -75,6 +76,7 @@ from ai_os.agent_tools import register_builtin_agent_tools
 from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
 from ai_os.mcp_catalog import load_mcp_provider_catalog
 from ai_os.mcp_registry import MCPRegistryError, search_official_registry
+from ai_os.credential_vault import (CredentialVaultError, initialize_credential_vault, store_credential, list_credentials, revoke_credential)
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
     list_control_plane_endpoints, create_control_plane_endpoint,
@@ -94,6 +96,7 @@ async def lifespan(_: FastAPI):
     initialize_database()
     initialize_commerce_storage()
     initialize_control_plane()
+    initialize_credential_vault()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
     register_builtin_agent_tools()
@@ -224,6 +227,57 @@ def get_woocommerce_order_statuses(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+
+@app.get("/integrations/mcp/credentials")
+def get_mcp_credentials(provider_id: str | None = Query(default=None, max_length=80)):
+    """List credential metadata only; secret material is never returned."""
+    try:
+        return {"credentials": list_credentials(provider_id=provider_id)}
+    except Exception as exc:
+        logger.exception("Credential metadata listing failed")
+        raise HTTPException(status_code=503, detail="Credential vault is unavailable.") from exc
+
+
+@app.post("/integrations/mcp/credentials", status_code=201)
+def post_mcp_credential(payload: dict, request: Request):
+    """Store owner-supplied provider credentials encrypted at rest."""
+    allowed = {"provider_id", "label", "secret_type", "secret"}
+    if set(payload) != allowed:
+        raise HTTPException(status_code=422, detail="Provide exactly provider_id, label, secret_type, and secret.")
+    if os.getenv("AI_OS_ENV", "development").strip().lower() == "production" and request.url.scheme != "https":
+        raise HTTPException(status_code=400, detail="Credential submission requires HTTPS in production.")
+    try:
+        result = store_credential(
+            provider_id=payload["provider_id"],
+            label=payload["label"],
+            secret_type=payload["secret_type"],
+            secret=payload["secret"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "integration_credential_stored", "integration_credential",
+                 result["credential_ref"], {"provider_id": result["provider_id"],
+                 "secret_type": result["secret_type"], "encrypted": True})
+    return result
+
+
+@app.delete("/integrations/mcp/credentials/{credential_id}")
+def delete_mcp_credential(credential_id: str, request: Request):
+    try:
+        result = revoke_credential("vault:" + credential_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Credential not found.")
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "integration_credential_revoked", "integration_credential",
+                 result["credential_ref"], {"provider_id": result["provider_id"]})
+    return result
 
 
 @app.get("/integrations/mcp/providers")
