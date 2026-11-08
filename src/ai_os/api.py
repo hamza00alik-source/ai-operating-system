@@ -30,7 +30,12 @@ app = FastAPI(
 )
 
 
-@app.get("/owner", include_in_schema=False)\ndef get_owner_dashboard():\n    return owner_dashboard()\n\n\n@app.get("/health")
+@app.get("/owner", include_in_schema=False)
+def get_owner_dashboard():
+    return owner_dashboard()
+
+
+@app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
 
