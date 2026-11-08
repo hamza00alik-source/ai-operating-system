@@ -370,3 +370,16 @@ def record_mcp_tool_request_decision(approval_id: str, *, decision: str, owner_i
         _audit(db, f"mcp.tool_request.{decision}", actor_id=owner_id,
                resource_type="mcp_tool_request", resource_id=row["id"],
                details={"approval_id": approval_id})
+        if decision == "rejected":
+            task = db.execute(
+                "SELECT task_id FROM mcp_tool_requests WHERE id=?", (row["id"],)
+            ).fetchone()
+            if task and task["task_id"]:
+                db.execute(
+                    "UPDATE tasks SET status='blocked',error=?,finished_at=? "
+                    "WHERE id=? AND status='awaiting_approval'",
+                    ("Owner rejected the requested MCP tool action.", now, task["task_id"]),
+                )
+                _audit(db, "task.blocked_mcp_rejected", actor_id=owner_id,
+                       resource_type="task", resource_id=task["task_id"],
+                       details={"mcp_tool_request_id": row["id"]})
