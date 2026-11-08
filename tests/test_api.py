@@ -60,7 +60,7 @@ def test_owner_dashboard_is_served():
     with TestClient(app) as client:
         response = client.get("/owner")
     assert response.status_code == 200
-    assert "Technology Discovery" in response.text
+    assert "AI Company Control Center" in response.text
     assert "Queue scan" in response.text
 
 
