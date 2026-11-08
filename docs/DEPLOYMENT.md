@@ -15,6 +15,14 @@ change. Do not rely on an old screenshot or prior plan description.
 - Main file: `main.py`.
 - Install dependencies from `requirements.txt`.
 - Bind to `0.0.0.0` and the port supplied by the host (`PORT`, default 8000).
+- API start command: `uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}`.
+- Worker start command (a separate always-on process): `python -m ai_os.worker_service`.
+
+The API and worker must share the same `AI_OS_DATABASE_URL` and persistent
+SQLite file. For SQLite, run both processes on the same host and local
+persistent volume. Configure the host/process manager to restart the worker
+after failure. A web-only deployment without the worker will not continuously
+process company tasks.
 
 ## Required environment variables
 
@@ -25,6 +33,14 @@ Set these privately in the hosting panel. Never commit real values.
 | `AI_OS_ENV` | `production` |
 | `AI_OS_API_TOKEN` | Strong random secret, at least 32 characters |
 | `AI_OS_DATABASE_URL` | `sqlite:////absolute/path/on/persistent-storage/ai_os.db` |
+| `AI_OS_AGENT_SIGNING_KEY` | Strong private signing secret for internal agent identities |
+| `AI_OS_CREDENTIAL_ENCRYPTION_KEY` | Private Fernet key for encrypted credential storage |
+
+Optional model configuration (keep inference disabled until a provider is
+verified): `AI_OS_MODEL_ENABLED=false`, `AI_OS_MODEL_BACKEND=openai_compatible`,
+`AI_OS_MODEL_BASE_URL`, `AI_OS_MODEL_NAME`, and `AI_OS_MODEL_API_KEY`.
+Enabling inference can contact a third-party provider and may incur costs.
+Review provider terms and pricing first. Never commit keys or tokens.
 
 For compatibility with the original deployment preparation commit, the
 application also accepts `AI_OS_API_KEY` as an alias when
