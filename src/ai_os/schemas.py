@@ -111,7 +111,7 @@ class MCPToolRequestOut(BaseModel):
     server_id: str
     tool_name: str
     arguments: dict[str, Any]
-    status: Literal["pending", "approved", "rejected", "executed", "failed"]
+    status: Literal["pending", "awaiting_approval", "approved", "rejected", "executed", "failed"]
     approval_id: str | None = None
     result: Any | None = None
     error: str | None = None
