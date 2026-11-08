@@ -15,7 +15,7 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Task dependencies, assignment, leases, and cancellation
 - [ ] Agent interface, registry, typed inputs/outputs, and department routing
 - [ ] Retry policy, timeouts, concurrency limits, execution logs, and idempotency
-- [ ] Provider-neutral model adapter with zero-cost-first routing and hard cost ceilings
+- [x] Provider-neutral OpenAI-compatible model adapter, disabled by default, with bounded request settings\n- [x] Protected model status/test endpoints and provider discovery metadata\n- [ ] Verify one real free-tier or documented keyless model call with owner-approved provider configuration\n- [ ] Add provider-specific adapters and zero-cost-first routing with hard cost ceilings
 - [ ] Central approval service enforced for every protected action
 - [ ] Optional LangGraph adapter after core queue/approval prerequisites pass (see [LangGraph decision](LANGGRAPH_ARCHITECTURE_DECISION.md))
 - [ ] Background worker and scheduler with restart/recovery tests
