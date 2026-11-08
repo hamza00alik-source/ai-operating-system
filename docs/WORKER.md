@@ -13,55 +13,36 @@ Set these environment variables in the worker process only:
 | `AI_OS_MODEL_NAME` | Model identifier accepted by the provider |
 | `AI_OS_MODEL_API_KEY` | Optional provider key; keep it secret |
 | `AI_OS_MODEL_PROVIDER` | Informational provider label |
-| `AI_OS_WORKER_POLL_SECONDS` | Poll interval, clamped to 1–60 seconds |\n| `AI_OS_AGENT_GRAPH_ENABLED` | Set to `true` to run the three-agent Researcher → Developer → Quality Reviewer workflow; defaults to `false` |
+| `AI_OS_WORKER_POLL_SECONDS` | Poll interval, clamped to 1–60 seconds |
+| `AI_OS_AGENT_GRAPH_ENABLED` | Set to `true` for the three-agent workflow; defaults to `false` |
 | `AI_OS_DATABASE_URL` | Same persistent SQLite database used by the API |
 
 No provider is contacted by default. The worker exits before polling unless model execution is explicitly enabled and the base URL and model are configured.
 
 ## Run
 
-Install the project, then start the worker as a separate supervised process:
-
 ```bash
 python -m ai_os.worker_service
 ```
 
-Use a host process manager or platform worker service to restart the process after machine or process failure. The in-process loop backs off after transient scheduler/database errors; it is not a replacement for host-level supervision.
+Use a host process manager or platform worker service to restart the process after machine or process failure.
 
 ## Current behavior and limits
 
-- Processes one queued task at a time. With `AI_OS_AGENT_GRAPH_ENABLED=true`, one task uses three sequential model requests (Researcher, Developer, Quality Reviewer); this is opt-in because it increases provider usage. With the flag off, the original single-call worker path remains active.
+- Processes one queued task at a time. The opt-in three-agent graph makes three sequential model requests per task.
 - Uses an atomic SQLite write transaction to claim a task.
 - Persists task result, error, worker ID and timestamps.
-- Provider errors mark a task failed. They are not automatically retried, to avoid accidental repeated or metered model requests.
-- Claims carry a 15-minute lease by default. When a later worker pass detects an expired lease, it moves the task to `blocked` for human review; it never automatically requeues the task because the provider may already have received the request. Older `running` rows without lease metadata are checked using `started_at`.
-- There is no lease heartbeat or operator reconciliation endpoint yet. A task that runs longer than its lease may be blocked; a late worker cannot overwrite that blocked state. Review the task before any manual retry.
-- Agent handoffs are persisted in `agent_steps` and task-scoped `agent_memory` tables. The next agent reads prior handoffs directly from SQLite; no manual copying is required. Completed steps are reused on a deliberate resume. A step left `running` or `failed` is not automatically retried because the provider may already have received its request.
-- This worker cannot publish content, spend money, contact customers or modify external systems.
-- Run the API and worker against the same persistent database file.
-- Protected API endpoints `/tasks/{task_id}/memory` and `/tasks/{task_id}/steps` expose task-scoped handoffs and step status. Tests cover worker-loop behavior, default-disabled model execution, worker persistence, provider failure, lease recovery, action-bound approval consumption and persistent agent handoffs. Tests do not validate a live external model provider.
+- Provider errors are not automatically retried to avoid duplicate or metered requests.
+- Claims have a 15-minute lease. Expired claims become `blocked` for manual review; there is no heartbeat or operator reconciliation endpoint yet.
+- Agent handoffs persist in `agent_steps` and task-scoped `agent_memory`; completed steps are reused on deliberate resume. Running/failed steps are not automatically retried.
+- The worker cannot publish content, spend money, contact customers or modify external systems.
+- API and worker must share the same persistent database.
+- Unit tests do not validate a live external model provider.
 
-## Next engineering gates
+## Approval and audit safeguards
 
-1. Add lease heartbeats and an operator-controlled reconciliation path; define provider idempotency before allowing retries.
-2. Integrate the action-bound approval consumer into each external-action executor, with authenticated actor identity and durable audit records.
-3. Implement real multi-step agent scheduling and durable inter-agent handoff.
-4. Run a live provider test only after a provider endpoint and any required credentials are deliberately configured; review expected cost first.
+Approval requests bind the action, intended actor, target resource, structured payload and expiry. `consume_approval` atomically consumes a matching approved action but does not execute it. No external-action executor is connected yet.
 
+The API exposes protected `GET /audit/events`. Task and approval lifecycle events are inserted transactionally; MCP registry changes are also recorded. SQLite triggers reject ordinary updates/deletes to audit rows. This is not an external immutable compliance archive.
 
-## Action-bound approval safeguards
-
-Approval requests created through the current API must specify:
-- `actor_id`: the intended actor identity for the proposed action.
-- `resource_id`: the exact target resource (for example, a specific store or wallet).
-- `action_payload`: the structured parameters that will be executed.
-- `expires_in_seconds`: an expiry window (60 seconds to 7 days; default 15 minutes).
-
-The service canonicalizes the action, actor, resource and payload and stores a SHA-256 fingerprint. Decisions are single-use and expire. Before an integration executor performs an external action, it must call `consume_approval` with the same approval ID and exact action parameters. Consumption is atomic; changed parameters, a different actor/resource, expired approvals and repeated consumption are rejected.
-
-Important boundaries:
-- `consume_approval` only consumes authorization; it does not execute the external action.
-- No external-action executor is wired to this consumer yet. Therefore this is not permission to connect production credentials or perform live actions.
-- `actor_id` is currently caller-supplied metadata. The current single API-key authentication does not independently authenticate distinct human or service identities.
-- Existing approval rows from before this migration have no action fingerprint and cannot be consumed for execution; create a new approval for any future action.
-- The API key is shared owner authentication, not a role/identity provider. Add distinct authenticated principals before multi-user or multi-agent production use.
+The current API key authenticates one shared owner credential, not distinct human/agent principals. Approval `actor_id` remains caller-supplied metadata. Do not connect production credentials or external action executors until authenticated principals, per-tool approval enforcement, security review and durable backup are implemented.
