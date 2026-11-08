@@ -1,4 +1,4 @@
-"""SQLite persistence layer."""
+"""SQLite persistence layer and additive schema migrations."""
 import sqlite3
 from pathlib import Path
 
@@ -18,12 +18,25 @@ def _database_path() -> str:
 
 
 def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(_database_path(), check_same_thread=False)
+    connection = sqlite3.connect(
+        _database_path(), check_same_thread=False, timeout=15
+    )
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 15000")
+    connection.execute("PRAGMA foreign_keys = ON")
     return connection
 
 
+def _ensure_column(connection: sqlite3.Connection, table: str, name: str, definition: str) -> None:
+    existing = {
+        row["name"] for row in connection.execute(f"PRAGMA table_info({table})")
+    }
+    if name not in existing:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
 def initialize_database() -> None:
+    """Create base tables and apply backward-compatible task-worker migrations."""
     with connect() as connection:
         connection.executescript("""
         CREATE TABLE IF NOT EXISTS tasks (
@@ -39,3 +52,17 @@ def initialize_database() -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
         """)
+        _ensure_column(connection, "tasks", "result", "TEXT")
+        _ensure_column(connection, "tasks", "error", "TEXT")
+        _ensure_column(connection, "tasks", "worker_id", "TEXT")
+        _ensure_column(connection, "tasks", "lease_expires_at", "TEXT")
+        _ensure_column(connection, "tasks", "attempts", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "tasks", "max_attempts", "INTEGER NOT NULL DEFAULT 3")
+        _ensure_column(connection, "tasks", "started_at", "TEXT")
+        _ensure_column(connection, "tasks", "completed_at", "TEXT")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_queue ON tasks(status, created_at)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_lease ON tasks(status, lease_expires_at)"
+        )
