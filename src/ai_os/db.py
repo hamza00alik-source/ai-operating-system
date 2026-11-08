@@ -64,18 +64,22 @@ def initialize_database() -> None:
             updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS audit_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL,
-            actor_id TEXT,
-            resource_type TEXT NOT NULL,
-            resource_id TEXT NOT NULL,
-            details_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL
+            id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL,
+            actor_id TEXT, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL,
+            details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_audit_events_created
             ON audit_events(created_at DESC, id DESC);
         CREATE INDEX IF NOT EXISTS idx_audit_events_resource
             ON audit_events(resource_type, resource_id, id DESC);
+        CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+        BEFORE UPDATE ON audit_events BEGIN
+            SELECT RAISE(ABORT, 'audit events are immutable');
+        END;
+        CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
+        BEFORE DELETE ON audit_events BEGIN
+            SELECT RAISE(ABORT, 'audit events are immutable');
+        END;
         """)
         approval_columns = {row["name"] for row in connection.execute("PRAGMA table_info(approvals)")}
         for name, sql_type in (
