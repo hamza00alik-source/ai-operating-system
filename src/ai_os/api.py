@@ -85,7 +85,7 @@ from ai_os.control_plane import (initialize_control_plane, control_plane_overvie
     is_control_plane_agent_enabled, grant_capability, list_capability_grants,
     revoke_capability_grant, evaluate_capability, evaluate_broker_route,
     set_control_plane_endpoint_enabled)
-from ai_os.mcp_broker import (MCPBrokerError, initialize_mcp_broker_storage,\n    save_discovered_tools, list_discovered_tools, create_read_only_mapping,\n    list_mcp_tool_mappings, set_mcp_tool_mapping_enabled, get_mcp_tool_mapping)\nfrom ai_os.control_plane_schemas import (MCPToolMappingCreate, MCPToolExecute,\n    AgentEnableUpdate, EndpointCreate,
+from ai_os.mcp_broker import (MCPBrokerError, initialize_mcp_broker_storage,\n    save_discovered_tools, list_discovered_tools, get_discovered_tool,\n    validate_mcp_tool_arguments, create_read_only_mapping,\n    list_mcp_tool_mappings, set_mcp_tool_mapping_enabled, get_mcp_tool_mapping)\nfrom ai_os.control_plane_schemas import (MCPToolMappingCreate, MCPToolExecute,\n    AgentEnableUpdate, EndpointCreate,
     RuntimeCreate, RuntimeHeartbeat, CapabilityGrantCreate,
     BrokerRouteEvaluate, CapabilityEvaluate, EndpointEnableUpdate)
 
@@ -1368,12 +1368,19 @@ async def post_mcp_tool_execution(mapping_id: str, payload: MCPToolExecute, requ
     capability = evaluate_capability(payload.agent_id, "tool.mcp.read", None)
     if not capability.get("allowed"):
         raise HTTPException(status_code=403, detail=capability.get("reason", "MCP read capability denied."))
+    discovered = get_discovered_tool(mapping["endpoint_id"], mapping["tool_name"])
+    if discovered is None:
+        raise HTTPException(status_code=409, detail="Approved MCP tool metadata is missing; rediscover before execution.")
     try:
+        validate_mcp_tool_arguments(discovered["input_schema"], payload.arguments)
         result = await call_mcp_read_only_tool(
-            mapping["endpoint_id"], mapping["tool_name"], payload.arguments
+            mapping["endpoint_id"], mapping["tool_name"], payload.arguments,
+            expected_schema=discovered["input_schema"],
         )
-    except MCPDiscoveryError as exc:
+    except MCPBrokerError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except MCPDiscoveryError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     append_event(getattr(request.state, "actor", "unknown"),
                  "mcp_read_only_tool_executed", "mcp_tool_mapping", mapping_id,
                  {"agent_id": payload.agent_id, "tool_name": mapping["tool_name"],
