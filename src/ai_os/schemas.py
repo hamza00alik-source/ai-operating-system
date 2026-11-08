@@ -21,6 +21,11 @@ class TaskOut(BaseModel):
     department: str
     status: TaskStatus
     created_at: datetime
+    result: str | None = None
+    error: str | None = None
+    worker_id: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class ApprovalCreate(BaseModel):
