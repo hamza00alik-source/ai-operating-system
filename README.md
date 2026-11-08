@@ -2,7 +2,7 @@
 
 A modular, human-supervised foundation for running an AI-powered company, with the complete pinned Agency Agents specialist library (283 profiles across 18 divisions).
 
-> Early development: the repository now includes a model-backed specialist worker runtime, but it is disabled by default and requires an explicitly configured compatible model endpoint. It is not a fully autonomous company; ecommerce, social integrations, and external actions remain disconnected.
+ > Early development: the repository now includes a continuously supervised worker, dependency-aware agent handoffs, automatic CEO review, and a verified no-key public model preset in strict free-only mode. Live model and MCP discovery smoke tests pass in CI. The service is not yet deployed as a production company; OAuth, remote MCP execution, marketplace write integrations, and fulfillment automation remain incomplete.
 
 ## Principles
 - Free-first: no paid model API is required for the current workflow.
@@ -31,7 +31,20 @@ Open the responsive owner dashboard at http://127.0.0.1:8000/dashboard. See [doc
 
 ## Hosting preparation
 
-A Python host entry point and deployment checklist are included. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). This is preparation only; it does not mean the service has been deployed. Configure a persistent SQLite path and owner API key before production use.
+A Dockerfile, Docker Compose API/worker pair, persistent SQLite volume, and
+deployment checklist are included. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+This is preparation only; it does not mean the service has been deployed.
+Configure a persistent volume, owner API token, agent signing key, and Fernet
+credential encryption key before production use.
+
+The `.env.example` file contains the verified no-key OVHcloud
+`gpt-oss-20b` model preset with `AI_OS_FREE_ONLY=true`. The endpoint is
+rate-limited and receives task text sent by agents; do not send secrets or
+sensitive customer information. Set `AI_OS_MODEL_ENABLED=false` to pause it.
+The public endpoint is a prototype path, not a production SLA.
+
+For evidence-based progress and outstanding production gates, see
+[docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md).
 
 ## Current capabilities
 - Create and list work tasks. The signed CEO approval ingress (`POST /ceo/approval-requests`) creates exact-scope requests; the owner-only inbox and decision API expose one-time approve/reject controls. The internal action gateway can consume exact approvals for trusted adapters, but external execution is disabled and no production adapter is registered.
