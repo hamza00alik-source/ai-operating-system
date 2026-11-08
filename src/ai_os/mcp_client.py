@@ -182,6 +182,7 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
 
 async def call_mcp_read_only_tool(
     endpoint_id: str, tool_name: str, arguments: dict,
+    expected_schema: dict,
 ) -> dict:
     """Call one mapped remote tool; caller must enforce owner mapping and capability."""
     endpoint = _endpoint(endpoint_id)
@@ -212,6 +213,21 @@ async def call_mcp_read_only_tool(
                 max_sse_event_size=MAX_SSE_EVENT_BYTES,
             )
             async with Client(transport) as client:
+                available = await asyncio.wait_for(client.list_tools(), timeout=20)
+                current = next(
+                    (item for item in (getattr(available, "tools", []) or [])
+                     if getattr(item, "name", None) == tool_name),
+                    None,
+                )
+                if current is None:
+                    raise MCPDiscoveryError("Approved remote MCP tool is no longer advertised.")
+                current_schema = _tool_metadata(current)["input_schema"]
+                if json.dumps(current_schema, sort_keys=True, separators=(",", ":")) != json.dumps(
+                    expected_schema, sort_keys=True, separators=(",", ":")
+                ):
+                    raise MCPDiscoveryError(
+                        "Remote MCP tool schema changed after owner approval; rediscover and review it."
+                    )
                 result = await asyncio.wait_for(
                     client.call_tool(tool_name, arguments), timeout=45
                 )
