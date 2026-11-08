@@ -29,8 +29,8 @@ class EndpointCreate(BaseModel):
     def validate_credential_reference(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        if not (value.startswith("env:") or value.startswith("secret://")):
-            raise ValueError("credential_ref must be an env:NAME or secret:// provider reference, never a credential value")
+        if not (value.startswith("env:") or value.startswith("secret://") or re.fullmatch(r"vault:[0-9a-fA-F-]{36}", value)):
+            raise ValueError("credential_ref must be an env:NAME, secret://, or vault:UUID reference, never a credential value")
         if len(value) > 160 or any(ch.isspace() for ch in value):
             raise ValueError("credential_ref must be a short reference")
         return value
