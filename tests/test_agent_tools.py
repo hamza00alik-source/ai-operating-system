@@ -8,7 +8,8 @@ from ai_os.action_gateway import (
     execute_agent_tool,
 )
 from ai_os.agent_tools import register_builtin_agent_tools
-from ai_os.control_plane import (grant_capability, initialize_control_plane,\n    create_control_plane_endpoint, set_control_plane_endpoint_enabled)
+from ai_os.control_plane import (grant_capability, initialize_control_plane,
+    create_control_plane_endpoint, set_control_plane_endpoint_enabled)
 from ai_os.db import initialize_database
 from ai_os import agent_tools
 
