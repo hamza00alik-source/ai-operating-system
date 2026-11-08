@@ -2,6 +2,8 @@
 from contextlib import asynccontextmanager
 import logging
 import threading
+import json
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from ai_os.owner_dashboard import owner_dashboard
@@ -158,6 +160,49 @@ def post_llm_run(payload: ModelRunRequest):
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+
+@app.get("/workforce/agents", dependencies=[Depends(require_api_key)])
+def get_workforce_agents(department: str | None = None, q: str | None = None):
+    """Return the complete catalogued Agency workforce; catalog entries are not live workers."""
+    manifest_path = Path(__file__).resolve().parents[2] / "data" / "agency_agents_manifest.json"
+    if not manifest_path.exists():
+        raise HTTPException(status_code=503, detail="Workforce manifest is unavailable.")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    agents = manifest["agents"]
+    if department:
+        agents = [a for a in agents if a["department"] == department]
+    if q:
+        term = q.casefold()
+        agents = [a for a in agents if term in a["name"].casefold() or term in a["department"].casefold() or term in a["id"].casefold()]
+    return {
+        "source_repository": manifest["source_repository"],
+        "license": manifest["license"],
+        "agent_count": manifest["agent_count"],
+        "department_count": manifest["department_count"],
+        "roles_including_ceo": manifest["roles_including_ceo"],
+        "departments": manifest["departments"],
+        "catalog_status": "catalogued-not-runtime",
+        "agents": agents,
+    }
+
+
+@app.get("/company/overview", dependencies=[Depends(require_api_key)])
+def get_company_overview():
+    with connect() as db:
+        tasks = db.execute("SELECT status, COUNT(*) AS n FROM tasks GROUP BY status").fetchall()
+        approvals = db.execute("SELECT status, COUNT(*) AS n FROM approvals GROUP BY status").fetchall()
+        scans = db.execute("SELECT status, COUNT(*) AS n FROM discovery_scans GROUP BY status").fetchall()
+        candidates = db.execute("SELECT COUNT(*) AS n FROM discovery_candidates").fetchone()["n"]
+    return {
+        "workforce": {"agents": 283, "departments": 18, "roles_including_ceo": 284, "runtime_ready": False},
+        "tasks": {r["status"]: r["n"] for r in tasks},
+        "approvals": {r["status"]: r["n"] for r in approvals},
+        "discovery_scans": {r["status"]: r["n"] for r in scans},
+        "discovered_repositories": candidates,
+        "execution_runtime": "not-yet-connected",
+    }
 
 
 @app.get("/health")
