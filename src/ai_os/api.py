@@ -8,7 +8,7 @@ from ai_os.cascade import AllProvidersFailed, cascade_chat
 from ai_os.cascade_schemas import LLMChatRequest
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
-from ai_os.llm import load_providers, provider_status, test_provider
+from ai_os.llm import provider_status, test_provider
 from ai_os.llm_schemas import LLMTestRequest
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
@@ -27,6 +27,7 @@ app = FastAPI(
     title="AI Operating System",
     version="0.1.0",
     description="Human-supervised AI company workflow foundation.",
+    lifespan=lifespan,
 )
 
 
