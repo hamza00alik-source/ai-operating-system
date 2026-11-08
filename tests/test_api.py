@@ -94,11 +94,11 @@ def test_research_analyst_endpoint_returns_persisted_run(monkeypatch, tmp_path):
     saved_run = {
         "id": "test-run-id", "agent_type": "research_analyst",
         "goal": "Evaluate a small downloadable digital product idea.",
-        "provider": "groq", "status": "completed",
-        "output": "Analysis saved.", "created_at": datetime.now(timezone.utc).isoformat(),
-        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "provider": "groq", "status": "queued",
+        "output": "", "created_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": None,
     }
-    monkeypatch.setattr("ai_os.api.run_research_analyst", lambda provider, goal: saved_run)
+    monkeypatch.setattr("ai_os.api.enqueue_research_analyst", lambda provider, goal: saved_run)
     monkeypatch.setattr("ai_os.api.list_agent_runs", lambda: [saved_run])
     with TestClient(app) as client:
         response = client.post("/agents/runs", json={
