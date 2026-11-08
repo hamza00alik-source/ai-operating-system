@@ -54,3 +54,30 @@ def test_non_development_requires_api_key_at_startup(monkeypatch):
             raise AssertionError("Application startup should reject a missing API key")
     except RuntimeError as exc:
         assert "AI_OS_API_KEY" in str(exc)
+
+
+def test_owner_dashboard_is_served():
+    with TestClient(app) as client:
+        response = client.get("/owner")
+    assert response.status_code == 200
+    assert "Technology Discovery" in response.text
+    assert "Queue scan" in response.text
+
+
+def test_discovery_scan_queue_and_read_endpoints():
+    with TestClient(app) as client:
+        response = client.post("/discovery/scans", json={"categories": ["agent-frameworks"]})
+        assert response.status_code == 202
+        scan = response.json()
+        assert scan["status"] == "queued"
+        scans = client.get("/discovery/scans")
+        assert scans.status_code == 200
+        assert any(item["id"] == scan["id"] for item in scans.json())
+        candidates = client.get("/discovery/candidates")
+        assert candidates.status_code == 200
+
+
+def test_discovery_scan_rejects_empty_categories():
+    with TestClient(app) as client:
+        response = client.post("/discovery/scans", json={"categories": []})
+    assert response.status_code == 422
