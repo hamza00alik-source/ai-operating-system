@@ -48,6 +48,21 @@ def initialize_database() -> None:
             model TEXT NOT NULL, base_url TEXT NOT NULL,
             free_confirmed INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            assigned_agent_id TEXT,
+            specialist_output TEXT,
+            ceo_review TEXT,
+            usage_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_status_created ON agent_runs(status, created_at);
         CREATE TABLE IF NOT EXISTS owner_sessions (
             token_hash TEXT PRIMARY KEY,
             created_at TEXT NOT NULL,
