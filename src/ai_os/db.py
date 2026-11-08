@@ -39,6 +39,33 @@ def initialize_database() -> None:
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
         """)
+        connection.executescript("""
+        CREATE TABLE IF NOT EXISTS agent_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            step_key TEXT NOT NULL,
+            agent_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            prompt TEXT NOT NULL,
+            output TEXT,
+            error TEXT,
+            worker_id TEXT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            UNIQUE(task_id, step_key),
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        );
+        CREATE TABLE IF NOT EXISTS agent_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            memory_key TEXT NOT NULL,
+            source_agent TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(task_id, memory_key),
+            FOREIGN KEY(task_id) REFERENCES tasks(id)
+        );
+        """)
         # Additive migrations keep existing SQLite installations compatible.
         task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
         approval_columns = {row["name"] for row in connection.execute("PRAGMA table_info(approvals)")}
