@@ -1,16 +1,14 @@
-"""Supervised durable agent worker process.
-
-The queue owns per-job retries and stale-lease recovery. This module adds a
-process-level supervisor so transient scheduler/database errors do not terminate
-the worker. A service manager should still restart the process after host failure.
-"""
+"""Supervised durable agent worker process."""
 import logging
 import os
+import signal
+import threading
 import time
 from uuid import uuid4
 from collections.abc import Callable
 
 from ai_os.agent_runtime import schedule_ready_steps
+from ai_os.db import initialize_database
 from ai_os.model_adapter import get_model_status
 from ai_os.worker import run_once
 
@@ -27,7 +25,7 @@ def run_worker_loop(
     run: Callable[..., dict] = run_once,
     on_error: Callable[[Exception, int], None] | None = None,
 ) -> None:
-    """Run until stopped; exponentially back off after process-level failures."""
+    """Run until stopped; back off after transient process-level failures."""
     delay = max(1, min(int(poll_seconds), 60))
     failure_count = 0
     while not stop_requested():
@@ -54,17 +52,26 @@ def run_worker_loop(
 
 def main() -> None:
     status = get_model_status()
-    if not status["enabled"]:
+    if not status["ready"]:
         raise SystemExit(
             "Agent worker not started: configure an approved model endpoint and "
             "set AI_OS_MODEL_ENABLED=true. No model request was made."
         )
+    initialize_database()
     try:
         interval = int(os.getenv("AI_OS_WORKER_POLL_SECONDS", "3"))
     except ValueError:
         interval = 3
     interval = max(1, min(interval, 60))
     worker_id = f"agent-worker-{uuid4()}"
+    stop_event = threading.Event()
+
+    def request_stop(_signum, _frame):
+        logger.info("Worker shutdown requested.")
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
     logger.info(
         "Agent worker started: %s; provider=%s; model=%s",
         worker_id, status["provider"], status["model"],
@@ -72,7 +79,7 @@ def main() -> None:
     run_worker_loop(
         worker_id=worker_id,
         poll_seconds=interval,
-        stop_requested=lambda: False,
+        stop_requested=stop_event.is_set,
     )
 
 
@@ -81,7 +88,4 @@ if __name__ == "__main__":
         level=os.getenv("AI_OS_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    try:
-        main()
-    except KeyboardInterrupt:
-        logger.info("Agent worker stopped cleanly.")
+    main()
