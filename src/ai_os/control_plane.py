@@ -518,6 +518,7 @@ BROKER_CAPABILITIES = {
     "tool.knowledge.write",
     "tool.store.read",
     "tool.store.draft",
+    "tool.mcp.read",
 }
 _CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{2,79}$")
 
