@@ -41,6 +41,18 @@ def initialize_database() -> None:
         """)
         # Additive migrations keep existing SQLite installations compatible.
         task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
+        approval_columns = {row["name"] for row in connection.execute("PRAGMA table_info(approvals)")}
+        for name, sql_type in (
+            ("actor_id", "TEXT"),
+            ("resource_id", "TEXT"),
+            ("action_payload_json", "TEXT"),
+            ("action_fingerprint", "TEXT"),
+            ("expires_at", "TEXT"),
+            ("consumed_at", "TEXT"),
+        ):
+            if name not in approval_columns:
+                connection.execute(f"ALTER TABLE approvals ADD COLUMN {name} {sql_type}")
+
         for name, sql_type in (
             ("worker_id", "TEXT"),
             ("started_at", "TEXT"),
