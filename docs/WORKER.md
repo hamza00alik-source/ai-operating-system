@@ -78,3 +78,10 @@ AI_OS_AGENT_GRAPH_ENABLED=true
 This is an optional example, not a built-in default. The public gateway documents anonymous access and a 20-request/day anonymous limit, but explicitly describes itself as experimental and warns that upstream capacity may change or disappear. Do not send private/customer data through it, do not treat it as production infrastructure, and verify its current service status before use. A successful connection test proves only that one response was returned; it does not prove three-agent execution or worker reliability.
 
 For the first end-to-end run, use only a synthetic internal task with no customer data. Keep the graph disabled until the owner has verified a model response, then enable it deliberately and inspect each persisted agent handoff.
+
+
+## MCP connection verification
+
+The MCP registry is configuration-only until an owner explicitly tests a registered server. The owner-only `POST /mcp/servers/{server_id}/test` endpoint performs a Streamable HTTP initialize handshake and `tools/list` discovery. It does not call any discovered tool, and it reports `tool_execution_enabled: false`.
+
+Configure the server with HTTPS and reference bearer credentials by environment-variable name (never paste secret values into the registry). The probe rejects disabled servers, missing environment variables, non-public DNS answers and redirects. The first configured credential environment variable is sent as a Bearer token. OAuth authorization flows, per-provider auth schemes, dynamic tool invocation, and credential management are not implemented yet. Tool descriptions and input schemas returned by remote servers are untrusted metadata and must not be treated as agent instructions.
