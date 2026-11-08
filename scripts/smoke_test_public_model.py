@@ -1,64 +1,37 @@
-"""One-request, no-key smoke test for the public OVHcloud OpenAI-compatible endpoint.
+"""One-request smoke test of AIOS's actual adapter against the no-key OVH endpoint."""
+import os
 
-This is a connectivity check only; it does not enable the provider in AIOS or
-prove a production SLA. The endpoint is public and rate-limited.
-"""
-import json
-import urllib.error
-import urllib.request
+# Use only the exact public anonymous endpoint and allowlisted model. No API key
+# or fallback provider is configured for this smoke test.
+os.environ["AI_OS_MODEL_ENABLED"] = "true"
+os.environ["AI_OS_MODEL_BACKEND"] = "openai_compatible"
+os.environ["AI_OS_MODEL_PROVIDER"] = "ovhcloud-anonymous"
+os.environ["AI_OS_MODEL_BASE_URL"] = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"
+os.environ["AI_OS_MODEL_NAME"] = "gpt-oss-20b"
+os.environ["AI_OS_MODEL_API_KEY"] = ""
+os.environ["AI_OS_FREE_ONLY"] = "true"
+os.environ["AI_OS_FREE_MODEL_ALLOWLIST"] = "gpt-oss-20b"
 
-ENDPOINT = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions"
-MODEL = "gpt-oss-20b"
+from ai_os.model_adapter import generate_json
 
 
 def main() -> None:
-    payload = {
-        "model": MODEL,
-        "messages": [
-            {
-                "role": "user",
-                "content": (
-                    'Return only a JSON object with exactly these keys: '
-                    '{"status":"ok","summary":"public model reachable"}.'
-                ),
-            }
-        ],
-        "temperature": 0,
-        "max_tokens": 120,
-    }
-    request = urllib.request.Request(
-        ENDPOINT,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=35) as response:
-            if not 200 <= response.status < 300:
-                raise RuntimeError(f"Public model returned HTTP {response.status}.")
-            result = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raise SystemExit(f"Public model smoke test failed: HTTP {exc.code}.") from exc
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        result, provider = generate_json(
+            "You are a connectivity test. Return a valid JSON object only.",
+            'Return {"status":"completed","summary":"AIOS adapter connected"} exactly.',
+        )
+    except Exception as exc:
         raise SystemExit(
-            f"Public model smoke test failed: {type(exc).__name__}; no credentials were used."
+            f"AIOS adapter smoke test failed: {type(exc).__name__}. No credentials were used."
         ) from exc
 
-    choices = result.get("choices") or []
-    content = choices[0].get("message", {}).get("content") if choices else None
-    if not isinstance(content, str) or not content.strip():
-        raise SystemExit("Public model responded but returned no chat content.")
-    cleaned = content.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    try:
-        decoded = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise SystemExit("Public model responded, but did not follow the JSON smoke-test prompt.") from exc
-    if not isinstance(decoded, dict) or decoded.get("status") != "ok":
-        raise SystemExit("Public model responded, but its structured result was unexpected.")
-    print(f"PASS: {MODEL} responded successfully without an API key.")
-    print("This confirms endpoint connectivity only; it does not verify AIOS production configuration.")
+    if not isinstance(result, dict) or result.get("status") != "completed":
+        raise SystemExit("AIOS adapter received a response, but its structured result was invalid.")
+    if provider.get("provider") != "ovhcloud-anonymous" or provider.get("model") != "gpt-oss-20b":
+        raise SystemExit("AIOS adapter used an unexpected provider or model.")
+    print("PASS: AIOS model adapter received a valid response from gpt-oss-20b without an API key.")
+    print("No paid fallback was enabled; this is a connectivity smoke test, not a production SLA.")
 
 
 if __name__ == "__main__":
