@@ -36,6 +36,10 @@ Open http://127.0.0.1:8000/docs.
 ### MCP registry (configuration only)
 Use `POST /mcp/servers` with a name, HTTPS endpoint, optional credential environment-variable names, and operator-declared capabilities. Use `GET /mcp/servers` to list entries and `POST /mcp/servers/{id}/enabled?enabled=true|false` to toggle a configuration. Entries report `connection_status: not_connected`. Enabling an entry does not connect to it or execute tools. The registry rejects non-HTTPS, localhost/private-IP endpoints and credential values supplied where environment-variable names are expected.
 
+### Read-only workforce dashboard
+
+Open `/workforce` on the same AIOS host for a mobile-friendly workforce overview. In development, the page can load without a key. In staging/production, enter the owner key in the page; it is held in page memory only and sent to the protected `/visual-workforce` endpoint in the `X-API-Key` header. Reloading the page clears the key. The dashboard is read-only and refreshes its snapshot every 15 seconds. It currently shows the three persisted workflow role slots, not a larger independent-agent registry. Serve the application over HTTPS outside local development.
+
 ### Audit events
 `GET /audit/events?limit=100` returns newest events first (maximum 500). Pass `before_id` from the last event to fetch an older page. Audit rows are inserted alongside state changes, and SQLite triggers reject ordinary update/delete operations. This is not an externally immutable compliance archive; protect and back up the database. Actor labels remain unverified until distinct principal authentication is implemented.
 
