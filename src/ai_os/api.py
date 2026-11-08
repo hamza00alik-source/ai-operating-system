@@ -212,7 +212,6 @@ def get_workforce_agents(department: str | None = None, q: str | None = None):
         "catalog_status": "on-demand-invocation",
         "runtime_model": "one shared worker invokes selected role instructions per task; roles are not resident processes",
         "agents": [{**a, "execution_status": "available-on-demand"} for a in agents],
-        "agents": agents,
     }
 
 
