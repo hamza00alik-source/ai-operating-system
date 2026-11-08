@@ -47,6 +47,7 @@ def initialize_database() -> None:
             ("finished_at", "TEXT"),
             ("result", "TEXT"),
             ("error", "TEXT"),
+            ("lease_expires_at", "TEXT"),
         ):
             if name not in task_columns:
                 connection.execute(f"ALTER TABLE tasks ADD COLUMN {name} {sql_type}")
