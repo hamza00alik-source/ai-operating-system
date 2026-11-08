@@ -94,6 +94,7 @@ class MCPToolCall(BaseModel):
     tool_name: str = Field(min_length=1, max_length=120)
     arguments: dict[str, Any] = Field(default_factory=dict)
     approval_id: str = Field(min_length=1, max_length=120)
+    request_id: str | None = Field(default=None, max_length=120)
 
 
 class MCPToolRequestCreate(BaseModel):
