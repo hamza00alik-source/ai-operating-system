@@ -292,6 +292,20 @@ def get_agent_run_events(run_id: str):
         ).fetchall()
     return [dict(row) for row in rows]
 
+@app.get("/agent-runs/{run_id}/steps", dependencies=[Depends(require_api_key)])
+def get_agent_run_steps(run_id: str):
+    """Return each collaborating agent's persisted contribution."""
+    if get_run(run_id) is None:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    with connect() as db:
+        rows = db.execute(
+            """SELECT sequence_no, role, agent_id, agent_name, status,
+            input_summary, output, error, created_at, finished_at
+            FROM agent_run_steps WHERE run_id=? ORDER BY sequence_no ASC""",
+            (run_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
 
 @app.post(
     "/approvals",
