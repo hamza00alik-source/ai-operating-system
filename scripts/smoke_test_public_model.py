@@ -90,6 +90,8 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
             print("Verified: durable queue, real model adapter, report handoff and final review.")
             print("No external store, customer, payment, publishing or deployment action was attempted.")
     except Exception as exc:
+        import traceback
+        traceback.print_exc()
         raise SystemExit(
             f"Live AIOS public-model workflow failed: {type(exc).__name__}: {str(exc)[:300]}"
         ) from exc
