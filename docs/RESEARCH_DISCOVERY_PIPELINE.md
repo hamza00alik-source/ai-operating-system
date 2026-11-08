@@ -75,6 +75,14 @@ Do not expose provider secrets in candidate details or logs.
 - Candidate approval is a review-state change only; it does not install, connect, or execute repository code.
 - The test suite covers queueing and conservative metadata evaluation, but production end-to-end scans still need a live owner-triggered verification after deployment.
 
+## Free API catalog ingestion
+
+AIOS imports the CC0-licensed structured catalog from `IdoY12/awesome-free-ai-apis` (`data/providers.json`) and its daily probe summary (`data/status.json`). It stores free-tier notes, data-training and commercial-use caveats, confidence, last verification date, official source URLs, and upstream probe status in SQLite. The import is read-only and does not invoke provider APIs.
+
+The dashboard exposes an owner-triggered sync and a review table. `bradAGI/awesome-free-inference` is secondary-only because the inspected README's verification badge is dated March 2026 and the repository has no structured provider data. `dhaulagani/awesome-free-ai-apis` is excluded pending evidence because its README makes strong uptime/quota claims without an inspected machine-readable, per-provider source dataset; a LICENSE file was not found at the inspected path.
+
+Catalog entries are research leads, not integrations. Before connecting a provider, independently verify current official free pricing, quota, commercial-use terms, privacy/training policy, data retention, regional availability, and account-specific access. Never infer that a listed provider is free for the user's account. The owner must explicitly confirm free-only use; paid routes remain blocked.
+
 ## Remaining delivery sequence
 
 1. Run a live scan from the authenticated owner dashboard and verify completed scan records and persisted candidates.
