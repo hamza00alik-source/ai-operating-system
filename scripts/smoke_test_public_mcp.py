@@ -48,6 +48,8 @@ with tempfile.TemporaryDirectory(prefix="aios-mcp-smoke-") as temp_dir:
             tools = result.get("tools", [])
             if not tools or result.get("discovered_tool_count", 0) < 1:
                 raise RuntimeError("Public MCP server returned no tools.")
+            if result.get("authenticated") is not False or result.get("authentication_method") != "none":
+                raise RuntimeError("No-auth public MCP smoke test unexpectedly used credentials.")
             if result.get("execution_enabled") is not False:
                 raise RuntimeError("Remote MCP tool execution must remain disabled.")
             if any(tool.get("executable") is not False for tool in tools):
