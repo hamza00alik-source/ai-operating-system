@@ -10,7 +10,7 @@ from ai_os.auth import Principal, require_operator, require_owner, require_reade
 from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
-from ai_os.model_adapter import get_model_status
+from ai_os.model_adapter import generate_text, get_model_status
 from ai_os.heartbeat import get_worker_status
 from ai_os.schemas import (
     ApprovalCreate, ApprovalDecision, ApprovalOut, AuditEventOut,
@@ -56,6 +56,30 @@ def runtime_status() -> dict:
     """Expose safe runtime configuration only; never return endpoint URLs or secrets."""
     return {"model": get_model_status(), "agent_graph_enabled": agent_graph_enabled(),
             "worker_heartbeat_available": True, "worker": get_worker_status()}
+
+
+@app.post("/runtime/model-test", dependencies=[Depends(require_owner)])
+def runtime_model_test() -> dict:
+    """Send one fixed, harmless connectivity prompt only after an owner clicks Test."""
+    status = get_model_status()
+    if not status["enabled"] or not status["configured"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Model execution is disabled or the endpoint/model is not configured.",
+        )
+    try:
+        output = generate_text(
+            "AIOS connectivity check. Reply with exactly: AIOS_MODEL_CONNECTION_OK",
+            timeout=20,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "provider": status["provider"],
+        "model": status["model"],
+        "output": output[:500],
+    }
 
 
 @app.post("/tasks", response_model=TaskOut, status_code=201)

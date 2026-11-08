@@ -193,6 +193,13 @@ def test_distinct_principals_and_role_permissions(monkeypatch):
         agent = {"X-API-Key": "agent-secret"}
         operator = {"X-API-Key": "operator-secret"}
         owner = {"X-API-Key": "owner-secret"}
+        monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+        monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://provider.example/v1")
+        monkeypatch.setenv("AI_OS_MODEL_NAME", "safe-test-model")
+        from ai_os import api
+        monkeypatch.setattr(api, "generate_text", lambda prompt, timeout: "AIOS_MODEL_CONNECTION_OK")
+        assert client.post("/runtime/model-test", headers=viewer, json={}).status_code == 403
+        assert client.post("/runtime/model-test", headers=owner, json={}).status_code == 200
         assert client.get("/tasks", headers=viewer).status_code == 200
         assert client.post("/tasks", headers=viewer, json={"title": "No"}).status_code == 403
         assert client.post("/tasks", headers=agent, json={"title": "Research"}).status_code == 201
@@ -211,3 +218,33 @@ def test_distinct_principals_and_role_permissions(monkeypatch):
             "action": "publish", "actor_id": "spoofed", "resource_id": "site:1",
             "action_payload": {"draft": "x"}
         }).json()["actor_id"] == "owner-1"
+
+
+def test_owner_model_connection_test_uses_fixed_prompt_without_real_network(monkeypatch):
+    from ai_os import api
+
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://provider.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "free-test-model")
+    calls = []
+    monkeypatch.setattr(api, "generate_text", lambda prompt, timeout: calls.append((prompt, timeout)) or "AIOS_MODEL_CONNECTION_OK")
+
+    with TestClient(app) as client:
+        response = client.post("/runtime/model-test", json={})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["model"] == "free-test-model"
+    assert response.json()["output"] == "AIOS_MODEL_CONNECTION_OK"
+    assert len(calls) == 1
+    assert "private" not in calls[0][0].lower()
+    assert calls[0][1] == 20
+
+
+def test_owner_model_connection_test_refuses_when_disabled(monkeypatch):
+    monkeypatch.delenv("AI_OS_MODEL_ENABLED", raising=False)
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://provider.example/v1")
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "free-test-model")
+    with TestClient(app) as client:
+        response = client.post("/runtime/model-test", json={})
+    assert response.status_code == 409
