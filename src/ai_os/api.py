@@ -1,13 +1,16 @@
 """FastAPI application."""
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 
-from ai_os.agent_runtime import get_task_memory, list_task_steps
+from ai_os.agent_runtime import agent_graph_enabled, get_task_memory, list_task_steps
 from ai_os.auth import Principal, require_operator, require_owner, require_reader, require_task_writer
 from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
+from ai_os.model_adapter import get_model_status
 from ai_os.schemas import (
     ApprovalCreate, ApprovalDecision, ApprovalOut, AuditEventOut,
     MCPServerCreate, MCPServerOut, TaskCreate, TaskOut,
@@ -35,9 +38,23 @@ app = FastAPI(
 )
 
 
+@app.get("/owner/verification", include_in_schema=False)
+def owner_verification_dashboard():
+    """Serve the visual owner console; all operational data remains API-key protected."""
+    page = Path(__file__).parent / "static" / "owner.html"
+    return FileResponse(page, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
+
+
+@app.get("/runtime/status", dependencies=[Depends(require_reader)])
+def runtime_status() -> dict:
+    """Expose safe runtime configuration only; never return endpoint URLs or secrets."""
+    return {"model": get_model_status(), "agent_graph_enabled": agent_graph_enabled(),
+            "worker_heartbeat_available": False}
 
 
 @app.post("/tasks", response_model=TaskOut, status_code=201)

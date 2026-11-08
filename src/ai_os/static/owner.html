@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1220"><title>AIOS · Owner Control Room</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#142238;--line:#2b405a;--muted:#9aabc0;--ink:#edf4fc;--blue:#76b7ff;--green:#45d49a;--amber:#ffbd70;--red:#ff8080}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% 0%,#1b3453 0,transparent 45%),var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{width:min(100% - 24px,1100px);margin:auto;padding:24px 0 54px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--blue);font-weight:750}h1{font-size:clamp(27px,6vw,40px);line-height:1.1;margin:5px 0}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:0}p{color:var(--muted);margin:6px 0}.panel,.tile,.agent,.task{background:linear-gradient(145deg,#17283e,#101b2b);border:1px solid var(--line);border-radius:16px}.panel{padding:16px;margin:16px 0}.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.row.between{justify-content:space-between}.row input{flex:1;min-width:190px}input,button{font:inherit;color:var(--ink);background:#0b1524;border:1px solid #354b65;border-radius:10px;padding:11px 13px}button{background:#245b91;border-color:#367ab7;font-weight:700;cursor:pointer}button.secondary{background:#1a2b40;border-color:#40536a}button:disabled{opacity:.5;cursor:wait}button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.statusline{font-size:13px;color:var(--muted);margin-top:8px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.tile{padding:13px}.tile strong{font-size:25px;display:block}.tile span{font-size:12px;color:var(--muted)}.green{color:var(--green)}.amber{color:var(--amber)}.red{color:var(--red)}.muted{color:var(--muted)}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;font-size:12px;text-transform:capitalize}.pill.completed{color:var(--green)}.pill.running{color:var(--blue)}.pill.queued,.pill.pending{color:var(--amber)}.pill.failed,.pill.blocked{color:var(--red)}.pill.unknown{color:#c2ccda}.bar{height:8px;background:#26364b;border-radius:99px;overflow:hidden;margin:10px 0}.bar>i{display:block;height:100%;width:0;background:var(--green);transition:width .25s}.two{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:14px}.tasks{display:grid;gap:9px}.task{padding:12px;cursor:pointer}.task.active{border-color:var(--blue);box-shadow:0 0 0 1px #76b7ff44}.task p{font-size:13px}.agents{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.agent{padding:12px;min-width:0}.agent .symbol{width:38px;height:38px;border-radius:12px;background:#203b59;display:grid;place-items:center;font-size:18px;margin-bottom:9px}.agent .desc{font-size:12px;overflow-wrap:anywhere}.handoff{white-space:pre-wrap;overflow-wrap:anywhere;max-height:230px;overflow:auto;background:#0b1524;border:1px solid #26364b;border-radius:10px;padding:11px;font-size:13px;color:#d8e5f4}.empty{padding:18px;text-align:center;border:1px dashed #40536a;border-radius:13px;color:var(--muted)}.warn{border-left:3px solid var(--amber);background:#2b241b;padding:10px 12px;border-radius:8px;color:#f1d6ae;font-size:13px}.small{font-size:12px;color:var(--muted)}.links{display:flex;gap:12px;flex-wrap:wrap}.links a{color:var(--blue);font-size:13px}@media(max-width:760px){.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){main{width:calc(100% - 18px);padding-top:18px}.agents{grid-template-columns:1fr}.row button{width:100%}.tile strong{font-size:22px}}
+</style>
+</head>
+<body><main>
+<header class="top"><div><div class="eyebrow">AI Operating System · Owner view</div><h1>Company control room</h1><p>See real task status, agent handoffs and completed work.</p></div><div class="pill unknown" id="api-state">Not connected</div></header>
+<section class="panel">
+<h2>Connect to your AIOS</h2><p>Enter your owner API key. It remains in this page's memory only and is never saved in browser storage.</p>
+<div class="row"><input id="api-key" type="password" autocomplete="off" aria-label="Owner API key" placeholder="Owner API key (blank only for local development)"><button id="connect">Connect</button><button id="refresh" class="secondary">Refresh</button></div>
+<div class="statusline" id="connection-message" role="status" aria-live="polite">Not connected</div>
+</section>
+<section class="panel"><div class="row between"><h2>Runtime readiness</h2><span class="small" id="updated-at">Waiting for connection</span></div>
+<div class="grid">
+<div class="tile"><strong id="model-state">—</strong><span>Model execution</span></div>
+<div class="tile"><strong id="graph-state">—</strong><span>3-agent workflow</span></div>
+<div class="tile"><strong id="task-count">—</strong><span>Saved tasks</span></div>
+<div class="tile"><strong id="worker-state">Unknown</strong><span>Worker process</span></div>
+</div>
+<div class="warn" id="runtime-note">Connect to inspect configuration. A green API connection alone does not mean the worker or model is running.</div>
+</section>
+<section class="panel"><div class="row between"><h2>Run a safe visual test</h2><span class="small">Creates a normal queued task</span></div>
+<p>This submits a harmless internal research task. It does not publish, spend, message customers or call external tools. The worker must already be running and configured to process it.</p>
+<div class="row"><button id="run-test" disabled>Queue test task</button><span class="small" id="test-message">Connect first.</span></div>
+</section>
+<div class="two">
+<section class="panel"><div class="row between"><h2>Task history</h2><span class="small">Select a task to inspect</span></div><div id="task-list" class="tasks"><div class="empty">Connect to load task history.</div></div></section>
+<section class="panel"><h2>Selected task</h2><div id="task-detail" class="empty">No task selected.</div></section>
+</div>
+<section class="panel"><div class="row between"><h2>Agent handoffs</h2><span class="small" id="agent-summary">No task selected</span></div><div id="agent-cards" class="agents"><div class="empty" style="grid-column:1/-1">Agent activity will appear here when a worker processes a task.</div></div>
+<h2 style="margin-top:18px">Final result</h2><div id="final-result" class="handoff">No completed result yet.</div></section>
+<section class="panel"><h2>How to read this screen</h2>
+<ul class="small"><li><b>Queued:</b> task saved; a worker has not claimed it yet.</li><li><b>Running:</b> worker claimed the task; agent steps show actual persisted activity.</li><li><b>Completed:</b> final output is saved and visible above.</li><li><b>Failed / blocked:</b> inspect the error; blocked work requires owner review before retry.</li></ul>
+<p class="warn">Worker heartbeat is not implemented in this runtime yet. This page will not pretend the worker is online. It reports task and agent evidence from the database instead.</p>
+<div class="links"><a href="/workforce">Workforce view</a><a href="/integrations/mcp">MCP registry</a><a href="/docs">API documentation</a></div></section>
+</main>
+<script>
+(()=> {
+let key="",selected="",timer=null,cache=[];
+const $=id=>document.getElementById(id);
+const headers=()=>({"Content-Type":"application/json",...(key?{"X-API-Key":key}:{})});
+const setText=(id,value)=>$(id).textContent=value;
+const fmt=v=>{if(!v)return"—";const d=new Date(v);return Number.isNaN(d.getTime())?String(v):d.toLocaleString()};
+const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
+async function api(path,options={}){const r=await fetch(path,{...options,headers:{...headers(),...(options.headers||{})},cache:"no-store"});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.detail||("HTTP "+r.status));return data}
+function setConnection(ok,msg){$("api-state").className="pill "+(ok?"completed":"failed");setText("api-state",ok?"API connected":"Connection error");setText("connection-message",msg)}
+async function refresh(){
+ try{
+  const [health,tasks,runtime]=await Promise.all([api("/health"),api("/tasks"),api("/runtime/status")]);
+  cache=tasks;setConnection(true,"API is responding · "+health.service);setText("updated-at","Updated "+new Date().toLocaleTimeString());setText("task-count",tasks.length);
+  setText("model-state",runtime.model.enabled?"Enabled": "Disabled");$("model-state").className=runtime.model.enabled?"green":"amber";
+  setText("graph-state",runtime.agent_graph_enabled?"Enabled":"Disabled");$("graph-state").className=runtime.agent_graph_enabled?"green":"amber";
+  setText("worker-state","Not observable");$("worker-state").className="amber";
+  const notes=[];if(!runtime.model.enabled)notes.push("Model execution is disabled.");if(!runtime.model.configured)notes.push("Model endpoint/model is not configured.");if(!runtime.agent_graph_enabled)notes.push("The three-agent graph is disabled.");notes.push("Worker heartbeat is not exposed, so worker availability cannot yet be confirmed.");
+  setText("runtime-note",notes.join(" "));
+  $("run-test").disabled=false;renderTasks();
+  if(selected&&cache.some(t=>t.id===selected))await selectTask(selected);else if(cache.length)await selectTask(cache[0].id);
+ }catch(e){setConnection(false,e.message);$("run-test").disabled=true}
+}
+function renderTasks(){
+ const root=$("task-list");root.replaceChildren();
+ if(!cache.length){root.append(node("div","empty","No tasks saved yet. Queue the safe visual test above."));return}
+ cache.forEach(t=>{const card=node("article","task"+(t.id===selected?" active":""));card.addEventListener("click",()=>selectTask(t.id));const top=node("div","row between");top.append(node("strong","",t.title),node("span","pill "+t.status,t.status));card.append(top,node("p","",t.department+" · "+fmt(t.created_at)),node("div","small","Task ID: "+t.id));root.append(card)})
+}
+async function selectTask(id){
+ selected=id;renderTasks();const t=cache.find(x=>x.id===id);if(!t)return;
+ const detail=$("task-detail");detail.replaceChildren();detail.append(node("h3","",t.title),node("p","",t.description||"No description"),node("span","pill "+t.status,t.status),node("p","small","Created "+fmt(t.created_at)));
+ if(t.worker_id)detail.append(node("p","small","Worker ID: "+t.worker_id));
+ if(t.started_at)detail.append(node("p","small","Started "+fmt(t.started_at)));
+ if(t.finished_at)detail.append(node("p","small","Finished "+fmt(t.finished_at)));
+ if(t.error)detail.append(node("div","warn",t.error));
+ setText("agent-summary","Task "+id.slice(0,8));
+ try{
+  const [steps,memory]=await Promise.all([api("/tasks/"+encodeURIComponent(id)+"/steps"),api("/tasks/"+encodeURIComponent(id)+"/memory")]);
+  const cards=$("agent-cards");cards.replaceChildren();
+  const roles=[["researcher","Researcher","🔎"],["developer","Developer","🛠️"],["quality_reviewer","Quality Reviewer","🛡️"]];
+  roles.forEach(([key,name,emoji])=>{
+   const step=steps.find(s=>s.step_key===key);const c=node("article","agent");c.append(node("div","symbol",emoji),node("h3","",name),node("p","desc",step?step.status:"Not started"));
+   if(step?.started_at)c.append(node("p","small","Started "+fmt(step.started_at)));
+   if(step?.finished_at)c.append(node("p","small","Finished "+fmt(step.finished_at)));
+   if(step?.error)c.append(node("p","red desc",step.error));
+   const mem=memory.find(m=>m.source_agent===name);if(mem){const b=node("details","");const summary=node("summary","small","View saved handoff");b.append(summary,node("div","handoff",mem.content));c.append(b)}
+   cards.append(c)
+  });
+  setText("agent-summary",steps.length+" persisted step(s) · "+memory.length+" saved handoff(s)");
+ }catch(e){$("agent-cards").replaceChildren(node("div","warn",e.message))}
+ setText("final-result",t.result||t.error||"No final output saved yet. The task may still be queued or running.");
+}
+$("connect").addEventListener("click",async()=>{key=$("api-key").value.trim();setText("connection-message","Checking access…");await refresh();if(timer)clearInterval(timer);timer=setInterval(refresh,5000)});
+$("refresh").addEventListener("click",refresh);
+$("run-test").addEventListener("click",async()=>{
+ const b=$("run-test");b.disabled=true;setText("test-message","Creating a harmless research task…");
+ try{const task=await api("/tasks",{method:"POST",body:JSON.stringify({title:"AIOS visual verification: digital product research",department:"research",description:"Produce a concise internal test report covering three digital-product categories, likely customer demand, and one validation question for each. Clearly label assumptions. This is a simulation of internal research only; do not browse, publish, spend, contact anyone, or use external tools."})});setText("test-message","Task queued: "+task.id);await refresh();await selectTask(task.id)}
+ catch(e){setText("test-message","Could not queue task: "+e.message)}
+ finally{b.disabled=false}
+});
+$("api-key").addEventListener("keydown",e=>{if(e.key==="Enter")$("connect").click()});
+})();
+</script></body></html>

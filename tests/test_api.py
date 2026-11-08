@@ -10,10 +10,29 @@ def test_health():
     assert response.json()["status"] == "ok"
 
 
+def test_owner_verification_dashboard_and_safe_runtime_status(monkeypatch):
+    monkeypatch.delenv("AI_OS_MODEL_ENABLED", raising=False)
+    monkeypatch.delenv("AI_OS_AGENT_GRAPH_ENABLED", raising=False)
+    with TestClient(app) as client:
+        page = client.get("/owner/verification")
+        assert page.status_code == 200
+        assert "Company control room" in page.text
+        assert "Queue test task" in page.text
+        status = client.get("/runtime/status")
+        assert status.status_code == 200
+        assert status.json()["model"]["enabled"] is False
+        assert status.json()["agent_graph_enabled"] is False
+        assert status.json()["worker_heartbeat_available"] is False
+        assert "api_key" not in status.text.lower()
+
+
 def test_task_and_approval_flow():
     with TestClient(app) as client:
         task = client.post("/tasks", json={"title": "Research demand", "department": "research"})
         assert task.status_code == 201
+        assert task.json()["status"] == "queued"
+        assert task.json()["result"] is None
+        assert task.json()["error"] is None
         approval = client.post("/approvals", json={
             "task_id": task.json()["id"], "action": "publish_content",
             "actor_id": "spoofed-client-value", "resource_id": "wordpress:site-1",
