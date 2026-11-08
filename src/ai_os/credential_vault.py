@@ -113,6 +113,48 @@ def list_credentials(*, provider_id: str | None = None) -> list[dict]:
     } for row in rows]
 
 
+def update_credential_secret(credential_ref: str, *, oauth_tokens: dict) -> dict:
+    """Persist only OAuth token state inside an existing encrypted vault record."""
+    if not isinstance(credential_ref, str) or not credential_ref.startswith("vault:"):
+        raise CredentialVaultError("Credential reference is not a vault reference.")
+    if not isinstance(oauth_tokens, dict):
+        raise ValueError("oauth_tokens must be an object.")
+    plaintext_update = json.dumps(
+        oauth_tokens, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    if len(plaintext_update) > _MAX_SECRET_BYTES:
+        raise ValueError("OAuth token payload exceeds the 32 KiB limit.")
+    credential_id = credential_ref[6:]
+    with connect() as db:
+        row = db.execute(
+            """SELECT ciphertext, revoked_at FROM integration_credentials
+               WHERE credential_id=?""",
+            (credential_id,),
+        ).fetchone()
+        if row is None or row["revoked_at"] is not None:
+            raise CredentialVaultError("Credential is missing or revoked.")
+        try:
+            existing = json.loads(_cipher().decrypt(bytes(row["ciphertext"])))
+        except (InvalidToken, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise CredentialVaultError("Credential could not be decrypted; token state was not updated.") from exc
+        if not isinstance(existing, dict):
+            raise CredentialVaultError("Stored credential payload is invalid.")
+        existing["oauth_tokens"] = oauth_tokens
+        plaintext = json.dumps(
+            existing, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+        if len(plaintext) > _MAX_SECRET_BYTES:
+            raise ValueError("Updated credential payload exceeds the 32 KiB limit.")
+        ciphertext = _cipher().encrypt(plaintext)
+        now = datetime.now(timezone.utc).isoformat()
+        db.execute(
+            """UPDATE integration_credentials SET ciphertext=?, updated_at=?
+               WHERE credential_id=? AND revoked_at IS NULL""",
+            (ciphertext, now, credential_id),
+        )
+    return {"credential_ref": credential_ref, "status": "updated_encrypted", "updated_at": now}
+
+
 def resolve_credential(credential_ref: str) -> dict:
     if not isinstance(credential_ref, str) or not credential_ref.startswith("vault:"):
         raise CredentialVaultError("Credential reference is not a vault reference.")
