@@ -13,6 +13,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from ai_os.credentials import get_openrouter
+
 
 @dataclass(frozen=True)
 class Provider:
@@ -48,10 +50,16 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
     model = os.getenv(provider.model_env, "").strip()
     secret = os.getenv(provider.secret_env, "").strip()
     free = os.getenv(provider.free_confirm_env, "").strip().lower() == "true"
+    if provider.key == "openrouter":
+        saved = get_openrouter()
+        if saved:
+            base, model, secret = saved["base_url"], saved["model"], saved["secret"]
+            free = saved["free_confirmed"]
     configured = bool(base and model and secret)
     eligible = configured and free
     return {
         "id": provider.key, "name": provider.label, "protocol": provider.protocol,
+        "_secret": secret,
         "configured": configured, "free_confirmed": free, "eligible": eligible,
         "model": model if model else None,
         "base_url": base if base else None,
@@ -64,7 +72,8 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
 
 
 def list_providers() -> list[dict[str, Any]]:
-    return [{k: v for k, v in _provider_config(p).items() if k not in {"base_url", "secret_env"}}
+    return [{k: v for k, v in _provider_config(p).items()
+             if k not in {"base_url", "secret_env", "_secret"}}
             for p in PROVIDERS]
 
 
@@ -98,10 +107,10 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
 
 
 def generate(provider_id: str, prompt: str) -> dict[str, Any]:
-    provider, _ = _resolve(provider_id)
-    base = os.getenv(provider.base_url_env, "").strip().rstrip("/")
-    model = os.getenv(provider.model_env, "").strip()
-    secret = os.getenv(provider.secret_env, "").strip()
+    provider, config = _resolve(provider_id)
+    base = config.get("base_url") or os.getenv(provider.base_url_env, "").strip().rstrip("/")
+    model = config.get("model") or os.getenv(provider.model_env, "").strip()
+    secret = config.get("_secret") or os.getenv(provider.secret_env, "").strip()
     started = time.monotonic()
 
     if provider.protocol == "gemini":
