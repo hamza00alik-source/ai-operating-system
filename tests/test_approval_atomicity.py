@@ -113,3 +113,46 @@ def test_expired_approval_cannot_be_decided_or_consumed(monkeypatch, tmp_path):
         )
     with pytest.raises(ValueError, match="expired"):
         _consume(approval)
+
+
+def test_actor_and_resource_are_part_of_approval_binding(monkeypatch, tmp_path):
+    database = tmp_path / "approval-identity-binding.db"
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{database}")
+    initialize_database()
+    approval = _new_approval()
+    decide_approval(approval["id"], ApprovalDecision(decision="approved"))
+
+    with pytest.raises(ValueError, match="does not match"):
+        consume_approval(
+            approval["id"], actor_id="different-agent", action="publish_content",
+            resource_id="wordpress:site-1",
+            action_payload={"post_id": "draft-7", "visibility": "public"},
+        )
+
+    with pytest.raises(ValueError, match="does not match"):
+        consume_approval(
+            approval["id"], actor_id="owner", action="publish_content",
+            resource_id="wordpress:other-site",
+            action_payload={"post_id": "draft-7", "visibility": "public"},
+        )
+
+
+def test_expired_pending_approval_is_persistently_expired(monkeypatch, tmp_path):
+    database = tmp_path / "approval-expired-pending.db"
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{database}")
+    initialize_database()
+    approval = _new_approval()
+    with connect() as db:
+        db.execute(
+            "UPDATE approvals SET expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00+00:00", approval["id"]),
+        )
+
+    with pytest.raises(ValueError, match="expired"):
+        decide_approval(approval["id"], ApprovalDecision(decision="approved"))
+
+    with connect() as db:
+        status = db.execute(
+            "SELECT status FROM approvals WHERE id=?", (approval["id"],)
+        ).fetchone()["status"]
+    assert status == "expired"
