@@ -6,8 +6,24 @@ from fastapi import Depends, FastAPI, HTTPException
 from ai_os.auth import require_api_key
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
-from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
-from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
+from ai_os.model_adapter import ModelAdapterError, chat_completion, get_model_status
+from ai_os.mcp_registry import MCPRegistryError, list_mcp_servers
+from ai_os.provider_catalog import list_providers
+from ai_os.schemas import (
+    ApprovalCreate,
+    ApprovalDecision,
+    ApprovalOut,
+    ModelTestRequest,
+    TaskCreate,
+    TaskOut,
+)
+from ai_os.service import (
+    create_approval,
+    create_task,
+    decide_approval,
+    list_approvals,
+    list_tasks,
+)
 
 
 @asynccontextmanager
@@ -77,3 +93,33 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
     return result
+
+
+@app.get("/models/status", dependencies=[Depends(require_api_key)])
+def models_status():
+    """Return safe provider configuration status without exposing credentials."""
+    return get_model_status()
+
+
+@app.get("/models/providers", dependencies=[Depends(require_api_key)])
+def models_providers():
+    """List provider discovery metadata; this does not contact providers."""
+    return list_providers()
+
+
+@app.get("/mcp/servers", dependencies=[Depends(require_api_key)])
+def mcp_servers():
+    """List sanitized MCP connection manifests; does not connect or execute tools."""
+    try:
+        return list_mcp_servers()
+    except MCPRegistryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/models/test", dependencies=[Depends(require_api_key)])
+def test_model(payload: ModelTestRequest):
+    """Make one explicitly enabled model request; never auto-fallback to another provider."""
+    try:
+        return chat_completion(payload.prompt)
+    except ModelAdapterError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

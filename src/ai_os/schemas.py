@@ -18,6 +18,9 @@ class TaskOut(BaseModel):
     department: str
     status: TaskStatus
     created_at: datetime
+    result: str | None = None
+    error: str | None = None
+    attempts: int = 0
 
 class ApprovalCreate(BaseModel):
     task_id: str | None = None
@@ -35,3 +38,7 @@ class ApprovalOut(BaseModel):
 
 class ApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class ModelTestRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
