@@ -74,6 +74,7 @@ from ai_os.commerce import router as commerce_router, initialize_commerce_storag
 from ai_os.agent_tools import register_builtin_agent_tools
 from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
 from ai_os.mcp_catalog import load_mcp_provider_catalog
+from ai_os.mcp_registry import MCPRegistryError, search_official_registry
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
     list_control_plane_endpoints, create_control_plane_endpoint,
@@ -229,6 +230,21 @@ def get_woocommerce_order_statuses(
 def get_mcp_provider_catalog():
     """List preconfigured MCP provider families; no account credentials are collected here."""
     return load_mcp_provider_catalog()
+
+
+
+@app.get("/integrations/mcp/registry/search")
+async def search_mcp_registry(
+    q: str = Query(min_length=3, max_length=100),
+    limit: int = Query(default=10, ge=1, le=25),
+):
+    """Search official MCP Registry metadata; never installs or executes results."""
+    try:
+        return await search_official_registry(q, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except MCPRegistryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/actions/gateway/status")
