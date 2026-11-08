@@ -2,7 +2,7 @@
 
 A modular, human-supervised foundation for running an AI-powered company, with the complete pinned Agency Agents specialist library (283 profiles across 18 divisions).
 
- > Early development: the repository now includes a continuously supervised worker, dependency-aware agent handoffs, automatic CEO review, and a verified no-key public model preset in strict free-only mode. Live model and MCP discovery smoke tests pass in CI. The service is not yet deployed as a production company; OAuth, remote MCP execution, marketplace write integrations, and fulfillment automation remain incomplete.
+> Early development: the repository now includes a continuously supervised worker, dependency-aware agent handoffs, automatic CEO review, and a verified no-key public model preset in strict free-only mode. Live model and MCP discovery smoke tests pass in CI. The service is not yet deployed as a production company; OAuth, remote MCP execution, marketplace write integrations, and fulfillment automation remain incomplete.
 
 ## Principles
 - Free-first: no paid model API is required for the current workflow.
