@@ -144,7 +144,7 @@ def sync_free_api_catalog() -> dict:
                  api_key_url=excluded.api_key_url,base_url=excluded.base_url,
                  free_tier_json=excluded.free_tier_json,policy_json=excluded.policy_json,
                  confidence=excluded.confidence,last_verified=excluded.last_verified,
-                 probe_json=excluded.probe_json,status_json=excluded.status_json,
+                 probe_json=excluded.probe_json,status_json=excluded.status_json,sources_json=excluded.sources_json,
                  source_url=excluded.source_url,synced_at=excluded.synced_at""",
                 (
                     source["source_id"], provider_id, name, category,
