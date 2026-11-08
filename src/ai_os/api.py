@@ -13,7 +13,7 @@ from ai_os.config import get_settings
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
-from ai_os.discovery import create_scan, list_scans, list_candidates, github_api_status, run_pending_once as run_discovery_pending_once
+from ai_os.discovery import create_scan, list_scans, list_candidates, github_api_status, sync_free_api_catalog, list_free_api_catalog, run_pending_once as run_discovery_pending_once
 from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
@@ -406,6 +406,19 @@ def get_discovery_status():
         "worker_running": bool(_discovery_thread and _discovery_thread.is_alive()),
         "scope": "public GitHub repository metadata; no code execution or installation",
     }
+
+
+@app.get("/discovery/provider-catalog", dependencies=[Depends(require_api_key)])
+def get_free_api_catalog(category: str | None = None):
+    return list_free_api_catalog(category)
+
+
+@app.post("/discovery/provider-catalog/sync", dependencies=[Depends(require_owner_key)])
+def post_free_api_catalog_sync():
+    try:
+        return sync_free_api_catalog()
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"Free API catalog sync failed: {exc}") from exc
 
 
 @app.post("/discovery/scans", status_code=202, dependencies=[Depends(require_api_key)])
