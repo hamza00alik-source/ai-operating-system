@@ -38,3 +38,27 @@ Approval records are workflow primitives, not a security sandbox. Do not connect
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Optional model connectivity (disabled by default)
+
+AIOS includes a provider-neutral OpenAI-compatible chat adapter and a small provider discovery catalogue. It does not include API keys and does not assume that a provider's free tier is permanent. All model calls are disabled unless `AI_OS_MODEL_ENABLED=true` is explicitly set.
+
+Configure the endpoint and model using private environment variables:
+- `AI_OS_MODEL_PROVIDER`
+- `AI_OS_MODEL_BASE_URL`
+- `AI_OS_MODEL_NAME`
+- `AI_OS_MODEL_API_KEY` (optional only for documented keyless endpoints)
+- `AI_OS_MODEL_TIMEOUT_SECONDS`
+- `AI_OS_MODEL_MAX_TOKENS`
+
+The protected `GET /models/status` endpoint reports configuration without revealing secrets. `GET /models/providers` lists discovery metadata and does not contact providers. `POST /models/test` makes one request only when model calls are enabled. No paid-provider fallback or automatic account rotation is implemented.
+
+Example local test request (after configuring a legitimate endpoint and enabling it):
+
+```bash
+curl -X POST http://127.0.0.1:8000/models/test \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Reply with the word READY."}'
+```
+
+For production, also provide the normal `X-API-Key` header. A successful adapter test proves connectivity for that configured endpoint only; it does not certify that all providers in the catalogue are free or available.
