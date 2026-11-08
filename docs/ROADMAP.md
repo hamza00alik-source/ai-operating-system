@@ -18,8 +18,10 @@ A feature is complete only when tested and its operating limits are documented.
 ## Phase 2 — Orchestration
 - [x] Initial GitHub discovery scan queue, candidate persistence, metadata evaluation, and separate worker
 - [x] First persistent Research Analyst agent using the guarded model gateway
-- [x] Owner dashboard controls and saved run history for the Research Analyst
-- [ ] Durable general-purpose agent runtime and resumable multi-step execution
+- [x] Durable agent run queue with atomic claims, leases, stale-run recovery, and saved run history
+- [x] Combined background worker for discovery and agent queues
+- [x] Owner dashboard controls and automatic run-history refresh for the Research Analyst
+- [ ] Durable general-purpose multi-agent runtime and resumable multi-step execution
 - [ ] LangGraph orchestration integrated with existing approvals and persistence
 - [ ] Dashboard UI for agent runs, approvals, logs, and owner review
 - [ ] Task dependencies and assignment
@@ -47,4 +49,4 @@ A feature is complete only when tested and its operating limits are documented.
 
 No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases.
 
-The discovery worker uses a 15-minute renewable SQLite lease. Expired leases can be reclaimed by another worker after a process crash. This is a lightweight single-host queue design, not a distributed multi-host queue or a substitute for a production message broker.
+The discovery worker uses a 15-minute renewable SQLite lease; agent runs use a 5-minute lease with a maximum of three claims. Expired leases can be reclaimed after a process crash. These are lightweight single-host queue designs, not a distributed multi-host queue or a substitute for a production message broker. The combined worker must remain running for queued agent work to execute.
