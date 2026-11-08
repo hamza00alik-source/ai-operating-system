@@ -422,6 +422,7 @@ def test_mcp_tool_mapping_requires_owner_confirmation_and_prior_discovery(monkey
             "trust": "untrusted_remote_metadata",
             "executable": False,
         }],
+        "execution_enabled": False,
         }
 
     monkeypatch.setattr(api, "discover_mcp_tools", fake_discovery)
