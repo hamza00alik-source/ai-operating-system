@@ -45,6 +45,13 @@ def workforce_dashboard():
     return FileResponse(page, media_type="text/html", headers={"Cache-Control": "no-store"})
 
 
+@app.get("/integrations/mcp", include_in_schema=False)
+def mcp_dashboard():
+    """Serve the owner-only MCP registry UI; all data operations remain API-key protected."""
+    page = Path(__file__).parent / "static" / "mcp.html"
+    return FileResponse(page, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
