@@ -6,7 +6,7 @@ from ai_os import api
 def test_owner_can_queue_bounded_agent_run(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_ENV", "development")
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'agent-runs.db'}")
-    monkeypatch.setattr(api, "run_pending_once", lambda: False)
+    monkeypatch.setattr(api, "run_agent_pending_once", lambda: False)
 
     with TestClient(api.app) as client:
         task = client.post("/tasks", json={
