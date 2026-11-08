@@ -9,6 +9,8 @@ import json
 import os
 import shutil
 import subprocess
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,6 +23,24 @@ class ModelNotConfigured(RuntimeError):
 class ModelQuotaExceeded(RuntimeError):
     """Provider rate/quota limit: do not automatically retry a paid-capable job."""
     pass
+
+
+_PUBLIC_MODEL_LOCK = threading.Lock()
+_PUBLIC_MODEL_NEXT_ALLOWED = 0.0
+_PUBLIC_MODEL_MIN_INTERVAL_SECONDS = 31.0
+
+
+def _throttle_public_provider(provider: str) -> None:
+    """Respect the anonymous OVH endpoint's documented two-requests-per-minute cap."""
+    global _PUBLIC_MODEL_NEXT_ALLOWED
+    if provider != "ovhcloud-anonymous":
+        return
+    with _PUBLIC_MODEL_LOCK:
+        now = time.monotonic()
+        wait_seconds = max(0.0, _PUBLIC_MODEL_NEXT_ALLOWED - now)
+        if wait_seconds:
+            time.sleep(wait_seconds)
+        _PUBLIC_MODEL_NEXT_ALLOWED = time.monotonic() + _PUBLIC_MODEL_MIN_INTERVAL_SECONDS
 
 
 def _truthy(name: str) -> bool:
@@ -252,6 +272,7 @@ def generate_json(system_prompt: str, user_prompt: str) -> tuple[dict, dict]:
         headers=headers,
         method="POST",
     )
+    _throttle_public_provider(status["provider"])
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
