@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
             },
             {
                 "step_key": "development_plan",
-                "agent_id": "engineering-builder",
+                "agent_id": "engineering-senior-developer",
                 "task": (
                     "Using the research handoff, draft a minimal technical implementation "
                     "plan for one downloadable desktop utility. Do not modify files or claim code was written."
@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
             if [step.get("status") for step in company_run.get("steps", [])] != [
                 "completed", "completed", "completed"
             ]:
-                raise RuntimeError("Both specialist steps did not complete")
+                raise RuntimeError("Not all specialist steps completed")
 
             ceo_result = completed_jobs[-1].get("result") or {}
             if not ceo_result.get("summary"):
