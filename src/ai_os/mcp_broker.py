@@ -68,6 +68,85 @@ def save_discovered_tools(endpoint_id: str, tools: list[dict]) -> None:
             )
 
 
+def get_discovered_tool(endpoint_id: str, tool_name: str) -> dict | None:
+    with connect() as db:
+        row = db.execute(
+            """SELECT * FROM mcp_discovered_tools
+               WHERE endpoint_id=? AND tool_name=?""",
+            (endpoint_id, tool_name),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "endpoint_id": row["endpoint_id"],
+        "name": row["tool_name"],
+        "description": row["description"],
+        "input_schema": json.loads(row["input_schema_json"]),
+        "discovered_at": row["discovered_at"],
+        "trust": "untrusted_remote_metadata",
+        "executable": False,
+    }
+
+
+def validate_mcp_tool_arguments(schema: dict, arguments: dict, *, path: str = "$") -> None:
+    """Validate the common JSON Schema subset used by MCP tool input objects."""
+    if not isinstance(schema, dict) or not isinstance(arguments, dict):
+        raise MCPBrokerError("MCP tool schema and arguments must be JSON objects.")
+    expected_type = schema.get("type", "object" if "properties" in schema else None)
+    if expected_type not in (None, "object"):
+        raise MCPBrokerError("Broker only accepts object-shaped MCP tool input schemas.")
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+    if not isinstance(properties, dict) or not isinstance(required, list):
+        raise MCPBrokerError("Remote MCP tool schema has invalid object properties.")
+    missing = [name for name in required if name not in arguments]
+    if missing:
+        raise MCPBrokerError("Missing required MCP tool argument(s): " + ", ".join(str(x) for x in missing[:10]))
+    if schema.get("additionalProperties") is False:
+        extras = set(arguments) - set(properties)
+        if extras:
+            raise MCPBrokerError("Unexpected MCP tool argument(s): " + ", ".join(sorted(extras)[:10]))
+    for name, value in arguments.items():
+        if name not in properties:
+            continue
+        rule = properties[name]
+        if not isinstance(rule, dict):
+            raise MCPBrokerError("Remote MCP tool schema contains an invalid property rule.")
+        kind = rule.get("type")
+        valid = {
+            "string": lambda v: isinstance(v, str),
+            "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+            "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+            "boolean": lambda v: isinstance(v, bool),
+            "object": lambda v: isinstance(v, dict),
+            "array": lambda v: isinstance(v, list),
+            "null": lambda v: v is None,
+        }
+        if kind in valid and not valid[kind](value):
+            raise MCPBrokerError(f"Argument {name!r} must be {kind}.")
+        if "enum" in rule and value not in rule["enum"]:
+            raise MCPBrokerError(f"Argument {name!r} is not an allowed value.")
+        if isinstance(value, str):
+            if len(value) > int(rule.get("maxLength", 16_000)):
+                raise MCPBrokerError(f"Argument {name!r} exceeds its maximum length.")
+            if len(value) < int(rule.get("minLength", 0)):
+                raise MCPBrokerError(f"Argument {name!r} is shorter than its minimum length.")
+        if isinstance(value, list):
+            if len(value) > int(rule.get("maxItems", 100)):
+                raise MCPBrokerError(f"Argument {name!r} exceeds its maximum item count.")
+            if len(value) < int(rule.get("minItems", 0)):
+                raise MCPBrokerError(f"Argument {name!r} has too few items.")
+            item_schema = rule.get("items")
+            if isinstance(item_schema, dict):
+                for index, item in enumerate(value):
+                    if isinstance(item, dict):
+                        validate_mcp_tool_arguments(item_schema, item, path=f"{path}.{name}[{index}]")
+                    elif item_schema.get("type") == "string" and not isinstance(item, str):
+                        raise MCPBrokerError(f"Argument {name!r}[{index}] must be string.")
+        if isinstance(value, dict) and kind == "object":
+            validate_mcp_tool_arguments(rule, value, path=f"{path}.{name}")
+
+
 def list_discovered_tools(endpoint_id: str | None = None) -> list[dict]:
     with connect() as db:
         if endpoint_id:
