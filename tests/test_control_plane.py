@@ -385,3 +385,23 @@ def test_mcp_endpoint_secret_manager_reference_fails_closed():
 
     assert response.status_code == 422
     assert "no secret-manager resolver" in response.json()["detail"]
+
+
+def test_control_plane_accepts_encrypted_vault_reference_but_not_arbitrary_vault_text():
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Vault-backed MCP", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp",
+                  "credential_ref": "vault:123e4567-e89b-12d3-a456-426614174000"},
+        )
+        rejected = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Malformed vault ref", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp",
+                  "credential_ref": "vault:not-a-uuid"},
+        )
+
+    assert accepted.status_code == 201
+    assert accepted.json()["credential_ref"] == "vault:123e4567-e89b-12d3-a456-426614174000"
+    assert rejected.status_code == 422
