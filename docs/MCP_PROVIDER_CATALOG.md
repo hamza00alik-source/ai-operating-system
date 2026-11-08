@@ -111,9 +111,10 @@ OAuth 2.1 user authorization, token refresh, and public remote hosting of the
 OpenCompany MCP server remain separate implementation tasks. Remote MCP authentication now supports static bearer tokens and OAuth 2.1
 client-credentials (machine-to-machine) grants through the MCP SDK. OAuth issuer
 hosts must be separately allowlisted; issuer validation and token acquisition
-are delegated to the SDK. M2M tokens are held in memory for the connection and
-are not persisted by AIOS. User authorization-code/PKCE consent, durable token
-refresh storage, and CIMD are not yet wired into the dashboard.
+are delegated to the SDK. M2M access-token state is persisted encrypted inside
+the same vault record as the client secret; the SDK reuses valid tokens and
+obtains a new client-credentials token when needed. User authorization-code/PKCE
+consent and CIMD are not yet wired into the dashboard.
 
 
 ### OAuth machine-to-machine credential format
