@@ -196,3 +196,33 @@ def test_worker_heartbeat_reports_stale_process(monkeypatch, tmp_path):
     status = get_worker_status(stale_after_seconds=10)
     assert status["status"] == "stale"
     assert status["workers"][0]["status"] == "stale"
+
+
+
+def test_worker_service_publishes_heartbeat_during_run_and_stops_cleanly(monkeypatch, tmp_path):
+    _prepare_database(monkeypatch, tmp_path)
+    from ai_os.heartbeat import get_worker_status
+
+    stop = {"requested": False}
+    observed = {}
+
+    def run(*, worker_id):
+        # The initial heartbeat must already exist before task execution begins.
+        observed["during"] = get_worker_status()
+        stop["requested"] = True
+        return {"processed": False}
+
+    run_worker_loop(
+        worker_id="service-lifecycle-worker",
+        poll_seconds=1,
+        stop_requested=lambda: stop["requested"],
+        sleep=lambda _seconds: None,
+        schedule=lambda: {"scheduled": 0},
+        run=run,
+    )
+
+    assert observed["during"]["status"] == "active"
+    assert observed["during"]["workers"][0]["worker_id"] == "service-lifecycle-worker"
+    final_status = get_worker_status()
+    assert final_status["status"] == "stopped"
+    assert final_status["workers"][0]["status"] == "stopped"
