@@ -166,10 +166,12 @@ def test_distinct_principals_and_role_permissions(monkeypatch):
         "owner-secret": {"principal_id": "owner-1", "role": "owner"},
         "viewer-secret": {"principal_id": "auditor-1", "role": "viewer"},
         "agent-secret": {"principal_id": "research-agent", "role": "agent"},
+        "operator-secret": {"principal_id": "ops-1", "role": "operator"},
     }))
     with TestClient(app) as client:
         viewer = {"X-API-Key": "viewer-secret"}
         agent = {"X-API-Key": "agent-secret"}
+        operator = {"X-API-Key": "operator-secret"}
         owner = {"X-API-Key": "owner-secret"}
         assert client.get("/tasks", headers=viewer).status_code == 200
         assert client.post("/tasks", headers=viewer, json={"title": "No"}).status_code == 403
