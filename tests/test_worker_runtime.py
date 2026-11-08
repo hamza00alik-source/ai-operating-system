@@ -142,3 +142,30 @@ def test_worker_blocks_legacy_stale_running_task(monkeypatch, tmp_path):
     with sqlite3.connect(database) as db:
         row = db.execute("SELECT status FROM tasks WHERE id=?", ("task-1",)).fetchone()
     assert row[0] == "blocked"
+
+
+def test_worker_runs_opt_in_agent_graph_and_persists_final_review(monkeypatch, tmp_path):
+    database = _prepare_database(monkeypatch, tmp_path)
+    monkeypatch.setenv("AI_OS_AGENT_GRAPH_ENABLED", "true")
+    calls = []
+    monkeypatch.setattr(
+        "ai_os.agent_runtime.generate_text",
+        lambda prompt: calls.append(prompt) or f"agent-output-{len(calls)}",
+    )
+
+    result = run_once(worker_id="graph-worker")
+
+    assert result == {"processed": True, "task_id": "task-1", "status": "completed"}
+    assert len(calls) == 3
+    with sqlite3.connect(database) as db:
+        task_result = db.execute(
+            "SELECT result FROM tasks WHERE id=?", ("task-1",)
+        ).fetchone()[0]
+        memories = db.execute(
+            "SELECT source_agent, content FROM agent_memory WHERE task_id=? ORDER BY id",
+            ("task-1",),
+        ).fetchall()
+    assert task_result == "agent-output-3"
+    assert [row[0] for row in memories] == [
+        "Researcher", "Developer", "Quality Reviewer"
+    ]
