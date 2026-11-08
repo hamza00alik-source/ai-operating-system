@@ -1,5 +1,7 @@
 """FastAPI application."""
 from contextlib import asynccontextmanager
+import logging
+import threading
 
 from fastapi import Depends, FastAPI, HTTPException
 from ai_os.owner_dashboard import owner_dashboard
@@ -9,20 +11,52 @@ from ai_os.config import get_settings
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
-from ai_os.discovery import create_scan, list_scans, list_candidates
+from ai_os.discovery import create_scan, list_scans, list_candidates, run_pending_once
 from ai_os.schemas import DiscoveryScanCreate
 from ai_os.llm_gateway import list_providers, generate, test_provider
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
 from pydantic import BaseModel, Field
 
 
+logger = logging.getLogger("ai_os.api")
+_discovery_stop = threading.Event()
+_discovery_thread: threading.Thread | None = None
+
+
+def _discovery_worker_loop() -> None:
+    logger.info("Technology discovery worker started in API service.")
+    while not _discovery_stop.is_set():
+        try:
+            processed = run_pending_once()
+            if not processed:
+                _discovery_stop.wait(5)
+        except Exception:
+            logger.exception("Technology discovery worker recovered from an error.")
+            _discovery_stop.wait(5)
+    logger.info("Technology discovery worker stopped.")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global _discovery_thread
     settings = get_settings()
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
     initialize_database()
-    yield
+    _discovery_stop.clear()
+    _discovery_thread = threading.Thread(
+        target=_discovery_worker_loop,
+        name="aios-discovery-worker",
+        daemon=True,
+    )
+    _discovery_thread.start()
+    try:
+        yield
+    finally:
+        _discovery_stop.set()
+        if _discovery_thread is not None:
+            _discovery_thread.join(timeout=10)
+            _discovery_thread = None
 
 
 app = FastAPI(
