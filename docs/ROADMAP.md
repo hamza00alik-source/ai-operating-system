@@ -23,7 +23,8 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Improvement proposals requiring human approval
 
 ## Phase 4 — Integrations
-- [ ] Provider-neutral LLM adapter
+- [x] Provider-neutral OpenAI-compatible LLM adapter and protected connectivity-test endpoints
+- [ ] Provider-specific adapters for non-compatible APIs
 - [ ] WooCommerce
 - [ ] Social adapters with mandatory approval
 - [ ] Email and support adapters

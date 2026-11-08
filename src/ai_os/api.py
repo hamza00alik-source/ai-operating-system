@@ -6,6 +6,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from ai_os.auth import require_api_key
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
+from ai_os.llm import load_providers, provider_status, test_provider
+from ai_os.llm_schemas import LLMTestRequest
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
 
@@ -30,6 +32,29 @@ app = FastAPI(
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
+
+
+@app.get("/llm/providers", dependencies=[Depends(require_api_key)])
+def get_llm_providers():
+    try:
+        return provider_status()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/llm/test", dependencies=[Depends(require_api_key)])
+async def post_llm_test(payload: LLMTestRequest):
+    try:
+        return await test_provider(payload.provider, payload.prompt)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        status_code = 503 if str(exc).startswith("Missing API key") else 502
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @app.post("/tasks", response_model=TaskOut, status_code=201, dependencies=[Depends(require_api_key)])
