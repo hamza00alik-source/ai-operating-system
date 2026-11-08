@@ -176,6 +176,10 @@ def get_llm_providers():
 @app.post("/llm/test", dependencies=[Depends(require_api_key)])
 def post_llm_test(payload: ModelRunRequest):
     try:
+        if payload.provider == "auto":
+            result = generate_with_fallback("Reply with exactly: AIOS live connection successful")
+            result["test_passed"] = result["response"].strip().lower().startswith("aios live connection successful")
+            return result
         return test_provider(payload.provider)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
