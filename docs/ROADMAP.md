@@ -57,3 +57,9 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [ ] Validate worker against a real approved model endpoint (requires owner provider configuration)
 - [ ] Add agent registry and multi-agent handoff on top of the durable task queue
 - [ ] Add MCP server registry, tool allowlist, and approval-gated invocation
+
+- [x] Add protected MCP server registry endpoint and validated HTTPS manifest
+- [x] Keep MCP connections disabled at runtime; expose no secret values and reject embedded endpoint credentials
+- [x] Require approval by policy and explicit tool allowlists in MCP registry metadata
+- [ ] Add official MCP SDK client for approved remote transports, with timeouts and server identity checks
+- [ ] Add per-tool risk classification and human approval before side effects
