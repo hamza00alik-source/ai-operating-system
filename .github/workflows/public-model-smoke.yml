@@ -1,0 +1,27 @@
+name: public model smoke test
+
+on:
+  push:
+    branches:
+      - feat/multi-storefront-commerce-core
+    paths:
+      - scripts/smoke_test_public_model.py
+      - .github/workflows/public-model-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test public no-key model endpoint
+        run: python scripts/smoke_test_public_model.py
