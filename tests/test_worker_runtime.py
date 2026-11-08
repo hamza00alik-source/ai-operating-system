@@ -100,3 +100,45 @@ def test_worker_persists_provider_failure_without_retry(monkeypatch, tmp_path):
     assert row[1] == "failure-worker"
     assert "provider unavailable" in row[2]
     assert row[3] is not None
+
+
+def test_worker_blocks_expired_lease_without_reprocessing(monkeypatch, tmp_path):
+    database = _prepare_database(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr("ai_os.worker.generate_text", lambda prompt: calls.append(prompt) or "unexpected")
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE tasks SET status='running', worker_id=?, started_at=?, lease_expires_at=? WHERE id=?",
+            ("crashed-worker", "2026-01-01T00:00:00+00:00",
+             "2026-01-01T00:01:00+00:00", "task-1"),
+        )
+
+    result = run_once(worker_id="recovery-worker")
+
+    assert result == {"processed": False}
+    assert calls == []
+    with sqlite3.connect(database) as db:
+        row = db.execute(
+            "SELECT status, error, lease_expires_at FROM tasks WHERE id=?",
+            ("task-1",),
+        ).fetchone()
+    assert row[0] == "blocked"
+    assert "manual review required" in row[1]
+    assert row[2] is None
+
+
+def test_worker_blocks_legacy_stale_running_task(monkeypatch, tmp_path):
+    database = _prepare_database(monkeypatch, tmp_path)
+    monkeypatch.setattr("ai_os.worker.generate_text", lambda _prompt: "unexpected")
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "UPDATE tasks SET status='running', worker_id=?, started_at=?, lease_expires_at=NULL WHERE id=?",
+            ("old-worker", "2026-01-01T00:00:00+00:00", "task-1"),
+        )
+
+    result = run_once(worker_id="recovery-worker")
+
+    assert result == {"processed": False}
+    with sqlite3.connect(database) as db:
+        row = db.execute("SELECT status FROM tasks WHERE id=?", ("task-1",)).fetchone()
+    assert row[0] == "blocked"
