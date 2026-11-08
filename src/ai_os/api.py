@@ -128,6 +128,7 @@ async def owner_auth_and_audit(request: Request, call_next):
             )
     return response
 
+@app.get("/workforce", response_class=HTMLResponse)
 @app.get("/dashboard", response_class=HTMLResponse)
 def owner_dashboard():
     """Serve the owner UI shell; all data APIs remain protected by owner authentication."""
