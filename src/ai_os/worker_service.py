@@ -54,10 +54,11 @@ def run_worker_loop(
 
 def main() -> None:
     status = get_model_status()
-    if not status["enabled"]:
+    if not status["enabled"] or not status["configured"]:
         raise SystemExit(
-            "Agent worker not started: configure an approved model endpoint and "
-            "set AI_OS_MODEL_ENABLED=true. No model request was made."
+            "Agent worker not started: configure AI_OS_MODEL_BASE_URL and "
+            "AI_OS_MODEL_NAME, then explicitly set AI_OS_MODEL_ENABLED=true. "
+            "No model request was made."
         )
     try:
         interval = int(os.getenv("AI_OS_WORKER_POLL_SECONDS", "3"))
