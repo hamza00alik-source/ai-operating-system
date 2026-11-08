@@ -11,6 +11,8 @@ from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCre
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
 from ai_os.discovery import create_scan, list_scans, list_candidates
 from ai_os.schemas import DiscoveryScanCreate
+from ai_os.llm_gateway import list_providers, generate, test_provider
+from pydantic import BaseModel, Field
 
 
 @asynccontextmanager
@@ -33,6 +35,40 @@ app = FastAPI(
 @app.get("/owner", include_in_schema=False)
 def get_owner_dashboard():
     return owner_dashboard()
+
+
+class ModelRunRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    prompt: str = Field(min_length=1, max_length=8000)
+
+
+@app.get("/llm/providers", dependencies=[Depends(require_api_key)])
+def get_llm_providers():
+    return list_providers()
+
+
+@app.post("/llm/test", dependencies=[Depends(require_api_key)])
+def post_llm_test(payload: ModelRunRequest):
+    try:
+        return test_provider(payload.provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/llm/run", dependencies=[Depends(require_api_key)])
+def post_llm_run(payload: ModelRunRequest):
+    try:
+        return generate(payload.provider, payload.prompt)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/health")
