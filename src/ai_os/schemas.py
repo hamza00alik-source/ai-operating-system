@@ -94,3 +94,25 @@ class MCPToolCall(BaseModel):
     tool_name: str = Field(min_length=1, max_length=120)
     arguments: dict[str, Any] = Field(default_factory=dict)
     approval_id: str = Field(min_length=1, max_length=120)
+
+
+class MCPToolRequestCreate(BaseModel):
+    server_id: str = Field(min_length=1, max_length=120)
+    tool_name: str = Field(min_length=1, max_length=120)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    task_id: str | None = Field(default=None, max_length=120)
+
+
+class MCPToolRequestOut(BaseModel):
+    id: str
+    task_id: str | None
+    requester_id: str
+    server_id: str
+    tool_name: str
+    arguments: dict[str, Any]
+    status: Literal["pending", "approved", "rejected", "executed", "failed"]
+    approval_id: str | None = None
+    result: Any | None = None
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
