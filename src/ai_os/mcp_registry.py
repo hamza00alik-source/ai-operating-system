@@ -52,8 +52,13 @@ def list_mcp_servers() -> list[dict]:
             )
         endpoint = item.get("endpoint")
         parsed = urlparse(endpoint or "")
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise MCPRegistryError(f"MCP server {server_id} requires an HTTPS endpoint.")
+        if (
+            parsed.scheme != "https" or not parsed.netloc
+            or parsed.username or parsed.password or parsed.query or parsed.fragment
+        ):
+            raise MCPRegistryError(
+                f"MCP server {server_id} requires a clean HTTPS endpoint without embedded credentials or query parameters."
+            )
         allowed_tools = item.get("allowed_tools", [])
         if not isinstance(allowed_tools, list) or any(
             not isinstance(tool, str) or not tool or len(tool) > 120
