@@ -24,8 +24,8 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 .status{margin:12px 0;color:var(--muted);min-height:24px}.small{font-size:12px;color:var(--muted)}a{color:#a9c0ff}.section{margin-top:16px}
 @media(max-width:760px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:18px 12px}.panel{padding:12px}}
 </style></head>
-<body><main>
-<div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>Technology Discovery</h1><div class="hint">Inspect real GitHub projects before approving any integration.</div></div><span class="tag">Owner-supervised · Read-only discovery</span></div>
+<body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
+<div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>Technology Discovery</h1><div class="hint">Inspect real GitHub projects before approving any integration.</div></div><div class="toolbar"><span class="tag">Owner-supervised · Read-only discovery</span><button id="logoutButton" class="secondary">Log out</button></div></div>
 <div class="grid">
 <div class="metric"><strong id="scans">—</strong><span>Discovery scans</span></div>
 <div class="metric"><strong id="candidates">—</strong><span>Candidate projects</span></div>
@@ -60,10 +60,10 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 </section>
 </main>
 <script>
-const $=id=>document.getElementById(id);let key="";
+const $=id=>document.getElementById(id);let authenticated=false;
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function say(s){$("message").textContent=s}
-async function api(path,options={}){const response=await fetch(path,{...options,headers:{"Content-Type":"application/json","X-API-Key":key,...(options.headers||{})}});if(response.status===401)throw Error("Owner API key rejected. Enter a valid key and refresh.");if(!response.ok)throw Error("API "+response.status+": "+(await response.text()).slice(0,300));return response.json()}
+async function api(path,options={}){const response=await fetch(path,{...options,credentials:"same-origin",headers:{"Content-Type":"application/json",...(options.headers||{})}});if(response.status===401){showLogin("Your owner session expired. Sign in again.");throw Error("Owner session expired. Please sign in again.");}if(!response.ok)throw Error("API "+response.status+": "+(await response.text()).slice(0,300));return response.json()}
 function date(s){return s?new Date(s).toLocaleString():"—"}
 async function refresh(){try{const [scans,candidates]=await Promise.all([api("/discovery/scans"),api("/discovery/candidates")]);$("scans").textContent=scans.length;$("candidates").textContent=candidates.length;$("review").textContent=candidates.filter(c=>c.status==="needs-review").length;
 $("scanRows").innerHTML=scans.length?scans.map(s=>'<tr><td>'+esc(date(s.created_at))+'</td><td>'+esc((s.categories||[]).join(", "))+'</td><td><span class="pill">'+esc(s.status)+'</span></td><td>'+esc(s.result_count)+'</td><td class="bad">'+esc(s.error||"—")+'</td></tr>').join():'<tr><td colspan="5">No scans yet</td></tr>';
@@ -79,8 +79,11 @@ $("loadProviders").onclick=loadProviders;$("testProvider").onclick=()=>runModel(
 async function saveProviderKey(){const api_key=$("providerApiKey").value.trim();if(!api_key){$("credentialStatus").textContent="Enter your OpenRouter key.";return}if(!$("confirmFreeOnly").checked){$("credentialStatus").textContent="Confirm free-only routing before saving.";return}const b=$("saveProviderKey");b.disabled=true;$("credentialStatus").textContent="Encrypting and saving on the server…";try{const result=await api("/llm/credentials/openrouter",{method:"POST",body:JSON.stringify({api_key,confirm_free_only:true})});$("providerApiKey").value="";$("credentialStatus").textContent="Saved securely in encrypted storage. Secret was not returned.";await loadProviders()}catch(e){$("credentialStatus").textContent=e.message}finally{b.disabled=false}}
 $("saveProviderKey").onclick=saveProviderKey;
 
-if(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";}
-if(key){refresh();loadProviders();api("/llm/credentials").then(x=>$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.").catch(e=>$("credentialStatus").textContent=e.message);setInterval(refresh,10000)}
+function showLogin(message=""){ $("loginPanel").style.display="flex"; $("loginStatus").textContent=message; $("loginKey").focus(); }
+async function startDashboard(){authenticated=true;$("loginPanel").style.display="none";refresh();loadProviders();api("/llm/credentials").then(x=>$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.").catch(e=>$("credentialStatus").textContent=e.message);if(!window.aiosRefreshTimer)window.aiosRefreshTimer=setInterval(refresh,10000)}
+$("loginForm").addEventListener("submit",async e=>{e.preventDefault();const b=$("loginButton");b.disabled=true;$("loginStatus").textContent="Validating owner key…";try{const r=await fetch("/auth/session",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:$("loginKey").value})});if(!r.ok)throw Error("Owner key was rejected. Check the key in Railway Variables.");$("loginKey").value="";await startDashboard()}catch(err){$("loginStatus").textContent=err.message}finally{b.disabled=false}});
+$("logoutButton").onclick=async()=>{try{await fetch("/auth/session",{method:"DELETE",credentials:"same-origin"});}finally{authenticated=false;showLogin("You have been signed out.")}};
+fetch("/auth/session",{credentials:"same-origin"}).then(r=>r.json()).then(s=>{if(s.authenticated)startDashboard();else showLogin()}).catch(()=>showLogin("Sign in to continue."));
 </script></body></html>
 """
 
