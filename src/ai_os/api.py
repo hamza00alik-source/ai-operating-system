@@ -18,6 +18,7 @@ from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, generate, test_provider
+from ai_os.agent_runtime import create_run, get_run, list_runs, run_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,20 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("ai_os.api")
 _discovery_stop = threading.Event()
 _discovery_thread: threading.Thread | None = None
+_agent_stop = threading.Event()
+_agent_thread: threading.Thread | None = None
+
+
+def _agent_worker_loop() -> None:
+    logger.info("Bounded agent execution worker started.")
+    while not _agent_stop.is_set():
+        try:
+            if not run_pending_once():
+                _agent_stop.wait(3)
+        except Exception:
+            logger.exception("Agent worker recovered from an error.")
+            _agent_stop.wait(3)
+    logger.info("Bounded agent execution worker stopped.")
 
 
 def _discovery_worker_loop() -> None:
@@ -42,7 +57,7 @@ def _discovery_worker_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global _discovery_thread
+    global _discovery_thread, _agent_thread
     settings = get_settings()
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
@@ -54,10 +69,21 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     _discovery_thread.start()
+    _agent_stop.clear()
+    _agent_thread = threading.Thread(
+        target=_agent_worker_loop,
+        name="aios-agent-worker",
+        daemon=True,
+    )
+    _agent_thread.start()
     try:
         yield
     finally:
         _discovery_stop.set()
+        _agent_stop.set()
+        if _agent_thread is not None:
+            _agent_thread.join(timeout=10)
+            _agent_thread = None
         if _discovery_thread is not None:
             _discovery_thread.join(timeout=10)
             _discovery_thread = None
@@ -227,6 +253,27 @@ def post_task(payload: TaskCreate):
 @app.get("/tasks", response_model=list[TaskOut], dependencies=[Depends(require_api_key)])
 def get_tasks():
     return list_tasks()
+
+
+@app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
+def execute_task(task_id: str):
+    try:
+        return create_run(task_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/agent-runs", dependencies=[Depends(require_api_key)])
+def get_agent_runs(task_id: str | None = None):
+    return list_runs(task_id)
+
+
+@app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
+def get_agent_run(run_id: str):
+    result = get_run(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    return result
 
 
 @app.post(
