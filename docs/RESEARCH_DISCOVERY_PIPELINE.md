@@ -1,6 +1,6 @@
 # Research & Technology Discovery Pipeline
 
-Status: implementation specification; not yet an operational feature.
+Status: operational MVP in the deployed FastAPI service; metadata discovery only.
 
 ## Purpose
 
@@ -66,12 +66,14 @@ Do not expose provider secrets in candidate details or logs.
 - CI covers successful scans, upstream failure, rate limiting, malformed metadata, duplicate detection, and approval boundaries.
 - No install, deployment, purchase, publication, or production change occurs from discovery approval alone; integration requires a separate explicit owner approval.
 
-## Current repository blockers found during audit
+## Current verified limitations
 
-- The current README describes a starter API and says external providers, background workers, ecommerce, and social integrations are not connected.
-- The current tree does not contain the modules imported by `src/ai_os/worker_service.py` (`agent_runtime`, `model_adapter`, and `worker`), so that worker entry point is not runnable from the checked-in tree.
-- The current tests cover health, task creation, approval decisions, and API-key checks; they do not prove model calls, agent execution, scheduling, discovery, dashboard behavior, or external integrations.
-- The roadmap marks the dashboard and background worker as pending. No owner-dashboard frontend is present in the checked-in tree.
+- Discovery searches public GitHub repository metadata only; it does not inspect source code, releases, advisories, vendor pricing pages, or API terms.
+- The worker is an in-process thread in the API service and assumes one replica. Durable multi-replica leases and scheduled recurring scans are not implemented.
+- Search requests use the unauthenticated public API unless `GITHUB_TOKEN` is configured. A token improves quota but is optional for public repositories.
+- License metadata is not a complete commercial-use legal review. Cost, security, privacy, and provider free-tier terms remain unknown until checked against authoritative sources.
+- Candidate approval is a review-state change only; it does not install, connect, or execute repository code.
+- The test suite covers queueing and conservative metadata evaluation, but production end-to-end scans still need a live owner-triggered verification after deployment.
 
 ## Delivery sequence
 
