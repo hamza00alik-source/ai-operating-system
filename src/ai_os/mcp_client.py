@@ -81,12 +81,11 @@ def probe_mcp_server(server_id: str) -> dict:
     if not row["enabled"]:
         raise ValueError("Enable this MCP server before testing its connection.")
     endpoint = row["endpoint"]
-    _public_endpoint(endpoint)
-
     env_names = json.loads(row["credential_env_json"])
     missing = [name for name in env_names if not os.getenv(name)]
     if missing:
         raise ValueError("Missing configured credential environment variables: " + ", ".join(missing))
+    _public_endpoint(endpoint)
     headers = {}
     if env_names:
         # The first configured secret is sent as a bearer token; additional
