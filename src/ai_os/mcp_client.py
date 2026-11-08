@@ -69,11 +69,10 @@ def _validate_destination(url: str) -> str:
     return url
 
 
-def _authorization_headers(endpoint: dict) -> dict[str, str]:
-    """Resolve a vault reference into a short-lived in-memory bearer header."""
+def _resolve_endpoint_credential(endpoint: dict) -> dict | None:
     credential_ref = endpoint.get("credential_ref")
     if not credential_ref:
-        return {}
+        return None
     if not isinstance(credential_ref, str) or not credential_ref.startswith("vault:"):
         raise MCPDiscoveryError("MCP credential reference must point to the encrypted credential vault.")
     try:
@@ -81,14 +80,88 @@ def _authorization_headers(endpoint: dict) -> dict[str, str]:
         secret = resolve_credential(credential_ref)
     except (CredentialVaultError, ValueError) as exc:
         raise MCPDiscoveryError("MCP credential is unavailable, revoked, or cannot be decrypted.") from exc
+    return secret
+
+
+def _authorization_headers(endpoint: dict) -> dict[str, str]:
+    """Resolve a static bearer token; OAuth client credentials use an httpx2 auth provider."""
+    secret = _resolve_endpoint_credential(endpoint)
+    if secret is None:
+        return {}
     token = secret.get("access_token")
+    if token is None and {"client_id", "client_secret", "issuer"}.issubset(secret):
+        return {}
     if not isinstance(token, str) or not token.strip() or len(token) > 8192:
         raise MCPDiscoveryError(
-            "Bearer credential must contain a non-empty access_token of at most 8192 characters."
+            "Credential must contain access_token or OAuth client_id, client_secret and issuer."
         )
     if any(ord(char) < 33 or ord(char) > 126 for char in token):
         raise MCPDiscoveryError("Bearer credential contains invalid header characters.")
     return {"Authorization": "Bearer " + token}
+
+
+class _EphemeralOAuthTokenStorage:
+    """Keep short-lived client-credentials tokens in memory for one connection."""
+
+    def __init__(self):
+        self.tokens = None
+        self.client_info = None
+
+    async def get_tokens(self):
+        return self.tokens
+
+    async def set_tokens(self, tokens):
+        self.tokens = tokens
+
+    async def get_client_info(self):
+        return self.client_info
+
+    async def set_client_info(self, client_info):
+        self.client_info = client_info
+
+
+def _oauth_client_auth(endpoint: dict, server_url: str):
+    """Build SDK OAuth 2.1 client-credentials auth from an encrypted vault record."""
+    secret = _resolve_endpoint_credential(endpoint)
+    if secret is None or secret.get("access_token") is not None:
+        return None
+    client_id = secret.get("client_id")
+    client_secret = secret.get("client_secret")
+    issuer = secret.get("issuer")
+    scope = secret.get("scope", "")
+    auth_method = secret.get("token_endpoint_auth_method", "client_secret_basic")
+    if not all(isinstance(value, str) and value.strip() for value in (client_id, client_secret, issuer)):
+        raise MCPDiscoveryError("OAuth credential requires non-empty client_id, client_secret and issuer.")
+    if len(client_id) > 512 or len(client_secret) > 8192 or len(scope) > 1000:
+        raise MCPDiscoveryError("OAuth client credential fields exceed their safety limits.")
+    if any(ord(char) < 32 or ord(char) == 127 for char in client_id + client_secret + scope):
+        raise MCPDiscoveryError("OAuth client credential contains control characters.")
+    if not isinstance(scope, str):
+        raise MCPDiscoveryError("OAuth scope must be a space-separated string.")
+    if auth_method not in {"client_secret_basic", "client_secret_post"}:
+        raise MCPDiscoveryError("Unsupported OAuth token endpoint authentication method.")
+    # The authorization server is a separate network destination. It must be
+    # HTTPS, publicly routable, and explicitly allowlisted just like the MCP host.
+    try:
+        _validate_destination(issuer)
+    except MCPDiscoveryError as exc:
+        raise MCPDiscoveryError("OAuth issuer must be an HTTPS hostname in AI_OS_MCP_ALLOWED_HOSTS.") from exc
+    try:
+        from mcp.client.auth import ClientCredentialsOAuthProvider
+    except ImportError as exc:
+        raise MCPDiscoveryError("Installed MCP SDK does not provide OAuth client-credentials support.") from exc
+    try:
+        return ClientCredentialsOAuthProvider(
+            server_url=server_url,
+            client_id=client_id,
+            client_secret=client_secret,
+            issuer=issuer,
+            scope=scope,
+            storage=_EphemeralOAuthTokenStorage(),
+            token_endpoint_auth_method=auth_method,
+        )
+    except Exception as exc:
+        raise MCPDiscoveryError("OAuth client-credentials configuration was rejected by the MCP SDK.") from exc
 
 
 def _tool_metadata(tool) -> dict:
@@ -138,8 +211,9 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
 
     try:
         timeout = httpx2.Timeout(30.0, read=60.0)
+        oauth_auth = _oauth_client_auth(endpoint, url)
         async with httpx2.AsyncClient(
-            headers=headers, timeout=timeout, follow_redirects=False
+            headers=headers, auth=oauth_auth, timeout=timeout, follow_redirects=False
         ) as http_client:
             transport = streamable_http_client(
                 url, http_client=http_client,
@@ -168,8 +242,11 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
         "server_name": endpoint["name"],
         "discovered_tool_count": len(tools),
         "tools": tools,
-        "authenticated": bool(headers),
-        "authentication_method": "static_bearer" if headers else "none",
+        "authenticated": bool(headers or oauth_auth),
+        "authentication_method": (
+            "oauth_client_credentials" if oauth_auth
+            else "static_bearer" if headers else "none"
+        ),
         "execution_enabled": False,
         "notice": (
             "Discovery only. Remote descriptions and schemas are untrusted data; "
@@ -205,8 +282,9 @@ async def call_mcp_read_only_tool(
 
     try:
         timeout = httpx2.Timeout(30.0, read=60.0)
+        oauth_auth = _oauth_client_auth(endpoint, url)
         async with httpx2.AsyncClient(
-            headers=headers, timeout=timeout, follow_redirects=False
+            headers=headers, auth=oauth_auth, timeout=timeout, follow_redirects=False
         ) as http_client:
             transport = streamable_http_client(
                 url, http_client=http_client,
