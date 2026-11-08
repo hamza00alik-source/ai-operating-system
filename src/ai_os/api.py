@@ -13,12 +13,12 @@ from ai_os.config import get_settings
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
-from ai_os.discovery import create_scan, list_scans, list_candidates, run_pending_once
+from ai_os.discovery import create_scan, list_scans, list_candidates, run_pending_once as run_discovery_pending_once
 from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, generate, test_provider
-from ai_os.agent_runtime import create_run, get_run, list_runs, run_pending_once
+from ai_os.agent_runtime import create_run, get_run, list_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
 from pydantic import BaseModel, Field
 
@@ -34,7 +34,7 @@ def _agent_worker_loop() -> None:
     logger.info("Bounded agent execution worker started.")
     while not _agent_stop.is_set():
         try:
-            if not run_pending_once():
+            if not run_agent_pending_once():
                 _agent_stop.wait(3)
         except Exception:
             logger.exception("Agent worker recovered from an error.")
@@ -46,7 +46,7 @@ def _discovery_worker_loop() -> None:
     logger.info("Technology discovery worker started in API service.")
     while not _discovery_stop.is_set():
         try:
-            processed = run_pending_once()
+            processed = run_discovery_pending_once()
             if not processed:
                 _discovery_stop.wait(5)
         except Exception:
