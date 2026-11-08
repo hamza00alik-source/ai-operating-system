@@ -15,7 +15,9 @@ def test_task_and_approval_flow():
         task = client.post("/tasks", json={"title": "Research demand", "department": "research"})
         assert task.status_code == 201
         approval = client.post("/approvals", json={
-            "task_id": task.json()["id"], "action": "publish_content"
+            "task_id": task.json()["id"], "action": "publish_content",
+            "actor_id": "owner", "resource_id": "wordpress:site-1",
+            "action_payload": {"post_id": "draft-7", "visibility": "public"}
         })
         assert approval.status_code == 201
         aid = approval.json()["id"]
@@ -26,7 +28,7 @@ def test_task_and_approval_flow():
 
 def test_approval_cannot_be_decided_twice():
     with TestClient(app) as client:
-        approval = client.post("/approvals", json={"action": "spend_money"}).json()
+        approval = client.post("/approvals", json={"action": "spend_money", "actor_id": "owner", "resource_id": "wallet:main", "action_payload": {"amount": 5, "currency": "USD"}}).json()
         aid = approval["id"]
         assert client.post(
             f"/approvals/{aid}/decision", json={"decision": "approved"}
