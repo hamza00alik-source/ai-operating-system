@@ -56,8 +56,13 @@ async function refresh(){
   cache=tasks;setConnection(true,"API is responding · "+health.service);setText("updated-at","Updated "+new Date().toLocaleTimeString());setText("task-count",tasks.length);
   setText("model-state",runtime.model.enabled?"Enabled": "Disabled");$("model-state").className=runtime.model.enabled?"green":"amber";
   setText("graph-state",runtime.agent_graph_enabled?"Enabled":"Disabled");$("graph-state").className=runtime.agent_graph_enabled?"green":"amber";
-  setText("worker-state","Not observable");$("worker-state").className="amber";
-  const notes=[];if(!runtime.model.enabled)notes.push("Model execution is disabled.");if(!runtime.model.configured)notes.push("Model endpoint/model is not configured.");if(!runtime.agent_graph_enabled)notes.push("The three-agent graph is disabled.");notes.push("Worker heartbeat is not exposed, so worker availability cannot yet be confirmed.");
+  const worker=runtime.worker||{status:"never_seen",workers:[]};
+  const workerLabels={active:"Active",stale:"Stale",stopped:"Stopped",never_seen:"Never seen"};
+  setText("worker-state",workerLabels[worker.status]||worker.status);$("worker-state").className=worker.status==="active"?"green":(worker.status==="stale"?"red":"amber");
+  const notes=[];if(!runtime.model.enabled)notes.push("Model execution is disabled.");if(!runtime.model.configured)notes.push("Model endpoint/model is not configured.");if(!runtime.agent_graph_enabled)notes.push("The three-agent graph is disabled.");if(worker.status==="active")notes.push("Worker heartbeat is fresh; this confirms the process is reporting, not that a model request will succeed.");
+  else if(worker.status==="stale")notes.push("Last worker heartbeat is stale; the process may have stopped or lost database access.");
+  else if(worker.status==="stopped")notes.push("A worker was seen previously but has reported a clean stop.");
+  else notes.push("No worker heartbeat has been recorded yet.");
   setText("runtime-note",notes.join(" "));
   $("run-test").disabled=false;renderTasks();
   if(selected&&cache.some(t=>t.id===selected))await selectTask(selected);else if(cache.length)await selectTask(cache[0].id);

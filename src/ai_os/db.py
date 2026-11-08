@@ -33,6 +33,10 @@ def initialize_database() -> None:
             department TEXT NOT NULL DEFAULT 'general',
             status TEXT NOT NULL DEFAULT 'queued', created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS worker_heartbeats (
+            worker_id TEXT PRIMARY KEY, status TEXT NOT NULL,
+            started_at TEXT NOT NULL, last_seen_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS approvals (
             id TEXT PRIMARY KEY, task_id TEXT, action TEXT NOT NULL,
             details TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',

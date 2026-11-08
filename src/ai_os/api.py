@@ -11,6 +11,7 @@ from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
 from ai_os.model_adapter import get_model_status
+from ai_os.heartbeat import get_worker_status
 from ai_os.schemas import (
     ApprovalCreate, ApprovalDecision, ApprovalOut, AuditEventOut,
     MCPServerCreate, MCPServerOut, TaskCreate, TaskOut,
@@ -54,7 +55,7 @@ def health() -> dict:
 def runtime_status() -> dict:
     """Expose safe runtime configuration only; never return endpoint URLs or secrets."""
     return {"model": get_model_status(), "agent_graph_enabled": agent_graph_enabled(),
-            "worker_heartbeat_available": False}
+            "worker_heartbeat_available": True, "worker": get_worker_status()}
 
 
 @app.post("/tasks", response_model=TaskOut, status_code=201)
