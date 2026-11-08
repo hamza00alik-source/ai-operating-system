@@ -12,8 +12,9 @@ from fastapi.testclient import TestClient
 from ai_os.api import app
 
 
-def test_company_workflow_uses_model_adapter_and_passes_dependency_handoff(monkeypatch):
+def test_company_workflow_uses_model_adapter_and_passes_dependency_handoff(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "integration-test-signing-key-" + "x" * 40)
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'model-adapter-e2e.db'}")
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
     monkeypatch.setenv("AI_OS_AUTO_CEO_REVIEW_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
