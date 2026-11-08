@@ -14,9 +14,8 @@ Last checked: 2026-11-08. This status describes the feature branch
 - Live public MCP discovery passed against `https://api.sondahub.com/mcp`:
   HTTPS hostname allowlist, endpoint registration/activation, MCP initialize,
   and tools/list returned 26 tool definitions. No remote tool was invoked.
-- Docker image build, API container startup, and writable persistent-volume
-  smoke test passed in CI. A separate continuous-worker container check is now
-  being added.
+- Docker image build, API container startup, writable persistent-volume
+  smoke test, and separate continuous-worker container startup all passed in CI.
 
 ## Implemented foundations
 
