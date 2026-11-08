@@ -32,6 +32,7 @@ app = FastAPI(
     title="AI Operating System",
     version="0.1.0",
     description="Human-supervised AI company workflow foundation.",
+    lifespan=lifespan,
 )
 
 
