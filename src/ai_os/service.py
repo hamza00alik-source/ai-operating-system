@@ -222,6 +222,15 @@ def create_mcp_tool_request(*, server_id: str, tool_name: str, arguments: dict,
         _audit(db, "mcp.tool_request.created", actor_id=requester_id,
                resource_type="mcp_tool_request", resource_id=request_id,
                details={"server_id": server_id, "tool_name": tool_name, "task_id": task_id})
+        if task_id:
+            db.execute(
+                "UPDATE tasks SET status='awaiting_approval',error=?,finished_at=NULL "
+                "WHERE id=? AND status='running'",
+                ("Agent requested an MCP tool; owner approval is required.", task_id),
+            )
+            _audit(db, "task.awaiting_mcp_approval", actor_id=requester_id,
+                   resource_type="task", resource_id=task_id,
+                   details={"mcp_tool_request_id": request_id})
         row = db.execute("SELECT * FROM mcp_tool_requests WHERE id=?", (request_id,)).fetchone()
     return _mcp_request_dict(row)
 
