@@ -79,15 +79,17 @@ def schedule_ready_steps(*, limit: int = 20) -> dict:
         if len(scheduled) >= limit:
             break
     manager_reviews = []
+    ceo_reviews = []
     for listed_run in runs:
-        if len(scheduled) + len(manager_reviews) >= limit:
+        if len(scheduled) + len(manager_reviews) + len(ceo_reviews) >= limit:
             break
         current_run = get_company_run(listed_run["id"])
         if current_run is None:
             continue
         step_states = {step["step_key"]: step["status"] for step in current_run["steps"]}
-        for plan in list_department_plans(listed_run["id"]):
-            if len(scheduled) + len(manager_reviews) >= limit:
+        plans = list_department_plans(listed_run["id"])
+        for plan in plans:
+            if len(scheduled) + len(manager_reviews) + len(ceo_reviews) >= limit:
                 break
             if plan["status"] != "delegated":
                 continue
@@ -103,9 +105,28 @@ def schedule_ready_steps(*, limit: int = 20) -> dict:
                 "run_id": listed_run["id"], "department_id": plan["department_id"],
                 "manager_agent_id": plan["manager_agent_id"], "job_id": job["id"],
             })
+
+        all_steps_terminal = bool(current_run["steps"]) and all(
+            step["status"] in {"completed", "blocked"} for step in current_run["steps"]
+        )
+        manager_reviews_finished = all(plan["status"] != "delegated" for plan in plans)
+        if (
+            all_steps_terminal and manager_reviews_finished
+            and len(scheduled) + len(manager_reviews) + len(ceo_reviews) < limit
+        ):
+            job = enqueue_job(JobCreate(
+                job_type="review_company_run",
+                payload={"run_id": listed_run["id"]},
+                idempotency_key=f"ceo-review:{listed_run['id']}",
+            ))
+            ceo_reviews.append({
+                "run_id": listed_run["id"], "accountable_agent_id": "company-orchestrator",
+                "job_id": job["id"],
+            })
     return {
         "scheduled": len(scheduled), "model_enabled": True, "steps": scheduled,
         "manager_reviews_scheduled": len(manager_reviews), "manager_reviews": manager_reviews,
+        "ceo_reviews_scheduled": len(ceo_reviews), "ceo_reviews": ceo_reviews,
     }
 
 
