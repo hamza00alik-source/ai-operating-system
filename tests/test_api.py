@@ -281,7 +281,7 @@ def test_agent_mcp_tool_request_requires_owner_approval_before_execution(monkeyp
         assert owner_review.status_code == 200
         approval = owner_review.json()["approval"]
         assert approval["status"] == "pending"
-        assert owner_review.json()["request"]["status"] == "approved"
+        assert owner_review.json()["request"]["status"] == "awaiting_approval"
         assert calls == []
 
         decision = client.post(
