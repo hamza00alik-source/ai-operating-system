@@ -102,10 +102,9 @@ def validate_mcp_tool_arguments(schema: dict, arguments: dict, *, path: str = "$
     missing = [name for name in required if name not in arguments]
     if missing:
         raise MCPBrokerError("Missing required MCP tool argument(s): " + ", ".join(str(x) for x in missing[:10]))
-    if schema.get("additionalProperties") is False:
-        extras = set(arguments) - set(properties)
-        if extras:
-            raise MCPBrokerError("Unexpected MCP tool argument(s): " + ", ".join(sorted(extras)[:10]))
+    extras = set(arguments) - set(properties)
+    if extras:
+        raise MCPBrokerError("Unexpected MCP tool argument(s): " + ", ".join(sorted(extras)[:10]))
     for name, value in arguments.items():
         if name not in properties:
             continue
