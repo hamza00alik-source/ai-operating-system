@@ -50,7 +50,7 @@ def initialize_database() -> None:
             base_url TEXT NOT NULL DEFAULT '', free_tier_json TEXT NOT NULL DEFAULT '{}',
             policy_json TEXT NOT NULL DEFAULT '{}', confidence TEXT NOT NULL DEFAULT 'unknown',
             last_verified TEXT, probe_json TEXT NOT NULL DEFAULT '{}',
-            status_json TEXT NOT NULL DEFAULT '{}', source_url TEXT NOT NULL,
+            status_json TEXT NOT NULL DEFAULT '{}', sources_json TEXT NOT NULL DEFAULT '[]', source_url TEXT NOT NULL,
             synced_at TEXT NOT NULL, review_state TEXT NOT NULL DEFAULT 'pending',
             PRIMARY KEY(source_id, provider_id)
         );
@@ -162,3 +162,6 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_notes TEXT NOT NULL DEFAULT ''")
         if "review_updated_at" not in columns:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_updated_at TEXT")
+        provider_columns = {row["name"] for row in connection.execute("PRAGMA table_info(provider_catalog_entries)")}
+        if "sources_json" not in provider_columns:
+            connection.execute("ALTER TABLE provider_catalog_entries ADD COLUMN sources_json TEXT NOT NULL DEFAULT '[]'")
