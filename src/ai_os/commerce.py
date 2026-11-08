@@ -125,10 +125,29 @@ class ListingPacketRequest(BaseModel):
 def storefront_status() -> dict:
     rows = []
     for channel_id, spec in CHANNELS.items():
-        configured = bool(spec["env"]) and all(os.getenv(key, "").strip() for key in spec["env"])
+        environment_configured = bool(spec["env"]) and all(
+            os.getenv(key, "").strip() for key in spec["env"]
+        )
+        try:
+            from ai_os.credential_vault import list_credentials
+            active_vault_credentials = [
+                item for item in list_credentials(provider_id=channel_id)
+                if item["status"] != "revoked"
+            ]
+        except Exception:
+            active_vault_credentials = []
+        vault_configured = len(active_vault_credentials) == 1
+        configured = environment_configured or vault_configured
+        credential_source = (
+            "environment" if environment_configured else
+            "vault" if vault_configured else
+            "ambiguous_vault_entries" if len(active_vault_credentials) > 1 else
+            "none"
+        )
         rows.append({
             "id": channel_id, "name": spec["label"], "kind": spec["kind"],
-            "configured": configured, "integration": spec["integration"],
+            "configured": configured, "credential_source": credential_source,
+            "credential_verified": False, "integration": spec["integration"],
             "listing_mode": spec["listing_mode"], "automated_publish": False,
             "status": "credentials_present_unverified" if configured else "not_connected",
             "notes": spec["notes"],
