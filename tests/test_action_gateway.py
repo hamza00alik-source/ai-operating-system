@@ -7,11 +7,12 @@ from ai_os.action_gateway import (
     clear_action_adapters_for_tests,
     execute_approved_action,
     get_action_gateway_status,
-    register_action_adapter,
+    register_action_adapter, register_agent_tool_adapter, execute_agent_tool,
 )
 from ai_os.approvals import create_owner_approval_request, decide_owner_approval
 from ai_os.audit import list_events
 from ai_os.db import connect, initialize_database
+from ai_os.control_plane import initialize_control_plane, grant_capability, revoke_capability_grant
 from ai_os.identity import issue_agent_token
 
 
@@ -23,9 +24,10 @@ def gateway_db(monkeypatch, tmp_path):
     from ai_os import registry
     monkeypatch.setattr(
         registry, "get_agent",
-        lambda agent_id: SimpleNamespace(id=agent_id, enabled=True),
+        lambda agent_id: SimpleNamespace(id=agent_id, enabled=True, department="research"),
     )
     initialize_database()
+    initialize_control_plane()
     with connect() as db:
         db.execute(
             """INSERT INTO company_runs(id,title,description,status,created_at,updated_at)
@@ -142,3 +144,35 @@ def test_gateway_readiness_requires_explicit_flag_and_registered_adapter(gateway
     status = get_action_gateway_status()
     assert status["enabled"] is True
     assert status["registered_actions"] == ["publish_product"]
+
+
+
+def test_agent_tool_execution_requires_explicit_scoped_capability_grant(gateway_db):
+    calls = []
+    register_agent_tool_adapter(
+        "research.search",
+        capability="tool.research.read",
+        adapter=lambda parameters: calls.append(parameters) or {"sources": 2},
+    )
+
+    with pytest.raises(ActionGatewayError, match="capability was denied"):
+        execute_agent_tool("research-synthesist", "research.search", {"query": "demand"})
+    assert calls == []
+
+    grant = grant_capability(
+        agent_id="research-synthesist",
+        capability="tool.research.read",
+        department_scope="research",
+        granted_by="test-owner",
+    )
+    result = execute_agent_tool(
+        "research-synthesist", "research.search", {"query": "demand"}
+    )
+    assert result["status"] == "completed"
+    assert result["result"] == {"sources": 2}
+    assert len(calls) == 1
+
+    revoke_capability_grant(grant["grant_id"])
+    with pytest.raises(ActionGatewayError, match="capability was denied"):
+        execute_agent_tool("research-synthesist", "research.search", {"query": "demand"})
+    assert len(calls) == 1

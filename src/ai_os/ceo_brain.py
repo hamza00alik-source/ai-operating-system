@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 from ai_os.db import connect
 from ai_os.execution import create_company_run, get_company_run
 from ai_os.execution_schemas import CompanyRunCreate, RunStepCreate
-from ai_os.registry import get_agent, select_agent
+from ai_os.registry import get_agent
+from ai_os.control_plane import is_control_plane_agent_enabled, select_effective_agent
 from ai_os.ceo_schemas import CEOObjectiveCreate
 
 CEO_AGENT_ID = "company-orchestrator"
@@ -58,10 +59,11 @@ def _matches(text: str, terms: tuple[str, ...]) -> bool:
 
 def _resolve_agent(preferred_id: str, department: str):
     agent = get_agent(preferred_id)
-    if agent and agent.enabled:
+    if (agent and agent.enabled
+            and is_control_plane_agent_enabled(agent.id, fallback_enabled=agent.enabled)):
         return agent
-    fallback = select_agent(department)
-    if fallback and fallback.enabled:
+    fallback = select_effective_agent(department)
+    if fallback:
         return fallback
     raise LookupError(f"No enabled specialist is available for required department '{department}'")
 

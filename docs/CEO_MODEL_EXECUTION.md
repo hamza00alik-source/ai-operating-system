@@ -29,3 +29,24 @@ Endpoint: \`POST /ceo/review/{run_id}\`
 - Local Ollama requires a separate computer/server. An Android phone is not treated as a reliable always-on model host.
 - This is one bounded review call, not an autonomous multi-agent loop or scheduler.
 - Current authentication is single-owner, not role-based agent authentication. Keep private/local until role-level authorization and deployment hardening are complete.
+
+
+## Zero-spend Groq mode
+
+For a no-paid-fallback configuration, set `AI_OS_FREE_ONLY=true`, then configure:
+
+- `AI_OS_MODEL_BACKEND=openai_compatible`
+- `AI_OS_MODEL_PROVIDER=groq`
+- `AI_OS_MODEL_BASE_URL=https://api.groq.com/openai/v1`
+- `AI_OS_MODEL_API_KEY` to a secret stored only in the runtime host
+- `AI_OS_MODEL_NAME` to a model confirmed as eligible for the current Groq free tier
+- `AI_OS_FREE_MODEL_ALLOWLIST` to the exact same model identifier
+
+Free-only mode fails closed if any condition is missing or mismatched. It rejects command/CLI providers, other hosts, missing keys, and models not explicitly allowlisted. It does not retry, switch providers, upgrade billing, or fall back to a paid service. Provider quota exhaustion (including HTTP 429) is returned as a failed model request; the worker should defer or mark the job for later handling.
+
+The allowlist is an owner configuration gate, not a live guarantee that Groq will keep a model on its free tier. Check the current model and rate limits in Groq Console before enabling. Never commit API keys to GitHub. This mode does not guarantee unlimited inference or uninterrupted availability.
+
+
+### Quota exhaustion and durable jobs
+
+HTTP 429 responses raise a dedicated quota exception. The worker marks that job failed immediately instead of consuming the queue's normal retry attempts, and marks its company step blocked for owner review. This prevents the queue from repeatedly calling the provider while a free-tier quota is exhausted. After the provider quota resets, the owner can review and explicitly re-queue the work. Other transient failures continue to use the existing bounded queue retry policy.

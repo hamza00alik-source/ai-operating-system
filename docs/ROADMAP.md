@@ -100,6 +100,26 @@ A feature is complete only when tested and its operating limits are documented. 
 
 See [OPERATIONS_PLAYBOOK.md](OPERATIONS_PLAYBOOK.md), [CONTINUOUS_LEARNING.md](CONTINUOUS_LEARNING.md), [INSTRUCTION_VERSIONING.md](INSTRUCTION_VERSIONING.md), [BEHAVIOR_TESTING.md](BEHAVIOR_TESTING.md),  [OWN_MODEL_STRATEGY.md](OWN_MODEL_STRATEGY.md) for the company-owned model plan, and [ACTION_GATEWAY.md](ACTION_GATEWAY.md) for the action execution boundary.
 
+## Phase 6 — Agent control plane (CP-1 and CP-2 implemented; CP-3 in progress)
+- [x] Define a zero-cost, provider-neutral control-plane architecture inspired by Agent Fabric capabilities
+- [x] Document the distinction between profile catalog entries, logical agents, and live runtime instances
+- [x] CP-1: SQLite registry for logical agents, profile capability metadata, endpoint metadata, and agent relationships; owner APIs, disabled-by-default endpoints, CEO-root protection, and automated tests (235 tests passing)
+- [x] CP-2: runtime-instance records, one-time hashed credentials with 30-day expiry, owner rotation/revocation, authenticated heartbeats, stale detection, and worker keepalives (250 tests passing)
+- [x] CP-3 baseline: effective-agent enforcement across work packets, identities, company-run assignment, CEO/manager routing, department workload, and dashboard status (full CI passing)
+- [x] CP-3 broker: inspectable CEO/manager route evaluation, department-scoped manager delegation, self/cross-department route denial, and policy enforcement in manager workflows
+- [x] CP-3 capabilities: owner-managed explicit capability grants/revocation, deny-by-default checks, and trusted in-process tool adapter execution with audit events
+- [x] CP-3 built-ins: bounded free release-feed research, owner-accepted knowledge search, and read-only WooCommerce catalog/order-status tools
+- [x] CP-3 specialist tool loop: opt-in model-requested tool calls, maximum three calls per step, untrusted tool-result handling, and disabled-by-default switch
+- [x] CP-3 observability: owner dashboard shows Control Plane health, capability grants, tool readiness, and recent broker/tool audit events; owner can grant/revoke capabilities from the UI
+- [ ] CP-3 remaining: adversarial/task-budget hardening and provider-failure recovery
+- [x] CP-4 security acceptance plan: endpoint lifecycle, public-address egress restrictions, credential references, Streamable HTTP/JSON-RPC validation, capability mapping, audit, and adversarial tests specified
+- [x] CP-4 preparation: owner-authenticated MCP endpoint enable/disable lifecycle, environment-reference resolution checks, and fail-closed A2A/unsupported secret-manager activation
+- [ ] CP-4 implementation: secure MCP integration, followed by A2A interoperability after identity and policy controls
+- [ ] CP-5: live health, job telemetry, policy traces, and agent-network visualization
+- [ ] CP-6: production deployment hardening, monitoring, backup/restore, and rollback verification
+
+See [AGENT_CONTROL_PLANE.md](AGENT_CONTROL_PLANE.md) for architecture, trust boundaries, sequence, and acceptance criteria. CP-1 and CP-2 are implemented on this branch. CP-3 baseline, broker routing, explicit capability grants, trusted tool dispatch, four read-only built-ins, and the opt-in bounded specialist tool loop are implemented and tested (270 tests passed at the last validated code commit; dashboard grant/revoke controls and MCP endpoint lifecycle preparation also pass CI). Dashboard policy traces and further operational hardening remain in progress. CP-4 through CP-6 remain planned.
+
 ## Reference decisions
 - Agency Agents: primary source of specialist roles and workflow patterns.
 - Automaton: selective patterns for ReAct loops, durable scheduling, task graphs, local workers, model routing, memory, policy enforcement, and auditability.

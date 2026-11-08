@@ -70,14 +70,29 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
+from ai_os.agent_tools import register_builtin_agent_tools
+from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
+from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
+    list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
+    list_control_plane_endpoints, create_control_plane_endpoint,
+    create_runtime_instance, list_runtime_instances, get_runtime_instance,
+    heartbeat_runtime, rotate_runtime_token, revoke_runtime_instance,
+    is_control_plane_agent_enabled, grant_capability, list_capability_grants,
+    revoke_capability_grant, evaluate_capability, evaluate_broker_route,
+    set_control_plane_endpoint_enabled)
+from ai_os.control_plane_schemas import (AgentEnableUpdate, EndpointCreate,
+    RuntimeCreate, RuntimeHeartbeat, CapabilityGrantCreate,
+    BrokerRouteEvaluate, CapabilityEvaluate, EndpointEnableUpdate)
 
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    initialize_control_plane()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
+    register_builtin_agent_tools()
     yield
 
 app = FastAPI(title="AI Operating System", version="0.6.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
@@ -766,7 +781,14 @@ def get_company_department(department_id: str):
 
 @app.get("/agents", response_model=list[AgentOut])
 def get_agents():
-    return [agent.__dict__ for agent in list_agents()]
+    agents = []
+    for agent in list_agents(enabled_only=False):
+        item = dict(agent.__dict__)
+        item["enabled"] = bool(agent.enabled and is_control_plane_agent_enabled(
+            agent.id, fallback_enabled=agent.enabled
+        ))
+        agents.append(item)
+    return agents
 
 @app.get("/runbooks")
 def get_runbooks():
@@ -1133,3 +1155,248 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
     return result
+
+
+# Agent Control Plane — CP-1 registry APIs. All routes inherit owner-token auth.
+@app.get("/control-plane")
+def get_control_plane_status():
+    return control_plane_overview()
+
+
+@app.get("/control-plane/agents")
+def get_control_plane_agents(
+    department: str | None = Query(default=None, max_length=100),
+    enabled: bool | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=1000),
+):
+    return {"agents": list_control_plane_agents(
+        department=department, enabled=enabled, limit=limit
+    )}
+
+
+@app.get("/control-plane/agents/{agent_id}")
+def get_control_plane_agent_detail(agent_id: str):
+    agent = get_control_plane_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Registered agent not found")
+    return agent
+
+
+@app.patch("/control-plane/agents/{agent_id}")
+def patch_control_plane_agent(agent_id: str, payload: AgentEnableUpdate, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        agent = set_agent_enabled(agent_id, payload.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Registered agent not found")
+    append_event(
+        actor, "control_plane_agent_enabled" if payload.enabled else "control_plane_agent_disabled",
+        "control_plane_agent", agent_id, {"enabled": payload.enabled},
+    )
+    return agent
+
+
+@app.get("/control-plane/endpoints")
+def get_control_plane_endpoints():
+    return {"endpoints": list_control_plane_endpoints(),
+            "notice": "New network endpoints are registered disabled; CP-1 does not connect to them."}
+
+
+@app.patch("/control-plane/endpoints/{endpoint_id}")
+def patch_control_plane_endpoint(endpoint_id: str, payload: EndpointEnableUpdate, request: Request):
+    try:
+        endpoint = set_control_plane_endpoint_enabled(endpoint_id, payload.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if endpoint is None:
+        raise HTTPException(status_code=404, detail="Control Plane endpoint not found")
+    append_event(
+        getattr(request.state, "actor", "unknown"),
+        "control_plane_endpoint_enabled" if payload.enabled else "control_plane_endpoint_disabled",
+        "control_plane_endpoint", endpoint_id,
+        {"protocol": endpoint["protocol"], "enabled": endpoint["enabled"]},
+    )
+    return {"endpoint": endpoint,
+            "notice": "Endpoint activation records owner intent only; no network connection or remote tool execution is performed."}
+
+
+@app.post("/control-plane/endpoints/{endpoint_id}/discover")
+async def post_control_plane_mcp_discovery(endpoint_id: str, request: Request):
+    """Owner-triggered MCP tool discovery; returned remote metadata remains untrusted."""
+    try:
+        result = await discover_mcp_tools(endpoint_id)
+    except MCPDiscoveryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        getattr(request.state, "actor", "unknown"),
+        "control_plane_mcp_tools_discovered", "control_plane_endpoint", endpoint_id,
+        {"discovered_tool_count": result["discovered_tool_count"],
+         "tool_names": [item["name"] for item in result["tools"]]},
+    )
+    return result
+
+
+@app.post("/control-plane/endpoints", status_code=201)
+def post_control_plane_endpoint(payload: EndpointCreate, request: Request):
+    try:
+        endpoint = create_control_plane_endpoint(
+            name=payload.name, protocol=payload.protocol, base_url=payload.base_url,
+            credential_ref=payload.credential_ref, metadata=None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_endpoint_registered",
+        "control_plane_endpoint", endpoint["endpoint_id"],
+        {"protocol": endpoint["protocol"], "enabled": endpoint["enabled"],
+         "has_credential_reference": bool(endpoint["credential_ref"])},
+    )
+    return endpoint
+
+
+
+
+# CP-3 broker policy and explicit capability grants.
+@app.get("/control-plane/capabilities")
+def get_control_plane_capability_grants(agent_id: str | None = Query(default=None, max_length=120)):
+    return {"grants": list_capability_grants(agent_id=agent_id),
+            "notice": "Only listed grants authorize capability use; missing grants are denied."}
+
+
+@app.post("/control-plane/capabilities", status_code=201)
+def post_control_plane_capability_grant(payload: CapabilityGrantCreate, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        grant = grant_capability(
+            agent_id=payload.agent_id, capability=payload.capability,
+            department_scope=payload.department_scope, granted_by=actor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(actor, "control_plane_capability_granted", "capability_grant",
+                 grant["grant_id"], {"agent_id": grant["agent_id"],
+                 "capability": grant["capability"], "department_scope": grant["department_scope"]})
+    return grant
+
+
+@app.delete("/control-plane/capabilities/{grant_id}")
+def delete_control_plane_capability_grant(grant_id: str, request: Request):
+    grant = revoke_capability_grant(grant_id)
+    if grant is None:
+        raise HTTPException(status_code=404, detail="Capability grant not found")
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "control_plane_capability_revoked", "capability_grant", grant_id,
+                 {"agent_id": grant["agent_id"], "capability": grant["capability"],
+                  "department_scope": grant["department_scope"]})
+    return {"revoked": True, "grant": grant}
+
+
+@app.post("/control-plane/capabilities/evaluate")
+def post_control_plane_capability_evaluation(payload: CapabilityEvaluate):
+    return evaluate_capability(payload.agent_id, payload.capability, payload.department_scope)
+
+
+@app.post("/control-plane/broker/evaluate")
+def post_control_plane_broker_route_evaluation(payload: BrokerRouteEvaluate, request: Request):
+    decision = evaluate_broker_route(payload.source_agent_id, payload.target_agent_id)
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "control_plane_broker_route_evaluated", "agent_route",
+                 payload.source_agent_id + "->" + payload.target_agent_id,
+                 {"decision": decision.get("decision"), "allowed": decision.get("allowed"),
+                  "department_scope": decision.get("department_scope")})
+    return decision
+
+
+# CP-2 runtime identity and authenticated heartbeat endpoints.
+@app.post("/control-plane/runtimes", status_code=201)
+def post_control_plane_runtime(payload: RuntimeCreate, request: Request):
+    try:
+        runtime, runtime_token = create_runtime_instance(
+            runtime_name=payload.runtime_name,
+            runtime_kind=payload.runtime_kind,
+            agent_id=payload.agent_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_runtime_registered",
+        "control_plane_runtime", runtime["runtime_id"],
+        {"runtime_kind": runtime["runtime_kind"], "agent_id": runtime["agent_id"]},
+    )
+    return {
+        "runtime": runtime,
+        "runtime_token": runtime_token,
+        "token_notice": "This credential is shown once. Store it in the worker's secret environment; it is never retrievable from the registry.",
+    }
+
+
+@app.get("/control-plane/runtimes")
+def get_control_plane_runtimes():
+    return {"runtimes": list_runtime_instances(),
+            "notice": "Health is derived from authenticated heartbeat age; profiles alone are never shown as online."}
+
+
+@app.get("/control-plane/runtimes/{runtime_id}")
+def get_control_plane_runtime_detail(runtime_id: str):
+    runtime = get_runtime_instance(runtime_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Runtime instance not found")
+    return runtime
+
+
+@app.post("/control-plane/runtime-heartbeat")
+def post_control_plane_runtime_heartbeat(
+    payload: RuntimeHeartbeat,
+    request: Request,
+    runtime_token: str | None = Header(default=None, alias="X-AI-Runtime-Token"),
+):
+    if not runtime_token:
+        raise HTTPException(status_code=401, detail="A runtime credential is required.")
+    try:
+        runtime = heartbeat_runtime(
+            runtime_id=payload.runtime_id,
+            token=runtime_token,
+            status=payload.status,
+            current_job_id=payload.current_job_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(
+        "runtime:" + payload.runtime_id, "control_plane_runtime_heartbeat",
+        "control_plane_runtime", payload.runtime_id,
+        {"status": payload.status, "has_current_job": bool(payload.current_job_id)},
+    )
+    return runtime
+
+
+@app.post("/control-plane/runtimes/{runtime_id}/rotate-token")
+def post_control_plane_runtime_token_rotation(runtime_id: str, request: Request):
+    rotated = rotate_runtime_token(runtime_id)
+    if rotated is None:
+        raise HTTPException(status_code=404, detail="Active runtime instance not found")
+    runtime, runtime_token = rotated
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_runtime_token_rotated",
+        "control_plane_runtime", runtime_id, {},
+    )
+    return {
+        "runtime": runtime,
+        "runtime_token": runtime_token,
+        "token_notice": "The previous credential is invalid. Store this new credential securely; it is shown once.",
+    }
+
+
+@app.post("/control-plane/runtimes/{runtime_id}/revoke")
+def post_control_plane_runtime_revocation(runtime_id: str, request: Request):
+    runtime = revoke_runtime_instance(runtime_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Runtime instance not found")
+    append_event(
+        getattr(request.state, "actor", "unknown"), "control_plane_runtime_revoked",
+        "control_plane_runtime", runtime_id, {},
+    )
+    return runtime

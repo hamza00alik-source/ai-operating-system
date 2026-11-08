@@ -96,5 +96,6 @@ def test_dashboard_exposes_worker_controls_and_live_status():
     assert response.status_code == 200
     assert 'id="workerControl"' in response.text
     assert 'id="workerState"' in response.text
-    assert 'data-worker-action="pause"' in response.text
+    assert 'data-worker-action' in response.text
+    assert '["pause","Pause"' in response.text
     assert 'async function controlWorker(action)' in response.text
