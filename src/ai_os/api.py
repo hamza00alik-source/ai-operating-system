@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException
 from ai_os.owner_dashboard import owner_dashboard
 
-from ai_os.auth import require_api_key
+from ai_os.auth import require_api_key, require_owner_key
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
@@ -12,6 +12,7 @@ from ai_os.service import create_approval, create_task, decide_approval, list_ap
 from ai_os.discovery import create_scan, list_scans, list_candidates
 from ai_os.schemas import DiscoveryScanCreate
 from ai_os.llm_gateway import list_providers, generate, test_provider
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
 from pydantic import BaseModel, Field
 
 
@@ -40,6 +41,27 @@ def get_owner_dashboard():
 class ModelRunRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=8000)
+
+
+class OpenRouterCredentialRequest(BaseModel):
+    api_key: str = Field(min_length=8, max_length=512)
+    confirm_free_only: bool
+
+
+@app.get("/llm/credentials", dependencies=[Depends(require_owner_key)])
+def get_llm_credentials():
+    return {"openrouter": credential_status()}
+
+
+@app.post("/llm/credentials/openrouter", dependencies=[Depends(require_owner_key)])
+def post_openrouter_credentials(payload: OpenRouterCredentialRequest):
+    try:
+        save_openrouter(payload.api_key, payload.confirm_free_only)
+        return {"saved": True, "provider": "openrouter", "storage": "encrypted"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/llm/providers", dependencies=[Depends(require_api_key)])
