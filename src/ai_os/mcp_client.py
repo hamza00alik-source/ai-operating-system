@@ -165,6 +165,14 @@ def _oauth_client_auth(endpoint: dict, server_url: str):
         raise MCPDiscoveryError("OAuth client-credentials configuration was rejected by the MCP SDK.") from exc
 
 
+async def _guard_outbound_request(request) -> None:
+    """Apply the exact-host HTTPS allowlist to MCP and OAuth HTTP requests."""
+    try:
+        _validate_destination(str(request.url))
+    except MCPDiscoveryError as exc:
+        raise MCPDiscoveryError("Outbound MCP/OAuth request was blocked by the host allowlist.") from exc
+
+
 def _tool_metadata(tool) -> dict:
     name = getattr(tool, "name", None)
     if not isinstance(name, str) or not name or len(name) > 120:
@@ -214,7 +222,8 @@ async def discover_mcp_tools(endpoint_id: str) -> dict:
         timeout = httpx2.Timeout(30.0, read=60.0)
         oauth_auth = _oauth_client_auth(endpoint, url)
         async with httpx2.AsyncClient(
-            headers=headers, auth=oauth_auth, timeout=timeout, follow_redirects=False
+            headers=headers, auth=oauth_auth, timeout=timeout, follow_redirects=False,
+            event_hooks={"request": [_guard_outbound_request]},
         ) as http_client:
             transport = streamable_http_client(
                 url, http_client=http_client,
