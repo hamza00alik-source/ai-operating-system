@@ -25,6 +25,7 @@ from ai_os.credential_vault import initialize_credential_vault
 from ai_os.agent_tools import register_builtin_agent_tools
 from ai_os.wordpress_actions import register_wordpress_draft_adapter
 from ai_os.woocommerce_actions import register_woocommerce_draft_adapter
+from ai_os.mcp_broker import initialize_mcp_broker_storage
 
 logger = logging.getLogger("ai_os.worker_service")
 
@@ -148,6 +149,7 @@ def main() -> None:
     initialize_commerce_storage()
     initialize_control_plane()
     initialize_credential_vault()
+    initialize_mcp_broker_storage()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
     register_builtin_agent_tools()
