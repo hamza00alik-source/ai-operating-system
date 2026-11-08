@@ -54,9 +54,12 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
             if saved:
                 model, secret, free = saved
                 base = PROVIDER_META[provider.key]["base_url"]
-    except Exception:
-        # Environment-backed configuration remains available during migration/tests.
+    except sqlite3.OperationalError:
+        # Local/test databases may not have initialized the credential table yet.
         pass
+    except RuntimeError:
+        # Surface vault/key failures as blocked configuration, never silently bypass.
+        raise
     configured = bool(base and model and secret)
     eligible = configured and free
     return {
