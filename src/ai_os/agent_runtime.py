@@ -33,6 +33,39 @@ def _record_event(run_id: str, stage: str, message: str) -> None:
             (run_id, stage, message[:500], _now()),
         )
 
+
+def recover_interrupted_runs() -> int:
+    """Fail runs left in 'running' by a process restart; never silently replay paid/model work."""
+    now = _now()
+    with connect() as db:
+        interrupted = db.execute(
+            "SELECT id, task_id FROM agent_runs WHERE status='running'"
+        ).fetchall()
+        for row in interrupted:
+            run_id, task_id = row["id"], row["task_id"]
+            reason = "Execution interrupted by service restart; owner can explicitly retry."
+            db.execute(
+                "UPDATE agent_runs SET status='failed',error=?,finished_at=? WHERE id=? AND status='running'",
+                (reason, now, run_id),
+            )
+            if task_id:
+                db.execute(
+                    "UPDATE tasks SET status='failed' WHERE id=? AND status='running'",
+                    (task_id,),
+                )
+            db.execute(
+                "UPDATE agent_run_steps SET status='failed',error=?,finished_at=? WHERE run_id=? AND status='running'",
+                (reason, now, run_id),
+            )
+            db.execute(
+                "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
+                (run_id, "interrupted", reason, now),
+            )
+    if interrupted:
+        logger.warning("Marked %s interrupted agent run(s) failed during startup recovery.", len(interrupted))
+    return len(interrupted)
+
+
 def create_run(task_id: str) -> dict:
     run_id = str(uuid4())
     now = _now()
