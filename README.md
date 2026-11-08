@@ -2,7 +2,7 @@
 
 A modular, human-supervised foundation for running an AI-powered company.
 
-> Early development: this repository is a starter foundation, not a fully autonomous company. External AI providers, background workers, ecommerce, and social integrations are not connected yet.
+> Early development: this repository is a starter foundation, not a fully autonomous company. A guarded model adapter and provider catalogue are implemented, but no provider is configured by default. Durable background agents, ecommerce, and social integrations are not connected yet.
 
 ## Principles
 - Human approval before external or consequential actions.
