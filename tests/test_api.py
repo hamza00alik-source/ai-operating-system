@@ -22,7 +22,8 @@ def test_owner_verification_dashboard_and_safe_runtime_status(monkeypatch):
         assert status.status_code == 200
         assert status.json()["model"]["enabled"] is False
         assert status.json()["agent_graph_enabled"] is False
-        assert status.json()["worker_heartbeat_available"] is False
+        assert status.json()["worker_heartbeat_available"] is True
+        assert status.json()["worker"]["status"] in {"never_seen", "active", "stale", "stopped"}
         assert "api_key" not in status.text.lower()
 
 
