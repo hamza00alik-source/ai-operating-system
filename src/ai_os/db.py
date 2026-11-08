@@ -54,6 +54,17 @@ def initialize_database() -> None:
             license TEXT NOT NULL DEFAULT 'unknown',
             maintenance TEXT NOT NULL DEFAULT 'unknown',
             status TEXT NOT NULL, stars INTEGER NOT NULL DEFAULT 0,
-            discovered_at TEXT NOT NULL, evidence TEXT NOT NULL
+            discovered_at TEXT NOT NULL, evidence TEXT NOT NULL,
+            review_state TEXT NOT NULL DEFAULT 'pending',
+            review_notes TEXT NOT NULL DEFAULT '',
+            review_updated_at TEXT
         );
         """)
+        # Backward-compatible migration for databases created before owner review.
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(discovery_candidates)")}
+        if "review_state" not in columns:
+            connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_state TEXT NOT NULL DEFAULT 'pending'")
+        if "review_notes" not in columns:
+            connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_notes TEXT NOT NULL DEFAULT ''")
+        if "review_updated_at" not in columns:
+            connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_updated_at TEXT")
