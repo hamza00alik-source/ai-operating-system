@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from cryptography.fernet import Fernet, InvalidToken
 from ai_os.db import connect
 
@@ -40,10 +41,13 @@ def save_openrouter(api_key: str, free_confirmed: bool) -> None:
 
 
 def get_openrouter() -> dict | None:
-    with connect() as db:
-        row = db.execute(
-            "SELECT encrypted_secret, model, base_url, free_confirmed FROM provider_credentials WHERE provider='openrouter'"
-        ).fetchone()
+    try:
+        with connect() as db:
+            row = db.execute(
+                "SELECT encrypted_secret, model, base_url, free_confirmed FROM provider_credentials WHERE provider='openrouter'"
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
     if row is None:
         return None
     try:
@@ -57,10 +61,13 @@ def get_openrouter() -> dict | None:
 
 
 def credential_status() -> dict:
-    with connect() as db:
-        row = db.execute(
-            "SELECT model, free_confirmed FROM provider_credentials WHERE provider='openrouter'"
-        ).fetchone()
+    try:
+        with connect() as db:
+            row = db.execute(
+                "SELECT model, free_confirmed FROM provider_credentials WHERE provider='openrouter'"
+            ).fetchone()
+    except sqlite3.OperationalError:
+        row = None
     return {
         "configured": row is not None,
         "model": row["model"] if row else None,
