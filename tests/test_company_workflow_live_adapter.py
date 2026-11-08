@@ -15,6 +15,7 @@ from ai_os.api import app
 def test_company_workflow_uses_model_adapter_and_passes_dependency_handoff(monkeypatch):
     monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "integration-test-signing-key-" + "x" * 40)
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_AUTO_CEO_REVIEW_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
     monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "integration-test-provider")
     monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
