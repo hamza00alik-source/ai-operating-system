@@ -92,7 +92,8 @@ def test_discovery_status_reports_live_github_check_without_secret(monkeypatch):
     assert payload["github"]["connected"] is True
     assert payload["github"]["token_configured"] is False
     assert "worker_running" in payload
-    assert "token" not in str(payload).lower() or payload["github"]["token_configured"] is False
+    assert "api_key" not in payload["github"]
+    assert "authorization" not in payload["github"]
 
 
 def test_discovery_scan_rejects_empty_categories():
