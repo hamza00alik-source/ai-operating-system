@@ -144,32 +144,43 @@ def run_agent_workflow(task: dict, *, worker_id: str) -> str:
                 )
 
         # Each successful owner-approved tool result resumes the same step.
-        for _tool_round in range(6):
-            turn = generate_agent_turn(prompt, aliased_tools)
-            if turn["kind"] == "final":
-                output = turn["content"].strip()
-                break
-            requested = alias_map.get(turn["tool_name"])
-            if requested is None:
-                raise RuntimeError("Model requested a tool that is not in the current MCP catalog")
-            request = create_mcp_tool_request(
-                server_id=requested["server_id"],
-                tool_name=requested["tool_name"],
-                arguments=turn["arguments"],
-                requester_id=f"agent:{step_key}",
-                task_id=task_id,
-            )
+        try:
+            for _tool_round in range(6):
+                turn = generate_agent_turn(prompt, aliased_tools)
+                if turn["kind"] == "final":
+                    output = turn["content"].strip()
+                    break
+                requested = alias_map.get(turn["tool_name"])
+                if requested is None:
+                    raise RuntimeError("Model requested a tool that is not in the current MCP catalog")
+                request = create_mcp_tool_request(
+                    server_id=requested["server_id"],
+                    tool_name=requested["tool_name"],
+                    arguments=turn["arguments"],
+                    requester_id=f"agent:{step_key}",
+                    task_id=task_id,
+                )
+                with connect() as db:
+                    db.execute(
+                        "UPDATE agent_steps SET status='awaiting_approval',pending_mcp_request_id=?,"
+                        "worker_id=?,finished_at=NULL WHERE task_id=? AND step_key=? AND status='running'",
+                        (request["id"], worker_id, task_id, step_key),
+                    )
+                raise AgentPausedForApproval(
+                    f"Agent requested {requested['server_name']} / {requested['tool_name']}; owner approval required"
+                )
+            else:
+                raise RuntimeError("Agent exceeded the maximum supervised MCP tool rounds for one step")
+        except AgentPausedForApproval:
+            raise
+        except Exception as exc:
             with connect() as db:
                 db.execute(
-                    "UPDATE agent_steps SET status='awaiting_approval',pending_mcp_request_id=?,"
-                    "worker_id=?,finished_at=NULL WHERE task_id=? AND step_key=? AND status='running'",
-                    (request["id"], worker_id, task_id, step_key),
+                    "UPDATE agent_steps SET status='failed',error=?,finished_at=? "
+                    "WHERE task_id=? AND step_key=? AND status='running'",
+                    (f"{type(exc).__name__}: {str(exc)[:1000]}", _now(), task_id, step_key),
                 )
-            raise AgentPausedForApproval(
-                f"Agent requested {requested['server_name']} / {requested['tool_name']}; owner approval required"
-            )
-        else:
-            raise RuntimeError("Agent exceeded the maximum supervised MCP tool rounds for one step")
+            raise
 
         if not output:
             raise RuntimeError(f"{agent_name} returned empty output")
