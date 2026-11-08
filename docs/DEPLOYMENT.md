@@ -73,6 +73,17 @@ precedence. Send the secret in either `Authorization: Bearer <secret>` or
 `X-API-Key: <secret>` header. The public health and dashboard shell routes
 are exceptions; dashboard data APIs remain protected.
 
+Generate the signing key and Fernet encryption key privately. For example:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Store the first value as `AI_OS_AGENT_SIGNING_KEY` and the second as
+`AI_OS_CREDENTIAL_ENCRYPTION_KEY` in the host's secret manager. Keep a secure
+backup of the Fernet key; losing it makes stored credentials unreadable.
+
 The database path above is a template, not a confirmed Enzonic mount path.
 Replace it with the actual persistent writable directory displayed or
 documented by the host. SQLite parent directories are created automatically,
