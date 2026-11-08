@@ -6,8 +6,23 @@ from fastapi import Depends, FastAPI, HTTPException
 from ai_os.auth import require_api_key
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
-from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, ModelTestRequest, TaskCreate, TaskOut
-from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks\nfrom ai_os.model_adapter import ModelAdapterError, chat_completion, get_model_status\nfrom ai_os.provider_catalog import list_providers
+from ai_os.model_adapter import ModelAdapterError, chat_completion, get_model_status
+from ai_os.provider_catalog import list_providers
+from ai_os.schemas import (
+    ApprovalCreate,
+    ApprovalDecision,
+    ApprovalOut,
+    ModelTestRequest,
+    TaskCreate,
+    TaskOut,
+)
+from ai_os.service import (
+    create_approval,
+    create_task,
+    decide_approval,
+    list_approvals,
+    list_tasks,
+)
 
 
 @asynccontextmanager
@@ -79,7 +94,6 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     return result
 
 
-
 @app.get("/models/status", dependencies=[Depends(require_api_key)])
 def models_status():
     """Return safe provider configuration status without exposing credentials."""
@@ -88,7 +102,7 @@ def models_status():
 
 @app.get("/models/providers", dependencies=[Depends(require_api_key)])
 def models_providers():
-    """List provider discovery metadata; this does not activate or contact providers."""
+    """List provider discovery metadata; this does not contact providers."""
     return list_providers()
 
 
