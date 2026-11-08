@@ -11,6 +11,7 @@ from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
 from ai_os.embedded_worker import start_embedded_worker
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
+from ai_os.mcp_client import probe_mcp_server
 from ai_os.model_adapter import generate_text, get_model_status
 from ai_os.heartbeat import get_worker_status
 from ai_os.schemas import (
@@ -163,6 +164,19 @@ def post_mcp_server(payload: MCPServerCreate, principal: Principal = Depends(req
 @app.get("/mcp/servers", response_model=list[MCPServerOut], dependencies=[Depends(require_reader)])
 def get_mcp_servers():
     return list_mcp_servers()
+
+
+@app.post("/mcp/servers/{server_id}/test", dependencies=[Depends(require_owner)])
+def post_mcp_server_test(server_id: str):
+    """Owner-triggered, read-only MCP handshake and tools/list discovery."""
+    try:
+        return probe_mcp_server(server_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/mcp/servers/{server_id}/enabled", response_model=MCPServerOut)
