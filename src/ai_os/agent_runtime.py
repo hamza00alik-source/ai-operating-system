@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from ai_os.db import connect
 from ai_os.llm_gateway import generate
+from ai_os.brain import retrieve_memories, record_experience
 
 logger = logging.getLogger("ai_os.agent_runtime")
 MANIFEST_PATH = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "agency_agents_manifest.json"
@@ -277,6 +278,12 @@ def run_pending_once() -> bool:
         specialist = _select_specialist(task, manifest)
         _record_event(run_id, "specialist_selected", "Assigned specialist: " + specialist["name"] + " (" + specialist.get("department", "general") + ").")
         instructions = _load_specialist(specialist)
+        memories = retrieve_memories(task["title"] + " " + task.get("description", ""), task.get("department", "general"))
+        memory_context = "\\n".join(
+            f"- [{item['category']}] {item['title']}: {item['content'][:900]}"
+            for item in memories
+        ) or "No owner-approved relevant memories exist yet."
+        _record_event(run_id, "brain_memory_retrieved", f"Company brain supplied {len(memories)} approved relevant memories.")
         _record_event(run_id, "specialist_started", "Specialist is preparing the task deliverable using the configured model.")
         context = (
             "You are acting as the " + specialist["name"] + " specialist in a human-supervised AI company.\n"
@@ -348,7 +355,11 @@ def run_pending_once() -> bool:
                 "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
                 (run_id, "completed", "Run completed successfully. No external actions were taken.", _now()),
             )
-        logger.info("Agent run %s completed for task %s", run_id, task_id)
+        experience_id = record_experience(
+            run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"]
+        )
+        _record_event(run_id, "brain_experience_saved", "Completed outcome saved to persistent company experience memory; a lesson awaits owner review.")
+        logger.info("Agent run %s completed for task %s; brain experience %s stored", run_id, task_id, experience_id)
     except Exception as exc:
         logger.exception("Agent run %s failed", run_id)
         with connect() as db:
