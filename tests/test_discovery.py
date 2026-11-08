@@ -60,5 +60,6 @@ def test_free_api_catalog_sync_imports_evidence_without_enabling_providers(monke
     assert provider["name"] == "Sample Provider"
     assert provider["policy"]["commercial_use"] == "unclear"
     assert provider["status"]["live"]["state"] == "up"
+    assert provider["sources"][0]["url"] == "https://example.com/docs"
     assert provider["review_state"] == "pending"
     assert "no provider was enabled" in result["important"].lower()
