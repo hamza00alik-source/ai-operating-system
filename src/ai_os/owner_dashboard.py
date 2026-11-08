@@ -21,23 +21,86 @@ button{cursor:pointer;background:#263d75;border-color:#4564ac}button.secondary{b
 label{display:flex;gap:7px;align-items:center;color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px}th{color:var(--muted);font-weight:600}
 .scroll{overflow:auto}.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-size:11px}.good{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}
-.status{margin:12px 0;color:var(--muted);min-height:24px}.small{font-size:12px;color:var(--muted)}a{color:#a9c0ff}.section{margin-top:16px}
-@media(max-width:760px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:18px 12px}.panel{padding:12px}}
+.status{margin:12px 0;color:var(--muted);min-height:24px}.small{font-size:12px;color:var(--muted)}a{color:#a9c0ff}.section{margin-top:18px}
+main{max-width:1240px;padding:28px 24px 72px}
+.top{position:relative;align-items:flex-start;padding:10px 0 18px;border-bottom:1px solid rgba(120,145,190,.18)}
+.top .hint{margin-top:6px;max-width:680px}
+nav.main-nav{position:sticky;top:0;z-index:10;display:flex;gap:7px;align-items:center;flex-wrap:nowrap;overflow-x:auto;padding:12px 0;margin:0 0 18px;background:rgba(11,16,32,.92);backdrop-filter:blur(14px);scrollbar-width:thin}
+nav.main-nav a{flex:0 0 auto;text-decoration:none;color:#c6d4ef;background:#141f35;border:1px solid #293957;border-radius:9px;padding:8px 12px;font-size:13px;font-weight:600}
+nav.main-nav a:hover,nav.main-nav a:focus{background:#263d75;border-color:#5475c0;color:white}
+.panel{padding:20px;margin-top:18px;box-shadow:0 12px 32px rgba(0,0,0,.12)}
+.panel>h2{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:19px;letter-spacing:-.2px}
+.panel>p.small{line-height:1.6;max-width:900px}
+.grid{gap:14px;margin:18px 0}
+.metric{min-width:0;padding:18px;background:linear-gradient(145deg,rgba(27,40,67,.95),rgba(16,25,43,.98))}
+.metric strong{font-size:30px;line-height:1.2;margin-bottom:5px}
+.metric span{display:block;line-height:1.45}
+.toolbar{gap:9px}
+.toolbar input:not([type=checkbox]),.toolbar select{min-height:42px}
+button{min-height:40px;font-weight:600;transition:filter .15s,transform .15s}
+button:hover{filter:brightness(1.13)}button:active{transform:translateY(1px)}
+input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:2px solid #89a7ff;outline-offset:2px}
+.scroll{border:1px solid rgba(89,112,151,.22);border-radius:10px}
+table{min-width:720px}th{position:sticky;top:0;background:#121b2e;z-index:1}
+td{line-height:1.5}
+#departmentChips{max-height:100px;overflow:auto;padding:2px 0}
+#departmentChips .pill{padding:4px 9px;background:#101a2d}
+#taskForm{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,210px) auto;align-items:center}
+#taskApprovalPanel{line-height:1.6}
+#taskApprovalPanel h3{margin:22px 0 10px}
+#providerStatus,#credentialStatus{white-space:pre-line}
+#modelOutput{max-height:420px;overflow:auto;line-height:1.55}
+#discovery{margin-top:18px}
+#discovery .toolbar{margin:14px 0}
+#discovery label{background:#101a2d;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+#discovery label input{accent-color:#7c9cff}
+#models textarea{min-height:90px}
+#models pre{font-size:13px}
+@media(max-width:760px){
+ main{padding:16px 12px 48px}
+ .top{gap:14px;padding-top:4px}
+ .top .toolbar{width:100%;justify-content:space-between}
+ .top .tag{max-width:70%;line-height:1.4}
+ h1{font-size:26px;line-height:1.2}
+ nav.main-nav{margin:0 -12px 12px;padding:10px 12px}
+ .panel{padding:15px;margin-top:14px;border-radius:13px}
+ .panel>h2{font-size:17px}
+ .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
+ .metric{padding:14px 12px;border-radius:12px}
+ .metric strong{font-size:26px}
+ .metric span{font-size:12px}
+ .toolbar{align-items:stretch}
+ .toolbar button{flex:0 0 auto}
+ #taskForm{grid-template-columns:1fr;gap:9px}
+ #taskForm input,#taskForm select,#taskForm button{width:100%;min-width:0}
+ #agentSearch{min-width:0!important;width:100%}
+ #departmentFilter{flex:1;min-width:0}
+ #loadAgents{width:auto}
+ #departmentChips{max-height:82px}
+ #discovery .toolbar{gap:7px}
+ #discovery label{font-size:12px}
+ #models .toolbar{display:grid;grid-template-columns:1fr 1fr}
+ #providerSelect{grid-column:1/-1;width:100%}
+ #models .toolbar button{width:100%}
+ #providerApiKey{min-width:0!important;width:100%}
+ #saveProviderKey{width:100%}
+ #models pre{font-size:12px}
+}
+@media(min-width:1100px){
+ #overview .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+ #workforce .scroll,#sources .scroll,#tasks .scroll,#discovery+.panel .scroll{max-height:560px}
+}
 </style></head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Inspect real GitHub projects before approving any integration.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar section"><a href="#overview">Company</a><a href="#workforce">Workforce</a><a href="#sources">Repositories</a><a href="#tasks">Tasks & approvals</a><a href="#discovery">Technology</a><a href="#models">AI models</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview">Company</a><a href="#workforce">Workforce</a><a href="#sources">Repositories</a><a href="#tasks">Tasks & approvals</a><a href="#discovery">Technology</a><a href="#models">AI models</a></nav>
 <section id="overview" class="panel section"><h2>Company operations</h2><div class="grid" style="margin:10px 0"><div class="metric"><strong id="workforceCount">283</strong><span>Catalogued specialists</span></div><div class="metric"><strong id="departmentCount">18</strong><span>Departments</span></div><div class="metric"><strong id="taskCount">—</strong><span>Tasks</span></div><div class="metric"><strong id="approvalCount">—</strong><span>Pending approvals</span></div></div><div id="companyStatus" class="small">Workforce catalog loaded. Bounded specialist execution and CEO review are available for text-only tasks; external actions remain disabled.</div></section>
 <section id="workforce" class="panel section"><h2>Agency workforce · 283 specialists</h2><p class="small">18 departments · 284 roles including CEO. Source: <a href="https://github.com/hamza00alik-source/agency-agents" target="_blank" rel="noopener">Agency Agents repository</a> · MIT. Roles are invoked on demand by a shared worker; they are not 283 always-on processes.</p><div class="toolbar"><input id="agentSearch" placeholder="Search 283 specialists…" style="flex:1;min-width:180px"><select id="departmentFilter"><option value="">All departments</option></select><button id="loadAgents" class="secondary">Refresh roster</button></div><div id="departmentChips" class="toolbar section"></div><div class="scroll section"><table><thead><tr><th>Specialist</th><th>Department</th><th>Runtime state</th><th>Source</th></tr></thead><tbody id="agentRows"><tr><td colspan="4">Loading workforce catalog…</td></tr></tbody></table></div></section>
 <section id="sources" class="panel section"><h2>Repository intelligence · 12 sources</h2><p class="small">The Agency Agents workforce and Automaton runtime reference are separated from the ten company/platform comparison repositories. Reference status does not mean code is installed or trusted.</p><div class="scroll"><table><thead><tr><th>Repository</th><th>Role</th><th>Current state</th><th>Purpose</th><th>License</th></tr></thead><tbody id="sourceRows"><tr><td colspan="5">Loading repository inventory…</td></tr></tbody></table></div></section>
 <section id="tasks" class="panel section"><h2>Tasks & owner approvals</h2><form id="taskForm" class="toolbar"><input id="taskTitle" required maxlength="200" placeholder="New company task" style="flex:1;min-width:180px"><select id="taskDepartment"><option value="general">General</option><option value="research">Research</option><option value="engineering">Engineering</option><option value="product">Product</option><option value="marketing">Marketing</option><option value="sales">Sales</option><option value="finance">Finance</option><option value="operations">Operations</option><option value="support">Support</option></select><button type="submit">Create task</button></form><div class="toolbar section"><button id="loadOperations" class="secondary">Refresh operations</button><span class="small">Owner approval remains mandatory for consequential actions.</span></div><div id="taskApprovalPanel" class="small">No operational data loaded.</div><div id="agentRunOutput" class="section" aria-live="polite"></div></section>
-<div class="grid">
-<div class="metric"><strong id="scans">—</strong><span>Discovery scans</span></div>
-<div class="metric"><strong id="candidates">—</strong><span>Candidate projects</span></div>
-<div class="metric"><strong id="review">—</strong><span>Needs review</span></div>
-<div class="metric"><strong id="integrated">0</strong><span>Integrated from this pipeline</span></div>
-</div>
 <section id="discovery" class="panel">
+<h2>Technology discovery</h2>
+<div class="grid discovery-metrics"><div class="metric"><strong id="scans">—</strong><span>Discovery scans</span></div><div class="metric"><strong id="candidates">—</strong><span>Candidate projects</span></div><div class="metric"><strong id="review">—</strong><span>Needs review</span></div><div class="metric"><strong id="integrated">0</strong><span>Integrated from this pipeline</span></div></div>
 <h2>Run a discovery scan</h2>
 <div class="toolbar">
 <label><input type="checkbox" name="cat" value="agent-frameworks" checked> Agent frameworks</label>
