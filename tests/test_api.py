@@ -81,3 +81,33 @@ def test_discovery_scan_rejects_empty_categories():
     with TestClient(app) as client:
         response = client.post("/discovery/scans", json={"categories": []})
     assert response.status_code == 422
+
+
+def test_research_analyst_endpoint_returns_persisted_run(monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+    from ai_os.db import initialize_database
+    from ai_os.api import app
+    from ai_os.agent_runtime import run_research_analyst
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'api-agents.db'}")
+    initialize_database()
+    monkeypatch.setattr(
+        "ai_os.api.run_research_analyst",
+        lambda provider, goal: {
+            "id": "test-run-id", "agent_type": "research_analyst",
+            "goal": goal, "provider": provider, "status": "completed",
+            "output": "Analysis saved.", "created_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    with TestClient(app) as client:
+        response = client.post("/agents/runs", json={
+            "provider": "groq",
+            "goal": "Evaluate a small downloadable digital product idea.",
+        })
+        assert response.status_code == 201
+        assert response.json()["status"] == "completed"
+        assert response.json()["output"] == "Analysis saved."
+        history = client.get("/agents/runs")
+        assert history.status_code == 200
+        assert history.json()[0]["id"] == "test-run-id"
