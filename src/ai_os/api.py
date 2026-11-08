@@ -18,7 +18,7 @@ from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, generate, test_provider
-from ai_os.agent_runtime import create_run, get_run, list_runs, run_pending_once as run_agent_pending_once
+from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
 from pydantic import BaseModel, Field
 
@@ -62,6 +62,9 @@ async def lifespan(_: FastAPI):
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
     initialize_database()
+    # This service is intentionally deployed as one worker replica. A process restart
+    # must not leave runs permanently marked as running.
+    recover_interrupted_runs()
     _discovery_stop.clear()
     _discovery_thread = threading.Thread(
         target=_discovery_worker_loop,
