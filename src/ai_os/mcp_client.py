@@ -148,7 +148,7 @@ def _oauth_client_auth(endpoint: dict, server_url: str):
     except MCPDiscoveryError as exc:
         raise MCPDiscoveryError("OAuth issuer must be an HTTPS hostname in AI_OS_MCP_ALLOWED_HOSTS.") from exc
     try:
-        from mcp.client.auth import ClientCredentialsOAuthProvider
+        from mcp.client.auth.extensions.client_credentials import ClientCredentialsOAuthProvider
     except ImportError as exc:
         raise MCPDiscoveryError("Installed MCP SDK does not provide OAuth client-credentials support.") from exc
     try:
