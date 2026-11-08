@@ -182,3 +182,113 @@ def consume_approval(approval_id: str, *, actor_id: str, action: str,
                details={"action": action, "resource_id": resource_id, "fingerprint": fingerprint})
         consumed = db.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
     return _approval_dict(consumed)
+
+
+
+def _mcp_request_dict(row) -> dict:
+    item = dict(row)
+    item["arguments"] = json.loads(item.pop("arguments_json"))
+    raw_result = item.pop("result_json")
+    item["result"] = json.loads(raw_result) if raw_result else None
+    return item
+
+
+def create_mcp_tool_request(*, server_id: str, tool_name: str, arguments: dict,
+                            requester_id: str, task_id: str | None = None) -> dict:
+    request_id = str(uuid4())
+    now = _now()
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        server = db.execute(
+            "SELECT id,enabled FROM mcp_servers WHERE id=?", (server_id,)
+        ).fetchone()
+        if server is None:
+            raise LookupError("MCP server not found")
+        if not server["enabled"]:
+            raise ValueError("MCP server is disabled")
+        if task_id and not db.execute(
+            "SELECT 1 FROM tasks WHERE id=?", (task_id,)
+        ).fetchone():
+            raise LookupError("Task not found")
+        db.execute(
+            """INSERT INTO mcp_tool_requests
+               (id,task_id,requester_id,server_id,tool_name,arguments_json,
+                status,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,'pending',?,?)""",
+            (request_id, task_id, requester_id, server_id, tool_name,
+             json.dumps(arguments, sort_keys=True, separators=(",", ":"), allow_nan=False),
+             now, now),
+        )
+        _audit(db, "mcp.tool_request.created", actor_id=requester_id,
+               resource_type="mcp_tool_request", resource_id=request_id,
+               details={"server_id": server_id, "tool_name": tool_name, "task_id": task_id})
+        row = db.execute("SELECT * FROM mcp_tool_requests WHERE id=?", (request_id,)).fetchone()
+    return _mcp_request_dict(row)
+
+
+def list_mcp_tool_requests(*, limit: int = 100) -> list[dict]:
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM mcp_tool_requests ORDER BY created_at DESC LIMIT ?",
+            (max(1, min(limit, 500)),),
+        ).fetchall()
+    return [_mcp_request_dict(row) for row in rows]
+
+
+def approve_mcp_tool_request(request_id: str, *, owner_id: str) -> dict:
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT * FROM mcp_tool_requests WHERE id=?", (request_id,)
+        ).fetchone()
+        if row is None:
+            raise LookupError("MCP tool request not found")
+        if row["status"] != "pending":
+            raise ValueError("MCP tool request is no longer pending")
+        request = _mcp_request_dict(row)
+    approval = create_approval(ApprovalCreate(
+        task_id=request["task_id"],
+        action="mcp.tool.call",
+        details=f"Agent {request['requester_id']} requested MCP tool {request['tool_name']} on server {request['server_id']}. Review arguments carefully.",
+        actor_id=owner_id,
+        resource_id=f"{request['server_id']}:{request['tool_name']}",
+        action_payload={
+            "server_id": request["server_id"],
+            "tool_name": request["tool_name"],
+            "arguments": request["arguments"],
+        },
+        expires_in_seconds=900,
+    ))
+    now = _now()
+    with connect() as db:
+        changed = db.execute(
+            """UPDATE mcp_tool_requests SET status='approved',approval_id=?,updated_at=?
+               WHERE id=? AND status='pending'""",
+            (approval["id"], now, request_id),
+        ).rowcount
+        if changed != 1:
+            raise ValueError("Request state changed while creating approval; inspect pending approvals")
+        _audit(db, "mcp.tool_request.approval_created", actor_id=owner_id,
+               resource_type="mcp_tool_request", resource_id=request_id,
+               details={"approval_id": approval["id"]})
+        result = db.execute("SELECT * FROM mcp_tool_requests WHERE id=?", (request_id,)).fetchone()
+    return {"request": _mcp_request_dict(result), "approval": approval}
+
+
+def record_mcp_tool_request_result(request_id: str, *, result: dict | None = None,
+                                   error: str | None = None) -> dict | None:
+    status = "failed" if error else "executed"
+    now = _now()
+    with connect() as db:
+        changed = db.execute(
+            """UPDATE mcp_tool_requests SET status=?,result_json=?,error=?,updated_at=?
+               WHERE id=? AND status='approved'""",
+            (status, json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False)
+             if result is not None else None, error, now, request_id),
+        ).rowcount
+        if changed != 1:
+            return None
+        _audit(db, f"mcp.tool_request.{status}", actor_id="owner",
+               resource_type="mcp_tool_request", resource_id=request_id)
+        row = db.execute("SELECT * FROM mcp_tool_requests WHERE id=?", (request_id,)).fetchone()
+    return _mcp_request_dict(row)
