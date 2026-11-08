@@ -38,4 +38,17 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL, decided_at TEXT,
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
+        CREATE TABLE IF NOT EXISTS discovery_scans (
+            id TEXT PRIMARY KEY, categories TEXT NOT NULL, status TEXT NOT NULL,
+            created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT,
+            result_count INTEGER NOT NULL DEFAULT 0, error TEXT
+        );
+        CREATE TABLE IF NOT EXISTS discovery_candidates (
+            canonical_url TEXT PRIMARY KEY, full_name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL,
+            license TEXT NOT NULL DEFAULT 'unknown',
+            maintenance TEXT NOT NULL DEFAULT 'unknown',
+            status TEXT NOT NULL, stars INTEGER NOT NULL DEFAULT 0,
+            discovered_at TEXT NOT NULL, evidence TEXT NOT NULL
+        );
         """)
