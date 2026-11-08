@@ -153,7 +153,7 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
         raise RuntimeError(f"{provider.label} returned no text content")
 
     return {
-        "provider": provider.key, "model": model, "response": answer,
+        "provider": provider.key, "model": data.get("model", model), "response": answer,
         "latency_ms": round((time.monotonic() - started) * 1000),
         "usage": {
             "input_tokens": input_tokens,
