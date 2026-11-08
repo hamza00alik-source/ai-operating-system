@@ -6,6 +6,7 @@ update, delete, refund, payment, customer, or publishing methods exist here.
 import base64
 import json
 import os
+import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -51,7 +52,7 @@ class WooCommerceReadOnlyClient:
                 CredentialVaultError, resolve_unique_provider_credential,
             )
             stored = resolve_unique_provider_credential("woocommerce")
-        except (CredentialVaultError, ValueError):
+        except (CredentialVaultError, ValueError, sqlite3.OperationalError):
             raise WooCommerceNotConfigured(
                 "WooCommerce credentials are not configured in the environment or as one unambiguous vault entry; no request was made."
             )
