@@ -44,6 +44,24 @@ Use a host process manager or platform worker service to restart the process aft
 ## Next engineering gates
 
 1. Add lease heartbeats and an operator-controlled reconciliation path; define provider idempotency before allowing retries.
-2. Bind approvals to a canonical action payload, actor, resource and expiry, then require atomic consumption immediately before execution.
+2. Integrate the action-bound approval consumer into each external-action executor, with authenticated actor identity and durable audit records.
 3. Implement real multi-step agent scheduling and durable inter-agent handoff.
 4. Run a live provider test only after a provider endpoint and any required credentials are deliberately configured; review expected cost first.
+
+
+## Action-bound approval safeguards
+
+Approval requests created through the current API must specify:
+- `actor_id`: the intended actor identity for the proposed action.
+- `resource_id`: the exact target resource (for example, a specific store or wallet).
+- `action_payload`: the structured parameters that will be executed.
+- `expires_in_seconds`: an expiry window (60 seconds to 7 days; default 15 minutes).
+
+The service canonicalizes the action, actor, resource and payload and stores a SHA-256 fingerprint. Decisions are single-use and expire. Before an integration executor performs an external action, it must call `consume_approval` with the same approval ID and exact action parameters. Consumption is atomic; changed parameters, a different actor/resource, expired approvals and repeated consumption are rejected.
+
+Important boundaries:
+- `consume_approval` only consumes authorization; it does not execute the external action.
+- No external-action executor is wired to this consumer yet. Therefore this is not permission to connect production credentials or perform live actions.
+- `actor_id` is currently caller-supplied metadata. The current single API-key authentication does not independently authenticate distinct human or service identities.
+- Existing approval rows from before this migration have no action fingerprint and cannot be consumed for execution; create a new approval for any future action.
+- The API key is shared owner authentication, not a role/identity provider. Add distinct authenticated principals before multi-user or multi-agent production use.
