@@ -101,24 +101,43 @@ def _authorization_headers(endpoint: dict) -> dict[str, str]:
     return {"Authorization": "Bearer " + token}
 
 
-class _EphemeralOAuthTokenStorage:
-    """Keep short-lived client-credentials tokens in memory for one connection."""
+class _VaultOAuthTokenStorage:
+    """Persist OAuth tokens inside the same encrypted vault record as client credentials."""
 
-    def __init__(self):
-        self.tokens = None
-        self.client_info = None
+    def __init__(self, credential_ref: str):
+        self.credential_ref = credential_ref
 
     async def get_tokens(self):
-        return self.tokens
+        from ai_os.credential_vault import resolve_credential
+        from mcp.shared.auth import OAuthToken
+
+        secret = resolve_credential(self.credential_ref)
+        value = secret.get("oauth_tokens")
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise MCPDiscoveryError("Encrypted OAuth token state is malformed.")
+        try:
+            return OAuthToken.model_validate(value)
+        except Exception as exc:
+            raise MCPDiscoveryError("Encrypted OAuth token state could not be validated.") from exc
 
     async def set_tokens(self, tokens):
-        self.tokens = tokens
+        from ai_os.credential_vault import update_credential_secret
+
+        try:
+            payload = tokens.model_dump(mode="json")
+        except Exception as exc:
+            raise MCPDiscoveryError("OAuth SDK returned an invalid token object.") from exc
+        update_credential_secret(self.credential_ref, oauth_tokens=payload)
 
     async def get_client_info(self):
-        return self.client_info
+        # ClientCredentialsOAuthProvider supplies fixed client_info itself.
+        return None
 
     async def set_client_info(self, client_info):
-        self.client_info = client_info
+        # No dynamic client registration is used by the client-credentials grant.
+        return None
 
 
 def _oauth_client_auth(endpoint: dict, server_url: str):
@@ -158,7 +177,7 @@ def _oauth_client_auth(endpoint: dict, server_url: str):
             client_secret=client_secret,
             issuer=issuer,
             scope=scope,
-            storage=_EphemeralOAuthTokenStorage(),
+            storage=_VaultOAuthTokenStorage(endpoint['credential_ref']),
             token_endpoint_auth_method=auth_method,
         )
     except Exception as exc:
