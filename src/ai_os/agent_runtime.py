@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from ai_os.db import connect
-from ai_os.llm_gateway import generate
+from ai_os.llm_gateway import generate_with_fallback
 from ai_os.brain import retrieve_memories, record_experience
 
 logger = logging.getLogger("ai_os.agent_runtime")
@@ -299,7 +299,9 @@ def run_pending_once() -> bool:
         )
 
         _start_step(run_id, 1, "Lead specialist", specialist, task["title"])
-        specialist_result = generate("openrouter", context)
+        specialist_result = generate_with_fallback(context, preferred_provider="openrouter")
+        if specialist_result.get("fallback_used"):
+            _record_event(run_id, "provider_fallback", "Lead specialist used free fallback provider " + specialist_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 1, specialist_result["response"])
         _record_event(run_id, "specialist_completed", "Lead specialist completed the first deliverable.")
 
@@ -317,7 +319,9 @@ def run_pending_once() -> bool:
             "Do not claim external actions. No spending, publishing, outreach, account changes or commitments."
         )
         _start_step(run_id, 2, "Independent collaboration", collaborator, "Review and extend the lead specialist's deliverable.")
-        collaborator_result = generate("openrouter", collaboration_prompt)
+        collaborator_result = generate_with_fallback(collaboration_prompt, preferred_provider="openrouter")
+        if collaborator_result.get("fallback_used"):
+            _record_event(run_id, "provider_fallback", "Collaborator used free fallback provider " + collaborator_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 2, collaborator_result["response"])
         _record_event(run_id, "collaboration_completed", "Second specialist reviewed and extended the shared deliverable.")
 
@@ -332,11 +336,16 @@ def run_pending_once() -> bool:
             "\n\nCOLLABORATING SPECIALIST (" + collaborator["name"] + "):\n" + collaborator_result["response"][:8500]
         )
         _start_step(run_id, 3, "CEO integration and QA", ceo_agent, "Integrate both specialist contributions into the final owner-ready deliverable.")
-        ceo_result = generate("openrouter", review_prompt)
+        ceo_result = generate_with_fallback(review_prompt, preferred_provider="openrouter")
+        if ceo_result.get("fallback_used"):
+            _record_event(run_id, "provider_fallback", "CEO reviewer used free fallback provider " + ceo_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 3, ceo_result["response"])
         _record_event(run_id, "review_completed", "CEO integrated both specialist contributions; final deliverable is ready for owner inspection.")
         usage = {
-            "provider": "openrouter",
+            "provider": "multiple" if len({specialist_result.get("provider"), collaborator_result.get("provider"), ceo_result.get("provider")}) > 1 else specialist_result.get("provider"),
+            "provider_by_stage": {"specialist": specialist_result.get("provider"), "collaborator": collaborator_result.get("provider"), "ceo_review": ceo_result.get("provider")},
+            "fallback_used": any(result.get("fallback_used") for result in (specialist_result, collaborator_result, ceo_result)),
+            "provider_attempts_by_stage": {"specialist": specialist_result.get("provider_attempts", []), "collaborator": collaborator_result.get("provider_attempts", []), "ceo_review": ceo_result.get("provider_attempts", [])},
             "specialist": specialist_result.get("usage", {}),
             "collaborator": collaborator_result.get("usage", {}),
             "ceo_review": ceo_result.get("usage", {}),

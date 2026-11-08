@@ -13,7 +13,14 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-from ai_os.credentials import get_openrouter
+from ai_os.credentials import get_provider_credential
+
+
+class ProviderHTTPError(RuntimeError):
+    """An upstream HTTP failure with a safe status code for routing decisions."""
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        super().__init__(f"Provider HTTP {status_code}: {detail[:1200]}")
 
 
 @dataclass(frozen=True)
@@ -50,11 +57,10 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
     model = os.getenv(provider.model_env, "").strip()
     secret = os.getenv(provider.secret_env, "").strip()
     free = os.getenv(provider.free_confirm_env, "").strip().lower() == "true"
-    if provider.key == "openrouter":
-        saved = get_openrouter()
-        if saved:
-            base, model, secret = saved["base_url"], saved["model"], saved["secret"]
-            free = saved["free_confirmed"]
+    saved = get_provider_credential(provider.key)
+    if saved:
+        base, model, secret = saved["base_url"], saved["model"], saved["secret"]
+        free = saved["free_confirmed"]
     configured = bool(base and model and secret)
     eligible = configured and free
     return {
@@ -99,7 +105,7 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
             return json.loads(raw)
     except urllib.error.HTTPError as exc:
         detail = exc.read(2000).decode("utf-8", errors="replace")
-        raise RuntimeError(f"Provider HTTP {exc.code}: {detail}") from exc
+        raise ProviderHTTPError(exc.code, detail) from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise RuntimeError(f"Provider connection failed: {exc}") from exc
     except json.JSONDecodeError as exc:
@@ -164,6 +170,61 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
         "cost_guard": "free-confirmed-by-owner; provider limits still apply",
         "live": True,
     }
+
+
+
+def generate_with_fallback(prompt: str, preferred_provider: str = "openrouter") -> dict[str, Any]:
+    """Use the preferred free-confirmed provider first, then other eligible providers.
+
+    Fallback is restricted to providers explicitly configured and owner-confirmed
+    as free. No paid route, billing upgrade, or hidden retry is ever attempted.
+    """
+    preferred = next((p for p in PROVIDERS if p.key == preferred_provider), None)
+    if preferred is None:
+        raise ValueError("Unknown preferred provider")
+
+    eligible = [p for p in PROVIDERS if _provider_config(p)["eligible"]]
+    ordered = ([preferred] if preferred in eligible else []) + [
+        p for p in eligible if p.key != preferred_provider
+    ]
+    if not ordered:
+        raise PermissionError(
+            "No free-confirmed providers are configured. Connect and verify a free provider in the owner console."
+        )
+
+    attempts: list[dict[str, Any]] = []
+    retryable_statuses = {401, 402, 403, 404, 408, 409, 425, 429, 500, 502, 503, 504}
+    last_error: Exception | None = None
+    for provider in ordered:
+        try:
+            result = generate(provider.key, prompt)
+            attempts.append({"provider": provider.key, "status": "success"})
+            result["preferred_provider"] = preferred_provider
+            result["fallback_used"] = provider.key != preferred_provider
+            result["provider_attempts"] = attempts
+            return result
+        except ProviderHTTPError as exc:
+            attempts.append({"provider": provider.key, "status": "unavailable", "http_status": exc.status_code})
+            last_error = exc
+            if exc.status_code not in retryable_statuses:
+                raise
+        except RuntimeError as exc:
+            # Connection failures and malformed upstream responses can be bypassed
+            # with another explicitly free-confirmed provider. Content-quality
+            # failures are not retried because they are not transport failures.
+            message = str(exc).casefold()
+            if "returned empty or placeholder text" in message:
+                raise
+            attempts.append({"provider": provider.key, "status": "connection_or_response_error"})
+            last_error = exc
+
+    detail = str(last_error)[:700] if last_error else "No provider returned a usable response."
+    raise RuntimeError(
+        "All configured free-confirmed providers were unavailable. "
+        + detail
+        + " No paid fallback was attempted. Connect another verified free provider or wait for quota reset."
+    )
+
 
 
 def test_provider(provider_id: str) -> dict[str, Any]:
