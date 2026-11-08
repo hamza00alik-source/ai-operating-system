@@ -209,7 +209,9 @@ def get_workforce_agents(department: str | None = None, q: str | None = None):
         "department_count": manifest["department_count"],
         "roles_including_ceo": manifest["roles_including_ceo"],
         "departments": manifest["departments"],
-        "catalog_status": "catalogued-not-runtime",
+        "catalog_status": "on-demand-invocation",
+        "runtime_model": "one shared worker invokes selected role instructions per task; roles are not resident processes",
+        "agents": [{**a, "execution_status": "available-on-demand"} for a in agents],
         "agents": agents,
     }
 
@@ -232,13 +234,14 @@ def get_company_overview():
         candidates = db.execute("SELECT COUNT(*) AS n FROM discovery_candidates").fetchone()["n"]
         agent_runs = db.execute("SELECT status, COUNT(*) AS n FROM agent_runs GROUP BY status").fetchall()
     return {
-        "workforce": {"agents": 283, "departments": 18, "roles_including_ceo": 284, "runtime_ready": True, "runtime_scope": "bounded text-task execution; no external side effects"},
+        "workforce": {"agents": 283, "departments": 18, "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
         "tasks": {r["status"]: r["n"] for r in tasks},
         "approvals": {r["status"]: r["n"] for r in approvals},
         "discovery_scans": {r["status"]: r["n"] for r in scans},
         "discovered_repositories": candidates,
         "agent_runs": {r["status"]: r["n"] for r in agent_runs},
-        "execution_runtime": "bounded-specialist-plus-ceo-review-worker",
+        "execution_runtime": "shared-worker-on-demand-specialist-plus-ceo-review",
+        "agent_worker_running": bool(_agent_thread and _agent_thread.is_alive()),
     }
 
 
