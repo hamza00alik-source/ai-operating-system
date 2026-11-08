@@ -54,3 +54,18 @@ The worker searches public GitHub repository metadata. Set `GITHUB_TOKEN` as a p
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+
+## Free-tier model gateway (initial integration)
+
+The protected owner API now exposes a provider registry and a real inference test:
+
+- `GET /models/providers` reports whether Groq, Google Gemini, and OpenRouter keys are configured. It never returns key values.
+- `POST /models/test` makes one capped chat-completion request to the selected provider and returns the model response, latency, and provider-reported token usage.
+- Supported environment variables: `GROQ_API_KEY`, `GEMINI_API_KEY`, and `OPENROUTER_API_KEY`.
+- Suggested initial free-tier model IDs: `llama-3.3-70b-versatile`, `gemini-2.5-flash`, and `google/gemma-3-27b-it:free`. Model availability and free quotas can change; confirm against the provider's live model catalogue.
+- This gateway makes no paid fallback, caps each test at 256 output tokens and 35 seconds, and does not persist prompts or responses.
+- Provider keys are intentionally not accepted through the API or stored in SQLite. Configure them as private environment variables in the host. A provider marked `key-required` is not connected yet.
+- The browser-only InBrowser/Pocket LLM path is not the same as a server-side API and is not included in this server gateway.
+
+These providers offer free tiers, not unlimited inference. Free-tier terms, model availability, commercial-use permissions, and data handling must be checked before production/customer use. The gateway is an integration foundation; it does not claim that a provider is connected until a real test call succeeds.
