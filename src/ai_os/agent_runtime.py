@@ -93,23 +93,47 @@ def _load_specialist(agent: dict) -> str:
 
 
 def _select_specialist(task: dict, manifest: dict) -> dict:
+    """Select the closest catalogue role using task text and department hints."""
+    import re
+
+    title = (task.get("title") or "").casefold()
+    description = (task.get("description") or "").casefold()
     department = (task.get("department") or "").casefold()
+    task_text = title + " " + description
     agents = manifest.get("agents", [])
-    match = next((a for a in agents if a.get("department", "").casefold() == department), None)
-    if not match:
-        keywords = {
-            "research": ("Research", "research"),
-            "marketing": ("Marketing", "marketing"),
-            "product": ("Product", "product"),
+    if not agents:
+        return {"id": "general/generalist", "name": "Generalist", "department": "general", "source_path": ""}
+
+    # Explicit department match is a strong prior, but task wording can select a
+    # more relevant role within that department instead of always taking row one.
+    tokens = {t for t in re.findall(r"[a-z0-9]+", task_text) if len(t) > 2}
+    best = None
+    best_score = -1
+    for agent in agents:
+        name_tokens = {t for t in re.findall(r"[a-z0-9]+", agent.get("name", "").casefold()) if len(t) > 2}
+        score = len(tokens & name_tokens) * 5
+        if agent.get("department", "").casefold() == department:
+            score += 4
+        # Exact role phrases in the task should dominate generic department matches.
+        if agent.get("name", "").casefold() in task_text:
+            score += 20
+        if score > best_score:
+            best, best_score = agent, score
+
+    if best is None or best_score <= 0:
+        preferred = {
+            "research": ("Trend Researcher", "research"),
+            "marketing": ("Social Media Strategist", "marketing"),
+            "product": ("Product Manager", "product"),
             "engineering": ("Software Architect", "engineering"),
-            "sales": ("Sales", "sales"),
-            "finance": ("Finance", "finance"),
+            "sales": ("Sales Coach", "sales"),
+            "finance": ("FinOps Engineer", "engineering"),
             "support": ("Support", "support"),
-            "operations": ("Project Manager", "project-management"),
+            "operations": ("Senior Project Manager", "project-management"),
         }
-        name, dept = keywords.get(department, ("Research", "research"))
-        match = next((a for a in agents if a.get("department") == dept and name.casefold() in a.get("name", "").casefold()), None)
-    return match or (agents[0] if agents else {"id": "general/generalist", "name": "Generalist", "department": "general", "source_path": ""})
+        name, dept = preferred.get(department, ("Trend Researcher", "research"))
+        best = next((a for a in agents if a.get("department") == dept and name.casefold() in a.get("name", "").casefold()), agents[0])
+    return best
 
 
 def run_pending_once() -> bool:
