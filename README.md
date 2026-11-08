@@ -62,3 +62,21 @@ curl -X POST http://127.0.0.1:8000/models/test \
 ```
 
 For production, also provide the normal `X-API-Key` header. A successful adapter test proves connectivity for that configured endpoint only; it does not certify that all providers in the catalogue are free or available.
+
+## Durable task worker (first execution milestone)
+
+The repository now contains a lease-based SQLite worker:
+- `src/ai_os/worker.py` claims one queued task transactionally, invokes the explicitly configured model, and persists the result.
+- `src/ai_os/agent_runtime.py` recovers expired worker leases after a process crash/restart and marks tasks failed after their retry limit.
+- `src/ai_os/worker_service.py` supervises the worker, applies bounded backoff, and handles SIGINT/SIGTERM.
+- Task responses include result, error, and attempt count.
+
+The worker is a task executor, not yet a multi-agent team. It does not publish, spend money, contact customers, deploy, or execute MCP tools. It refuses to start unless the model adapter is fully configured and enabled.
+
+Run it in a separate process after setting the same database and approved model environment variables as the API:
+
+```bash
+python -m ai_os.worker_service
+```
+
+For a real run, ensure the API and worker share a persistent SQLite file and that the selected provider's current terms, quotas, and commercial-use rules have been reviewed.
