@@ -47,6 +47,17 @@ The production API starts the discovery polling worker in its FastAPI lifespan a
 
 The worker searches public GitHub repository metadata. The Technology Discovery panel includes **Test GitHub API** and reports connectivity, quota, and worker status without exposing credentials. Set \`GITHUB_TOKEN\` as a private environment variable only if higher authenticated API limits are needed; never commit it. Public repository discovery works without a token, subject to GitHub's lower unauthenticated limits. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
 
+## Free API research catalog
+
+The Technology Discovery panel can sync the structured public dataset from [IdoY12/awesome-free-ai-apis](https://github.com/IdoY12/awesome-free-ai-apis). AIOS imports provider descriptions, free-tier claims, policy notes (including prompt training and commercial-use caveats), confidence labels, primary-source URLs, and upstream probe status into its own SQLite catalog. The source dataset is CC0-1.0 and publishes a daily status file. This is research evidence, not a guarantee: provider quotas and terms can change, and upstream status checks do not prove that an AIOS account has access.
+
+- `GET /discovery/provider-catalog` — read imported provider evidence.
+- `POST /discovery/provider-catalog/sync` — owner-triggered, read-only catalog import.
+- `bradAGI/awesome-free-inference` is retained as a secondary manual research lead; its visible verification badge is dated March 2026 and it has no structured provider dataset in the inspected repository.
+- `dhaulagani/awesome-free-ai-apis` is excluded pending stronger evidence: the inspected README makes broad uptime/quota claims, but a repository LICENSE file was not found and per-provider primary-source evidence was not established.
+
+The catalog sync never saves provider credentials, makes inference calls, enables a provider, or spends money. A provider must still be checked against official pricing, terms, region availability, privacy/training rules, and a live $0 account test before an owner may configure it in the LLM gateway. Unknown stays unknown.
+
 ## Guarded live LLM gateway
 
 The API exposes:
