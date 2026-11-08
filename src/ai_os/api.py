@@ -73,6 +73,7 @@ from ai_os.action_gateway import get_action_gateway_status
 from ai_os.commerce import router as commerce_router, initialize_commerce_storage
 from ai_os.agent_tools import register_builtin_agent_tools
 from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
+from ai_os.mcp_catalog import load_mcp_provider_catalog
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
     list_control_plane_endpoints, create_control_plane_endpoint,
@@ -222,6 +223,12 @@ def get_woocommerce_order_statuses(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/integrations/mcp/providers")
+def get_mcp_provider_catalog():
+    """List preconfigured MCP provider families; no account credentials are collected here."""
+    return load_mcp_provider_catalog()
 
 
 @app.get("/actions/gateway/status")
