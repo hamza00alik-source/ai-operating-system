@@ -47,9 +47,33 @@ The current branch also adds a SQLite-backed canonical product catalog, per-chan
 
 Order events are idempotent on (channel, external_order_id). A WooCommerce order is considered paid only when date_paid is present in the webhook payload; processing/completed status alone is not sufficient. Even a paid order moves only to ready_after_payment_check, never to auto-fulfilled.
 
+## WooCommerce credentials
+
+The dashboard's encrypted credential manager can store one active WooCommerce
+credential without putting the consumer key or secret in environment variables.
+Use provider ID `woocommerce`, secret type `api_credentials`, and this JSON
+shape:
+
+```json
+{
+  "url": "https://your-store.example/wp-json/wc/v3",
+  "consumer_key": "ck_...",
+  "consumer_secret": "cs_..."
+}
+```
+
+The read-only client uses the vault entry only when exactly one active
+WooCommerce credential exists. If multiple active entries exist, it fails
+closed rather than guessing which store to access. A complete environment
+configuration takes precedence. The dashboard reports credential presence as
+unverified; it is not a successful login or live API check. Draft creation
+remains disabled unless both `AI_OS_EXTERNAL_ACTIONS_ENABLED` and
+`AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED` are explicitly enabled and the exact
+action is owner-approved.
+
 ## Required deployment configuration
 
-- Set AI_OS_WOOCOMMERCE_WEBHOOK_SECRET to the exact secret configured in the WooCommerce webhook.
+- Set `AI_OS_WOOCOMMERCE_WEBHOOK_SECRET` to the exact secret configured in the WooCommerce webhook.
 - Configure a WooCommerce webhook for the order event and point it to /commerce/webhooks/woocommerce on the deployed HTTPS service.
 - The endpoint verifies the signature before parsing and storing the payload. It is exempt from owner bearer-token middleware only because it performs its own HMAC signature check.
 - Configure owner API token and database persistence separately. Do not commit secrets.
