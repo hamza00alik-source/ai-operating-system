@@ -46,21 +46,49 @@ def create_run(task_id: str) -> dict:
         ).fetchone()
         if active:
             return dict(db.execute("SELECT * FROM agent_runs WHERE id=?", (active["id"],)).fetchone())
-        # Older persistent databases may still require the legacy agent_type
-        # column. Detect it at runtime so both upgraded and fresh databases work.
-        run_columns = {row["name"] for row in db.execute("PRAGMA table_info(agent_runs)")}
-        if "agent_type" in run_columns:
-            db.execute(
-                """INSERT INTO agent_runs
-                (id,task_id,agent_type,status,created_at) VALUES(?,?,?,?,?)""",
-                (run_id, task_id, "specialist", "queued", now),
-            )
-        else:
-            db.execute(
-                """INSERT INTO agent_runs
-                (id,task_id,status,created_at) VALUES(?,?,?,?)""",
-                (run_id, task_id, "queued", now),
-            )
+        # Persistent SQLite volumes can retain columns from older schemas.
+        # Build the INSERT from the actual table definition so every legacy
+        # NOT NULL/no-default column receives a compatible value.
+        task_row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        task_title = task_row["title"] if task_row else ""
+        task_description = task_row["description"] if task_row else ""
+        run_info = list(db.execute("PRAGMA table_info(agent_runs)"))
+        values = {
+            "id": run_id,
+            "run_id": run_id,
+            "task_id": task_id,
+            "agent_type": "specialist",
+            "status": "queued",
+            "goal": task_title + (("\\n" + task_description) if task_description else ""),
+            "title": task_title,
+            "description": task_description,
+            "created_at": now,
+            "updated_at": now,
+            "started_at": None,
+            "finished_at": None,
+            "assigned_agent_id": None,
+            "specialist_output": None,
+            "ceo_review": None,
+            "usage_json": None,
+            "error": None,
+        }
+        insert_columns = []
+        insert_values = []
+        for column in run_info:
+            name = column["name"]
+            if name in values and (values[name] is not None or not column["notnull"]):
+                insert_columns.append(name)
+                insert_values.append(values[name])
+            elif column["notnull"] and column["dflt_value"] is None and name not in {"id", "task_id"}:
+                # Unknown legacy required text fields are initialized safely;
+                # the task's actual objective is used for known goal/title fields.
+                insert_columns.append(name)
+                insert_values.append("")
+        placeholders = ",".join("?" for _ in insert_columns)
+        db.execute(
+            "INSERT INTO agent_runs (" + ",".join(insert_columns) + ") VALUES (" + placeholders + ")",
+            insert_values,
+        )
         db.execute(
             "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
             (run_id, "queued", "Task accepted by the AIOS execution queue.", now),
