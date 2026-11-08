@@ -83,11 +83,9 @@ def test_discovery_scan_rejects_empty_categories():
     assert response.status_code == 422
 
 
-def test_research_analyst_endpoint_returns_persisted_run(monkeypatch, tmp_path):
+def test_research_analyst_endpoint_queues_run(monkeypatch, tmp_path):
     from datetime import datetime, timezone
     from ai_os.db import initialize_database
-    from ai_os.api import app
-    from ai_os.agent_runtime import run_research_analyst
 
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'api-agents.db'}")
     initialize_database()
@@ -105,9 +103,8 @@ def test_research_analyst_endpoint_returns_persisted_run(monkeypatch, tmp_path):
             "provider": "groq",
             "goal": "Evaluate a small downloadable digital product idea.",
         })
-        assert response.status_code == 201
-        assert response.json()["status"] == "completed"
-        assert response.json()["output"] == "Analysis saved."
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
         history = client.get("/agents/runs")
         assert history.status_code == 200
         assert history.json()[0]["id"] == "test-run-id"
