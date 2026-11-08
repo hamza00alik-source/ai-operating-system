@@ -2,6 +2,21 @@
 
 OpenCompany ships a curated catalogue of 55 integration families at `/integrations/mcp/providers`. The catalogue is metadata only: it does not connect accounts, launch arbitrary packages, or make remote tools executable.
 
+## Live public MCP discovery verification
+
+The read-only CI smoke test successfully connected to the public Streamable HTTP
+test server at `https://api.sondahub.com/mcp` and discovered 26 tool definitions.
+The test exercised endpoint registration, owner activation, the HTTPS hostname
+allowlist, MCP initialization, and `tools/list`. It deliberately did not call
+any remote tool. The public test server also advertises write-capable tools, so
+its discovery success is not an authorization to execute them. See the
+[public MCP test-server documentation](https://sondahub.com/mcp-server/).
+
+The smoke workflow is at
+[`.github/workflows/public-mcp-smoke.yml`](../.github/workflows/public-mcp-smoke.yml).
+A successful discovery proves protocol connectivity and metadata retrieval only;
+it does not prove that a remote tool is safe or that OAuth is configured.
+
 ## Connection model
 
 1. The owner selects a provider in the Integrations UI.
