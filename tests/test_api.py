@@ -282,6 +282,12 @@ def test_agent_mcp_tool_request_requires_owner_approval_before_execution(monkeyp
         approval = owner_review.json()["approval"]
         assert approval["status"] == "pending"
         assert owner_review.json()["request"]["status"] == "awaiting_approval"
+        # A repeated or concurrent owner click must not mint a second approval.
+        duplicate_review = client.post(f"/mcp/tool-requests/{request['id']}/approve")
+        assert duplicate_review.status_code == 409
+        assert duplicate_review.json()["detail"] == "MCP tool request is no longer pending"
+        assert len([item for item in client.get("/approvals").json()
+                    if item["action"] == "mcp.tool.call"]) == 1
         assert calls == []
 
         decision = client.post(
