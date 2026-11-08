@@ -16,11 +16,13 @@ from ai_os.model_adapter import generate_text, get_model_status
 from ai_os.heartbeat import get_worker_status
 from ai_os.schemas import (
     ApprovalCreate, ApprovalDecision, ApprovalOut, AuditEventOut,
-    MCPServerCreate, MCPServerOut, MCPToolCall, TaskCreate, TaskOut,
+    MCPServerCreate, MCPServerOut, MCPToolCall, MCPToolRequestCreate, MCPToolRequestOut, TaskCreate, TaskOut,
 )
 from ai_os.service import (
     create_approval, create_task, decide_approval, list_approvals,
     list_audit_events, list_tasks, consume_approval,
+    create_mcp_tool_request, list_mcp_tool_requests, approve_mcp_tool_request,
+    record_mcp_tool_request_result,
 )
 
 
@@ -179,16 +181,57 @@ def post_mcp_server_test(server_id: str):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.post("/mcp/tool-requests", response_model=MCPToolRequestOut, status_code=201)
+def post_mcp_tool_request(payload: MCPToolRequestCreate,
+                          principal: Principal = Depends(require_task_writer)):
+    """Allow an authenticated agent to request, but not execute, an MCP tool."""
+    try:
+        return create_mcp_tool_request(
+            server_id=payload.server_id, tool_name=payload.tool_name,
+            arguments=payload.arguments, requester_id=principal.principal_id,
+            task_id=payload.task_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/mcp/tool-requests", response_model=list[MCPToolRequestOut],
+         dependencies=[Depends(require_owner)])
+def get_mcp_tool_requests():
+    return list_mcp_tool_requests()
+
+
+@app.post("/mcp/tool-requests/{request_id}/approve")
+def post_mcp_tool_request_approve(request_id: str,
+                                  principal: Principal = Depends(require_owner)):
+    try:
+        return approve_mcp_tool_request(request_id, owner_id=principal.principal_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.post("/mcp/servers/{server_id}/tools/call", dependencies=[Depends(require_owner)])
 def post_mcp_tool_call(server_id: str, payload: MCPToolCall,
                        principal: Principal = Depends(require_owner)):
-    """Execute exactly one remote MCP tool after consuming a matching owner approval."""
+    """Execute an MCP tool after consuming its exact, one-time owner approval."""
     action_payload = {
-        "server_id": server_id,
-        "tool_name": payload.tool_name,
+        "server_id": server_id, "tool_name": payload.tool_name,
         "arguments": payload.arguments,
     }
     resource_id = f"{server_id}:{payload.tool_name}"
+    if payload.request_id:
+        requests = {item["id"]: item for item in list_mcp_tool_requests(limit=500)}
+        request = requests.get(payload.request_id)
+        if request is None:
+            raise HTTPException(status_code=404, detail="MCP tool request not found")
+        if (request["status"] != "approved" or request["approval_id"] != payload.approval_id
+                or request["server_id"] != server_id or request["tool_name"] != payload.tool_name
+                or request["arguments"] != payload.arguments):
+            raise HTTPException(status_code=409, detail="Execution does not match the approved agent request")
     try:
         consumed = consume_approval(
             payload.approval_id, actor_id=principal.principal_id,
@@ -200,12 +243,21 @@ def post_mcp_tool_call(server_id: str, payload: MCPToolCall,
     if consumed is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
     try:
-        return probe_and_call_mcp_tool(server_id, payload.tool_name, payload.arguments)
+        result = probe_and_call_mcp_tool(server_id, payload.tool_name, payload.arguments)
+        if payload.request_id:
+            record_mcp_tool_request_result(payload.request_id, result=result)
+        return result
     except LookupError as exc:
+        if payload.request_id:
+            record_mcp_tool_request_result(payload.request_id, error=str(exc))
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
+        if payload.request_id:
+            record_mcp_tool_request_result(payload.request_id, error=str(exc))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if payload.request_id:
+            record_mcp_tool_request_result(payload.request_id, error=str(exc))
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
