@@ -17,7 +17,9 @@ A feature is complete only when tested and its operating limits are documented.
 
 ## Phase 2 — Orchestration
 - [x] Initial GitHub discovery scan queue, candidate persistence, metadata evaluation, and separate worker
-- [ ] Durable general-purpose agent runtime and resumable execution
+- [x] First persistent Research Analyst agent using the guarded model gateway
+- [x] Owner dashboard controls and saved run history for the Research Analyst
+- [ ] Durable general-purpose agent runtime and resumable multi-step execution
 - [ ] LangGraph orchestration integrated with existing approvals and persistence
 - [ ] Dashboard UI for agent runs, approvals, logs, and owner review
 - [ ] Task dependencies and assignment
