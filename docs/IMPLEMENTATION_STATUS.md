@@ -28,8 +28,8 @@ Last checked: 2026-11-08. This status describes the feature branch
 - Free-only anonymous model preset with exact endpoint/model allowlisting and
   conservative request pacing.
 - MCP provider catalogue, official registry metadata search, encrypted
-  credential vault, HTTPS host allowlist, static bearer support and
-  metadata-only remote discovery.
+  credential vault, HTTPS host allowlist, static bearer and OAuth
+  client-credentials support, and metadata-only remote discovery.
 - Owner-approved read-only MCP tool mappings, per-agent capability grants,
   strict argument checks, live schema-drift checks, text-only bounded results,
   and an opt-in `mcp.read` specialist tool-call adapter.
