@@ -152,3 +152,80 @@ def test_woocommerce_payment_status_is_not_confirmed_without_date_paid(monkeypat
     assert order["payment_status"] == "not_confirmed"
     assert order["date_paid"] is None
     assert "billing" not in order
+
+
+
+def test_woocommerce_client_resolves_one_encrypted_vault_credential(monkeypatch, tmp_path):
+    from cryptography.fernet import Fernet
+    from fastapi.testclient import TestClient
+    from ai_os.api import app
+    from ai_os.credential_vault import store_credential
+
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'woocommerce-vault.db'}")
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    for name in (
+        "AI_OS_WOOCOMMERCE_URL",
+        "AI_OS_WOOCOMMERCE_CONSUMER_KEY",
+        "AI_OS_WOOCOMMERCE_CONSUMER_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with TestClient(app):
+        store_credential(
+            provider_id="woocommerce",
+            label="Primary store",
+            secret_type="api_credentials",
+            secret={
+                "url": "https://shop.example/wp-json/wc/v3",
+                "consumer_key": "ck_test",
+                "consumer_secret": "cs_test",
+            },
+        )
+        client = WooCommerceReadOnlyClient.from_environment()
+        status = WooCommerceReadOnlyClient.status()
+
+    assert client.base_url == "https://shop.example/wp-json/wc/v3/"
+    assert status["configured"] is True
+    assert status["credential_source"] == "vault"
+    assert status["credential_verified"] is False
+    assert status["writes_enabled"] is False
+
+
+def test_woocommerce_vault_resolution_fails_closed_when_multiple_stores_exist(monkeypatch, tmp_path):
+    from cryptography.fernet import Fernet
+    from fastapi.testclient import TestClient
+    from ai_os.api import app
+    from ai_os.credential_vault import store_credential
+
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'woocommerce-ambiguous.db'}")
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    for name in (
+        "AI_OS_WOOCOMMERCE_URL",
+        "AI_OS_WOOCOMMERCE_CONSUMER_KEY",
+        "AI_OS_WOOCOMMERCE_CONSUMER_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with TestClient(app):
+        for label, host in (
+            ("Primary store", "https://one.example"),
+            ("Secondary store", "https://two.example"),
+        ):
+            store_credential(
+                provider_id="woocommerce",
+                label=label,
+                secret_type="api_credentials",
+                secret={
+                    "url": host + "/wp-json/wc/v3",
+                    "consumer_key": "ck_test",
+                    "consumer_secret": "cs_test",
+                },
+            )
+        with pytest.raises(WooCommerceNotConfigured):
+            WooCommerceReadOnlyClient.from_environment()
+        status = WooCommerceReadOnlyClient.status()
+
+    assert status["configured"] is False
+    assert status["credential_source"] == "ambiguous_vault_entries"

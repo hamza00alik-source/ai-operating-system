@@ -159,3 +159,35 @@ def test_knowledge_retrieval_deduplicates_and_prefers_fresher_source():
     assert matching[0]["source_title"] == "Newer buyer research"
     assert matching[0]["retrieval_metadata"]["freshness"] == "fresh"
     assert matching[0]["retrieval_metadata"]["freshness_is_heuristic"] is True
+
+
+
+def test_owner_accepted_knowledge_survives_application_restart(monkeypatch, tmp_path):
+    from ai_os.knowledge import retrieve_accepted_knowledge
+
+    database = tmp_path / "persistent-memory.db"
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{database}")
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    payload = _candidate_payload()
+    payload["title"] = "restart-proof shared company memory"
+    payload["content"] = "A verified note should remain available after the API restarts."
+    payload["tags"] = ["restart-proof"]
+
+    with TestClient(app) as first_session:
+        created = first_session.post("/knowledge", json=payload)
+        assert created.status_code == 201, created.text
+        item_id = created.json()["id"]
+        accepted = first_session.post(
+            f"/knowledge/{item_id}/review",
+            json={"decision": "accepted", "note": "Approved for persistent memory test."},
+        )
+        assert accepted.status_code == 200
+
+    # A fresh application lifespan reconnects to the same persistent database.
+    with TestClient(app) as restarted_session:
+        detail = restarted_session.get(f"/knowledge/{item_id}")
+        retrieved = retrieve_accepted_knowledge("restart-proof", limit=5)
+
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "accepted"
+    assert any(item["id"] == item_id for item in retrieved)

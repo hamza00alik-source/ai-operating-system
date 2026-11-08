@@ -385,3 +385,165 @@ def test_mcp_endpoint_secret_manager_reference_fails_closed():
 
     assert response.status_code == 422
     assert "no secret-manager resolver" in response.json()["detail"]
+
+
+def test_control_plane_accepts_encrypted_vault_reference_but_not_arbitrary_vault_text():
+    with TestClient(app) as client:
+        accepted = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Vault-backed MCP", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp",
+                  "credential_ref": "vault:123e4567-e89b-12d3-a456-426614174000"},
+        )
+        rejected = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Malformed vault ref", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp",
+                  "credential_ref": "vault:not-a-uuid"},
+        )
+
+    assert accepted.status_code == 201
+    assert accepted.json()["credential_ref"] == "vault:123e4567-e89b-12d3-a456-426614174000"
+    assert rejected.status_code == 422
+
+
+
+def test_mcp_tool_mapping_requires_owner_confirmation_and_prior_discovery(monkeypatch):
+    from ai_os import api
+
+    async def fake_discovery(endpoint_id):
+        return {
+        "endpoint_id": endpoint_id,
+        "discovered_tool_count": 1,
+        "tools": [{
+            "name": "search_docs",
+            "description": "Search public documentation",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+            "trust": "untrusted_remote_metadata",
+            "executable": False,
+        }],
+        "execution_enabled": False,
+        }
+
+    monkeypatch.setattr(api, "discover_mcp_tools", fake_discovery)
+    with TestClient(app) as client:
+        endpoint = client.post(
+            "/control-plane/endpoints",
+            json={"name": "Read-only MCP test", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp"},
+        )
+        endpoint_id = endpoint.json()["endpoint_id"]
+        enabled = client.patch(
+            f"/control-plane/endpoints/{endpoint_id}", json={"enabled": True}
+        )
+        assert enabled.status_code == 200
+
+        missing_discovery = client.post(
+            "/control-plane/mcp/mappings",
+            json={"endpoint_id": endpoint_id, "tool_name": "not_discovered",
+                  "owner_confirmed_read_only": True},
+        )
+        assert missing_discovery.status_code == 422
+
+        not_confirmed = client.post(
+            "/control-plane/mcp/mappings",
+            json={"endpoint_id": endpoint_id, "tool_name": "search_docs",
+                  "owner_confirmed_read_only": False},
+        )
+        assert not_confirmed.status_code == 422
+
+        discovered = client.post(f"/control-plane/endpoints/{endpoint_id}/discover")
+        assert discovered.status_code == 200
+        assert discovered.json()["execution_enabled"] is False
+
+        approved = client.post(
+            "/control-plane/mcp/mappings",
+            json={"endpoint_id": endpoint_id, "tool_name": "search_docs",
+                  "owner_confirmed_read_only": True},
+        )
+
+    assert approved.status_code == 201
+    assert approved.json()["access_mode"] == "read_only"
+    assert approved.json()["enabled"] is True
+    assert approved.json()["executable"] is True
+
+
+def test_mcp_tool_execution_requires_explicit_agent_capability_and_uses_broker(monkeypatch):
+    from ai_os import api
+
+    async def fake_discovery(endpoint_id):
+        return {
+        "endpoint_id": endpoint_id,
+        "discovered_tool_count": 1,
+        "tools": [{
+            "name": "search_docs", "description": "Read-only search",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+            "trust": "untrusted_remote_metadata", "executable": False,
+        }],
+        }
+
+    monkeypatch.setattr(api, "discover_mcp_tools", fake_discovery)
+    calls = []
+
+    async def fake_call(endpoint_id, tool_name, arguments, expected_schema):
+        calls.append((endpoint_id, tool_name, arguments, expected_schema))
+        return {"content": ["two useful results"]}
+
+    monkeypatch.setattr(api, "call_mcp_read_only_tool", fake_call)
+    with TestClient(app) as client:
+        endpoint = client.post(
+            "/control-plane/endpoints",
+            json={"name": "MCP broker test", "protocol": "mcp",
+                  "base_url": "https://mcp.example.org/mcp"},
+        ).json()
+        endpoint_id = endpoint["endpoint_id"]
+        client.patch(f"/control-plane/endpoints/{endpoint_id}", json={"enabled": True})
+        assert client.post(f"/control-plane/endpoints/{endpoint_id}/discover").status_code == 200
+        mapping = client.post(
+            "/control-plane/mcp/mappings",
+            json={"endpoint_id": endpoint_id, "tool_name": "search_docs",
+                  "owner_confirmed_read_only": True},
+        ).json()
+
+        payload = {"agent_id": "research-synthesist",
+                   "arguments": {"query": "MCP documentation"}}
+        denied = client.post(
+            f"/control-plane/mcp/mappings/{mapping['mapping_id']}/execute",
+            json=payload,
+        )
+        assert denied.status_code == 403
+        assert calls == []
+
+        grant = client.post(
+            "/control-plane/capabilities",
+            json={"agent_id": "research-synthesist", "capability": "tool.mcp.read"},
+        )
+        assert grant.status_code == 201
+        executed = client.post(
+            f"/control-plane/mcp/mappings/{mapping['mapping_id']}/execute",
+            json=payload,
+        )
+
+    assert executed.status_code == 200
+    assert executed.json()["result"]["content"] == ["two useful results"]
+    assert calls == [(endpoint_id, "search_docs", {"query": "MCP documentation"},
+                     {"type": "object", "properties": {"query": {"type": "string"}}})]
+
+
+
+def test_mcp_broker_argument_validator_rejects_missing_wrong_type_and_unknown_fields():
+    from ai_os.mcp_broker import MCPBrokerError, validate_mcp_tool_arguments
+
+    schema = {
+        "type": "object",
+        "properties": {"query": {"type": "string", "maxLength": 20}},
+        "required": ["query"],
+    }
+    validate_mcp_tool_arguments(schema, {"query": "hello"})
+    for invalid in ({}, {"query": 42}, {"query": "x" * 21},
+                    {"query": "hello", "dangerous": True}):
+        try:
+            validate_mcp_tool_arguments(schema, invalid)
+            assert False, f"invalid MCP arguments were accepted: {invalid}"
+        except MCPBrokerError:
+            pass

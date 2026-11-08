@@ -176,3 +176,38 @@ def test_agent_tool_execution_requires_explicit_scoped_capability_grant(gateway_
     with pytest.raises(ActionGatewayError, match="capability was denied"):
         execute_agent_tool("research-synthesist", "research.search", {"query": "demand"})
     assert len(calls) == 1
+
+
+def test_approved_action_rejects_oversized_parameters_before_consuming_approval(gateway_db, monkeypatch):
+    approval = _approved_request()
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    calls = []
+    register_action_adapter(
+        "publish_product", adapter_id="test-size-guard",
+        adapter=lambda parameters, execution_id: calls.append(parameters) or {"ok": True},
+    )
+    oversized = {"payload": "x" * 65537}
+    with pytest.raises(ActionGatewayError, match="64 KiB"):
+        execute_approved_action(
+            approval["id"], action_type=approval["action_type"],
+            parameters=oversized, execution_id="gateway-size-1",
+        )
+    assert _status(approval["id"]) == "approved"
+    assert calls == []
+
+
+def test_approved_action_rejects_oversized_adapter_result_and_audits_failure(gateway_db, monkeypatch):
+    approval = _approved_request()
+    monkeypatch.setenv("AI_OS_EXTERNAL_ACTIONS_ENABLED", "true")
+    register_action_adapter(
+        "publish_product", adapter_id="test-large-result",
+        adapter=lambda parameters, execution_id: {"payload": "x" * 65537},
+    )
+    with pytest.raises(ActionGatewayError, match="after the approval was consumed"):
+        execute_approved_action(
+            approval["id"], action_type=approval["action_type"],
+            parameters=approval["parameters"], execution_id="gateway-size-2",
+        )
+    assert _status(approval["id"]) == "consumed"
+    actions = [event["action"] for event in list_events(50)]
+    assert "approved_action_execution_failed" in actions

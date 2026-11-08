@@ -16,9 +16,11 @@ def _run_payload():
     }
 
 
-def test_background_worker_executes_dependency_ordered_specialists(monkeypatch):
+def test_background_worker_executes_dependency_ordered_specialists(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_AGENT_SIGNING_KEY", "test-signing-key-" + "x" * 40)
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'agent-runtime.db'}")
     monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_AUTO_CEO_REVIEW_ENABLED", "true")
     monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://model.example/v1")
     monkeypatch.setenv("AI_OS_MODEL_NAME", "free-compatible-test-model")
     calls = []
@@ -53,8 +55,20 @@ def test_background_worker_executes_dependency_ordered_specialists(monkeypatch):
         assert second.json()["job"]["status"] == "completed"
 
         final = client.get(f"/company-runs/{run_id}").json()
+        from ai_os.agent_runtime import schedule_ready_steps
+        from ai_os.queue import list_jobs
+        ceo_schedule = schedule_ready_steps()
+        queued_jobs = list_jobs(limit=50)
 
+    assert ceo_schedule["ceo_reviews_scheduled"] == 1
+    assert any(
+        job["job_type"] == "review_company_run"
+        and job["payload"]["run_id"] == run_id
+        for job in queued_jobs
+    )
     assert len(calls) == 2
+    assert "Completed specialist report 1" in calls[1]
+    assert "DEPENDENCY HANDOFFS" in calls[1]
     assert final["status"] == "completed"
     assert [step["status"] for step in final["steps"]] == ["completed", "completed"]
     assert all(step["report"]["reported_to"] == "company-orchestrator" for step in final["steps"])

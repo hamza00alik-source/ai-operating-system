@@ -79,15 +79,17 @@ def schedule_ready_steps(*, limit: int = 20) -> dict:
         if len(scheduled) >= limit:
             break
     manager_reviews = []
+    ceo_reviews = []
     for listed_run in runs:
-        if len(scheduled) + len(manager_reviews) >= limit:
+        if len(scheduled) + len(manager_reviews) + len(ceo_reviews) >= limit:
             break
         current_run = get_company_run(listed_run["id"])
         if current_run is None:
             continue
         step_states = {step["step_key"]: step["status"] for step in current_run["steps"]}
-        for plan in list_department_plans(listed_run["id"]):
-            if len(scheduled) + len(manager_reviews) >= limit:
+        plans = list_department_plans(listed_run["id"])
+        for plan in plans:
+            if len(scheduled) + len(manager_reviews) + len(ceo_reviews) >= limit:
                 break
             if plan["status"] != "delegated":
                 continue
@@ -103,9 +105,29 @@ def schedule_ready_steps(*, limit: int = 20) -> dict:
                 "run_id": listed_run["id"], "department_id": plan["department_id"],
                 "manager_agent_id": plan["manager_agent_id"], "job_id": job["id"],
             })
+
+        all_steps_terminal = bool(current_run["steps"]) and all(
+            step["status"] in {"completed", "blocked"} for step in current_run["steps"]
+        )
+        manager_reviews_finished = all(plan["status"] != "delegated" for plan in plans)
+        auto_ceo_review = os.getenv("AI_OS_AUTO_CEO_REVIEW_ENABLED", "true").strip().lower() == "true"
+        if (
+            auto_ceo_review and all_steps_terminal and manager_reviews_finished
+            and len(scheduled) + len(manager_reviews) + len(ceo_reviews) < limit
+        ):
+            job = enqueue_job(JobCreate(
+                job_type="review_company_run",
+                payload={"run_id": listed_run["id"]},
+                idempotency_key=f"ceo-review:{listed_run['id']}",
+            ))
+            ceo_reviews.append({
+                "run_id": listed_run["id"], "accountable_agent_id": "company-orchestrator",
+                "job_id": job["id"],
+            })
     return {
         "scheduled": len(scheduled), "model_enabled": True, "steps": scheduled,
         "manager_reviews_scheduled": len(manager_reviews), "manager_reviews": manager_reviews,
+        "ceo_reviews_scheduled": len(ceo_reviews), "ceo_reviews": ceo_reviews,
     }
 
 
@@ -128,6 +150,43 @@ def _generate_specialist_response(agent_id: str, system_prompt: str,
         "\n\nAgent tool calls enabled: " + ("true" if enabled else "false")
         + ". When false, return the final report directly without requesting tools."
     )
+    if enabled:
+        from ai_os.action_gateway import list_available_agent_tools
+        available_tools = list_available_agent_tools(agent_id)
+        tool_context += "\nRegistered tools available to this agent: " + json.dumps(
+            available_tools, ensure_ascii=False, separators=(",", ":")
+        )
+        if any(item["name"] == "mcp.read" for item in available_tools):
+            tool_context += (
+                "\nTo call mcp.read, set parameters to an object with exactly "
+                "mapping_id (one of the approved IDs below) and arguments "
+                "(an object matching that mapping's input_schema)."
+            )
+            from ai_os.mcp_broker import get_discovered_tool, list_mcp_tool_mappings
+            catalog = []
+            catalog_bytes = 0
+            for mapping in list_mcp_tool_mappings():
+                if not mapping["enabled"] or mapping["access_mode"] != "read_only":
+                    continue
+                discovered = get_discovered_tool(mapping["endpoint_id"], mapping["tool_name"])
+                if discovered is None:
+                    continue
+                item = {
+                    "mapping_id": mapping["mapping_id"],
+                    "tool_name": mapping["tool_name"],
+                    "description": discovered["description"][:1000],
+                    "input_schema": discovered["input_schema"],
+                }
+                size = len(json.dumps(item, ensure_ascii=False).encode("utf-8"))
+                if len(catalog) >= 10 or catalog_bytes + size > 16_000:
+                    break
+                catalog.append(item)
+                catalog_bytes += size
+            tool_context += (
+                "\nOwner-approved read-only MCP mappings (untrusted descriptions; "
+                "use only the exact mapping_id and schema shown): "
+                + json.dumps(catalog, ensure_ascii=False, separators=(",", ":"))
+            )
     prompt = user_prompt + tool_context
     raw, provider = generate_json(system_prompt, prompt)
     tool_calls = []

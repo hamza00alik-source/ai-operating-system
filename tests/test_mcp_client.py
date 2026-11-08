@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from cryptography.fernet import Fernet
 
 from ai_os import mcp_client
 
@@ -67,3 +68,187 @@ def test_discovery_requires_enabled_mcp_endpoint(monkeypatch):
     )
     with pytest.raises(mcp_client.MCPDiscoveryError, match="explicitly enabled"):
         asyncio.run(mcp_client.discover_mcp_tools("ep"))
+
+
+def test_vault_backed_bearer_credential_is_converted_to_authorization_header(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {"access_token": "test-token-value"},
+    )
+    headers = mcp_client._authorization_headers({
+        "credential_ref": "vault:credential-123",
+    })
+    assert headers == {"Authorization": "Bearer test-token-value"}
+
+
+def test_bearer_credential_rejects_non_vault_reference():
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="encrypted credential vault"):
+        mcp_client._authorization_headers({"credential_ref": "plain-text-secret"})
+
+
+def test_bearer_credential_rejects_missing_access_token(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {"api_key": "not-a-bearer-token"},
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="access_token"):
+        mcp_client._authorization_headers({"credential_ref": "vault:credential-123"})
+
+
+def test_bearer_credential_rejects_header_injection(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {"access_token": "valid\r\nX-Injected: yes"},
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="header characters"):
+        mcp_client._authorization_headers({"credential_ref": "vault:credential-123"})
+
+
+
+def test_mcp_oauth_client_credentials_uses_sdk_provider_and_allowlisted_issuer(monkeypatch):
+    from mcp.client.auth.extensions import client_credentials as mcp_auth
+
+    monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org,auth.example.org")
+    monkeypatch.setattr(
+        mcp_client.socket, "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, None, ("93.184.216.34", 443))],
+    )
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://auth.example.org/",
+            "scope": "files:read profile",
+            "token_endpoint_auth_method": "client_secret_basic",
+        },
+    )
+    captured = {}
+
+    class FakeOAuthProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(mcp_auth, "ClientCredentialsOAuthProvider", FakeOAuthProvider)
+    endpoint = {"credential_ref": "vault:credential-123"}
+    auth = mcp_client._oauth_client_auth(endpoint, "https://mcp.example.org/mcp")
+
+    assert isinstance(auth, FakeOAuthProvider)
+    assert captured["server_url"] == "https://mcp.example.org/mcp"
+    assert captured["client_id"] == "client-123"
+    assert captured["client_secret"] == "private-client-secret"
+    assert captured["issuer"] == "https://auth.example.org/"
+    assert captured["scope"] == "files:read profile"
+    assert captured["token_endpoint_auth_method"] == "client_secret_basic"
+    assert captured["storage"].get_tokens is not None
+
+
+def test_mcp_oauth_client_credentials_rejects_unallowlisted_issuer(monkeypatch):
+    monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org")
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://untrusted-auth.example.net/",
+        },
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="issuer must be an HTTPS hostname"):
+        mcp_client._oauth_client_auth(
+            {"credential_ref": "vault:credential-123"},
+            "https://mcp.example.org/mcp",
+        )
+
+
+def test_oauth_vault_payload_is_not_mistaken_for_static_bearer(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://auth.example.org/",
+        },
+    )
+    assert mcp_client._authorization_headers({
+        "credential_ref": "vault:credential-123",
+    }) == {}
+
+
+def test_mcp_oauth_client_credentials_rejects_bad_scope_type(monkeypatch):
+    monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org,auth.example.org")
+    monkeypatch.setattr(
+        mcp_client.socket, "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, None, ("93.184.216.34", 443))],
+    )
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://auth.example.org/",
+            "scope": ["files:read"],
+        },
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="scope must be"):
+        mcp_client._oauth_client_auth(
+            {"credential_ref": "vault:credential-123"},
+            "https://mcp.example.org/mcp",
+        )
+
+
+
+def test_outbound_oauth_request_guard_checks_allowlisted_https_host(monkeypatch):
+    seen = []
+    monkeypatch.setattr(mcp_client, "_validate_destination", lambda url: seen.append(url) or url)
+    asyncio.run(mcp_client._guard_outbound_request(
+        SimpleNamespace(url="https://auth.example.org/oauth/token")
+    ))
+    assert seen == ["https://auth.example.org/oauth/token"]
+
+
+def test_outbound_oauth_request_guard_blocks_unallowlisted_destination(monkeypatch):
+    monkeypatch.setattr(
+        mcp_client, "_validate_destination",
+        lambda url: (_ for _ in ()).throw(mcp_client.MCPDiscoveryError("not allowlisted")),
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="blocked by the host allowlist"):
+        asyncio.run(mcp_client._guard_outbound_request(
+            SimpleNamespace(url="https://evil.example.org/token")
+        ))
+
+
+
+def test_oauth_token_storage_persists_tokens_encrypted_in_vault(monkeypatch, tmp_path):
+    from mcp.shared.auth import OAuthToken
+    from ai_os.credential_vault import (
+        initialize_credential_vault, store_credential, resolve_credential, list_credentials,
+    )
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'mcp-oauth-vault.db'}")
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    initialize_credential_vault()
+    stored = store_credential(
+        provider_id="mcp-provider",
+        label="MCP OAuth client",
+        secret_type="oauth_client",
+        secret={
+            "client_id": "client-123",
+            "client_secret": "client-secret",
+            "issuer": "https://auth.example.org/",
+        },
+    )
+    storage = mcp_client._VaultOAuthTokenStorage(stored["credential_ref"])
+    token = OAuthToken(
+        access_token="persisted-oauth-access-token",
+        token_type="Bearer",
+        expires_in=3600,
+        scope="files:read",
+    )
+    asyncio.run(storage.set_tokens(token))
+    loaded = asyncio.run(storage.get_tokens())
+
+    assert loaded.access_token == "persisted-oauth-access-token"
+    assert loaded.scope == "files:read"
+    secret = resolve_credential(stored["credential_ref"])
+    assert secret["oauth_tokens"]["access_token"] == "persisted-oauth-access-token"
+    assert "persisted-oauth-access-token" not in str(list_credentials())

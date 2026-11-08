@@ -189,3 +189,46 @@ def test_worker_does_not_retry_model_job_after_quota_limit(monkeypatch):
     assert failures == [False]
     assert result["job"]["status"] == "failed"
     assert blocked and "quota reached" in blocked[0][2]
+
+
+
+def test_standalone_worker_initializes_shared_company_services(monkeypatch):
+    from ai_os import worker_service
+
+    initialized = []
+    captured = {}
+    for name in (
+        "initialize_database",
+        "initialize_commerce_storage",
+        "initialize_control_plane",
+        "initialize_credential_vault",
+        "register_wordpress_draft_adapter",
+        "register_woocommerce_draft_adapter",
+        "register_builtin_agent_tools",
+    ):
+        monkeypatch.setattr(
+            worker_service, name, lambda name=name: initialized.append(name)
+        )
+    monkeypatch.setattr(
+        worker_service, "get_model_status",
+        lambda: {"enabled": False, "provider": "none", "model": None},
+    )
+    monkeypatch.setattr(
+        worker_service, "run_worker_loop",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    worker_service.main()
+
+    assert initialized == [
+        "initialize_database",
+        "initialize_commerce_storage",
+        "initialize_control_plane",
+        "initialize_credential_vault",
+        "register_wordpress_draft_adapter",
+        "register_woocommerce_draft_adapter",
+        "register_builtin_agent_tools",
+    ]
+    assert captured["poll_seconds"] >= 1
+    assert captured["desired_state"] is worker_service.get_worker_desired_state
+    assert captured["heartbeat"] is worker_service.heartbeat_dispatch

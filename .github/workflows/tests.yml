@@ -16,7 +16,40 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: python scripts/validate_agent_library.py
+      - run: python scripts/validate_dashboard.py
       - run: pytest
+      - name: Build production container image
+        run: docker build --tag ai-operating-system:test .
+      - name: Smoke test container and persistent-volume permissions
+        run: |
+          set -eu
+          docker volume create aios-smoke-data
+          docker run -d --name aios-container-smoke \
+            -p 127.0.0.1:8000:8000 \
+            -e AI_OS_ENV=development \
+            -e AI_OS_DATABASE_URL=sqlite:////data/ai_os.db \
+            -v aios-smoke-data:/data \
+            ai-operating-system:test
+          trap 'docker rm -f aios-container-smoke aios-worker-smoke >/dev/null 2>&1 || true; docker volume rm aios-smoke-data >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              docker exec aios-container-smoke sh -c 'test -s /data/ai_os.db'
+              docker run -d --name aios-worker-smoke \
+                -e AI_OS_ENV=development \
+                -e AI_OS_DATABASE_URL=sqlite:////data/ai_os.db \
+                -v aios-smoke-data:/data \
+                ai-operating-system:test python -m ai_os.worker_service
+              sleep 5
+              test "$(docker inspect -f '{{.State.Running}}' aios-worker-smoke)" = "true"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs aios-container-smoke
+          exit 1

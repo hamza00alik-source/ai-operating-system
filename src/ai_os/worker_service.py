@@ -19,6 +19,13 @@ from ai_os.model_adapter import get_model_status
 from ai_os.worker import run_once
 from ai_os.db import initialize_database
 from ai_os.worker_control import get_worker_desired_state, heartbeat_worker
+from ai_os.commerce import initialize_commerce_storage
+from ai_os.control_plane import initialize_control_plane
+from ai_os.credential_vault import initialize_credential_vault
+from ai_os.agent_tools import register_builtin_agent_tools
+from ai_os.wordpress_actions import register_wordpress_draft_adapter
+from ai_os.woocommerce_actions import register_woocommerce_draft_adapter
+from ai_os.mcp_broker import initialize_mcp_broker_storage
 
 logger = logging.getLogger("ai_os.worker_service")
 
@@ -136,7 +143,16 @@ def heartbeat_dispatch(worker_id: str, status: str, current_job_id: str | None) 
 
 
 def main() -> None:
+    # A separately deployed worker must initialize the same persistent
+    # registries and trusted adapters as the API process before polling jobs.
     initialize_database()
+    initialize_commerce_storage()
+    initialize_control_plane()
+    initialize_credential_vault()
+    initialize_mcp_broker_storage()
+    register_wordpress_draft_adapter()
+    register_woocommerce_draft_adapter()
+    register_builtin_agent_tools()
     status = get_model_status()
     try:
         interval = int(os.getenv("AI_OS_WORKER_POLL_SECONDS", "3"))

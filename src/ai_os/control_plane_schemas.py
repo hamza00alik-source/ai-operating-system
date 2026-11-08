@@ -1,5 +1,6 @@
 """Request/response schemas for the agent control-plane registry."""
 from typing import Literal
+import re
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
@@ -28,8 +29,8 @@ class EndpointCreate(BaseModel):
     def validate_credential_reference(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        if not (value.startswith("env:") or value.startswith("secret://")):
-            raise ValueError("credential_ref must be an env:NAME or secret:// provider reference, never a credential value")
+        if not (value.startswith("env:") or value.startswith("secret://") or re.fullmatch(r"vault:[0-9a-fA-F-]{36}", value)):
+            raise ValueError("credential_ref must be an env:NAME, secret://, or vault:UUID reference, never a credential value")
         if len(value) > 160 or any(ch.isspace() for ch in value):
             raise ValueError("credential_ref must be a short reference")
         return value
@@ -88,3 +89,17 @@ class CapabilityEvaluate(BaseModel):
 class EndpointEnableUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool
+
+
+
+class MCPToolMappingCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint_id: str = Field(min_length=1, max_length=120)
+    tool_name: str = Field(min_length=1, max_length=120)
+    owner_confirmed_read_only: bool
+
+
+class MCPToolExecute(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(min_length=1, max_length=120)
+    arguments: dict = Field(default_factory=dict)

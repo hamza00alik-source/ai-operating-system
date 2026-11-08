@@ -193,3 +193,63 @@ def test_free_only_quota_error_is_not_retried_or_fallen_back(monkeypatch):
     with pytest.raises(model_adapter.ModelQuotaExceeded, match="without automatic retry"):
         model_adapter.generate_json("system", "task")
     assert len(calls) == 1
+
+
+
+def _enable_ovh_anonymous_free_only(monkeypatch):
+    monkeypatch.setenv("AI_OS_MODEL_ENABLED", "true")
+    monkeypatch.setenv("AI_OS_FREE_ONLY", "true")
+    monkeypatch.setenv("AI_OS_MODEL_BACKEND", "openai_compatible")
+    monkeypatch.setenv("AI_OS_MODEL_PROVIDER", "ovhcloud-anonymous")
+    monkeypatch.setenv(
+        "AI_OS_MODEL_BASE_URL",
+        "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+    )
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "gpt-oss-20b")
+    monkeypatch.setenv("AI_OS_FREE_MODEL_ALLOWLIST", "gpt-oss-20b")
+    monkeypatch.delenv("AI_OS_MODEL_API_KEY", raising=False)
+
+
+def test_free_only_accepts_verified_anonymous_ovh_endpoint_without_key(monkeypatch):
+    _enable_ovh_anonymous_free_only(monkeypatch)
+    status = model_adapter.get_model_status()
+    assert status["enabled"] is True
+    assert status["configured"] is True
+    assert status["provider"] == "ovhcloud-anonymous"
+    assert status["api_key_present"] is False
+    assert status["reason"] == "ready_free_only"
+
+
+def test_free_only_rejects_anonymous_ovh_endpoint_with_key_or_wrong_model(monkeypatch):
+    _enable_ovh_anonymous_free_only(monkeypatch)
+    monkeypatch.setenv("AI_OS_MODEL_API_KEY", "unexpected-secret")
+    assert model_adapter.get_model_status()["enabled"] is False
+
+    _enable_ovh_anonymous_free_only(monkeypatch)
+    monkeypatch.setenv("AI_OS_MODEL_NAME", "unlisted-model")
+    assert model_adapter.get_model_status()["enabled"] is False
+
+    _enable_ovh_anonymous_free_only(monkeypatch)
+    monkeypatch.setenv("AI_OS_MODEL_BASE_URL", "https://evil.example/v1")
+    assert model_adapter.get_model_status()["enabled"] is False
+
+
+
+def test_anonymous_public_provider_enforces_minimum_request_interval(monkeypatch):
+    current = {"time": 100.0}
+    sleeps = []
+    monkeypatch.setattr(model_adapter, "_PUBLIC_MODEL_NEXT_ALLOWED", 0.0)
+    monkeypatch.setattr(model_adapter.time, "monotonic", lambda: current["time"])
+
+    def fake_sleep(seconds):
+        sleeps.append(seconds)
+        current["time"] += seconds
+
+    monkeypatch.setattr(model_adapter.time, "sleep", fake_sleep)
+    model_adapter._throttle_public_provider("ovhcloud-anonymous")
+    model_adapter._throttle_public_provider("ovhcloud-anonymous")
+
+    assert sleeps == [31.0]
+    assert model_adapter._PUBLIC_MODEL_NEXT_ALLOWED == 162.0
+    model_adapter._throttle_public_provider("another-provider")
+    assert sleeps == [31.0]

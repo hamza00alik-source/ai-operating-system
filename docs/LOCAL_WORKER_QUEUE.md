@@ -1,28 +1,58 @@
-# Local worker queue (first increment)
+# Durable worker queue
 
-The OS now has a SQLite-backed job queue and a bounded, manually triggered worker.
+The company runtime uses a SQLite-backed durable queue with idempotent enqueue,
+atomic job claims, worker leases, bounded retries, stale-lease recovery, and a
+separate supervised worker process.
 
-## Supported job
-- `build_work_packet`: validates the selected specialist through the existing work-packet builder and stores a ready-to-paste prompt. It does not call a model, use a network connection, publish content, spend money, or contact customers.
+## Supported jobs
+
+- `build_work_packet`: create a local role-specific task packet.
+- `execute_company_step`: execute an assigned specialist report through the
+  explicitly configured model adapter.
+- `review_department_plan`: run the manager's review after delegated department
+  tasks have completed or been blocked.
+
+Model inference remains disabled unless an owner explicitly configures and
+enables an adapter. A running worker does not imply that a model is configured
+or that a provider is reachable.
 
 ## API
-- `POST /jobs` — enqueue a supported job. Optional `idempotency_key` prevents duplicate submissions with the same key.
-- `GET /jobs` — inspect recent jobs.
-- `POST /worker/run-once` — process at most one queued job.
-- `GET /runtime` — still reports autonomous execution and external actions as disabled.
 
-Example job body:
-```json
-{
-  "job_type": "build_work_packet",
-  "payload": {
-    "agent_id": "product-trend-researcher",
-    "task": "Research international demand for downloadable products",
-    "context": "Prioritize evidence of actual purchases."
-  },
-  "idempotency_key": "research-demand-001"
-}
+- `POST /jobs` — enqueue a supported job. An optional `idempotency_key`
+  prevents duplicate submissions.
+- `GET /jobs` — inspect recent queue records.
+- `POST /worker/run-once` — process at most one queued job (operator/test use).
+- `GET /runtime` — inspect runtime status and execution controls.
+- `POST /company-runs` — create a dependency-ordered company workflow.
+- `GET /company-runs/{run_id}` — inspect step reports and overall status.
+
+The background worker calls the scheduler and processes the durable queue
+continuously. Start it with:
+
+```bash
+python -m ai_os.worker_service
 ```
 
-## Operational limits
-This is a local queue primitive, not an always-on autonomous company. The worker runs only when `POST /worker/run-once` is called or a trusted operator runs it. The queue has bounded retries (three attempts), stale-worker lease recovery, and one registered handler. It does not yet provide authentication, a background scheduler, multi-step task dependencies, or production-grade concurrency guarantees. Do not expose the worker endpoint to the public internet until authentication and authorization are implemented.
+The API and worker must share the same `AI_OS_DATABASE_URL` and persistent
+SQLite file. For SQLite, run them on the same host/local persistent volume.
+Configure the hosting platform or process manager to restart the worker after
+failure. The worker refreshes leases during long jobs, reports heartbeats, and
+backs off after transient scheduler failures.
+
+## Recovery and safety
+
+Queue jobs use idempotency keys, atomic claims, bounded retries, and lease
+expiry recovery. A specialist job that exhausts retries is marked blocked, and
+dependent steps are blocked rather than run with missing prerequisites.
+Completed dependency reports are included in downstream work packets as
+untrusted handoff context.
+
+The worker has no default browser, shell, payment, publishing, customer-message,
+or deployment access. Built-in agent tools are read-only and capability-gated.
+Remote MCP discovery is metadata-only until an owner-approved execution mapping
+and its safety controls are implemented. Sensitive external actions remain
+behind owner approval and are not enabled by default.
+
+A healthy worker process is not proof of a live model provider, production
+storefront connection, or end-to-end commercial operation. Verify those
+integrations independently before enabling business workflows.

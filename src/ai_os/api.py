@@ -1,5 +1,6 @@
 """FastAPI application."""
 import logging
+import os
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -70,8 +71,12 @@ from ai_os.training_data import (create_training_example, list_training_examples
                                  review_training_example, export_training_dataset,
                                  list_training_dataset_exports)
 from ai_os.action_gateway import get_action_gateway_status
+from ai_os.commerce import router as commerce_router, initialize_commerce_storage
 from ai_os.agent_tools import register_builtin_agent_tools
-from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools
+from ai_os.mcp_client import MCPDiscoveryError, discover_mcp_tools, call_mcp_read_only_tool
+from ai_os.mcp_catalog import load_mcp_provider_catalog
+from ai_os.mcp_registry import MCPRegistryError, search_official_registry
+from ai_os.credential_vault import (CredentialVaultError, initialize_credential_vault, store_credential, list_credentials, revoke_credential)
 from ai_os.control_plane import (initialize_control_plane, control_plane_overview,
     list_control_plane_agents, get_control_plane_agent, set_agent_enabled,
     list_control_plane_endpoints, create_control_plane_endpoint,
@@ -80,22 +85,35 @@ from ai_os.control_plane import (initialize_control_plane, control_plane_overvie
     is_control_plane_agent_enabled, grant_capability, list_capability_grants,
     revoke_capability_grant, evaluate_capability, evaluate_broker_route,
     set_control_plane_endpoint_enabled)
-from ai_os.control_plane_schemas import (AgentEnableUpdate, EndpointCreate,
+from ai_os.mcp_broker import (
+    MCPBrokerError, initialize_mcp_broker_storage, save_discovered_tools,
+    list_discovered_tools, get_discovered_tool, validate_mcp_tool_arguments,
+    create_read_only_mapping, list_mcp_tool_mappings,
+    set_mcp_tool_mapping_enabled, get_mcp_tool_mapping,
+)
+from ai_os.control_plane_schemas import (
+    MCPToolMappingCreate, MCPToolExecute, AgentEnableUpdate, EndpointCreate,
     RuntimeCreate, RuntimeHeartbeat, CapabilityGrantCreate,
-    BrokerRouteEvaluate, CapabilityEvaluate, EndpointEnableUpdate)
+    BrokerRouteEvaluate, CapabilityEvaluate, EndpointEnableUpdate,
+)
 
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
+    initialize_commerce_storage()
     initialize_control_plane()
+    initialize_credential_vault()
+    initialize_mcp_broker_storage()
     register_wordpress_draft_adapter()
     register_woocommerce_draft_adapter()
     register_builtin_agent_tools()
     yield
 
 app = FastAPI(title="AI Operating System", version="0.6.0", description="Human-supervised AI company workflow foundation.", lifespan=lifespan)
+
+app.include_router(commerce_router)
 
 @app.middleware("http")
 async def owner_auth_and_audit(request: Request, call_next):
@@ -218,6 +236,78 @@ def get_woocommerce_order_statuses(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+
+@app.get("/integrations/mcp/credentials")
+def get_mcp_credentials(provider_id: str | None = Query(default=None, max_length=80)):
+    """List credential metadata only; secret material is never returned."""
+    try:
+        return {"credentials": list_credentials(provider_id=provider_id)}
+    except Exception as exc:
+        logger.exception("Credential metadata listing failed")
+        raise HTTPException(status_code=503, detail="Credential vault is unavailable.") from exc
+
+
+@app.post("/integrations/mcp/credentials", status_code=201)
+def post_mcp_credential(payload: dict, request: Request):
+    """Store owner-supplied provider credentials encrypted at rest."""
+    allowed = {"provider_id", "label", "secret_type", "secret"}
+    if set(payload) != allowed:
+        raise HTTPException(status_code=422, detail="Provide exactly provider_id, label, secret_type, and secret.")
+    if os.getenv("AI_OS_ENV", "development").strip().lower() == "production" and request.url.scheme != "https":
+        raise HTTPException(status_code=400, detail="Credential submission requires HTTPS in production.")
+    try:
+        result = store_credential(
+            provider_id=payload["provider_id"],
+            label=payload["label"],
+            secret_type=payload["secret_type"],
+            secret=payload["secret"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "integration_credential_stored", "integration_credential",
+                 result["credential_ref"], {"provider_id": result["provider_id"],
+                 "secret_type": result["secret_type"], "encrypted": True})
+    return result
+
+
+@app.delete("/integrations/mcp/credentials/{credential_id}")
+def delete_mcp_credential(credential_id: str, request: Request):
+    try:
+        result = revoke_credential("vault:" + credential_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Credential not found.")
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "integration_credential_revoked", "integration_credential",
+                 result["credential_ref"], {"provider_id": result["provider_id"]})
+    return result
+
+
+@app.get("/integrations/mcp/providers")
+def get_mcp_provider_catalog():
+    """List preconfigured MCP provider families; no account credentials are collected here."""
+    return load_mcp_provider_catalog()
+
+
+
+@app.get("/integrations/mcp/registry/search")
+async def search_mcp_registry(
+    q: str = Query(min_length=3, max_length=100),
+    limit: int = Query(default=10, ge=1, le=25),
+):
+    """Search official MCP Registry metadata; never installs or executes results."""
+    try:
+        return await search_official_registry(q, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except MCPRegistryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/actions/gateway/status")
@@ -1226,6 +1316,7 @@ async def post_control_plane_mcp_discovery(endpoint_id: str, request: Request):
     """Owner-triggered MCP tool discovery; returned remote metadata remains untrusted."""
     try:
         result = await discover_mcp_tools(endpoint_id)
+        save_discovered_tools(endpoint_id, result["tools"])
     except MCPDiscoveryError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     append_event(
@@ -1235,6 +1326,78 @@ async def post_control_plane_mcp_discovery(endpoint_id: str, request: Request):
          "tool_names": [item["name"] for item in result["tools"]]},
     )
     return result
+
+
+@app.get("/control-plane/mcp/tools")
+def get_discovered_mcp_tools(endpoint_id: str | None = Query(default=None, max_length=120)):
+    return {"tools": list_discovered_tools(endpoint_id),
+            "notice": "Remote schemas and descriptions are untrusted; they are not executable by discovery alone."}
+
+
+@app.get("/control-plane/mcp/mappings")
+def get_mcp_tool_mappings(endpoint_id: str | None = Query(default=None, max_length=120)):
+    return {"mappings": list_mcp_tool_mappings(endpoint_id)}
+
+
+@app.post("/control-plane/mcp/mappings", status_code=201)
+def post_mcp_tool_mapping(payload: MCPToolMappingCreate, request: Request):
+    actor = getattr(request.state, "actor", "unknown")
+    try:
+        mapping = create_read_only_mapping(
+            endpoint_id=payload.endpoint_id,
+            tool_name=payload.tool_name,
+            owner_confirmed_read_only=payload.owner_confirmed_read_only,
+            approved_by=actor,
+        )
+    except MCPBrokerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_event(actor, "mcp_read_only_mapping_approved", "mcp_tool_mapping",
+                 mapping["mapping_id"], {"endpoint_id": mapping["endpoint_id"],
+                 "tool_name": mapping["tool_name"], "access_mode": "read_only"})
+    return mapping
+
+
+@app.patch("/control-plane/mcp/mappings/{mapping_id}")
+def patch_mcp_tool_mapping(mapping_id: str, payload: EndpointEnableUpdate, request: Request):
+    mapping = set_mcp_tool_mapping_enabled(mapping_id, payload.enabled)
+    if mapping is None:
+        raise HTTPException(status_code=404, detail="MCP tool mapping not found")
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "mcp_tool_mapping_enabled" if payload.enabled else "mcp_tool_mapping_disabled",
+                 "mcp_tool_mapping", mapping_id,
+                 {"endpoint_id": mapping["endpoint_id"], "tool_name": mapping["tool_name"]})
+    return mapping
+
+
+@app.post("/control-plane/mcp/mappings/{mapping_id}/execute")
+async def post_mcp_tool_execution(mapping_id: str, payload: MCPToolExecute, request: Request):
+    mapping = get_mcp_tool_mapping(mapping_id)
+    if mapping is None or not mapping["enabled"] or mapping["access_mode"] != "read_only":
+        raise HTTPException(status_code=403, detail="Only enabled owner-approved read-only mappings may execute.")
+    capability = evaluate_capability(payload.agent_id, "tool.mcp.read", None)
+    if not capability.get("allowed"):
+        raise HTTPException(status_code=403, detail=capability.get("reason", "MCP read capability denied."))
+    discovered = get_discovered_tool(mapping["endpoint_id"], mapping["tool_name"])
+    if discovered is None:
+        raise HTTPException(status_code=409, detail="Approved MCP tool metadata is missing; rediscover before execution.")
+    try:
+        validate_mcp_tool_arguments(discovered["input_schema"], payload.arguments)
+        result = await call_mcp_read_only_tool(
+            mapping["endpoint_id"], mapping["tool_name"], payload.arguments,
+            expected_schema=discovered["input_schema"],
+        )
+    except MCPBrokerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except MCPDiscoveryError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    append_event(getattr(request.state, "actor", "unknown"),
+                 "mcp_read_only_tool_executed", "mcp_tool_mapping", mapping_id,
+                 {"agent_id": payload.agent_id, "tool_name": mapping["tool_name"],
+                  "argument_keys": sorted(payload.arguments.keys()),
+                  "result_text_blocks": len(result.get("content", []))})
+    return {"mapping_id": mapping_id, "agent_id": payload.agent_id,
+            "tool_name": mapping["tool_name"], "result": result,
+            "notice": "Read-only mapping execution only. Write-capable MCP tools are not supported by this broker."}
 
 
 @app.post("/control-plane/endpoints", status_code=201)

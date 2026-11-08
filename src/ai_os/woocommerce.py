@@ -6,6 +6,7 @@ update, delete, refund, payment, customer, or publishing methods exist here.
 import base64
 import json
 import os
+import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -44,19 +45,49 @@ class WooCommerceReadOnlyClient:
         base_url = os.getenv("AI_OS_WOOCOMMERCE_URL", "").strip()
         key = os.getenv("AI_OS_WOOCOMMERCE_CONSUMER_KEY", "").strip()
         secret = os.getenv("AI_OS_WOOCOMMERCE_CONSUMER_SECRET", "").strip()
+        if base_url and key and secret:
+            return cls(base_url, key, secret)
+        try:
+            from ai_os.credential_vault import (
+                CredentialVaultError, resolve_unique_provider_credential,
+            )
+            stored = resolve_unique_provider_credential("woocommerce")
+        except (CredentialVaultError, ValueError, sqlite3.OperationalError):
+            raise WooCommerceNotConfigured(
+                "WooCommerce credentials are not configured in the environment or as one unambiguous vault entry; no request was made."
+            )
+        base_url = str(stored.get("url") or stored.get("store_url") or "").strip()
+        key = str(stored.get("consumer_key") or "").strip()
+        secret = str(stored.get("consumer_secret") or "").strip()
         if not (base_url and key and secret):
             raise WooCommerceNotConfigured(
-                "WooCommerce read-only credentials are not configured; no request was made."
+                "Stored WooCommerce credential must contain url, consumer_key, and consumer_secret; no request was made."
             )
         return cls(base_url, key, secret)
 
     @staticmethod
     def status() -> dict:
-        configured = all(os.getenv(name, "").strip() for name in (
+        environment_configured = all(os.getenv(name, "").strip() for name in (
             "AI_OS_WOOCOMMERCE_URL",
             "AI_OS_WOOCOMMERCE_CONSUMER_KEY",
             "AI_OS_WOOCOMMERCE_CONSUMER_SECRET",
         ))
+        try:
+            from ai_os.credential_vault import list_credentials
+            active_vault_credentials = [
+                item for item in list_credentials(provider_id="woocommerce")
+                if item["status"] != "revoked"
+            ]
+        except Exception:
+            active_vault_credentials = []
+        vault_configured = len(active_vault_credentials) == 1
+        configured = environment_configured or vault_configured
+        credential_source = (
+            "environment" if environment_configured else
+            "vault" if vault_configured else
+            "ambiguous_vault_entries" if len(active_vault_credentials) > 1 else
+            "none"
+        )
         draft_writes = (
             configured
             and os.getenv("AI_OS_WOOCOMMERCE_DRAFT_WRITES_ENABLED", "false").strip().lower() == "true"
@@ -64,6 +95,8 @@ class WooCommerceReadOnlyClient:
         )
         return {
             "configured": configured,
+            "credential_source": credential_source,
+            "credential_verified": False,
             "mode": "read_only_with_optional_approved_drafts",
             "capabilities": ["product_catalog_read", "order_status_read"] + (
                 ["create_unpublished_product_draft"] if draft_writes else []
