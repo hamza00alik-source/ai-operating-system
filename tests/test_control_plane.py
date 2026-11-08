@@ -519,4 +519,23 @@ def test_mcp_tool_execution_requires_explicit_agent_capability_and_uses_broker(m
 
     assert executed.status_code == 200
     assert executed.json()["result"]["content"] == ["two useful results"]
-    assert calls == [(endpoint_id, "search_docs", {"query": "MCP documentation"})]
+    assert calls == [(endpoint_id, "search_docs", {"query": "MCP documentation"},\n                     {"type": "object", "properties": {"query": {"type": "string"}}})]
+
+
+
+def test_mcp_broker_argument_validator_rejects_missing_wrong_type_and_unknown_fields():
+    from ai_os.mcp_broker import MCPBrokerError, validate_mcp_tool_arguments
+
+    schema = {
+        "type": "object",
+        "properties": {"query": {"type": "string", "maxLength": 20}},
+        "required": ["query"],
+    }
+    validate_mcp_tool_arguments(schema, {"query": "hello"})
+    for invalid in ({}, {"query": 42}, {"query": "x" * 21},
+                    {"query": "hello", "dangerous": True}):
+        try:
+            validate_mcp_tool_arguments(schema, invalid)
+            assert False, f"invalid MCP arguments were accepted: {invalid}"
+        except MCPBrokerError:
+            pass
