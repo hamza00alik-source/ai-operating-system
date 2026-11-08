@@ -1,5 +1,5 @@
 """Request/response schemas for the agent control-plane registry."""
-from typing import Literal
+from typing import Literal\nimport re
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
