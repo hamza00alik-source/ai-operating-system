@@ -13,7 +13,7 @@ from ai_os.config import get_settings
 from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
-from ai_os.discovery import create_scan, list_scans, list_candidates, run_pending_once as run_discovery_pending_once
+from ai_os.discovery import create_scan, list_scans, list_candidates, github_api_status, run_pending_once as run_discovery_pending_once
 from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
@@ -395,6 +395,17 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
     return result
+
+
+@app.get("/discovery/status", dependencies=[Depends(require_api_key)])
+def get_discovery_status():
+    """Live connectivity and worker diagnostic; never returns the GitHub token."""
+    github = github_api_status()
+    return {
+        "github": github,
+        "worker_running": bool(_discovery_thread and _discovery_thread.is_alive()),
+        "scope": "public GitHub repository metadata; no code execution or installation",
+    }
 
 
 @app.post("/discovery/scans", status_code=202, dependencies=[Depends(require_api_key)])
