@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
+from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import require_api_key
 from ai_os.config import get_settings
@@ -29,7 +30,7 @@ app = FastAPI(
 )
 
 
-@app.get("/health")
+@app.get("/owner", include_in_schema=False)\ndef get_owner_dashboard():\n    return owner_dashboard()\n\n\n@app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
 
