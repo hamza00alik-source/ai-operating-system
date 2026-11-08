@@ -35,3 +35,7 @@ class ApprovalOut(BaseModel):
 
 class ApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
+
+
+class ModelTestRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
