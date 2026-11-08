@@ -101,3 +101,95 @@ def test_bearer_credential_rejects_header_injection(monkeypatch):
     )
     with pytest.raises(mcp_client.MCPDiscoveryError, match="header characters"):
         mcp_client._authorization_headers({"credential_ref": "vault:credential-123"})
+
+
+
+def test_mcp_oauth_client_credentials_uses_sdk_provider_and_allowlisted_issuer(monkeypatch):
+    from mcp.client import auth as mcp_auth
+
+    monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org,auth.example.org")
+    monkeypatch.setattr(
+        mcp_client.socket, "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, None, ("93.184.216.34", 443))],
+    )
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://auth.example.org/",
+            "scope": "files:read profile",
+            "token_endpoint_auth_method": "client_secret_basic",
+        },
+    )
+    captured = {}
+
+    class FakeOAuthProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(mcp_auth, "ClientCredentialsOAuthProvider", FakeOAuthProvider)
+    endpoint = {"credential_ref": "vault:credential-123"}
+    auth = mcp_client._oauth_client_auth(endpoint, "https://mcp.example.org/mcp")
+
+    assert isinstance(auth, FakeOAuthProvider)
+    assert captured["server_url"] == "https://mcp.example.org/mcp"
+    assert captured["client_id"] == "client-123"
+    assert captured["client_secret"] == "private-client-secret"
+    assert captured["issuer"] == "https://auth.example.org/"
+    assert captured["scope"] == "files:read profile"
+    assert captured["token_endpoint_auth_method"] == "client_secret_basic"
+    assert captured["storage"].get_tokens is not None
+
+
+def test_mcp_oauth_client_credentials_rejects_unallowlisted_issuer(monkeypatch):
+    monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org")
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://untrusted-auth.example.net/",
+        },
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="issuer must be an HTTPS hostname"):
+        mcp_client._oauth_client_auth(
+            {"credential_ref": "vault:credential-123"},
+            "https://mcp.example.org/mcp",
+        )
+
+
+def test_oauth_vault_payload_is_not_mistaken_for_static_bearer(monkeypatch):
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://auth.example.org/",
+        },
+    )
+    assert mcp_client._authorization_headers({
+        "credential_ref": "vault:credential-123",
+    }) == {}
+
+
+def test_mcp_oauth_client_credentials_rejects_bad_scope_type(monkeypatch):
+    monkeypatch.setenv("AI_OS_MCP_ALLOWED_HOSTS", "mcp.example.org,auth.example.org")
+    monkeypatch.setattr(
+        mcp_client.socket, "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, None, ("93.184.216.34", 443))],
+    )
+    monkeypatch.setattr(
+        "ai_os.credential_vault.resolve_credential",
+        lambda ref: {
+            "client_id": "client-123",
+            "client_secret": "private-client-secret",
+            "issuer": "https://auth.example.org/",
+            "scope": ["files:read"],
+        },
+    )
+    with pytest.raises(mcp_client.MCPDiscoveryError, match="scope must be"):
+        mcp_client._oauth_client_auth(
+            {"credential_ref": "vault:credential-123"},
+            "https://mcp.example.org/mcp",
+        )
