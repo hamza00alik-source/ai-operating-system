@@ -46,3 +46,26 @@ def test_cascade_blocks_unconfirmed_provider_without_owner_override(monkeypatch)
     with patch("ai_os.cascade.load_providers", return_value=providers):
         with pytest.raises(LookupError):
             asyncio.run(cascade_chat("test"))
+
+
+def test_cascade_supports_anonymous_provider_without_api_key(monkeypatch):
+    monkeypatch.delenv("AI_OS_ALLOW_PAID_LLM", raising=False)
+    provider = Provider(
+        "ovhcloud-anonymous",
+        "https://ovh.example/v1",
+        "gpt-oss-20b",
+        None,
+        True,
+        "none",
+    )
+    with patch("ai_os.cascade.load_providers", return_value=[provider]), patch("ai_os.cascade.httpx.AsyncClient") as cls:
+        client = AsyncMock()
+        client.post = AsyncMock(return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "anonymous works"}}]}
+        ))
+        cls.return_value.__aenter__.return_value = client
+        result = asyncio.run(cascade_chat("test"))
+    assert result["provider"] == "ovhcloud-anonymous"
+    assert result["response"] == "anonymous works"
+    headers = client.post.call_args.kwargs["headers"]
+    assert "Authorization" not in headers
