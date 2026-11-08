@@ -12,7 +12,7 @@ COPY agents ./agents
 COPY company ./company
 COPY vendor/agency-agents ./vendor/agency-agents
 
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir ".[mcp]" \
     && useradd --create-home --uid 10001 aios \
     && mkdir -p /data \
     && chown -R aios:aios /app /data
