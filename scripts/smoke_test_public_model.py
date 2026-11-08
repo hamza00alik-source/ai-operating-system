@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory(prefix="aios-live-smoke-") as temp_dir:
         with TestClient(app) as client:
             created = client.post("/company-runs", json=task)
             if created.status_code != 201:
-                raise RuntimeError(f"Could not create test company run: HTTP {created.status_code}")
+                raise RuntimeError(f"Could not create test company run: HTTP {created.status_code}: {created.text[:500]}")
             run_id = created.json()["id"]
             expected_jobs = ["execute_company_step", "execute_company_step", "execute_company_step", "review_company_run"]
             completed_jobs = []
