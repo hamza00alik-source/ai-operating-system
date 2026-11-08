@@ -2,7 +2,7 @@
 
 A modular, human-supervised foundation for running an AI-powered company.
 
-> Early development: this repository is a starter foundation, not a fully autonomous company. External AI providers, background workers, ecommerce, and social integrations are not connected yet.
+> Early development: this is a supervised operating-system foundation, not a fully autonomous company. The GitHub discovery worker is implemented as an initial capability; general-purpose AI agent execution, ecommerce, and social integrations are not yet production-connected.
 
 ## Principles
 - Human approval before external or consequential actions.
@@ -21,7 +21,7 @@ pip install -e ".[dev]"
 uvicorn ai_os.api:app --reload
 ```
 
-Open http://127.0.0.1:8000/docs.
+Open http://127.0.0.1:8000/owner for the visual owner console, or http://127.0.0.1:8000/docs for the API.
 
 ## Current starter capabilities
 - Create and list work tasks.
@@ -36,13 +36,13 @@ Approval records are workflow primitives, not a security sandbox. Do not connect
 
 ## Supervised technology discovery (initial implementation)
 
-The API can queue GitHub repository discovery scans and expose persisted scan/candidate results:
+The visual owner console at `/owner` can queue GitHub repository discovery scans and display persisted scan/candidate results. API endpoints are also available:
 
 - `POST /discovery/scans` with `{"categories":["agent-frameworks","mcp-servers"]}`
 - `GET /discovery/scans`
 - `GET /discovery/candidates`
 
-Run the separate worker alongside the API:
+Run the separate discovery worker alongside the API (both processes must remain running):
 
 ```bash
 python -m ai_os.discovery_worker
