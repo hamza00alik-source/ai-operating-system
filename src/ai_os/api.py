@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from ai_os.auth import require_api_key
 from ai_os.config import get_settings
 from ai_os.db import initialize_database
-from ai_os.model_adapter import ModelAdapterError, chat_completion, get_model_status
+from ai_os.model_adapter import ModelAdapterError, chat_completion, get_model_status\nfrom ai_os.mcp_registry import MCPRegistryError, list_mcp_servers
 from ai_os.provider_catalog import list_providers
 from ai_os.schemas import (
     ApprovalCreate,
@@ -106,7 +106,7 @@ def models_providers():
     return list_providers()
 
 
-@app.post("/models/test", dependencies=[Depends(require_api_key)])
+@app.get("/mcp/servers", dependencies=[Depends(require_api_key)])\ndef mcp_servers():\n    """List sanitized MCP connection manifests; does not connect or execute tools."""\n    try:\n        return list_mcp_servers()\n    except MCPRegistryError as exc:\n        raise HTTPException(status_code=422, detail=str(exc)) from exc\n\n\n@app.post("/models/test", dependencies=[Depends(require_api_key)])
 def test_model(payload: ModelTestRequest):
     """Make one explicitly enabled model request; never auto-fallback to another provider."""
     try:
