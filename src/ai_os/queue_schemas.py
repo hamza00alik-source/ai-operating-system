@@ -2,7 +2,7 @@
 from typing import Literal
 from pydantic import BaseModel, Field
 
-JobType = Literal["build_work_packet", "execute_company_step", "review_department_plan"]
+JobType = Literal["build_work_packet", "execute_company_step", "review_department_plan", "review_company_run"]
 JobStatus = Literal["queued", "running", "completed", "failed"]
 
 class JobCreate(BaseModel):
