@@ -16,7 +16,6 @@ from typing import Any
 from ai_os.credentials import get_provider_credential
 
 
-@dataclass(frozen=True)
 class ProviderHTTPError(RuntimeError):
     """An upstream HTTP failure with a safe status code for routing decisions."""
     def __init__(self, status_code: int, detail: str):
@@ -24,6 +23,7 @@ class ProviderHTTPError(RuntimeError):
         super().__init__(f"Provider HTTP {status_code}: {detail[:1200]}")
 
 
+@dataclass(frozen=True)
 class Provider:
     key: str
     label: str
