@@ -49,3 +49,11 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [ ] Pilot OpenHands only in a separate isolated developer sandbox
 - [ ] Consider LibreChat as an optional UI after AIOS APIs stabilize
 - [ ] Do not adopt Dify or Orca as required AIOS runtime dependencies
+
+- [x] Repair missing worker runtime imports with task executor and lease scheduler
+- [x] Add SQLite task result, retry, worker lease, and recovery fields using additive migrations
+- [x] Add worker process supervisor with bounded backoff and graceful SIGINT/SIGTERM shutdown
+- [x] Add tests for task execution, result persistence, transient retry, expired lease recovery, and retry exhaustion
+- [ ] Validate worker against a real approved model endpoint (requires owner provider configuration)
+- [ ] Add agent registry and multi-agent handoff on top of the durable task queue
+- [ ] Add MCP server registry, tool allowlist, and approval-gated invocation
