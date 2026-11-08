@@ -12,7 +12,7 @@ from ai_os.service import create_approval, create_task, decide_approval, list_ap
 from ai_os.discovery import create_scan, list_scans, list_candidates
 from ai_os.schemas import DiscoveryScanCreate
 from ai_os.llm_gateway import list_providers, generate, test_provider
-from ai_os.agent_runtime import run_research_analyst, list_agent_runs
+from ai_os.agent_runtime import enqueue_research_analyst, list_agent_runs
 from pydantic import BaseModel, Field
 
 
@@ -148,17 +148,10 @@ def get_discovery_candidates():
 
 
 
-@app.post("/agents/runs", status_code=201, dependencies=[Depends(require_api_key)])
+@app.post("/agents/runs", status_code=202, dependencies=[Depends(require_api_key)])
 def post_agent_run(payload: AgentRunCreate):
-    """Run the first real agent: an owner-triggered, analysis-only research analyst."""
-    try:
-        return run_research_analyst(payload.provider, payload.goal)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    """Queue an analysis-only Research Analyst run for the background worker."""
+    return enqueue_research_analyst(payload.provider, payload.goal)
 
 
 @app.get("/agents/runs", dependencies=[Depends(require_api_key)])
