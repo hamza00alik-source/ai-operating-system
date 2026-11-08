@@ -13,7 +13,7 @@ change. Do not rely on an old screenshot or prior plan description.
 
 - Runtime: Python 3.11 (the version used by CI).
 - Main file: `main.py`.
-- Install dependencies from `requirements.txt` (or `pip install -e .`).
+- Install dependencies from `pip install -e '.[mcp]'` when remote MCP discovery is required; otherwise `pip install -e .` is sufficient.
 - Clone the repository with Git submodules enabled (`git clone --recurse-submodules`); the pinned Agency Agents profile library is required for the full specialist catalogue.
 - Bind to `0.0.0.0` and the port supplied by the host (`PORT`, default 8000).
 - API start command: `uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}`.
