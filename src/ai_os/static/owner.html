@@ -6,7 +6,7 @@
 <style>
 :root{color-scheme:dark;--bg:#0b1220;--panel:#142238;--line:#2b405a;--muted:#9aabc0;--ink:#edf4fc;--blue:#76b7ff;--green:#45d49a;--amber:#ffbd70;--red:#ff8080}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% 0%,#1b3453 0,transparent 45%),var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
-main{width:min(100% - 24px,1100px);margin:auto;padding:24px 0 54px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--blue);font-weight:750}h1{font-size:clamp(27px,6vw,40px);line-height:1.1;margin:5px 0}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:0}p{color:var(--muted);margin:6px 0}.panel,.tile,.agent,.task{background:linear-gradient(145deg,#17283e,#101b2b);border:1px solid var(--line);border-radius:16px}.panel{padding:16px;margin:16px 0}.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.row.between{justify-content:space-between}.row input{flex:1;min-width:190px}input,button{font:inherit;color:var(--ink);background:#0b1524;border:1px solid #354b65;border-radius:10px;padding:11px 13px}button{background:#245b91;border-color:#367ab7;font-weight:700;cursor:pointer}button.secondary{background:#1a2b40;border-color:#40536a}button:disabled{opacity:.5;cursor:wait}button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.statusline{font-size:13px;color:var(--muted);margin-top:8px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.tile{padding:13px}.tile strong{font-size:25px;display:block}.tile span{font-size:12px;color:var(--muted)}.green{color:var(--green)}.amber{color:var(--amber)}.red{color:var(--red)}.muted{color:var(--muted)}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;font-size:12px;text-transform:capitalize}.pill.completed{color:var(--green)}.pill.running{color:var(--blue)}.pill.queued,.pill.pending{color:var(--amber)}.pill.failed,.pill.blocked{color:var(--red)}.pill.unknown{color:#c2ccda}.bar{height:8px;background:#26364b;border-radius:99px;overflow:hidden;margin:10px 0}.bar>i{display:block;height:100%;width:0;background:var(--green);transition:width .25s}.two{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:14px}.tasks{display:grid;gap:9px}.task{padding:12px;cursor:pointer}.task.active{border-color:var(--blue);box-shadow:0 0 0 1px #76b7ff44}.task p{font-size:13px}.agents{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.agent{padding:12px;min-width:0}.agent .symbol{width:38px;height:38px;border-radius:12px;background:#203b59;display:grid;place-items:center;font-size:18px;margin-bottom:9px}.agent .desc{font-size:12px;overflow-wrap:anywhere}.handoff{white-space:pre-wrap;overflow-wrap:anywhere;max-height:230px;overflow:auto;background:#0b1524;border:1px solid #26364b;border-radius:10px;padding:11px;font-size:13px;color:#d8e5f4}.empty{padding:18px;text-align:center;border:1px dashed #40536a;border-radius:13px;color:var(--muted)}.warn{border-left:3px solid var(--amber);background:#2b241b;padding:10px 12px;border-radius:8px;color:#f1d6ae;font-size:13px}.small{font-size:12px;color:var(--muted)}.links{display:flex;gap:12px;flex-wrap:wrap}.links a{color:var(--blue);font-size:13px}@media(max-width:760px){.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){main{width:calc(100% - 18px);padding-top:18px}.agents{grid-template-columns:1fr}.row button{width:100%}.tile strong{font-size:22px}}
+main{width:min(100% - 24px,1100px);margin:auto;padding:24px 0 54px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.eyebrow{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--blue);font-weight:750}h1{font-size:clamp(27px,6vw,40px);line-height:1.1;margin:5px 0}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:0}p{color:var(--muted);margin:6px 0}.panel,.tile,.agent,.task{background:linear-gradient(145deg,#17283e,#101b2b);border:1px solid var(--line);border-radius:16px}.panel{padding:16px;margin:16px 0}.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.row.between{justify-content:space-between}.row input{flex:1;min-width:190px}input,button{font:inherit;color:var(--ink);background:#0b1524;border:1px solid #354b65;border-radius:10px;padding:11px 13px}button{background:#245b91;border-color:#367ab7;font-weight:700;cursor:pointer}button.secondary{background:#1a2b40;border-color:#40536a}button:disabled{opacity:.5;cursor:wait}button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.statusline{font-size:13px;color:var(--muted);margin-top:8px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.tile{padding:13px}.tile strong{font-size:25px;display:block}.tile span{font-size:12px;color:var(--muted)}.green{color:var(--green)}.amber{color:var(--amber)}.red{color:var(--red)}.muted{color:var(--muted)}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;font-size:12px;text-transform:capitalize}.pill.completed{color:var(--green)}.pill.running{color:var(--blue)}.pill.queued,.pill.pending{color:var(--amber)}.pill.failed,.pill.blocked{color:var(--red)}.pill.unknown{color:#c2ccda}.bar{height:8px;background:#26364b;border-radius:99px;overflow:hidden;margin:10px 0}.bar>i{display:block;height:100%;width:0;background:var(--green);transition:width .25s}.two{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:14px}.tasks{display:grid;gap:9px}.task{padding:12px;cursor:pointer}.task.active{border-color:var(--blue);box-shadow:0 0 0 1px #76b7ff44}.request{border:1px solid var(--line);border-radius:12px;padding:12px;margin:9px 0;background:#0e1a2a}.request pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;background:#091321;padding:9px;border-radius:8px;font-size:12px}.request-actions{display:flex;gap:8px;flex-wrap:wrap}.request-actions button{font-size:13px;padding:8px 10px}.task p{font-size:13px}.agents{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.agent{padding:12px;min-width:0}.agent .symbol{width:38px;height:38px;border-radius:12px;background:#203b59;display:grid;place-items:center;font-size:18px;margin-bottom:9px}.agent .desc{font-size:12px;overflow-wrap:anywhere}.handoff{white-space:pre-wrap;overflow-wrap:anywhere;max-height:230px;overflow:auto;background:#0b1524;border:1px solid #26364b;border-radius:10px;padding:11px;font-size:13px;color:#d8e5f4}.empty{padding:18px;text-align:center;border:1px dashed #40536a;border-radius:13px;color:var(--muted)}.warn{border-left:3px solid var(--amber);background:#2b241b;padding:10px 12px;border-radius:8px;color:#f1d6ae;font-size:13px}.small{font-size:12px;color:var(--muted)}.links{display:flex;gap:12px;flex-wrap:wrap}.links a{color:var(--blue);font-size:13px}@media(max-width:760px){.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){main{width:calc(100% - 18px);padding-top:18px}.agents{grid-template-columns:1fr}.row button{width:100%}.tile strong{font-size:22px}}
 </style>
 </head>
 <body><main>
@@ -39,10 +39,11 @@ main{width:min(100% - 24px,1100px);margin:auto;padding:24px 0 54px}.top{display:
 </div>
 <section class="panel"><div class="row between"><h2>Agent handoffs</h2><span class="small" id="agent-summary">No task selected</span></div><div id="agent-cards" class="agents"><div class="empty" style="grid-column:1/-1">Agent activity will appear here when a worker processes a task.</div></div>
 <h2 style="margin-top:18px">Final result</h2><div id="final-result" class="handoff">No completed result yet.</div></section>
+<section class="panel" id="mcp-requests-panel"><h2>Agent MCP tool requests</h2><p>Agents may request tools. Review the exact arguments, create an approval, approve it separately, then explicitly execute it. Execution may change external systems.</p><div id="mcp-requests"><div class="empty">Connect as owner to load tool requests.</div></div><div class="small" id="mcp-message" role="status" aria-live="polite"></div></section>
 <section class="panel"><h2>How to read this screen</h2>
 <ul class="small"><li><b>Queued:</b> task saved; a worker has not claimed it yet.</li><li><b>Running:</b> worker claimed the task; agent steps show actual persisted activity.</li><li><b>Completed:</b> final output is saved and visible above.</li><li><b>Failed / blocked:</b> inspect the error; blocked work requires owner review before retry.</li></ul>
 <p class="warn">Worker status comes from persisted heartbeats. Active means the process is reporting to the shared database; it does not prove the model provider is responding.</p>
-<div class="links"><a href="/workforce">Workforce view</a><a href="/integrations/mcp">MCP registry</a><a href="/docs">API documentation</a></div></section>
+<div class="links"><a href="/workforce">Workforce view</a><a href="#mcp-requests-panel">MCP tool approvals</a><a href="/docs">API documentation</a></div></section>
 </main>
 <script>
 (()=> {
@@ -56,8 +57,8 @@ async function api(path,options={}){const r=await fetch(path,{...options,headers
 function setConnection(ok,msg){$("api-state").className="pill "+(ok?"completed":"failed");setText("api-state",ok?"API connected":"Connection error");setText("connection-message",msg)}
 async function refresh(){
  try{
-  const [health,tasks,runtime]=await Promise.all([api("/health"),api("/tasks"),api("/runtime/status")]);
-  cache=tasks;setConnection(true,"API is responding · "+health.service);setText("updated-at","Updated "+new Date().toLocaleTimeString());setText("task-count",tasks.length);
+  const [health,tasks,runtime,requests]=await Promise.all([api("/health"),api("/tasks"),api("/runtime/status"),api("/mcp/tool-requests")]);
+  cache=tasks;renderMcpRequests(requests);setConnection(true,"API is responding · "+health.service);setText("updated-at","Updated "+new Date().toLocaleTimeString());setText("task-count",tasks.length);
   setText("model-state",runtime.model.enabled?"Enabled": "Disabled");$("model-state").className=runtime.model.enabled?"green":"amber";
   setText("graph-state",runtime.agent_graph_enabled?"Enabled":"Disabled");$("graph-state").className=runtime.agent_graph_enabled?"green":"amber";
   const worker=runtime.worker||{status:"never_seen",workers:[]};
@@ -71,6 +72,42 @@ async function refresh(){
   $("run-test").disabled=false;$("model-test").disabled=false;renderTasks();
   if(selected&&cache.some(t=>t.id===selected))await selectTask(selected);else if(cache.length)await selectTask(cache[0].id);
  }catch(e){setConnection(false,e.message);$("run-test").disabled=true;$("model-test").disabled=true}
+}
+function renderMcpRequests(requests){
+ const root=$("mcp-requests");root.replaceChildren();
+ if(!requests.length){root.append(node("div","empty","No agent tool requests. Agents cannot execute tools without owner approval."));return}
+ requests.forEach(r=>{
+  const card=node("article","request");const top=node("div","row between");
+  top.append(node("strong","",r.tool_name),node("span","pill "+(r.status==="executed"?"completed":(r.status==="failed"||r.status==="rejected"?"failed":"pending")),r.status));
+  card.append(top,node("p","small","Server "+r.server_id+" · Request "+r.id),node("p","small","Requester "+r.requester_id+(r.task_id?" · Task "+r.task_id:"")));
+  const args=node("pre","",JSON.stringify(r.arguments,null,2));card.append(node("p","small","Exact requested arguments"),args);
+  if(r.result)card.append(node("pre","",JSON.stringify(r.result,null,2)));
+  if(r.error)card.append(node("div","warn",r.error));
+  const actions=node("div","request-actions");
+  if(r.status==="pending"){const b=node("button","","Create approval");b.addEventListener("click",()=>mcpAction(r, "prepare"));actions.append(b)}
+  if(r.status==="awaiting_approval"){const yes=node("button","","Approve request");yes.addEventListener("click",()=>mcpAction(r,"approve"));const no=node("button","secondary","Reject");no.addEventListener("click",()=>mcpAction(r,"reject"));actions.append(yes,no)}
+  if(r.status==="approved"){const b=node("button","","Execute approved tool");b.addEventListener("click",()=>mcpAction(r,"execute"));actions.append(b)}
+  if(actions.childNodes.length)card.append(actions);
+  root.append(card);
+ });
+}
+async function mcpAction(r,action){
+ const message=$("mcp-message");message.textContent="Working…";
+ try{
+  if(action==="prepare"){
+   const result=await api("/mcp/tool-requests/"+encodeURIComponent(r.id)+"/approve",{method:"POST",body:"{}"});
+   message.textContent="Approval created. Review it in the next step; no tool has run.";
+  }else if(action==="approve"||action==="reject"){
+   const decision=action==="approve"?"approved":"rejected";
+   await api("/approvals/"+encodeURIComponent(r.approval_id)+"/decision",{method:"POST",body:JSON.stringify({decision})});
+   message.textContent=decision==="approved"?"Approved. Tool has NOT run; execution is a separate action.":"Request rejected.";
+  }else if(action==="execute"){
+   if(!window.confirm("Execute this remote MCP tool now? It may change external systems. Check the tool and arguments first."))return;
+   await api("/mcp/servers/"+encodeURIComponent(r.server_id)+"/tools/call",{method:"POST",body:JSON.stringify({tool_name:r.tool_name,arguments:r.arguments,approval_id:r.approval_id,request_id:r.id})});
+   message.textContent="Tool execution returned. Inspect the recorded result below.";
+  }
+  await refresh();
+ }catch(e){message.textContent="Action failed: "+e.message;await refresh()}
 }
 function renderTasks(){
  const root=$("task-list");root.replaceChildren();

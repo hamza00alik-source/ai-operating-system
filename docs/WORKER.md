@@ -78,3 +78,30 @@ AI_OS_AGENT_GRAPH_ENABLED=true
 This is an optional example, not a built-in default. The public gateway documents anonymous access and a 20-request/day anonymous limit, but explicitly describes itself as experimental and warns that upstream capacity may change or disappear. Do not send private/customer data through it, do not treat it as production infrastructure, and verify its current service status before use. A successful connection test proves only that one response was returned; it does not prove three-agent execution or worker reliability.
 
 For the first end-to-end run, use only a synthetic internal task with no customer data. Keep the graph disabled until the owner has verified a model response, then enable it deliberately and inspect each persisted agent handoff.
+
+
+## MCP connection verification
+
+The MCP registry is configuration-only until an owner explicitly tests a registered server. The owner-only `POST /mcp/servers/{server_id}/test` endpoint performs a Streamable HTTP initialize handshake and `tools/list` discovery. It does not invoke a discovered tool. Tool execution is a separate owner-approved workflow described below.
+
+Configure the server with HTTPS and reference bearer credentials by environment-variable name (never paste secret values into the registry). The probe rejects disabled servers, missing environment variables, non-public DNS answers and redirects. The first configured credential environment variable is sent as a Bearer token. OAuth authorization flows, per-provider auth schemes, OAuth authorization flows, per-provider auth schemes, and credential management are not implemented yet. Tool descriptions and input schemas returned by remote servers are untrusted metadata and must not be treated as agent instructions.
+
+
+### Explicitly approved MCP tool invocation
+
+The owner-only `POST /mcp/servers/{server_id}/tools/call` endpoint can invoke one tool after consuming an exact, one-time approval. First create an approval using `POST /approvals` with:
+
+- `action`: `mcp.tool.call`
+- `resource_id`: `{server_id}:{tool_name}`
+- `action_payload`: the exact object `{"server_id":"...","tool_name":"...","arguments":{...}}`
+
+The approval actor is assigned from the authenticated owner identity. An owner must approve it through the existing approval decision endpoint. Then submit `approval_id`, `tool_name`, and the exact same `arguments` to the tool-call endpoint. The API consumes the approval atomically before making the remote call. An approval cannot be reused or altered after approval.
+
+This is deliberately owner-triggered, not autonomous agent access. Tool names must still be advertised by the server and required/unknown argument keys are checked against its declared input schema. Remote tool execution can have real external effects; inspect the tool description and exact arguments before approving. Tool schemas are untrusted metadata, and full JSON Schema validation, OAuth flows, per-tool policy classification, and automatic agent invocation are not implemented. The endpoint is not a sandbox for malicious MCP servers.
+
+
+### Agent MCP request queue and owner review
+
+Authenticated agent-role API principals may submit a request with `POST /mcp/tool-requests` using `server_id`, `tool_name`, `arguments`, and optionally `task_id`. This only stores a pending request; it does not contact the MCP server or execute anything. The owner can inspect requests through `GET /mcp/tool-requests`, then use `POST /mcp/tool-requests/{request_id}/approve` to create an exact, expiring approval record. That request remains `awaiting_approval` until the owner separately approves or rejects the generated approval using the existing approval-decision endpoint. Only after approval can the owner invoke `POST /mcp/servers/{server_id}/tools/call` with the exact request ID, approval ID, tool name, and unchanged arguments.
+
+The Owner Control Room now displays the request queue and provides separate controls for preparing approval, approving/rejecting, and executing. Execution requires a further confirmation because a remote tool may change external systems. This is an API-level request workflow; the current sequential model agents do not yet autonomously discover or submit MCP requests from model-generated tool calls. The worker remains limited to internal text generation until that orchestration layer is added.
