@@ -38,17 +38,24 @@ def _validate_endpoint(endpoint: str) -> str:
 
 def _row_to_dict(row):
     return {
-        "id": row["id"],
-        "name": row["name"],
-        "endpoint": row["endpoint"],
+        "id": row["id"], "name": row["name"], "endpoint": row["endpoint"],
         "transport": row["transport"],
         "credential_env": json.loads(row["credential_env_json"]),
         "declared_capabilities": json.loads(row["capabilities_json"]),
-        "enabled": bool(row["enabled"]),
-        "connection_status": "not_connected",
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
+        "enabled": bool(row["enabled"]), "connection_status": "not_connected",
+        "created_at": row["created_at"], "updated_at": row["updated_at"],
     }
+
+
+def _audit(db, event_type: str, server_id: str, details: dict) -> None:
+    db.execute(
+        """INSERT INTO audit_events
+           (event_type,actor_id,resource_type,resource_id,details_json,created_at)
+           VALUES (?,?,?,?,?,?)""",
+        (event_type, "api", "mcp_server", server_id,
+         json.dumps(details, sort_keys=True, separators=(",", ":")),
+         datetime.now(timezone.utc).isoformat()),
+    )
 
 
 def create_mcp_server(payload: MCPServerCreate) -> dict:
@@ -65,12 +72,14 @@ def create_mcp_server(payload: MCPServerCreate) -> dict:
         with connect() as db:
             db.execute(
                 """INSERT INTO mcp_servers
-                (id, name, endpoint, transport, credential_env_json, capabilities_json,
-                 enabled, created_at, updated_at)
+                (id,name,endpoint,transport,credential_env_json,capabilities_json,
+                 enabled,created_at,updated_at)
                 VALUES (?, ?, ?, 'streamable_http', ?, ?, ?, ?, ?)""",
                 (server_id, payload.name.strip(), endpoint, json.dumps(env_names),
                  json.dumps(capabilities), int(payload.enabled), now, now),
             )
+            _audit(db, "mcp_server.registered", server_id,
+                   {"name": payload.name.strip(), "endpoint": endpoint, "enabled": payload.enabled})
             row = db.execute("SELECT * FROM mcp_servers WHERE id=?", (server_id,)).fetchone()
     except Exception as exc:
         if "UNIQUE constraint failed" in str(exc):
@@ -94,5 +103,7 @@ def set_mcp_server_enabled(server_id: str, enabled: bool) -> dict | None:
         )
         if cursor.rowcount != 1:
             return None
+        _audit(db, "mcp_server.enabled" if enabled else "mcp_server.disabled",
+               server_id, {"enabled": enabled})
         row = db.execute("SELECT * FROM mcp_servers WHERE id=?", (server_id,)).fetchone()
     return _row_to_dict(row)
