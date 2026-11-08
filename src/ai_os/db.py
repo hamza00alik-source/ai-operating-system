@@ -43,6 +43,18 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT,
             result_count INTEGER NOT NULL DEFAULT 0, error TEXT
         );
+        CREATE TABLE IF NOT EXISTS provider_catalog_entries (
+            source_id TEXT NOT NULL, provider_id TEXT NOT NULL,
+            name TEXT NOT NULL, category TEXT NOT NULL,
+            website TEXT NOT NULL DEFAULT '', api_key_url TEXT NOT NULL DEFAULT '',
+            base_url TEXT NOT NULL DEFAULT '', free_tier_json TEXT NOT NULL DEFAULT '{}',
+            policy_json TEXT NOT NULL DEFAULT '{}', confidence TEXT NOT NULL DEFAULT 'unknown',
+            last_verified TEXT, probe_json TEXT NOT NULL DEFAULT '{}',
+            status_json TEXT NOT NULL DEFAULT '{}', source_url TEXT NOT NULL,
+            synced_at TEXT NOT NULL, review_state TEXT NOT NULL DEFAULT 'pending',
+            PRIMARY KEY(source_id, provider_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_provider_catalog_category ON provider_catalog_entries(category, name);
         CREATE TABLE IF NOT EXISTS provider_credentials (
             provider TEXT PRIMARY KEY, encrypted_secret TEXT NOT NULL,
             model TEXT NOT NULL, base_url TEXT NOT NULL,
