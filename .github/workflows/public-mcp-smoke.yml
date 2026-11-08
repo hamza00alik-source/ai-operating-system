@@ -2,8 +2,7 @@ name: public MCP smoke test
 
 on:
   push:
-    branches:
-      - feat/multi-storefront-commerce-core
+    branches: [main, "feat/**"]
     paths:
       - scripts/smoke_test_public_mcp.py
       - .github/workflows/public-mcp-smoke.yml
