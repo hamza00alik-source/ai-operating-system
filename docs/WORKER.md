@@ -19,7 +19,7 @@ Set these environment variables in the worker process only:
 
 No provider is contacted by default. The worker exits before polling unless model execution is explicitly enabled and the base URL and model are configured.
 
-## Run
+## Run as a separate process (recommended for larger hosts)
 
 ```bash
 python -m ai_os.worker_service
@@ -27,13 +27,25 @@ python -m ai_os.worker_service
 
 Use a host process manager or platform worker service to restart the process after machine or process failure.
 
+## Run inside the API process (single-service hosting)
+
+For a small host that permits only one app/process, the API can manage one background worker thread:
+
+- Set `AI_OS_WORKER_EMBEDDED=true`.
+- Also set `AI_OS_MODEL_ENABLED=true`, `AI_OS_MODEL_BASE_URL`, and `AI_OS_MODEL_NAME`.
+- Keep the ASGI server to one process/worker. Do not run multiple Uvicorn workers with embedded mode; each process would start its own queue consumer.
+- The API lifespan starts the worker and signals it to stop during graceful shutdown. The worker publishes the same persistent heartbeat.
+- The API and worker share one database path. Configure a persistent writable disk, not an ephemeral filesystem.
+
+Embedded mode is opt-in and refuses startup if model execution is not explicitly enabled/configured. It does not make an unreliable host persistent: the hosting provider must keep the app alive and restart it after failure. For production scale, use separate API and worker services with a shared database.
+
 ## Current behavior and limits
 
 - Processes one queued task at a time. The opt-in three-agent graph makes three sequential model requests per task.
 - Uses an atomic SQLite write transaction to claim a task.
 - Persists task result, error, worker ID and timestamps.
 - Provider errors are not automatically retried to avoid duplicate or metered requests.
-- Claims have a 15-minute lease. Expired claims become `blocked` for manual review; there is no heartbeat or operator reconciliation endpoint yet.
+- Claims have a 15-minute lease. Expired claims become `blocked` for manual review; worker process heartbeat reports process liveness, not per-task lease renewal. There is no operator reconciliation endpoint yet.
 - Agent handoffs persist in `agent_steps` and task-scoped `agent_memory`; completed steps are reused on deliberate resume. Running/failed steps are not automatically retried.
 - The worker cannot publish content, spend money, contact customers or modify external systems.
 - API and worker must share the same persistent database.
