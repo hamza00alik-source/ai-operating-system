@@ -1,6 +1,5 @@
 import json
 
-import pytest
 from fastapi.testclient import TestClient
 
 from ai_os import llm_gateway
@@ -42,14 +41,51 @@ def test_gateway_executes_real_adapter_path_with_mocked_transport(monkeypatch):
 
     def fake_post(url, payload, headers, timeout=35):
         captured.update(url=url, payload=payload, headers=headers)
-        return {"choices": [{"message": {"content": "AIOS live connection successful"}}]}
+        return {"choices": [{"message": {"content": "AIOS live connection successful"}}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 4, "total_tokens": 11}}
 
     monkeypatch.setattr(llm_gateway, "_post", fake_post)
     result = llm_gateway.test_provider("groq")
     assert result["test_passed"] is True
     assert result["live"] is True
+    assert result["usage"]["total_tokens"] == 11
     assert captured["url"] == "https://api.groq.com/openai/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer test-secret"
+
+
+def test_openrouter_free_route_uses_compatible_api_and_reports_usage(monkeypatch):
+    monkeypatch.setenv("AI_OS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("AI_OS_OPENROUTER_MODEL", "provider/model:free")
+    monkeypatch.setenv("AI_OS_OPENROUTER_API_KEY", "test-openrouter-secret")
+    monkeypatch.setenv("AI_OS_OPENROUTER_FREE_CONFIRMED", "true")
+    captured = {}
+
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {
+            "choices": [{"message": {"content": "AIOS live connection successful"}}],
+            "usage": {"prompt_tokens": 13, "completion_tokens": 5, "total_tokens": 18},
+        }
+
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.test_provider("openrouter")
+    assert result["test_passed"] is True
+    assert result["provider"] == "openrouter"
+    assert result["usage"]["total_tokens"] == 18
+    assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer test-openrouter-secret"
+    assert captured["headers"]["X-Title"] == "AI Operating System"
+    assert captured["payload"]["model"] == "provider/model:free"
+
+
+def test_openrouter_is_blocked_unless_owner_confirms_free(monkeypatch):
+    monkeypatch.setenv("AI_OS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("AI_OS_OPENROUTER_MODEL", "provider/model:free")
+    monkeypatch.setenv("AI_OS_OPENROUTER_API_KEY", "test-secret")
+    monkeypatch.setenv("AI_OS_OPENROUTER_FREE_CONFIRMED", "false")
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "openrouter")
+    assert status["configured"] is True
+    assert status["eligible"] is False
 
 
 def test_llm_endpoint_blocks_unconfigured_provider(monkeypatch):
