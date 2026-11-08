@@ -411,7 +411,8 @@ def test_control_plane_accepts_encrypted_vault_reference_but_not_arbitrary_vault
 def test_mcp_tool_mapping_requires_owner_confirmation_and_prior_discovery(monkeypatch):
     from ai_os import api
 
-    monkeypatch.setattr(api, "discover_mcp_tools", lambda endpoint_id: {
+    async def fake_discovery(endpoint_id):
+        return {
         "endpoint_id": endpoint_id,
         "discovered_tool_count": 1,
         "tools": [{
@@ -421,7 +422,9 @@ def test_mcp_tool_mapping_requires_owner_confirmation_and_prior_discovery(monkey
             "trust": "untrusted_remote_metadata",
             "executable": False,
         }],
-    })
+        }
+
+    monkeypatch.setattr(api, "discover_mcp_tools", fake_discovery)
     with TestClient(app) as client:
         endpoint = client.post(
             "/control-plane/endpoints",
@@ -467,7 +470,8 @@ def test_mcp_tool_mapping_requires_owner_confirmation_and_prior_discovery(monkey
 def test_mcp_tool_execution_requires_explicit_agent_capability_and_uses_broker(monkeypatch):
     from ai_os import api
 
-    monkeypatch.setattr(api, "discover_mcp_tools", lambda endpoint_id: {
+    async def fake_discovery(endpoint_id):
+        return {
         "endpoint_id": endpoint_id,
         "discovered_tool_count": 1,
         "tools": [{
@@ -475,7 +479,9 @@ def test_mcp_tool_execution_requires_explicit_agent_capability_and_uses_broker(m
             "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
             "trust": "untrusted_remote_metadata", "executable": False,
         }],
-    })
+        }
+
+    monkeypatch.setattr(api, "discover_mcp_tools", fake_discovery)
     calls = []
 
     async def fake_call(endpoint_id, tool_name, arguments, expected_schema):
