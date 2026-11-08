@@ -26,13 +26,17 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 </style></head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>Technology Discovery</h1><div class="hint">Inspect real GitHub projects before approving any integration.</div></div><div class="toolbar"><span class="tag">Owner-supervised · Read-only discovery</span><button id="logoutButton" class="secondary">Log out</button></div></div>
+<nav class="toolbar section"><a href="#overview">Company</a><a href="#workforce">Workforce</a><a href="#tasks">Tasks & approvals</a><a href="#discovery">Technology</a><a href="#models">AI models</a></nav>
+<section id="overview" class="panel section"><h2>Company operations</h2><div class="grid" style="margin:10px 0"><div class="metric"><strong id="workforceCount">283</strong><span>Catalogued specialists</span></div><div class="metric"><strong id="departmentCount">18</strong><span>Departments</span></div><div class="metric"><strong id="taskCount">—</strong><span>Tasks</span></div><div class="metric"><strong id="approvalCount">—</strong><span>Pending approvals</span></div></div><div id="companyStatus" class="small">Workforce catalog loaded from the Agency Agents repository. Agent execution runtime is not yet connected.</div></section>
+<section id="workforce" class="panel section"><h2>Agency workforce · 283 specialists</h2><p class="small">18 departments · 284 roles including CEO. Source: <a href="https://github.com/hamza00alik-source/agency-agents" target="_blank" rel="noopener">Agency Agents repository</a> · MIT. Catalog entries are specialist instructions, not independently running processes.</p><div class="toolbar"><input id="agentSearch" placeholder="Search 283 specialists…" style="flex:1;min-width:180px"><select id="departmentFilter"><option value="">All departments</option></select><button id="loadAgents" class="secondary">Refresh roster</button></div><div id="departmentChips" class="toolbar section"></div><div class="scroll section"><table><thead><tr><th>Specialist</th><th>Department</th><th>Runtime state</th><th>Source</th></tr></thead><tbody id="agentRows"><tr><td colspan="4">Loading workforce catalog…</td></tr></tbody></table></div></section>
+<section id="tasks" class="panel section"><h2>Tasks & owner approvals</h2><div class="toolbar"><button id="loadOperations" class="secondary">Refresh operations</button><span class="small">Owner approval remains mandatory for consequential actions.</span></div><div id="taskApprovalPanel" class="small">No operational data loaded.</div></section>
 <div class="grid">
 <div class="metric"><strong id="scans">—</strong><span>Discovery scans</span></div>
 <div class="metric"><strong id="candidates">—</strong><span>Candidate projects</span></div>
 <div class="metric"><strong id="review">—</strong><span>Needs review</span></div>
 <div class="metric"><strong id="integrated">0</strong><span>Integrated from this pipeline</span></div>
 </div>
-<section class="panel">
+<section id="discovery" class="panel">
 <h2>Run a discovery scan</h2>
 <div class="toolbar">
 <label><input type="checkbox" name="cat" value="agent-frameworks" checked> Agent frameworks</label>
@@ -49,7 +53,7 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 <section class="panel section"><h2>Discovered projects</h2><div class="scroll"><table><thead><tr><th>Project</th><th>Category</th><th>License</th><th>Maintenance</th><th>Stars</th><th>Review state</th><th>Evidence</th></tr></thead><tbody id="candidateRows"><tr><td colspan="7" class="muted">No data loaded</td></tr></tbody></table></div></section>
 <p class="small section">Cost, security, commercial-use rights, and provider terms remain unverified unless the evidence record explicitly says otherwise. A discovered project is not an approved integration.</p>
 
-<section class="panel section"><h2>Live AI model gateway</h2>
+<section id="models" class="panel section"><h2>Live AI model gateway</h2>
 <div class="small">OpenRouter keys are encrypted on the server before storage. The first connection uses only the free-model router and has no paid fallback. Use HTTPS.</div>
 <div class="section" style="border:1px solid var(--line);border-radius:10px;padding:12px"><strong>Provider credentials · OpenRouter</strong><div class="small">Enter your OpenRouter key here. It is sent only to the authenticated server, encrypted at rest, and never returned to this page. Do not paste it into chat or GitHub.</div><div class="toolbar" style="margin-top:10px"><input id="providerApiKey" type="password" autocomplete="off" placeholder="OpenRouter API key" style="flex:1;min-width:220px"><button id="saveProviderKey">Save encrypted key</button></div><label style="margin-top:10px"><input id="confirmFreeOnly" type="checkbox"> I confirm this connection must use the free-only router, with no paid model or paid fallback.</label><div id="credentialStatus" class="status">Credential status not loaded.</div></div></div>
 <div class="toolbar" style="margin-top:12px"><select id="providerSelect"><option value="">Loading providers…</option></select><button class="secondary" id="loadProviders">Refresh providers</button><button id="testProvider">Test live connection</button></div>
@@ -73,6 +77,30 @@ $("run").onclick=async()=>{const categories=[...document.querySelectorAll('input
 $("refresh").onclick=refresh;
 window.reviewCandidate=async(url,decision)=>{const label=decision==="approved-for-sandbox"?"Approve for isolated sandbox review":"Reject candidate";if(!confirm(label+"? This records your decision only; it will not install or execute anything."))return;const notes=prompt("Optional review notes:")||"";try{await api("/discovery/candidates/review",{method:"POST",body:JSON.stringify({repository_url:url,decision,notes})});say("Owner decision saved. No software was installed or executed.");await refresh()}catch(e){say(e.message)}};
 
+
+async function loadAgents(){
+ try{
+  const q=$("agentSearch").value.trim(),dep=$("departmentFilter").value;
+  const params=new URLSearchParams();if(q)params.set("q",q);if(dep)params.set("department",dep);
+  const data=await api("/workforce/agents?"+params.toString());
+  $("workforceCount").textContent=data.agent_count;$("departmentCount").textContent=data.department_count;
+  const select=$("departmentFilter"),current=select.value;
+  if(select.options.length===1){for(const d of data.departments){const o=document.createElement("option");o.value=d.id;o.textContent=d.name+" ("+d.agent_count+")";select.appendChild(o)}}
+  if(current)select.value=current;
+  $("departmentChips").innerHTML=data.departments.map(d=>'<span class="pill">'+esc(d.name)+': '+esc(d.agent_count)+'</span>').join("");
+  $("agentRows").innerHTML=data.agents.map(a=>'<tr><td><strong>'+esc(a.name)+'</strong><div class="small">'+esc(a.id)+'</div></td><td>'+esc(a.department)+'</td><td><span class="pill warn">Catalogued · not runtime</span></td><td><a href="'+esc(a.source_url)+'" target="_blank" rel="noopener">Agent instructions</a></td></tr>').join("")||'<tr><td colspan="4">No matching specialists.</td></tr>';
+  $("companyStatus").textContent="Source: "+data.source_repository+" · License: "+data.license+" · 283 specialist definitions indexed. These are available for orchestration once the agent runtime is implemented.";
+ }catch(e){$("agentRows").innerHTML='<tr><td colspan="4">'+esc(e.message)+'</td></tr>'}
+}
+async function loadOperations(){
+ try{
+  const [overview,tasks,approvals]=await Promise.all([api("/company/overview"),api("/tasks"),api("/approvals")]);
+  $("taskCount").textContent=Object.values(overview.tasks).reduce((a,b)=>a+b,0);
+  $("approvalCount").textContent=overview.approvals.pending||0;
+  $("taskApprovalPanel").innerHTML='<p><strong>Tasks</strong>: '+tasks.length+' · <strong>Approvals pending</strong>: '+(overview.approvals.pending||0)+' · <strong>Execution runtime</strong>: '+esc(overview.execution_runtime)+'</p><div class="scroll"><table><thead><tr><th>Task</th><th>Department</th><th>Status</th></tr></thead><tbody>'+tasks.slice(0,20).map(t=>'<tr><td>'+esc(t.title)+'</td><td>'+esc(t.department)+'</td><td>'+esc(t.status)+'</td></tr>').join("")+'</tbody></table></div><h3>Approval inbox</h3><div class="scroll"><table><thead><tr><th>Requested action</th><th>Details</th><th>Status</th></tr></thead><tbody>'+approvals.slice(0,20).map(a=>'<tr><td>'+esc(a.action)+'</td><td>'+esc(a.details)+'</td><td>'+esc(a.status)+'</td></tr>').join("")+'</tbody></table></div>';
+ }catch(e){$("taskApprovalPanel").textContent=e.message}
+}
+$("loadAgents").onclick=loadAgents;$("agentSearch").addEventListener("input",()=>{clearTimeout(window.agentSearchTimer);window.agentSearchTimer=setTimeout(loadAgents,250)});$("departmentFilter").onchange=loadAgents;$("loadOperations").onclick=loadOperations;
 async function loadProviders(){try{const providers=await api("/llm/providers");const select=$("providerSelect");select.innerHTML=providers.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+' · '+(p.eligible?'eligible':'blocked')+'</option>').join("");$("providerStatus").textContent=providers.map(p=>p.name+": "+(p.eligible?"eligible (free status owner-confirmed)":p.reason)).join("\\n");}catch(e){$("providerStatus").textContent=e.message}}
 async function runModel(test){const provider=$("providerSelect").value;if(!provider){$("modelOutput").textContent="Select a provider first.";return}const prompt=test?"Reply with exactly: AIOS live connection successful":$("modelPrompt").value.trim();if(!prompt){$("modelOutput").textContent="Enter a prompt first.";return}const button=test?$("testProvider"):$("runModel");button.disabled=true;$("modelOutput").textContent="Sending live request…";try{const result=await api(test?"/llm/test":"/llm/run",{method:"POST",body:JSON.stringify({provider,prompt})});$("modelOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("modelOutput").textContent="Live request failed: "+e.message}finally{button.disabled=false}}
 $("loadProviders").onclick=loadProviders;$("testProvider").onclick=()=>runModel(true);$("runModel").onclick=()=>runModel(false);
@@ -80,7 +108,7 @@ async function saveProviderKey(){const api_key=$("providerApiKey").value.trim();
 $("saveProviderKey").onclick=saveProviderKey;
 
 function showLogin(message=""){ $("loginPanel").style.display="flex"; $("loginStatus").textContent=message; $("loginKey").focus(); }
-async function startDashboard(){authenticated=true;$("loginPanel").style.display="none";refresh();loadProviders();api("/llm/credentials").then(x=>$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.").catch(e=>$("credentialStatus").textContent=e.message);if(!window.aiosRefreshTimer)window.aiosRefreshTimer=setInterval(refresh,10000)}
+async function startDashboard(){authenticated=true;$("loginPanel").style.display="none";refresh();loadProviders();loadAgents();loadOperations();api("/llm/credentials").then(x=>$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.").catch(e=>$("credentialStatus").textContent=e.message);if(!window.aiosRefreshTimer)window.aiosRefreshTimer=setInterval(refresh,10000)}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();const b=$("loginButton");b.disabled=true;$("loginStatus").textContent="Validating owner key…";try{const r=await fetch("/auth/session",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:$("loginKey").value})});if(!r.ok)throw Error("Owner key was rejected. Check the key in Railway Variables.");$("loginKey").value="";await startDashboard()}catch(err){$("loginStatus").textContent=err.message}finally{b.disabled=false}});
 $("logoutButton").onclick=async()=>{try{await fetch("/auth/session",{method:"DELETE",credentials:"same-origin"});}finally{authenticated=false;showLogin("You have been signed out.")}};
 fetch("/auth/session",{credentials:"same-origin"}).then(r=>r.json()).then(s=>{if(s.authenticated)startDashboard();else showLogin()}).catch(()=>showLogin("Sign in to continue."));
