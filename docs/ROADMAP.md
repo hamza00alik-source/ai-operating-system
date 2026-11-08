@@ -12,13 +12,20 @@ A feature is complete only when tested and its operating limits are documented.
 
 ## Phase 2 — Orchestration
 - [x] Initial GitHub discovery scan queue, candidate persistence, metadata evaluation, and separate worker
-- [ ] Dashboard UI for scan status, evidence, and owner review
+- [x] Dashboard UI for scan status, evidence, and owner review
+- [x] Persistent owner browser sessions (HttpOnly, Secure, SameSite=Strict; 14-day expiry)
+- [x] Agency workforce catalog: 283 specialist definitions across 18 departments
+- [x] Owner-visible inventory of 12 reference/workforce repositories
 - [ ] Worker lease/claim safety for multiple worker instances
-- [ ] Broader agent orchestration beyond discovery
+- [ ] CEO-led agent orchestration beyond discovery
+- [ ] Load specialist instruction files into bounded execution contexts
+- [ ] Task assignment, dependency graph, execution artifacts, and specialist reports
 - [ ] Task dependencies and assignment
-- [ ] Agent interface and registry
+- [x] Static specialist registry sourced from Agency Agents
+- [ ] Live agent runtime and worker registry
 - [ ] Retry policy, timeouts, execution logs
-- [ ] Background worker and scheduler
+- [x] In-service discovery polling worker (single service)
+- [ ] Durable agent worker queue, scheduler, leases, and retries
 
 ## Phase 3 — Memory and learning
 - [ ] Source-attributed company knowledge
@@ -34,7 +41,8 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Payment-status verification only
 
 ## Phase 5 — Operations
-- [ ] Dashboard, deployment profiles, backups
+- [x] Owner Control Center with company overview, workforce, repository sources, tasks, approvals, discovery, and model gateway
+- [ ] Deployment profiles, backups
 - [ ] Security review and end-to-end tests
 - [ ] Beginner-friendly setup guide
 
