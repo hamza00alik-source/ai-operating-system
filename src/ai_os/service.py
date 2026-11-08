@@ -121,6 +121,7 @@ def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
                 "UPDATE approvals SET status='expired' WHERE id=? AND status='pending'",
                 (approval_id,),
             )
+            db.commit()
             raise ValueError("This approval request has expired")
         changed = db.execute(
             "UPDATE approvals SET status=?, decided_at=? "
@@ -160,6 +161,7 @@ def consume_approval(
                 "UPDATE approvals SET status='expired' WHERE id=? AND status='approved'",
                 (approval_id,),
             )
+            db.commit()
             raise ValueError("Approval has expired")
         if not row["action_fingerprint"] or not hmac.compare_digest(
             row["action_fingerprint"], fingerprint
