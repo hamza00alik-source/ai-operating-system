@@ -72,6 +72,23 @@ def initialize_database() -> None:
             FOREIGN KEY(run_id) REFERENCES agent_runs(id)
         );
         CREATE INDEX IF NOT EXISTS idx_agent_run_events_run_id ON agent_run_events(run_id, id);
+        CREATE TABLE IF NOT EXISTS agent_run_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            sequence_no INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            agent_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            input_summary TEXT NOT NULL DEFAULT '',
+            output TEXT NOT NULL DEFAULT '',
+            error TEXT,
+            created_at TEXT NOT NULL,
+            finished_at TEXT,
+            FOREIGN KEY(run_id) REFERENCES agent_runs(id),
+            UNIQUE(run_id, sequence_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run_id ON agent_run_steps(run_id, sequence_no);
         CREATE TABLE IF NOT EXISTS owner_sessions (
             token_hash TEXT PRIMARY KEY,
             created_at TEXT NOT NULL,
