@@ -477,12 +477,12 @@ def test_mcp_tool_execution_requires_explicit_agent_capability_and_uses_broker(m
         }],
     })
     calls = []
-    monkeypatch.setattr(
-        api, "call_mcp_read_only_tool",
-        lambda endpoint_id, tool_name, arguments: calls.append(
-            (endpoint_id, tool_name, arguments)
-        ) or {"content": ["two useful results"]},
-    )
+
+    async def fake_call(endpoint_id, tool_name, arguments):
+        calls.append((endpoint_id, tool_name, arguments))
+        return {"content": ["two useful results"]}
+
+    monkeypatch.setattr(api, "call_mcp_read_only_tool", fake_call)
     with TestClient(app) as client:
         endpoint = client.post(
             "/control-plane/endpoints",
