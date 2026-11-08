@@ -169,3 +169,30 @@ def test_worker_runs_opt_in_agent_graph_and_persists_final_review(monkeypatch, t
     assert [row[0] for row in memories] == [
         "Researcher", "Developer", "Quality Reviewer"
     ]
+
+
+def test_worker_heartbeat_reports_active_then_stopped(monkeypatch, tmp_path):
+    _prepare_database(monkeypatch, tmp_path)
+    from ai_os.heartbeat import record_worker_heartbeat, get_worker_status
+
+    record_worker_heartbeat("heartbeat-test", "active")
+    active = get_worker_status()
+    assert active["status"] == "active"
+    assert active["workers"][0]["worker_id"] == "heartbeat-test"
+
+    record_worker_heartbeat("heartbeat-test", "stopped")
+    stopped = get_worker_status()
+    assert stopped["status"] == "stopped"
+
+
+def test_worker_heartbeat_reports_stale_process(monkeypatch, tmp_path):
+    database = _prepare_database(monkeypatch, tmp_path)
+    from ai_os.heartbeat import get_worker_status
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "INSERT INTO worker_heartbeats(worker_id,status,started_at,last_seen_at) VALUES (?,?,?,?)",
+            ("old-worker", "active", "2020-01-01T00:00:00+00:00", "2020-01-01T00:00:00+00:00"),
+        )
+    status = get_worker_status(stale_after_seconds=10)
+    assert status["status"] == "stale"
+    assert status["workers"][0]["status"] == "stale"
