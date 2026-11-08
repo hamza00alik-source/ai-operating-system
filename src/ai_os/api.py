@@ -9,6 +9,7 @@ from ai_os.agent_runtime import agent_graph_enabled, get_task_memory, list_task_
 from ai_os.auth import Principal, require_operator, require_owner, require_reader, require_task_writer
 from ai_os.config import get_settings
 from ai_os.db import connect, initialize_database
+from ai_os.embedded_worker import start_embedded_worker
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
 from ai_os.model_adapter import generate_text, get_model_status
 from ai_os.heartbeat import get_worker_status
@@ -28,7 +29,12 @@ async def lifespan(_: FastAPI):
     if settings.environment != "development" and not (settings.api_key or settings.api_keys):
         raise RuntimeError("Set AI_OS_API_KEY or AI_OS_API_KEYS outside development.")
     initialize_database()
-    yield
+    stop_worker = start_embedded_worker()
+    try:
+        yield
+    finally:
+        if stop_worker is not None:
+            stop_worker()
 
 
 app = FastAPI(
