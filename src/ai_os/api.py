@@ -12,7 +12,9 @@ from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
 from ai_os.discovery import create_scan, list_scans, list_candidates, run_pending_once
-from ai_os.schemas import DiscoveryScanCreate
+from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
+from ai_os.db import connect
+from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, generate, test_provider
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable
 from pydantic import BaseModel, Field
@@ -195,3 +197,21 @@ def get_discovery_scans():
 @app.get("/discovery/candidates", dependencies=[Depends(require_api_key)])
 def get_discovery_candidates():
     return list_candidates()
+
+
+@app.post("/discovery/candidates/review", dependencies=[Depends(require_owner_key)])
+def post_candidate_review(payload: CandidateReviewDecision):
+    """Record an owner decision; sandbox approval does not install or execute code."""
+    url = payload.repository_url.strip()
+    if not url.startswith("https://github.com/"):
+        raise HTTPException(status_code=422, detail="Only canonical HTTPS GitHub repository URLs can be reviewed.")
+    with connect() as db:
+        row = db.execute("SELECT canonical_url FROM discovery_candidates WHERE canonical_url=?", (url,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Discovery candidate not found.")
+        updated = datetime.now(timezone.utc).isoformat()
+        db.execute(
+            "UPDATE discovery_candidates SET review_state=?, review_notes=?, review_updated_at=? WHERE canonical_url=?",
+            (payload.decision, payload.notes.strip(), updated, url),
+        )
+    return {"repository_url": url, "review_state": payload.decision, "review_notes": payload.notes.strip(), "review_updated_at": updated, "side_effects": "none"}
