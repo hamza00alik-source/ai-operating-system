@@ -34,6 +34,22 @@ In development, operational endpoints are open for local testing. In staging/pro
 
 Approval records are workflow primitives, not a security sandbox. Do not connect production credentials until authorization, audit logging, and integration safeguards are reviewed.
 
+## Supervised technology discovery (initial implementation)
+
+The API can queue GitHub repository discovery scans and expose persisted scan/candidate results:
+
+- `POST /discovery/scans` with `{"categories":["agent-frameworks","mcp-servers"]}`
+- `GET /discovery/scans`
+- `GET /discovery/candidates`
+
+Run the separate worker alongside the API:
+
+```bash
+python -m ai_os.discovery_worker
+```
+
+The worker searches public GitHub repository metadata. Set `GITHUB_TOKEN` as a private environment variable to use authenticated GitHub API limits; never commit it. Without a token, GitHub documents a lower unauthenticated limit. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
+
 ## Hosting
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
 
