@@ -1,0 +1,31 @@
+name: public MCP smoke test
+
+on:
+  push:
+    branches:
+      - feat/multi-storefront-commerce-core
+    paths:
+      - scripts/smoke_test_public_mcp.py
+      - .github/workflows/public-mcp-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install AIOS with MCP SDK
+        run: pip install -e ".[mcp]"
+      - name: Test public MCP discovery only
+        run: python scripts/smoke_test_public_mcp.py
