@@ -113,6 +113,22 @@ def initialize_database() -> None:
         agent_run_columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_runs)")}
         if "task_id" not in agent_run_columns:
             connection.execute("ALTER TABLE agent_runs ADD COLUMN task_id TEXT")
+        # Older persistent databases predate the collaborative worker fields.
+        # Add every column written by the current runtime before it claims a run.
+        agent_run_migrations = {
+            "assigned_agent_id": "TEXT",
+            "specialist_output": "TEXT",
+            "ceo_review": "TEXT",
+            "usage_json": "TEXT",
+            "error": "TEXT",
+            "started_at": "TEXT",
+            "finished_at": "TEXT",
+        }
+        for column_name, column_type in agent_run_migrations.items():
+            if column_name not in agent_run_columns:
+                connection.execute(
+                    "ALTER TABLE agent_runs ADD COLUMN " + column_name + " " + column_type
+                )
         # Backward-compatible migration for databases created before owner review.
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(discovery_candidates)")}
         if "review_state" not in columns:
