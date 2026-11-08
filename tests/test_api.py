@@ -319,3 +319,52 @@ def test_agent_mcp_tool_request_requires_owner_approval_before_execution(monkeyp
         })
         assert replay.status_code == 409
         assert len(calls) == 1
+
+
+def test_agent_mcp_request_uses_authenticated_identity_and_viewer_is_denied(monkeypatch):
+    import json
+
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.delenv("AI_OS_API_KEY", raising=False)
+    monkeypatch.setenv("AI_OS_API_KEYS", json.dumps({
+        "owner-secret": {"principal_id": "owner-1", "role": "owner"},
+        "agent-secret": {"principal_id": "research-agent", "role": "agent"},
+        "viewer-secret": {"principal_id": "auditor-1", "role": "viewer"},
+    }))
+    owner = {"X-API-Key": "owner-secret"}
+    agent = {"X-API-Key": "agent-secret"}
+    viewer = {"X-API-Key": "viewer-secret"}
+
+    with TestClient(app) as client:
+        server = client.post("/mcp/servers", headers=owner, json={
+            "name": "Role boundary MCP",
+            "endpoint": "https://role-boundary.example.com/mcp",
+        }).json()
+        assert client.post(
+            f"/mcp/servers/{server['id']}/enabled?enabled=true",
+            headers=owner,
+        ).status_code == 200
+        task = client.post("/tasks", headers=agent, json={
+            "title": "Agent-owned research task",
+        })
+        assert task.status_code == 201
+
+        denied = client.post("/mcp/tool-requests", headers=viewer, json={
+            "server_id": server["id"], "tool_name": "search",
+            "arguments": {"query": "safe synthetic test"},
+            "task_id": task.json()["id"],
+        })
+        assert denied.status_code == 403
+        assert client.get("/mcp/tool-requests", headers=viewer).status_code == 403
+
+        requested = client.post("/mcp/tool-requests", headers=agent, json={
+            "server_id": server["id"], "tool_name": "search",
+            "arguments": {"query": "safe synthetic test"},
+            "task_id": task.json()["id"],
+        })
+        assert requested.status_code == 201
+        body = requested.json()
+        assert body["requester_id"] == "research-agent"
+        assert body["task_id"] == task.json()["id"]
+        assert body["status"] == "pending"
+        assert client.get("/mcp/tool-requests", headers=owner).json()[0]["id"] == body["id"]
