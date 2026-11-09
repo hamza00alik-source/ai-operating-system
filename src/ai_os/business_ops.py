@@ -102,6 +102,12 @@ def business_summary() -> dict:
             """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
             WHERE record_type='revenue' AND verified=1 GROUP BY currency"""
         ).fetchall()
+        revenue_mtd = db.execute(
+            """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
+            WHERE record_type='revenue' AND verified=1 AND substr(created_at,1,7)=?
+            GROUP BY currency""",
+            (now()[:7],),
+        ).fetchall()
         customers = db.execute(
             "SELECT COUNT(*) n FROM business_records WHERE record_type='customer'"
         ).fetchone()["n"]
@@ -111,6 +117,7 @@ def business_summary() -> dict:
     return {
         "customers": customers,
         "verified_revenue_by_currency": [dict(x) for x in revenue],
+        "verified_revenue_mtd_by_currency": [dict(x) for x in revenue_mtd],
         "expenses_by_currency": [dict(x) for x in expenses],
         "expenses_awaiting_owner_approval": pending_expenses,
         "revenue_policy": "Only owner-marked verified payments are included. Expected or unverified revenue is excluded.",
