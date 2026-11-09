@@ -108,6 +108,16 @@ The AI Brain is a provider-independent subsystem stored in the same persistent S
 This first version uses local lexical retrieval and SQLite; it requires no embedding service, extra model call, or separate training job. It does not train a new neural network, create a foundation model, or eliminate inference compute. It reduces repeated context-building by retaining approved company knowledge, while advanced reasoning still uses the configured model gateway. The owner must review proposed lessons before they can influence future agents. Only successful completed runs are recorded as experiences; failed runs are not treated as lessons.
 
 
+## UnoRouter free-model gateway
+
+The owner console can connect UnoRouter as an additional OpenAI-compatible provider. Its public pricing catalog is read without credentials and can populate the model picker; the selected API key is stored only in the encrypted provider vault. AIOS accepts only model IDs ending in `:free` for this provider, and still requires the owner to confirm free-only use. The gateway calls `https://api.unorouter.com/v1/chat/completions`.
+
+The public catalog is not a promise that every model is enabled for your account. The account-scoped model list, provider quotas, latency, privacy/training terms, and regional availability can differ. Test the chosen model through **Test live connection** before routing agent work. UnoRouter documents light free-tier limits (approximately one request per minute per model/account); do not treat this as production throughput. No paid model, credit top-up, or billing upgrade is enabled by this integration.
+
+- `GET /llm/unorouter/catalog` — authenticated, read-only list of globally listed online free models.
+- `POST /llm/credentials/unorouter` — owner-authenticated encrypted key storage; model ID must end in `:free`.
+- The catalog call sends no prompt and no API key. Inference requests send only the selected prompt to UnoRouter.
+
 ## Free-provider failover
 
 Agent task stages now use a free-only provider router. The preferred provider (OpenRouter by default) is attempted first; if it hits a rate limit/quota response, an authentication/model availability error, or a connection/upstream failure, AIOS tries the next provider that is both configured and explicitly owner-confirmed as free. The route never upgrades billing, selects a paid model, or falls back to an unconfirmed endpoint. A malformed task request or a model's empty/placeholder response is not blindly retried. Provider attempts and the provider used for each agent stage are recorded in the run usage metadata and execution timeline.
