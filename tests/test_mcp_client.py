@@ -101,3 +101,10 @@ def test_malformed_department_allowlist_fails_closed(monkeypatch):
     monkeypatch.setenv("AI_OS_MCP_DEPARTMENT_TOOL_ALLOWLIST", "not-json")
     with pytest.raises(ValueError, match="valid JSON"):
         mcp_client._department_tool_allowlist("research")
+
+
+
+def test_agent_tool_discovery_does_not_query_servers_without_grants(monkeypatch):
+    monkeypatch.setattr(mcp_client, "_department_tool_allowlist", lambda _department: set())
+    monkeypatch.setattr(mcp_client, "connect", lambda: pytest.fail("no server should be queried"))
+    assert mcp_client.discover_enabled_tool_catalog("research") == []
