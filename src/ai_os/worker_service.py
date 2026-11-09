@@ -13,7 +13,7 @@ import threading
 import time
 from uuid import uuid4
 
-from ai_os.agent_runtime import run_pending_once as run_agent_once
+from ai_os.agent_runtime import recover_interrupted_runs, run_pending_once as run_agent_once
 from ai_os.db import initialize_database
 from ai_os.discovery import run_pending_once as run_discovery_once
 
@@ -38,8 +38,11 @@ def run_worker_loop(*, worker_id: str, stop_event: threading.Event,
         try:
             # A discovery scan is processed before an agent run to keep research
             # ingestion responsive without creating another competing consumer.
+            recovered = recover_interrupted_runs()
+            if recovered:
+                logger.warning("Recovered %s expired/interrupted agent run(s).", recovered)
             did_work = bool(run_discovery_once()) or did_work
-            did_work = bool(run_agent_once()) or did_work
+            did_work = bool(run_agent_once(worker_id=worker_id)) or did_work
             failures = 0
         except Exception:
             failures += 1
