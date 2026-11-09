@@ -101,6 +101,18 @@ def _read_bounded(response, limit: int = MAX_BYTES) -> tuple[bytes, bool]:
     return raw[:limit], len(raw) > limit
 
 
+def _add_redirect_provenance(text: str, submitted_url: str, final_url: str) -> str:
+    """Keep redirect provenance attached to evidence seen by later research agents."""
+    if submitted_url == final_url:
+        return text
+    note = (
+        "[SOURCE REDIRECT WARNING: The owner submitted "
+        f"{submitted_url} but the server redirected to {final_url}. "
+        "The captured page may not be the intended evidence; verify relevance before use.]"
+    )
+    return note + "\\n\\n" + text
+
+
 def capture_source(url: str) -> dict:
     submitted_url = _validate_url(url)
     safe_url = submitted_url
@@ -143,6 +155,8 @@ def capture_source(url: str) -> dict:
         match = re.search(r"<title[^>]*>(.*?)</title>", page, re.I | re.S)
         if match:
             title = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", match.group(1))).split())[:300]
+    redirected = safe_url != submitted_url
+    text = _add_redirect_provenance(text, submitted_url, safe_url)
     source_id = str(uuid4())
     captured_at = datetime.now(timezone.utc).isoformat()
     with connect() as db:
@@ -152,7 +166,6 @@ def capture_source(url: str) -> dict:
             VALUES(?,?,?,?,?,?)""",
             (source_id, safe_url, title, text, captured_at, content_type[:120]),
         )
-    redirected = safe_url != submitted_url
     return {
         "id": source_id,
         "url": safe_url,
