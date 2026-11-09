@@ -5,6 +5,7 @@ executes a tool. Every execution is one-time, schema-bound, and audited.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from datetime import datetime, timezone
 from ai_os.db import connect
 from ai_os.mcp_client import _load_server, _open_session, _list_tools, _post
 from ai_os.mcp_tool_catalog import get_discovered_tool_schema, validate_discovered_tool_arguments
+from ai_os.tool_approvals import _ensure_table
 
 
 def _read_only_grants() -> set[str]:
@@ -31,6 +33,7 @@ def execute_approved_proposal(proposal_id: str) -> dict:
     """Execute one approved proposal only after fresh read-only and schema checks."""
     now = datetime.now(timezone.utc).isoformat()
     with connect() as db:
+        _ensure_table(db)
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT * FROM mcp_tool_proposals WHERE id=?", (proposal_id,)).fetchone()
         if row is None:
@@ -118,7 +121,9 @@ def execute_approved_proposal(proposal_id: str) -> dict:
     if failure:
         details["error"] = failure
     else:
-        details["result"] = result
+        result_bytes = json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        details["result_sha256"] = hashlib.sha256(result_bytes).hexdigest()
+        details["result_bytes"] = len(result_bytes)
     with connect() as db:
         db.execute(
             "UPDATE mcp_tool_proposals SET execution_status=?,execution_finished_at=? WHERE id=? AND execution_status='running'",
