@@ -18,7 +18,7 @@ from ai_os.discovery import create_scan, list_scans, list_candidates, github_api
 from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
-from ai_os.llm_gateway import list_providers, generate, generate_with_fallback, test_provider
+from ai_os.llm_gateway import list_providers, list_unorouter_free_models, generate, generate_with_fallback, test_provider
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
@@ -194,6 +194,14 @@ def post_provider_credentials(provider_id: str, payload: ProviderCredentialReque
 @app.get("/llm/providers", dependencies=[Depends(require_api_key)])
 def get_llm_providers():
     return list_providers()
+
+
+@app.get("/llm/unorouter/catalog", dependencies=[Depends(require_api_key)])
+def get_unorouter_catalog():
+    try:
+        return list_unorouter_free_models()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/llm/test", dependencies=[Depends(require_api_key)])
