@@ -77,6 +77,12 @@ def _ensure_table(db) -> None:
     columns = {row["name"] for row in db.execute("PRAGMA table_info(mcp_tool_proposals)")}
     if "schema_sha256" not in columns:
         db.execute("ALTER TABLE mcp_tool_proposals ADD COLUMN schema_sha256 TEXT NOT NULL DEFAULT ''")
+    if "execution_status" not in columns:
+        db.execute("ALTER TABLE mcp_tool_proposals ADD COLUMN execution_status TEXT")
+    if "execution_started_at" not in columns:
+        db.execute("ALTER TABLE mcp_tool_proposals ADD COLUMN execution_started_at TEXT")
+    if "execution_finished_at" not in columns:
+        db.execute("ALTER TABLE mcp_tool_proposals ADD COLUMN execution_finished_at TEXT")
     db.execute("CREATE INDEX IF NOT EXISTS idx_mcp_tool_proposals_status ON mcp_tool_proposals(status, created_at)")
 
 
