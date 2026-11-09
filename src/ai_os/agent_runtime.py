@@ -133,6 +133,25 @@ def create_run(task_id: str) -> dict:
     return dict(row)
 
 
+def retry_run(run_id: str) -> dict:
+    """Queue a safe resume of a partial/failed run, reusing completed stage outputs."""
+    now = _now()
+    with connect() as db:
+        row = db.execute("SELECT * FROM agent_runs WHERE id=?", (run_id,)).fetchone()
+        if row is None:
+            raise LookupError("Agent run not found")
+        if row["status"] in {"queued", "running"}:
+            raise ValueError("This agent run is already queued or running.")
+        if row["status"] not in {"partial", "failed"}:
+            raise ValueError("Only partial or failed runs can be retried.")
+        db.execute("UPDATE agent_runs SET status='queued',error=NULL,finished_at=NULL WHERE id=?", (run_id,))
+        db.execute("UPDATE tasks SET status='queued' WHERE id=?", (row["task_id"],))
+        db.execute("INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
+                   (run_id, "retry_queued", "Owner requested a retry. Completed stages will be reused; only incomplete stages will run again.", now))
+        updated = db.execute("SELECT * FROM agent_runs WHERE id=?", (run_id,)).fetchone()
+    return dict(updated)
+
+
 def list_runs(task_id: str | None = None) -> list[dict]:
     with connect() as db:
         if task_id:
@@ -260,7 +279,12 @@ def _start_step(run_id: str, sequence_no: int, role: str, agent: dict, input_sum
         db.execute(
             """INSERT INTO agent_run_steps
             (run_id,sequence_no,role,agent_id,agent_name,status,input_summary,created_at)
-            VALUES(?,?,?,?,?,'running',?,?)""",
+            VALUES(?,?,?,?,?,'running',?,?)
+            ON CONFLICT(run_id, sequence_no) DO UPDATE SET
+                role=excluded.role, agent_id=excluded.agent_id,
+                agent_name=excluded.agent_name, status='running',
+                input_summary=excluded.input_summary, output='', error=NULL,
+                created_at=excluded.created_at, finished_at=NULL""",
             (run_id, sequence_no, role, agent.get("id", "executive/ceo"),
              agent.get("name", "CEO Reviewer"), input_summary[:1200], _now()),
         )
@@ -293,8 +317,15 @@ def run_pending_once() -> bool:
     try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
         task = dict(task_row)
+        with connect() as db:
+            prior_steps = {item["sequence_no"]: dict(item) for item in db.execute(
+                "SELECT * FROM agent_run_steps WHERE run_id=? ORDER BY sequence_no", (run_id,)
+            ).fetchall()}
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
         specialist = _select_specialist(task, manifest)
+        saved_specialist = prior_steps.get(1)
+        if saved_specialist and saved_specialist.get("status") == "completed" and saved_specialist.get("output"):
+            specialist = next((item for item in manifest.get("agents", []) if item.get("id") == saved_specialist.get("agent_id")), specialist)
         _record_event(run_id, "specialist_selected", "Assigned specialist: " + specialist["name"] + " (" + specialist.get("department", "general") + ").")
         instructions = _load_specialist(specialist)
         memories = retrieve_memories(task["title"] + " " + task.get("description", ""), task.get("department", "general"))
@@ -325,14 +356,24 @@ def run_pending_once() -> bool:
             "Return a concise structured report."
         )
 
-        _start_step(run_id, 1, "Lead specialist", specialist, task["title"])
-        specialist_result = generate_with_fallback(context, preferred_provider="unorouter")
-        if specialist_result.get("fallback_used"):
-            _record_event(run_id, "provider_fallback", "Lead specialist used free fallback provider " + specialist_result["provider"] + " after preferred provider was unavailable.")
-        _finish_step(run_id, 1, specialist_result["response"])
-        _record_event(run_id, "specialist_completed", "Lead specialist completed the first deliverable.")
+        if saved_specialist and saved_specialist.get("status") == "completed" and saved_specialist.get("output"):
+            specialist_result = {"response": saved_specialist["output"], "provider": "previously_completed", "usage": {}, "latency_ms": 0}
+            _record_event(run_id, "specialist_reused", "Reused the previously completed lead specialist deliverable; no duplicate inference request was sent.")
+        else:
+            _start_step(run_id, 1, "Lead specialist", specialist, task["title"])
+            specialist_result = generate_with_fallback(context, preferred_provider="unorouter")
+            if specialist_result.get("fallback_used"):
+                _record_event(run_id, "provider_fallback", "Lead specialist used free fallback provider " + specialist_result["provider"] + " after preferred provider was unavailable.")
+            _finish_step(run_id, 1, specialist_result["response"])
+            with connect() as db:
+                db.execute("UPDATE agent_runs SET assigned_agent_id=?,specialist_output=? WHERE id=?",
+                           (specialist.get("id"), specialist_result["response"], run_id))
+            _record_event(run_id, "specialist_completed", "Lead specialist completed the first deliverable and it was saved immediately.")
 
         collaborator = _choose_collaborator(specialist, manifest)
+        saved_collaborator = prior_steps.get(2)
+        if saved_collaborator and saved_collaborator.get("status") == "completed" and saved_collaborator.get("output"):
+            collaborator = next((item for item in manifest.get("agents", []) if item.get("id") == saved_collaborator.get("agent_id")), collaborator)
         _record_event(run_id, "collaborator_selected", "Independent collaborator assigned: " + collaborator["name"] + " (" + collaborator.get("department", "general") + ").")
         collaborator_instructions = _load_specialist(collaborator)
         collaboration_prompt = (
@@ -345,12 +386,16 @@ def run_pending_once() -> bool:
             "Do not merely praise or repeat the first pass. Label verified facts versus hypotheses and research still required. "
             "Do not claim external actions. No spending, publishing, outreach, account changes or commitments."
         )
-        _start_step(run_id, 2, "Independent collaboration", collaborator, "Review and extend the lead specialist's deliverable.")
-        collaborator_result = generate_with_fallback(collaboration_prompt, preferred_provider="unorouter")
-        if collaborator_result.get("fallback_used"):
-            _record_event(run_id, "provider_fallback", "Collaborator used free fallback provider " + collaborator_result["provider"] + " after preferred provider was unavailable.")
-        _finish_step(run_id, 2, collaborator_result["response"])
-        _record_event(run_id, "collaboration_completed", "Second specialist reviewed and extended the shared deliverable.")
+        if saved_collaborator and saved_collaborator.get("status") == "completed" and saved_collaborator.get("output"):
+            collaborator_result = {"response": saved_collaborator["output"], "provider": "previously_completed", "usage": {}, "latency_ms": 0}
+            _record_event(run_id, "collaborator_reused", "Reused the previously completed independent review; no duplicate inference request was sent.")
+        else:
+            _start_step(run_id, 2, "Independent collaboration", collaborator, "Review and extend the lead specialist's deliverable.")
+            collaborator_result = generate_with_fallback(collaboration_prompt, preferred_provider="unorouter")
+            if collaborator_result.get("fallback_used"):
+                _record_event(run_id, "provider_fallback", "Collaborator used free fallback provider " + collaborator_result["provider"] + " after preferred provider was unavailable.")
+            _finish_step(run_id, 2, collaborator_result["response"])
+            _record_event(run_id, "collaboration_completed", "Second specialist reviewed and extended the shared deliverable.")
 
         _record_event(run_id, "review_started", "CEO reviewer is integrating both specialist contributions and checking quality.")
         ceo_agent = {"id": "executive/ceo-reviewer", "name": "CEO Quality Reviewer", "department": "executive"}
@@ -403,18 +448,19 @@ def run_pending_once() -> bool:
     except Exception as exc:
         logger.exception("Agent run %s failed", run_id)
         with connect() as db:
-            db.execute(
-                "UPDATE agent_runs SET status='failed',error=?,finished_at=? WHERE id=?",
-                (str(exc)[:1000], _now(), run_id),
-            )
-            db.execute("UPDATE tasks SET status='failed' WHERE id=?", (task_id,))
+            saved = db.execute("SELECT specialist_output FROM agent_runs WHERE id=?", (run_id,)).fetchone()
+            has_partial_deliverable = bool(saved and saved["specialist_output"])
+            final_status = "partial" if has_partial_deliverable else "failed"
+            db.execute("UPDATE agent_runs SET status=?,error=?,finished_at=? WHERE id=?",
+                       (final_status, str(exc)[:1000], _now(), run_id))
+            db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
             db.execute(
                 "UPDATE agent_run_steps SET status='failed',error=?,finished_at=? WHERE run_id=? AND status='running'",
                 (str(exc)[:500], _now(), run_id),
             )
             db.execute(
                 "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
-                (run_id, "failed", "Run failed: " + str(exc)[:450], _now()),
+                (run_id, final_status, ("Run partially completed; saved deliverables are preserved. Remaining stage failed: " if has_partial_deliverable else "Run failed before a deliverable was saved: ") + str(exc)[:350], _now()),
             )
     return True
 
