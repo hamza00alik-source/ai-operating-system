@@ -244,6 +244,8 @@ def reserve_approved_tool_proposal(proposal_id: str, actor: str = "owner") -> di
             raise LookupError("Proposal was not found.")
         if row["status"] != "approved":
             raise PermissionError("Only an approved proposal can be reserved.")
+        if row["risk_level"] != "low":
+            raise PermissionError("Only low-risk read-only proposals can be reserved.")
         if datetime.fromisoformat(row["expires_at"]) <= now:
             raise ValueError("Approved proposal has expired.")
         arguments = json.loads(row["arguments_json"])
