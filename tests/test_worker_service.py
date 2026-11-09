@@ -23,7 +23,8 @@ def test_worker_loop_processes_both_existing_queues(monkeypatch):
         calls.append("discovery")
         return True
 
-    def agent():
+    def agent(*, worker_id=None):
+        assert worker_id == "test-worker"
         calls.append("agent")
         stop.stopped = True
         return True
@@ -46,6 +47,7 @@ def test_worker_loop_recovers_from_transient_queue_error(monkeypatch):
         return True
 
     monkeypatch.setattr(worker_service, "run_discovery_once", discovery)
-    monkeypatch.setattr(worker_service, "run_agent_once", lambda: False)
+    monkeypatch.setattr(worker_service, "recover_interrupted_runs", lambda: 0)
+    monkeypatch.setattr(worker_service, "run_agent_once", lambda **_kwargs: False)
     worker_service.run_worker_loop(worker_id="test-worker", stop_event=stop, poll_seconds=2)
     assert len(calls) == 2
