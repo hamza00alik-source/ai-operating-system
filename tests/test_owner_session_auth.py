@@ -53,3 +53,16 @@ def test_owner_dashboard_mobile_navigation_is_horizontally_scrollable():
     assert "overflow-y:hidden" in mobile_rules
     assert "flex-wrap:nowrap" in mobile_rules
     assert "-webkit-overflow-scrolling:touch" in mobile_rules
+
+def test_owner_dashboard_office_uses_live_twelve_department_data():
+    response = TestClient(app).get("/owner")
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="officeDepartmentGrid"' in html
+    assert 'id="officeSelected"' in html
+    assert '"/company/departments"' in html
+    assert '"/tasks"' in html
+    assert '"/agent-runs"' in html
+    assert "on-demand" in html
+    assert "Drag to rotate" in html or "Drag to rotate" in html
+
