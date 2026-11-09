@@ -206,6 +206,38 @@
         "Workforce Registry"
       ],
       "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "code-asset-management",
+      "name": "AI Code Asset Management",
+      "owner_role": "IP Asset Manager",
+      "responsibilities": [
+        "Maintain an inventory of original code assets and repository provenance",
+        "Track ownership evidence, contributors, and third-party dependencies",
+        "Calculate source-code and Git-history token volumes with methodology and confidence labels",
+        "Assess repository licensing readiness and identify unresolved rights or compliance risks",
+        "Research buyer eligibility, marketplace requirements, and payment arrangements without initiating transactions",
+        "Prepare private licensing-readiness packages and draft commercial materials",
+        "Track offers, negotiations, license status, and verified recurring licensing revenue"
+      ],
+      "source_departments": [
+        "engineering",
+        "security",
+        "legal-compliance",
+        "finance",
+        "research",
+        "sales"
+      ],
+      "built_in_roles": [
+        "IP Asset Manager",
+        "Repository Auditor",
+        "License Compliance Analyst",
+        "Tokenomics Analyst",
+        "Licensing Research Analyst",
+        "Licensing Package Specialist",
+        "Licensing Revenue Analyst"
+      ],
+      "workflow_state": "planned-owner-supervised"
     }
   ]
 }
