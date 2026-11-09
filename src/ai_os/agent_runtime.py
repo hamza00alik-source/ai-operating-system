@@ -424,7 +424,7 @@ def run_pending_once() -> bool:
             "specialist": specialist_result.get("usage", {}),
             "collaborator": collaborator_result.get("usage", {}),
             "ceo_review": ceo_result.get("usage", {}),
-            "model_calls": 3,
+            "model_calls": sum(1 for result in (specialist_result, collaborator_result, ceo_result) if result.get("provider") != "previously_completed"),
             "collaborating_agents": [specialist.get("id"), collaborator.get("id"), ceo_agent.get("id")],
             "latency_ms": specialist_result.get("latency_ms", 0) + collaborator_result.get("latency_ms", 0) + ceo_result.get("latency_ms", 0),
         }
