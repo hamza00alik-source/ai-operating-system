@@ -39,3 +39,13 @@ def test_text_extractor_skips_script_and_navigation():
     assert "Useful evidence" in extracted
     assert "Menu" not in extracted
     assert "secret" not in extracted
+
+
+def test_validate_url_strips_invisible_word_joiner(monkeypatch):
+    monkeypatch.setattr(
+        research_sources.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+    )
+    submitted = "https://store.steampowered.com/hwsurvey\u2060/"
+    assert research_sources._validate_url(submitted) == "https://store.steampowered.com/hwsurvey/"
