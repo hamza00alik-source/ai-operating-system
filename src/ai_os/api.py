@@ -638,6 +638,7 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
+    business_ops.apply_expense_approval(approval_id, payload.decision)
     return result
 
 
