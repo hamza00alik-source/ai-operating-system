@@ -227,6 +227,21 @@ def _select_specialist(task: dict, manifest: dict) -> dict:
         "",
     )
     target_department = department if department and department != "general" else inferred_department
+    # Company departments map to one or more source-catalogue departments.
+    # Keep backward compatibility for existing task rows using source IDs.
+    department_registry_path = MANIFEST_PATH.parent / "company_departments.json"
+    target_departments = [target_department] if target_department else []
+    if target_department and department_registry_path.exists():
+        try:
+            company_registry = json.loads(department_registry_path.read_text(encoding="utf-8"))
+            company_department = next(
+                (item for item in company_registry.get("departments", []) if item.get("id") == target_department),
+                None,
+            )
+            if company_department:
+                target_departments = company_department.get("source_departments", []) or target_departments
+        except (OSError, ValueError, TypeError):
+            logger.warning("Company department registry could not be loaded; using legacy department routing.")
 
     # Department fit is weighted more strongly than incidental name-token overlap.
     tokens = {t for t in re.findall(r"[a-z0-9]+", task_text) if len(t) > 2}
@@ -235,7 +250,7 @@ def _select_specialist(task: dict, manifest: dict) -> dict:
     for agent in agents:
         name_tokens = {t for t in re.findall(r"[a-z0-9]+", agent.get("name", "").casefold()) if len(t) > 2}
         score = len(tokens & name_tokens) * 2
-        if agent.get("department", "").casefold() == target_department:
+        if agent.get("department", "").casefold() in target_departments:
             score += 30
         # Exact role phrases in the task should dominate generic department matches.
         if agent.get("name", "").casefold() in task_text:
@@ -255,7 +270,9 @@ def _select_specialist(task: dict, manifest: dict) -> dict:
             "operations": ("Senior Project Manager", "project-management"),
         }
         name, dept = preferred.get(target_department or department, ("Research Synthesist", "research"))
-        best = next((a for a in agents if a.get("department") == dept and name.casefold() in a.get("name", "").casefold()), agents[0])
+        preferred_departments = target_departments or [dept]
+        best = next((a for a in agents if a.get("department") in preferred_departments and name.casefold() in a.get("name", "").casefold()),
+                    next((a for a in agents if a.get("department") in preferred_departments), agents[0]))
     return best
 
 
