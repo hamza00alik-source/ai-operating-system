@@ -42,3 +42,18 @@ def test_credential_write_requires_owner_key_even_in_development(monkeypatch):
     with TestClient(app) as client:
         response = client.post("/llm/credentials/openrouter", json={"api_key": "or-test-secret", "confirm_free_only": True})
     assert response.status_code == 401
+
+
+
+def test_unorouter_personal_credential_is_encrypted_and_requires_free_model(monkeypatch):
+    from cryptography.fernet import Fernet
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    credentials.save_provider_credential("unorouter", "uno-test-secret", "sample-model:free", True)
+    with connect() as db:
+        encrypted = db.execute("SELECT encrypted_secret FROM provider_credentials WHERE provider='unorouter'").fetchone()[0]
+    assert "uno-test-secret" not in encrypted
+    saved = credentials.get_provider_credential("unorouter")
+    assert saved["secret"] == "uno-test-secret"
+    assert saved["model"] == "sample-model:free"
+    with pytest.raises(ValueError):
+        credentials.save_provider_credential("unorouter", "uno-test-secret", "sample-model", True)
