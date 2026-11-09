@@ -221,3 +221,36 @@ def apply_expense_approval(approval_id: str, decision: str) -> None:
             "UPDATE business_records SET status=? WHERE approval_id=? AND record_type='expense'",
             (status, approval_id),
         )
+
+
+def list_investors(limit: int = 300) -> list[dict]:
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM investor_contacts ORDER BY created_at DESC LIMIT ?",
+            (max(1, min(limit, 500)),),
+        ).fetchall()
+    return [dict(x) for x in rows]
+
+
+def create_investor(payload: dict) -> dict:
+    name = _clean(payload.get("name"), 180)
+    if not name:
+        raise ValueError("Investor name is required.")
+    stage = _clean(payload.get("stage", "prospect"), 40).lower()
+    if stage not in {"prospect", "contacted", "interested", "due_diligence", "committed", "declined"}:
+        raise ValueError("Unsupported investor stage.")
+    item = {
+        "id": str(uuid4()), "name": name,
+        "organization": _clean(payload.get("organization"), 180),
+        "contact": _clean(payload.get("contact"), 200),
+        "stage": stage, "notes": _clean(payload.get("notes"), 2000),
+        "created_at": now(), "updated_at": now(),
+    }
+    with connect() as db:
+        db.execute(
+            """INSERT INTO investor_contacts
+            (id,name,organization,contact,stage,notes,created_at,updated_at)
+            VALUES (:id,:name,:organization,:contact,:stage,:notes,:created_at,:updated_at)""",
+            item,
+        )
+    return item
