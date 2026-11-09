@@ -78,9 +78,23 @@ def _validate_url(url: str) -> str:
     return urllib.parse.urlunsplit(("https", parsed.netloc, parsed.path or "/", parsed.query, ""))
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a few redirects, re-validating every destination before connecting."""
+
+    max_redirects = 4
+
+    def __init__(self):
+        super().__init__()
+        self.redirect_count = 0
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+        self.redirect_count += 1
+        if self.redirect_count > self.max_redirects:
+            raise ValueError("Source exceeded the 4-redirect safety limit.")
+        # Reject HTTPS downgrades, credentials, unusual ports, and private/internal
+        # destinations at every hop, not just on the originally submitted URL.
+        _validate_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def capture_source(url: str) -> dict:
@@ -89,11 +103,13 @@ def capture_source(url: str) -> dict:
         safe_url,
         headers={"User-Agent": "AIOS-ResearchEvidence/1.0 (+owner-triggered)", "Accept": "text/html,text/plain,application/xhtml+xml"},
     )
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = urllib.request.build_opener(_SafeRedirect)
     try:
         with opener.open(request, timeout=TIMEOUT) as response:
             if response.status != 200:
-                raise ValueError(f"Source returned HTTP {response.status}; redirects are not followed.")
+                raise ValueError(f"Source returned HTTP {response.status}.")
+            # Persist the final validated URL, so citations point to the captured page.
+            safe_url = _validate_url(response.geturl())
             content_type = response.headers.get("Content-Type", "").lower()
             if not any(kind in content_type for kind in ("text/html", "text/plain", "application/xhtml+xml")):
                 raise ValueError("Only HTML and plain-text pages can be captured.")
@@ -103,7 +119,7 @@ def capture_source(url: str) -> dict:
             charset = response.headers.get_content_charset() or "utf-8"
             page = raw.decode(charset, errors="replace")
     except urllib.error.HTTPError as exc:
-        raise ValueError(f"Source returned HTTP {exc.code}; redirects are not followed.") from exc
+        raise ValueError(f"Source returned HTTP {exc.code}. The page may require a browser or block automated requests.") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ValueError("Could not retrieve the source within the 12-second limit.") from exc
 
