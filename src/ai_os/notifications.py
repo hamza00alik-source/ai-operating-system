@@ -6,7 +6,6 @@ invoked explicitly by an owner-operated worker/API action after configuration.
 from __future__ import annotations
 
 import importlib
-import json
 import os
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -120,16 +119,42 @@ def deliver_notification(notification_id: str) -> dict:
             ).fetchone()
             if approval is None or approval["status"] != "approved":
                 raise PermissionError("Customer notification approval is missing or no longer approved.")
+        # Atomically claim the item before the external call to prevent two
+        # owner-triggered workers from sending the same notification twice.
+        claimed = db.execute(
+            "UPDATE notifications SET status='sending',updated_at=? WHERE id=? AND status='sending'",
+            (_now(), notification_id),
+        ).rowcount
+        if not claimed:
+            raise PermissionError("Notification was already claimed by another delivery attempt.")
     try:
         apprise_module = importlib.import_module("apprise")
     except ImportError as exc:
+        with connect() as db:
+            db.execute(
+                "UPDATE notifications SET status='queued',updated_at=? WHERE id=? AND status='sending'",
+                (_now(), notification_id),
+            )
         raise RuntimeError(
             "Optional Apprise package is not installed. Core AIOS remains dependency-free."
         ) from exc
     notifier = apprise_module.Apprise()
     if not notifier.add(destination):
+        with connect() as db:
+            db.execute(
+                "UPDATE notifications SET status='failed',last_error=?,updated_at=? WHERE id=? AND status='sending'",
+                ("Apprise rejected the configured destination.", _now(), notification_id),
+            )
         raise ValueError("Apprise rejected the configured destination.")
-    delivered = bool(notifier.notify(title=row["title"], body=row["body"]))
+    try:
+        delivered = bool(notifier.notify(title=row["title"], body=row["body"]))
+    except Exception as exc:
+        with connect() as db:
+            db.execute(
+                "UPDATE notifications SET status='failed',attempts=attempts+1,last_error=?,updated_at=? WHERE id=? AND status='sending'",
+                (str(exc)[:500], _now(), notification_id),
+            )
+        raise
     now = _now()
     with connect() as db:
         if delivered:
