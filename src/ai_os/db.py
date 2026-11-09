@@ -67,6 +67,17 @@ def initialize_database() -> None:
             scanned_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_code_assets_scanned_at ON code_assets(scanned_at);
+        CREATE TABLE IF NOT EXISTS code_asset_evidence (
+            id TEXT PRIMARY KEY, asset_id TEXT NOT NULL,
+            evidence_type TEXT NOT NULL, title TEXT NOT NULL,
+            description TEXT NOT NULL, source_url TEXT NOT NULL DEFAULT '',
+            metadata_json TEXT NOT NULL DEFAULT '{}',
+            review_state TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL, reviewed_at TEXT, review_note TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(asset_id) REFERENCES code_assets(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_code_asset_evidence_asset
+            ON code_asset_evidence(asset_id, created_at);
         CREATE TABLE IF NOT EXISTS research_sources (
             id TEXT PRIMARY KEY, url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '',
             content TEXT NOT NULL, captured_at TEXT NOT NULL, content_type TEXT NOT NULL DEFAULT ''
