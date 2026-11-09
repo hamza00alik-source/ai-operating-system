@@ -288,7 +288,7 @@ def get_company_departments():
             "specialist_count": specialist_count,
             "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
             "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
-            "workflow_status": "catalogue-only",
+            "workflow_status": item.get("workflow_state", "catalogue-only"),
         })
     return {
         "department_count": len(departments),
@@ -343,7 +343,7 @@ def get_company_overview():
         candidates = db.execute("SELECT COUNT(*) AS n FROM discovery_candidates").fetchone()["n"]
         agent_runs = db.execute("SELECT status, COUNT(*) AS n FROM agent_runs GROUP BY status").fetchall()
     return {
-        "workforce": {"agents": 283, "departments": 18, "company_departments": 12, "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
+        "workforce": {"agents": 283, "departments": 18, "company_departments": len(json.loads((Path(__file__).resolve().parents[2] / "data" / "company_departments.json").read_text(encoding="utf-8")).get("departments", [])), "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
         "tasks": {r["status"]: r["n"] for r in tasks},
         "approvals": {r["status"]: r["n"] for r in approvals},
         "discovery_scans": {r["status"]: r["n"] for r in scans},
