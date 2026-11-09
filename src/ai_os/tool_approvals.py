@@ -47,6 +47,11 @@ def _department_allowlist() -> dict:
     return value
 
 
+def department_tool_catalog(department: str) -> list[str]:
+    """Return configured server:tool identifiers only; never reads credentials."""
+    return sorted(_department_allowlist().get(department, []))
+
+
 def _ensure_table(db) -> None:
     db.execute("""
         CREATE TABLE IF NOT EXISTS mcp_tool_proposals (
