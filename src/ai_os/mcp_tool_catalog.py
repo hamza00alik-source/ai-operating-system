@@ -96,6 +96,15 @@ def persist_discovered_tools(server_id: str, tools: list[dict]) -> dict:
             VALUES(?,?,?,?,?,?)""",
             prepared,
         )
+        db.execute(
+            """INSERT INTO audit_events
+            (event_type,actor_id,resource_type,resource_id,details_json,created_at)
+            VALUES(?,?,?,?,?,?)""",
+            ("mcp_tool_catalog.discovered", "owner", "mcp_server", server_id,
+             json.dumps({"tool_count": len(prepared),
+                         "schema_fingerprints": {item[1]: item[4] for item in prepared}},
+                        sort_keys=True, separators=(",", ":")), now),
+        )
     return {"server_id": server_id, "tool_count": len(prepared),
             "schema_fingerprints": {item[1]: item[4] for item in prepared}}
 
