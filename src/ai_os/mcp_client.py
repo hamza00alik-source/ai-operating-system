@@ -205,8 +205,8 @@ def probe_mcp_server(server_id: str) -> dict:
         "connection_status": "connected", "protocol_version": negotiated,
         "server_info": result.get("serverInfo", {}),
         "tool_count": len(tools), "tools": safe_tools,
-        "tool_execution_enabled": True,
-        "execution_policy": "owner_approval_required",
+        "tool_execution_enabled": False,
+        "execution_policy": "disabled_pending_atomic_owner_approval_executor",
     }
 
 
@@ -250,26 +250,15 @@ def _department_tool_allowlist(department: str | None) -> set[str]:
 
 
 def call_mcp_tool(server_id: str, tool_name: str, arguments: dict) -> dict:
-    """Invoke one remote tool; caller must consume a matching one-time approval first."""
-    row, opener, headers = _load_server(server_id)
-    session_headers, negotiated, _ = _open_session(row, opener, headers)
-    tools = _list_tools(row, opener, session_headers)
-    match = next((tool for tool in tools if tool.get("name") == tool_name), None)
-    if match is None:
-        raise LookupError("Requested tool is not currently advertised by this MCP server.")
-    schema = match.get("inputSchema") or {"type": "object", "properties": {}}
-    _validate_tool_arguments(schema, arguments)
-    request_id = str(uuid4())
-    result, _ = _post(opener, row["endpoint"], {
-        "jsonrpc": "2.0", "id": request_id, "method": "tools/call",
-        "params": {"name": tool_name, "arguments": arguments},
-    }, session_headers)
-    if result.get("id") != request_id:
-        raise RuntimeError("MCP tool response did not match the request.")
-    if "error" in result:
-        raise RuntimeError("MCP tool execution failed: " + str(result["error"])[:500])
-    return {"server_id": server_id, "tool_name": tool_name,
-            "protocol_version": negotiated, "result": result.get("result")}
+    """Fail closed until a separately reviewed atomic approval executor exists.
+
+    The network client intentionally has no callable execution path in this release.
+    An approval decision is not an execution capability.
+    """
+    raise RuntimeError(
+        "MCP tool execution is disabled. Owner approval is recorded for review only; "
+        "an atomic, audited execution layer has not been enabled."
+    )
 
 
 def discover_enabled_tool_catalog(department: str | None = None) -> list[dict]:
