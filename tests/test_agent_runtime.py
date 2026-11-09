@@ -29,3 +29,23 @@ def test_owner_can_queue_bounded_agent_run(monkeypatch, tmp_path):
 
         overview = client.get("/company/overview").json()
         assert overview["execution_runtime"] == "shared-worker-on-demand-specialist-plus-ceo-review"
+
+
+
+def test_general_market_research_routes_to_research_role():
+    from ai_os.agent_runtime import _select_specialist
+
+    manifest = {
+        "agents": [
+            {"id": "marketing/global-podcast-strategist", "name": "Global Podcast Strategist",
+             "department": "marketing", "source_path": ""},
+            {"id": "research/research-synthesist", "name": "Research Synthesist",
+             "department": "research", "source_path": ""},
+        ]
+    }
+    selected = _select_specialist(
+        {"title": "Prepare a global market research brief on downloadable PC gaming utilities",
+         "description": "", "department": "general"},
+        manifest,
+    )
+    assert selected["id"] == "research/research-synthesist"
