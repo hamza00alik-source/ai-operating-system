@@ -20,7 +20,7 @@ from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
-from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, provider_credential_statuses
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
 from ai_os.research_sources import capture_source, list_sources
 from pydantic import BaseModel, Field
@@ -161,6 +161,11 @@ class OpenRouterCredentialRequest(BaseModel):
 
 class ProviderCredentialRequest(BaseModel):
     api_key: str = Field(min_length=8, max_length=512)
+    model: str = Field(default="__catalog_only__", max_length=200)
+    confirm_free_only: bool
+
+
+class ProviderModelRequest(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     confirm_free_only: bool
 
@@ -190,6 +195,17 @@ def post_provider_credentials(provider_id: str, payload: ProviderCredentialReque
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/llm/credentials/{provider_id}/model", dependencies=[Depends(require_owner_key)])
+def post_provider_model(provider_id: str, payload: ProviderModelRequest):
+    try:
+        update_provider_model(provider_id, payload.model, payload.confirm_free_only)
+        return {"saved": True, "provider": provider_id, "model": payload.model,
+                "free_only_routing": payload.confirm_free_only}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 
 @app.get("/llm/providers", dependencies=[Depends(require_api_key)])
