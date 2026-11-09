@@ -134,6 +134,16 @@ def list_unorouter_free_models() -> dict[str, Any]:
     for item in payload.get("models", []):
         if not isinstance(item, dict) or not item.get("is_free") or not item.get("online", True):
             continue
+        # This gateway currently sends chat-completions requests only. Exclude image,
+        # audio, embedding and non-chat models even when the global catalog calls them free.
+        endpoints = item.get("supported_endpoint_types") or []
+        if item.get("chat") is not True or "openai" not in endpoints:
+            continue
+        # Keep prompts away from models whose catalog policy says they train on or
+        # retain inputs. Unknown policy is surfaced as unknown rather than assumed safe.
+        purpose = item.get("own_purpose") if isinstance(item.get("own_purpose"), dict) else {}
+        if purpose.get("trains_or_retains") is True or purpose.get("consent_required") is True:
+            continue
         name = str(item.get("model_name") or item.get("id") or "").strip()
         if not name:
             continue
@@ -145,7 +155,7 @@ def list_unorouter_free_models() -> dict[str, Any]:
             "vendor": item.get("vendor"),
             "online": True,
             "free": True,
-            "supported_endpoints": item.get("supported_endpoint_types") or ["openai"],
+            "supported_endpoints": endpoints,\n            "data_retention": purpose.get("trains_or_retains", "unknown"),\n            "consent_required": purpose.get("consent_required", "unknown"),\n            "processing_countries": purpose.get("countries") or [],
         })
     models.sort(key=lambda item: (item["type"] != "text", item["vendor"] or "", item["id"]))
     counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
@@ -154,9 +164,9 @@ def list_unorouter_free_models() -> dict[str, Any]:
         "base_url": "https://api.unorouter.com/v1",
         "source": url,
         "global_catalog_free_count": counts.get("free", len(models)),
-        "available_online_free_count": len(models),
+        "available_online_free_count": len(models),\n        "privacy_filtered": True,\n        "excluded_for_privacy_or_non_chat": max(0, int(counts.get("free", len(models))) - len(models)),
         "models": models,
-        "note": "Public global catalog only. Your API key may have a smaller account-scoped model list; verify with Test live connection. Free quotas and availability can change.",
+        "note": "Privacy-screened global chat catalog only: only online free OpenAI-compatible chat models with no catalog-declared training/retention or consent requirement are listed. Your API key may expose fewer models; test it. Free quotas and availability can change.",
     }
 
 
