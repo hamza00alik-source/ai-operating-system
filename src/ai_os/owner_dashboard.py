@@ -182,7 +182,7 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Your AI company, workforce, research pipeline and approvals — in one supervised workspace.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><span id="apiHealth" class="tag">Checking API…</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a></nav>
 <section class="command-stage" aria-label="AI employee command stage">
  <div class="stage-head"><div><div class="eyebrow">Neural command deck / workforce visualization</div><div class="stage-title">Meet the AI workforce</div><div class="stage-note">Stylized role representations generated from the live workforce catalogue — not fabricated active-worker status.</div></div><span id="stageRuntime" class="stage-indicator">Runtime status loading</span></div>
  <div id="employeeStage" class="employee-stage"><div class="stage-empty">Loading real specialist roles from the AIOS workforce catalogue…</div></div>
@@ -200,6 +200,13 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 <section id="overview" class="panel section" data-view-panel="overview"><h2>Company operations</h2><div class="grid" style="margin:10px 0"><div class="metric"><strong id="workforceCount">283</strong><span>Catalogued specialists</span></div><div class="metric"><strong id="departmentCount">18</strong><span>Departments</span></div><div class="metric"><strong id="taskCount">—</strong><span>Tasks</span></div><div class="metric"><strong id="approvalCount">—</strong><span>Pending approvals</span></div></div><div id="companyStatus" class="small">Workforce catalog loaded. Bounded specialist execution and CEO review are available for text-only tasks; external actions remain disabled.</div><div id="runtimeStatus" class="small" role="status">Checking agent worker health…</div></section>
 <section id="workforce" class="panel section" data-view-panel="workforce"><h2>Company departments & AI workforce</h2><p class="small">12 company departments mapped to 18 source-catalogue categories and 283 specialist definitions. Specialist roles are available on demand through one shared worker; department cards do not imply independent always-on teams or completed business workflows.</p><div id="companyDepartmentCards" class="grid" aria-live="polite"><div class="metric">Loading department registry…</div></div><h3>Source specialist catalogue</h3><div class="toolbar"><input id="agentSearch" placeholder="Search 283 specialists…" style="flex:1;min-width:180px"><select id="departmentFilter"><option value="">All source categories</option></select><button id="loadAgents" class="secondary">Refresh roster</button></div><div id="departmentChips" class="toolbar section"></div><div class="scroll section"><table><thead><tr><th>Specialist</th><th>Source category</th><th>Runtime state</th><th>Source</th></tr></thead><tbody id="agentRows"><tr><td colspan="4">Loading workforce catalog…</td></tr></tbody></table></div></section>
 <section id="sources" class="panel section" data-view-panel="sources"><h2>Repository intelligence · 12 sources</h2><p class="small">The Agency Agents workforce and Automaton runtime reference are separated from the ten company/platform comparison repositories. Reference status does not mean code is installed or trusted.</p><div class="scroll"><table><thead><tr><th>Repository</th><th>Role</th><th>Current state</th><th>Purpose</th><th>License</th></tr></thead><tbody id="sourceRows"><tr><td colspan="5">Loading repository inventory…</td></tr></tbody></table></div></section>
+<section id="workflows" class="panel section" data-view-panel="workflows">
+<h2>Department workflow orchestration</h2>
+<p class="small">Create a multi-department workflow. Only the first task is queued; each next department unlocks after the previous task completes. Every task run is owner-triggered and uses the existing free-only model policy.</p>
+<div class="toolbar"><button id="refreshWorkflows" class="secondary" type="button">Refresh workflows</button><span id="workflowStatus" class="status">Loading workflow templates…</span></div>
+<div id="workflowTemplates" class="grid"></div>
+<div id="workflowInstances" class="section"></div>
+</section>
 <section id="tasks" class="panel section" data-view-panel="tasks"><h2>Tasks & owner approvals</h2><form id="taskForm" class="toolbar"><input id="taskTitle" required maxlength="200" placeholder="New company task" style="flex:1;min-width:180px"><select id="taskDepartment"><option value="general">General / unassigned</option><option value="executive">Executive & Strategy</option><option value="research">Research & Intelligence</option><option value="product">Product & R&amp;D</option><option value="design">Design & 3D Production</option><option value="engineering">Engineering & Technology</option><option value="marketing">Marketing & Growth</option><option value="sales-marketplace">Sales & Marketplace Operations</option><option value="customer-support">Customer Support</option><option value="finance">Finance & Accounting</option><option value="legal-compliance">Legal & Compliance</option><option value="quality-assurance">Quality Assurance</option><option value="people-workforce">People & AI Workforce</option></select><button type="submit">Create task</button></form><div class="toolbar section"><button id="loadOperations" class="secondary">Refresh operations</button><span class="small">Owner approval remains mandatory for consequential actions.</span></div><div id="taskApprovalPanel" class="small">No operational data loaded.</div><div id="agentRunOutput" class="section" aria-live="polite"></div></section>
 <section id="discovery" class="panel" data-view-panel="discovery">
 <h2>Technology discovery</h2>
@@ -266,6 +273,8 @@ document.querySelectorAll("nav.main-nav a[data-view]").forEach(a=>a.addEventList
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function say(s){$("message").textContent=s}
 activateView(location.hash.slice(1)||"overview");
+if(location.hash==="#workflows")loadWorkflows();
+document.querySelector('nav.main-nav a[data-view="workflows"]')?.addEventListener("click",loadWorkflows);
 function setApiHealth(label,state=""){const el=$("apiHealth");if(!el)return;el.textContent=label;el.classList.toggle("offline",state==="offline");el.classList.toggle("degraded",state==="degraded");}
 async function api(path,options={}){
  let response;
@@ -359,6 +368,28 @@ async function loadSources(){
   $("sourceRows").innerHTML=data.sources.map(s=>'<tr><td><a href="https://github.com/'+esc(s.repository)+'" target="_blank" rel="noopener">'+esc(s.repository)+'</a></td><td>'+esc(s.role)+'</td><td><span class="pill '+(s.status==="catalogued"?"good":"warn")+'">'+esc(s.status)+'</span></td><td>'+esc(s.purpose)+'</td><td>'+esc(s.license)+'</td></tr>').join("");
  }catch(e){$("sourceRows").innerHTML='<tr><td colspan="5">'+esc(e.message)+'</td></tr>'}
 }
+async function loadWorkflows(){
+ try{
+  const data=await api("/company/workflows");
+  $("workflowTemplates").innerHTML=(data.templates||[]).map(t=>'<div class="metric"><strong style="font-size:17px">'+esc(t.name)+'</strong><span>'+esc(t.description)+'</span><p class="small">'+esc(t.step_count)+' department steps · '+esc((t.departments||[]).join(" → "))+'</p><button data-id="'+esc(t.id)+'" onclick="startWorkflow(this.dataset.id)">Create workflow</button></div>').join("");
+  $("workflowStatus").textContent="Workflow templates loaded. Creating a workflow queues only its first step.";
+ }catch(e){$("workflowStatus").textContent=e.message}
+}
+window.startWorkflow=async(templateId)=>{
+ try{
+  $("workflowStatus").textContent="Creating workflow…";
+  const result=await api("/company/workflows/"+encodeURIComponent(templateId)+"/start",{method:"POST"});
+  $("workflowStatus").textContent="Created "+result.name+" · "+result.steps.length+" steps. Only step 1 is queued.";
+  await showWorkflow(result.id);await loadOperations();
+ }catch(e){$("workflowStatus").textContent=e.message}
+};
+window.showWorkflow=async(workflowId)=>{
+ try{
+  const w=await api("/company/workflows/"+encodeURIComponent(workflowId));
+  $("workflowInstances").innerHTML='<h3>'+esc(w.name)+' <span class="pill">'+esc(w.status)+'</span></h3><div class="scroll"><table><thead><tr><th>Step</th><th>Department</th><th>Status</th><th>Action</th></tr></thead><tbody>'+w.steps.map(s=>'<tr><td>'+esc(s.sequence_no)+'. '+esc(s.title)+'</td><td>'+esc(s.department)+'</td><td><span class="pill '+(s.status==="completed"?"good":s.status==="failed"?"bad":s.status==="queued"?"warn":"")+'">'+esc(s.status)+'</span></td><td>'+(s.status==="queued"?'<button data-id="'+esc(s.task_id)+'" onclick="runTask(this.dataset.id)">Run this department</button>':s.status==="blocked"?"Waiting for previous step":"—")+'</td></tr>').join("")+'</tbody></table></div><p class="small">Workflow ID: '+esc(w.id)+'</p>';
+ }catch(e){$("workflowStatus").textContent=e.message}
+};
+$("refreshWorkflows").addEventListener("click",loadWorkflows);
 async function loadOperations(){
  try{
   const [overview,tasks,approvals,runs]=await Promise.all([api("/company/overview"),api("/tasks"),api("/approvals"),api("/agent-runs")]);
