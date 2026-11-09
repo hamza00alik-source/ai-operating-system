@@ -379,7 +379,7 @@ async function loadResearchSources(){
 async function captureResearchSource(){
  const field=$("researchSourceUrl");const url=field.value.normalize("NFC").replace(/[\\u200B-\\u200F\\u2060\\uFEFF]/g,"").trim();field.value=url;if(!url){$("researchSourceStatus").textContent="Enter a public HTTPS URL.";return}
  const b=$("captureResearchSource");b.disabled=true;$("researchSourceStatus").textContent="Fetching and extracting page text…";
- try{const result=await api("/research/sources",{method:"POST",body:JSON.stringify({url})});$("researchSourceUrl").value="";$("researchSourceStatus").textContent="Captured: "+(result.title||result.url)+" · "+result.characters+" characters. It can now be used in matching research tasks.";await loadResearchSources()}
+ try{const result=await api("/research/sources",{method:"POST",body:JSON.stringify({url})});$("researchSourceUrl").value="";const redirectNote=result.redirected?" WARNING: The submitted URL redirected ("+result.redirect_count+" hop(s)). Final page: "+result.url+". Check that this is the intended evidence before relying on it.":"Source URL matched the submitted destination.";const partialNote=result.truncated?" PARTIAL: only the first 1 MB was inspected.":"";$("researchSourceStatus").textContent="Captured: "+(result.title||result.url)+" · "+result.characters+" characters. "+redirectNote+partialNote+" Capture success does not mean the content is relevant.";await loadResearchSources()}
  catch(e){$("researchSourceStatus").textContent=e.message}
  finally{b.disabled=false}
 }
