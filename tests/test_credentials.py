@@ -57,3 +57,6 @@ def test_unorouter_personal_credential_is_encrypted_and_requires_free_model(monk
     assert saved["model"] == "sample-model:free"
     with pytest.raises(ValueError):
         credentials.save_provider_credential("unorouter", "uno-test-secret", "sample-model", True)
+    credentials.save_provider_credential("unorouter", "uno-test-secret", "paid-model", False)
+    assert credentials.get_provider_credential("unorouter")["model"] == "paid-model"
+    assert credentials.get_provider_credential("unorouter")["free_confirmed"] is False

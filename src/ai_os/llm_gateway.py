@@ -121,48 +121,88 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
 
 
 
-def list_unorouter_free_models() -> dict[str, Any]:
-    """Read UnoRouter public catalog for research only; no prompts or credentials."""
-    url = "https://api.unorouter.com/api/pricing/catalog"
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+def list_unorouter_catalog() -> dict[str, Any]:
+    """Read the public price catalog and exact models exposed to the saved API key.
+    This is read-only discovery: it never submits a prompt or invokes inference.
+    """
+    public_url = "https://api.unorouter.com/api/pricing/catalog"
+    request = urllib.request.Request(public_url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            payload = json.loads(response.read(1_000_000).decode("utf-8"))
+        with urllib.request.urlopen(request, timeout=20) as response:
+            public = json.loads(response.read(1_000_000).decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        raise ProviderHTTPError(exc.code, "UnoRouter catalog request failed") from exc
+        raise ProviderHTTPError(exc.code, "UnoRouter public pricing catalog request failed") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
-        raise RuntimeError("UnoRouter catalog is temporarily unreachable") from exc
+        raise RuntimeError("UnoRouter public catalog is temporarily unreachable") from exc
     except (json.JSONDecodeError, UnicodeError) as exc:
-        raise RuntimeError("UnoRouter returned an invalid model catalog") from exc
+        raise RuntimeError("UnoRouter returned an invalid public model catalog") from exc
+    public_models = public.get("models", []) if isinstance(public, dict) else []
+    prices = {}
+    for item in public_models:
+        if isinstance(item, dict) and item.get("model_name"):
+            prices[str(item["model_name"]).strip()] = item
+    saved = get_provider_credential("unorouter")
+    available = []
+    if saved:
+        req = urllib.request.Request("https://api.unorouter.com/v1/models", headers={
+            "Accept": "application/json", "Authorization": f"Bearer {saved['secret']}"
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                payload = json.loads(response.read(1_000_000).decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise ProviderHTTPError(exc.code, "UnoRouter account model-list request failed") from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise RuntimeError("UnoRouter account model list is temporarily unreachable") from exc
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise RuntimeError("UnoRouter returned an invalid account model list") from exc
+        if isinstance(payload, dict) and payload.get("success") is False:
+            raise RuntimeError("UnoRouter rejected the account model-list request: " + str(payload.get("message") or "unknown error")[:300])
+        data = payload.get("data", payload) if isinstance(payload, dict) else payload
+        entries = data.get("data", data.get("models", [])) if isinstance(data, dict) else data
+        if isinstance(entries, dict):
+            entries = entries.get("items", [])
+        for item in entries if isinstance(entries, list) else []:
+            if not isinstance(item, dict):
+                continue
+            model_id = str(item.get("id") or item.get("model") or "").strip()
+            if not model_id:
+                continue
+            is_free = model_id.endswith(":free")
+            price_name = model_id[:-5] if is_free else model_id
+            price = prices.get(price_name) or prices.get(model_id) or {}
+            available.append({
+                "id": model_id, "name": str(item.get("name") or price.get("model_name") or model_id),
+                "vendor": price.get("vendor") or item.get("owned_by") or item.get("vendor"),
+                "free": is_free, "online": price.get("online"),
+                "input_price_per_million": 0 if is_free else price.get("input_price"),
+                "output_price_per_million": 0 if is_free else price.get("output_price"),
+                "currency": "USD", "callable": True,
+                "context_length": item.get("context_length"),
+                "max_output_tokens": item.get("max_output_tokens"),
+                "supported_endpoint_types": price.get("supported_endpoint_types", ["openai"]),
+            })
+        available.sort(key=lambda item: (not item["free"], str(item.get("vendor") or ""), item["id"]))
+    public_summary = [{
+        "name": str(item.get("model_name") or ""), "vendor": item.get("vendor"),
+        "type": item.get("type"), "free": item.get("is_free") is True,
+        "online": item.get("online") is True,
+        "input_price_per_million": item.get("input_price"),
+        "output_price_per_million": item.get("output_price"), "currency": "USD",
+        "supported_endpoint_types": item.get("supported_endpoint_types") or [],
+    } for item in public_models if isinstance(item, dict)]
+    counts = public.get("counts") if isinstance(public, dict) and isinstance(public.get("counts"), dict) else {}
+    return {
+        "provider": "unorouter", "catalog_source": public_url,
+        "account_models_source": "https://api.unorouter.com/v1/models" if saved else None,
+        "account_key_configured": bool(saved), "counts": counts,
+        "available_to_key_count": len(available),
+        "available_free_count": sum(1 for item in available if item["free"]),
+        "available_paid_count": sum(1 for item in available if not item["free"]),
+        "models": available, "public_models": public_summary,
+        "note": "Read-only catalogue lookup. Exact callable IDs come from authenticated /v1/models. :free models are zero-cost; other IDs are paid. No prompt or inference request is sent."
+    }
 
-    catalog_models = payload.get("models", [])
-    models = []
-    total_free_models = sum(1 for item in catalog_models if isinstance(item, dict) and item.get("is_free") is True)
-    for item in catalog_models:
-        if not isinstance(item, dict) or item.get("is_free") is not True or item.get("online") is not True:
-            continue
-        endpoints = item.get("supported_endpoint_types")
-        if not isinstance(endpoints, list) or "openai" not in endpoints:
-            continue
-        if str(item.get("type") or "").lower() not in {"text", "chat"}:
-            continue
-        name = str(item.get("model_name") or item.get("id") or "").strip()
-        if not name:
-            continue
-        model_id = name if name.endswith(":free") else name + ":free"
-        models.append({"id": model_id, "name": name, "type": item.get("type"),
-            "vendor": item.get("vendor"), "online": True, "free": True,
-            "supported_endpoints": endpoints, "privacy_status": "unverified",
-            "data_retention": "unknown", "consent_required": "unknown",
-            "processing_countries": [], "usage_status": "research_only_business_use_blocked"})
-    models.sort(key=lambda item: (item["vendor"] or "", item["id"]))
-    counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
-    return {"provider": "unorouter", "base_url": "https://api.unorouter.com/v1",
-        "source": url, "global_catalog_free_count": counts.get("free", total_free_models),
-        "available_online_free_count": len(models), "privacy_filtered": False, "models": models,
-        "note": "Research-only catalog. Current terms state business accounts are unavailable. "
-            "Provider-level retention, training, consent, and account-specific access are unverified. "
-            "AIOS blocks UnoRouter from company tasks and automatic failover. Do not send business prompts."}
 
 def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     provider, config = _resolve(provider_id)
@@ -226,17 +266,20 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
 
 
 
-def test_unorouter_personal(prompt: str) -> dict[str, Any]:
+def test_unorouter_personal(prompt: str, approve_paid_request: bool = False) -> dict[str, Any]:
     """Owner-triggered consumer-account test only; never used by task routing."""
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
         raise ValueError("Enter a test prompt of 1 to 12,000 characters.")
     config = get_provider_credential("unorouter")
     if not config:
         raise PermissionError("Save a UnoRouter consumer API key in the owner console first.")
-    if not config.get("free_confirmed") or not str(config.get("model", "")).endswith(":free"):
-        raise PermissionError("Personal test is restricted to an owner-confirmed :free model.")
+    model = str(config.get("model", "")).strip()
+    is_free = model.endswith(":free")
+    if is_free and not config.get("free_confirmed"):
+        raise PermissionError("This :free model is not owner-confirmed for free-only routing.")
+    if not is_free and not approve_paid_request:
+        raise PermissionError("This is a paid model. Explicitly approve this specific request before sending it.")
     base = (config.get("base_url") or "https://api.unorouter.com/v1").rstrip("/")
-    model = config["model"]
     started = time.monotonic()
     data = _post(
         f"{base}/chat/completions",
@@ -258,6 +301,8 @@ def test_unorouter_personal(prompt: str) -> dict[str, Any]:
                   "total_tokens": usage.get("total_tokens"),
                   "reported_by_provider": bool(usage)},
         "mode": "owner_personal_test_only",
+        "model_cost_class": "free" if is_free else "paid",
+        "paid_request_approved": bool(approve_paid_request) if not is_free else False,
         "company_task_routing": False,
         "warning": "Consumer-account test only. Do not submit customer, company, confidential, or sensitive personal data. Provider/model-specific data terms apply.",
         "live": True,
