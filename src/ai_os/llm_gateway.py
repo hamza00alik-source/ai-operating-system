@@ -76,6 +76,8 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
+            "UnoRouter is research-only in AIOS; current terms state business accounts are unavailable."
+            if provider.experimental_only else
             "Set base URL, model, API secret, and explicitly confirm this endpoint "
             "is currently free. Paid or unverified endpoints are blocked."
         ),
