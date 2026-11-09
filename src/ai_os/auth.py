@@ -1,5 +1,6 @@
 """API-key and persistent owner-session authentication."""
 import hashlib
+import os
 import secrets
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
@@ -11,6 +12,7 @@ from ai_os.db import connect
 
 SESSION_COOKIE = "aios_owner_session"
 SESSION_TTL_DAYS = 14
+DEFAULT_TRUSTED_ORIGINS = ("https://ai-operating-system-one.vercel.app",)
 
 
 def _unauthorized() -> HTTPException:
@@ -48,6 +50,37 @@ def revoke_owner_session(token: str | None) -> None:
         db.execute("DELETE FROM owner_sessions WHERE token_hash=?", (digest,))
 
 
+def _trusted_browser_origin(origin: str | None, request: Request) -> bool:
+    if not origin:
+        return False
+    try:
+        parsed = urlsplit(origin)
+    except ValueError:
+        return False
+    forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+    if parsed.scheme != forwarded_proto or not parsed.netloc:
+        return False
+
+    # Direct deployments may use their request host. Behind Vercel's rewrite proxy,
+    # the upstream Host is Railway's hostname, so explicitly trust the production
+    # dashboard origin instead of comparing it to that upstream Host header.
+    request_hosts = {
+        value.strip().lower()
+        for value in (
+            request.headers.get("host", ""),
+            request.headers.get("x-forwarded-host", ""),
+        )
+        if value.strip()
+    }
+    if parsed.netloc.lower() in request_hosts:
+        return True
+
+    configured = os.getenv("AI_OS_TRUSTED_ORIGINS", "")
+    trusted_origins = set(DEFAULT_TRUSTED_ORIGINS)
+    trusted_origins.update(item.strip().rstrip("/") for item in configured.split(",") if item.strip())
+    return origin.rstrip("/") in trusted_origins
+
+
 def _valid_session(request: Request) -> bool:
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
@@ -62,16 +95,9 @@ def _valid_session(request: Request) -> bool:
             db.execute("DELETE FROM owner_sessions WHERE token_hash=?", (digest,))
             return False
         db.execute("UPDATE owner_sessions SET last_seen_at=? WHERE token_hash=?", (now, digest))
-    # SameSite=Strict is the primary CSRF barrier; also validate Origin on unsafe cookie-authenticated requests.
+    # SameSite=Strict plus an exact origin allowlist protects cookie-authenticated writes.
     if request.method not in ("GET", "HEAD", "OPTIONS"):
-        origin = request.headers.get("origin")
-        forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
-        host = request.headers.get("host", "")
-        try:
-            parsed_origin = urlsplit(origin or "")
-        except ValueError:
-            return False
-        if not origin or parsed_origin.scheme != forwarded_proto or parsed_origin.netloc != host:
+        if not _trusted_browser_origin(request.headers.get("origin"), request):
             return False
     return True
 
