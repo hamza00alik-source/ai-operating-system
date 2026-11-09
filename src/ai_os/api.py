@@ -21,6 +21,7 @@ from ai_os.llm_gateway import list_providers, generate, generate_with_fallback, 
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
+from ai_os.research_sources import capture_source, list_sources
 from pydantic import BaseModel, Field
 
 
@@ -140,6 +141,10 @@ def session_status(request: Request):
 class ModelRunRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=8000)
+
+
+class ResearchSourceRequest(BaseModel):
+    url: str = Field(min_length=12, max_length=2048)
 
 
 class BrainMemoryReview(BaseModel):
@@ -272,6 +277,20 @@ def get_company_overview():
         "execution_runtime": "shared-worker-on-demand-specialist-plus-ceo-review",
         "agent_worker_running": bool(_agent_thread and _agent_thread.is_alive()),
     }
+
+
+@app.get("/research/sources", dependencies=[Depends(require_api_key)])
+def get_research_sources():
+    return list_sources()
+
+
+@app.post("/research/sources", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_research_source(payload: ResearchSourceRequest):
+    """Owner-triggered read-only capture of one public HTTPS research page."""
+    try:
+        return capture_source(payload.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/brain/status", dependencies=[Depends(require_api_key)])
