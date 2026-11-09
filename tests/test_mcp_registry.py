@@ -10,7 +10,15 @@ def test_owner_can_register_enable_and_read_only_probe_mcp_server(monkeypatch, t
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'mcp-registry.db'}")
     monkeypatch.setattr(api, "probe_mcp_server", lambda server_id: {
         "server_id": server_id, "connection_status": "connected",
-        "tool_count": 1, "tools": [{"name": "search", "description": "Read-only search"}],
+        "tool_count": 1, "tools": [{
+            "name": "search", "description": "Read-only search",
+            "input_schema": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        }],
         "tool_execution_enabled": False, "execution_policy": "not_enabled",
     })
 
@@ -48,6 +56,8 @@ def test_owner_can_register_enable_and_read_only_probe_mcp_server(monkeypatch, t
         )
         assert tested.status_code == 200
         assert tested.json()["tool_execution_enabled"] is False
+        assert tested.json()["catalog_persisted"] is True
+        assert tested.json()["catalog_tool_count"] == 1
 
         duplicate = client.post("/integrations/mcp/servers", headers=headers, json={
             "name": "Duplicate", "endpoint": "https://mcp.example.com/mcp",
