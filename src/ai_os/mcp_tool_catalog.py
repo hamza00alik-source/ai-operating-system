@@ -79,7 +79,10 @@ def persist_discovered_tools(server_id: str, tools: list[dict]) -> dict:
         if not isinstance(name, str) or not name.strip() or len(name) > 120 or name in seen:
             raise ValueError("MCP tool names must be unique non-empty strings of at most 120 characters.")
         seen.add(name)
-        schema = tool.get("input_schema") or {"type": "object", "properties": {}}
+        # Never invent a permissive schema when a server omits its contract.
+        if "input_schema" not in tool or not isinstance(tool["input_schema"], dict):
+            raise ValueError("MCP tool is missing a valid input_schema; catalogue update rejected.")
+        schema = tool["input_schema"]
         encoded = _check_schema(schema)
         prepared.append((server_id, name, str(tool.get("description", ""))[:500],
                          encoded, _schema_digest(schema), now))
