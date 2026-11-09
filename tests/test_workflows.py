@@ -4,13 +4,14 @@ from ai_os import api
 
 def test_workflow_starts_with_one_queued_step_and_gates_the_rest(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_KEY", "workflow-owner-key")
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'workflows.db'}")
     monkeypatch.setattr(api, "run_agent_pending_once", lambda: False)
     with TestClient(api.app) as client:
         catalog = client.get("/company/workflows")
         assert catalog.status_code == 200
         assert any(item["id"] == "digital-product-launch" for item in catalog.json()["templates"])
-        created = client.post("/company/workflows/digital-product-launch/start")
+        created = client.post("/company/workflows/digital-product-launch/start", headers={"X-API-Key": "workflow-owner-key"})
         assert created.status_code == 201
         workflow = created.json()
         assert len(workflow["steps"]) == 7
