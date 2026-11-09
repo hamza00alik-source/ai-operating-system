@@ -226,3 +226,16 @@ def test_owner_reservation_endpoint_requires_auth(monkeypatch, tmp_path):
             f"/integrations/mcp/proposals/{proposal['id']}/reserve"
         )
         assert response.status_code == 401
+
+
+
+def test_reservation_rejects_non_read_only_risk(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    proposal = propose_tool_call(
+        run_id="r1", task_id="t1", department="research",
+        server_id="research-mcp", tool_name="search",
+        arguments={"q": "market"}, risk_level="write",
+    )
+    decide_tool_proposal(proposal["id"], "approved")
+    with pytest.raises(PermissionError, match="low-risk read-only"):
+        reserve_approved_tool_proposal(proposal["id"])
