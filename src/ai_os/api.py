@@ -161,6 +161,7 @@ class ProviderCredentialRequest(BaseModel):
     api_key: str = Field(min_length=8, max_length=512)
     model: str = Field(min_length=1, max_length=200)
     confirm_free_only: bool
+    base_url: str | None = Field(default=None, max_length=500)
 
 
 @app.get("/llm/credentials", dependencies=[Depends(require_owner_key)])
@@ -182,7 +183,7 @@ def post_openrouter_credentials(payload: OpenRouterCredentialRequest):
 @app.post("/llm/credentials/{provider_id}", dependencies=[Depends(require_owner_key)])
 def post_provider_credentials(provider_id: str, payload: ProviderCredentialRequest):
     try:
-        save_provider_credential(provider_id, payload.api_key, payload.model, payload.confirm_free_only)
+        save_provider_credential(provider_id, payload.api_key, payload.model, payload.confirm_free_only, payload.base_url)
         return {"saved": True, "provider": provider_id, "storage": "encrypted"}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
