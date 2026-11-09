@@ -1,3 +1,4 @@
+import io
 import socket
 
 import pytest
@@ -47,9 +48,8 @@ def test_validate_url_strips_invisible_word_joiner(monkeypatch):
         "getaddrinfo",
         lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
     )
-    submitted = "https://store.steampowered.com/hwsurvey\u2060/"
+    submitted = "https://store.steampowered.com/hwsurvey\\u2060/"
     assert research_sources._validate_url(submitted) == "https://store.steampowered.com/hwsurvey/"
-
 
 
 def test_safe_redirect_rejects_private_destination(monkeypatch):
@@ -75,3 +75,15 @@ def test_safe_redirect_enforces_hop_limit(monkeypatch):
     request = research_sources.urllib.request.Request("https://example.com/start")
     with pytest.raises(ValueError, match="4-redirect"):
         handler.redirect_request(request, None, 302, "Found", {}, "https://example.com/next")
+
+
+def test_read_bounded_returns_partial_data_and_marks_truncation():
+    raw, truncated = research_sources._read_bounded(io.BytesIO(b"abcdefghij"), limit=6)
+    assert raw == b"abcdef"
+    assert truncated is True
+
+
+def test_read_bounded_marks_complete_small_response():
+    raw, truncated = research_sources._read_bounded(io.BytesIO(b"abc"), limit=6)
+    assert raw == b"abc"
+    assert truncated is False
