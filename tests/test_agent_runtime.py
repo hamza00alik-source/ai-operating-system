@@ -112,9 +112,17 @@ def test_agent_tool_request_pauses_and_resumes_after_owner_result(monkeypatch, t
             "UPDATE mcp_tool_requests SET status='executed',result_json=?,updated_at=? WHERE id=?",
             (json.dumps({"result": "credible synthetic market data"}), "2026-11-08T01:00:00+00:00", request_id),
         )
+    # A completed owner-approved result must remain resumable even if the MCP
+    # server becomes unavailable before the worker restarts.
+    def unavailable_catalog():
+        raise ConnectionError("temporary MCP outage")
+
+    monkeypatch.setattr("ai_os.agent_runtime.discover_enabled_tool_catalog", unavailable_catalog)
     result = run_agent_workflow(task, worker_id="worker-b")
     assert result == "Research completed using approved search result."
     assert "credible synthetic market data" in calls[1][0]
+    assert "MCP tool discovery is temporarily unavailable" in calls[1][0]
+    assert calls[1][1] == []
     assert [item["status"] for item in list_task_steps(task["id"])] == [
         "completed", "completed", "completed"
     ]
