@@ -426,7 +426,7 @@ def run_pending_once() -> bool:
                     server_id=tool_proposal["server_id"],
                     tool_name=tool_proposal["tool_name"],
                     arguments=tool_proposal["arguments"],
-                    risk_level="low",
+                    risk_level="read",
                 )
             except (ValueError, PermissionError) as exc:
                 _record_event(run_id, "tool_proposal_blocked", "Proposal blocked by policy; no remote call made: " + str(exc)[:300])
