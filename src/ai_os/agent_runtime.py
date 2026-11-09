@@ -457,6 +457,8 @@ def run_pending_once() -> bool:
                 "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
                 (run_id, "completed", "Run completed successfully. No external actions were taken.", _now()),
             )
+        from ai_os.workflows import finish_workflow_task
+        finish_workflow_task(task_id, True)
         experience_id = record_experience(
             run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"]
         )
@@ -471,6 +473,8 @@ def run_pending_once() -> bool:
             db.execute("UPDATE agent_runs SET status=?,error=?,finished_at=? WHERE id=?",
                        (final_status, str(exc)[:1000], _now(), run_id))
             db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
+        from ai_os.workflows import finish_workflow_task
+        finish_workflow_task(task_id, False)
             db.execute(
                 "UPDATE agent_run_steps SET status='failed',error=?,finished_at=? WHERE run_id=? AND status='running'",
                 (str(exc)[:500], _now(), run_id),
