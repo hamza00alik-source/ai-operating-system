@@ -22,7 +22,7 @@ from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, 
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
-from ai_os.workflows import list_templates, create_workflow, get_workflow, task_is_runnable
+from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
 from pydantic import BaseModel, Field
 
@@ -409,6 +409,11 @@ def post_start_workflow(template_id: str):
         return create_workflow(template_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/company/workflows/instances", dependencies=[Depends(require_api_key)])
+def get_workflow_instances():
+    return list_workflows()
 
 
 @app.get("/company/workflows/{workflow_id}", dependencies=[Depends(require_api_key)])
