@@ -77,3 +77,15 @@ The system may record later states only when evidence exists. It must never infe
 ## Non-goals
 
 This department is not a code resale bot, token/NFT minting service, automated legal advisor, or automatic marketplace publisher. It does not claim ownership based on repository visibility, commit authorship alone, or a GitHub account association.
+
+## Provenance and rights evidence ledger
+
+The evidence ledger is available through the owner-authenticated API:
+
+- `POST /code-assets/{asset_id}/evidence` — add an evidence record.
+- `GET /code-assets/{asset_id}/evidence` — inspect records and readiness summary.
+- `POST /code-assets/evidence/{evidence_id}/review` — owner accepts or rejects a record.
+
+Supported evidence categories: authorship, contributor rights, upstream source, dependency license, license notice, secret scan, legal review, and other. Records begin as `pending`. The API does not accept file uploads; use a descriptive record and a source URL or reference, and keep sensitive documents in a secure system rather than pasting secrets or private personal data into the ledger.
+
+The summary identifies missing accepted evidence categories. Completing the owner review checklist changes readiness only to `requires-independent-review`, never to an automatic license-ready state. An owner-accepted record is an owner review decision, not independent verification, a copyright assignment, or legal advice. Only an appropriately qualified independent review can resolve legal questions. All evidence creation and review actions require owner authentication; reads require the operational API key.
