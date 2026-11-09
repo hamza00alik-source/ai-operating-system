@@ -27,6 +27,7 @@ from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
 from ai_os.mcp_client import probe_mcp_server
+from ai_os.tool_approvals import list_tool_proposals, decide_tool_proposal
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -703,6 +704,28 @@ def post_candidate_review(payload: CandidateReviewDecision):
     return {"repository_url": url, "review_state": payload.decision, "review_notes": payload.notes.strip(), "review_updated_at": updated, "side_effects": "none"}
 
 
+
+
+@app.get("/integrations/mcp/proposals", dependencies=[Depends(require_owner_key)])
+def get_mcp_tool_proposals():
+    """Owner-only inbox. Listing proposals never contacts an MCP server."""
+    return list_tool_proposals()
+
+
+class MCPToolProposalDecision(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+
+
+@app.post("/integrations/mcp/proposals/{proposal_id}/decision", dependencies=[Depends(require_owner_key)])
+def post_mcp_tool_proposal_decision(proposal_id: str, payload: MCPToolProposalDecision):
+    """Record a one-time owner decision; approval does not execute the proposed tool."""
+    try:
+        result = decide_tool_proposal(proposal_id, payload.decision, actor="owner")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Tool proposal not found")
+    return result
 
 
 @app.post("/integrations/mcp/servers", response_model=MCPServerOut, status_code=201, dependencies=[Depends(require_owner_key)])
