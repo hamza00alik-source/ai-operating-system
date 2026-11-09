@@ -4,12 +4,15 @@ from ai_os import worker_service
 class StopAfterWait:
     def __init__(self):
         self.stopped = False
+        self.wait_calls = 0
 
     def is_set(self):
         return self.stopped
 
     def wait(self, _seconds):
-        self.stopped = True
+        self.wait_calls += 1
+        if self.wait_calls >= 2:
+            self.stopped = True
 
 
 def test_worker_loop_processes_both_existing_queues(monkeypatch):
