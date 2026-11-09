@@ -169,7 +169,9 @@ def list_unorouter_free_models() -> dict[str, Any]:
         "base_url": "https://api.unorouter.com/v1",
         "source": url,
         "global_catalog_free_count": counts.get("free", len(models)),
-        "available_online_free_count": len(models),\n        "privacy_filtered": True,\n        "not_returned_from_global_free_catalog": max(0, total_free_models - len(models)),
+        "available_online_free_count": len(models),
+        "privacy_filtered": True,
+        "not_returned_from_global_free_catalog": max(0, total_free_models - len(models)),
         "models": models,
         "note": "Privacy-screened global chat catalog only: only online free OpenAI-compatible chat models with no catalog-declared training/retention or consent requirement are listed. Your API key may expose fewer models; test it. Free quotas and availability can change.",
     }
