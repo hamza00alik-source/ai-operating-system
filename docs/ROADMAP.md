@@ -14,7 +14,9 @@ A feature is complete only when tested and its operating limits are documented.
 - [x] Initial GitHub discovery scan queue, candidate persistence, metadata evaluation, and separate worker
 - [x] Dashboard UI for scan status, evidence, and owner review
 - [x] Persistent owner browser sessions (HttpOnly, Secure, SameSite=Strict; 14-day expiry)
-- [x] Agency workforce catalog: 283 specialist definitions across 18 source categories\n- [x] Company department registry: 12 business departments mapped to source specialist categories\n- [x] Department-aware task routing from company department IDs to specialist catalogue pools
+- [x] Agency workforce catalog: 283 specialist definitions across 18 source categories
+- [x] Company department registry: 12 business departments mapped to source specialist categories
+- [x] Department-aware task routing from company department IDs to specialist catalogue pools
 - [x] Owner-visible inventory of 12 reference/workforce repositories
 - [ ] Worker lease/claim safety for multiple worker instances
 - [ ] CEO-led agent orchestration beyond discovery
