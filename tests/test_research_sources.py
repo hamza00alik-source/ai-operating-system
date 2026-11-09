@@ -48,7 +48,7 @@ def test_validate_url_strips_invisible_word_joiner(monkeypatch):
         "getaddrinfo",
         lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
     )
-    submitted = "https://store.steampowered.com/hwsurvey\\u2060/"
+    submitted = "https://store.steampowered.com/hwsurvey\u2060/"
     assert research_sources._validate_url(submitted) == "https://store.steampowered.com/hwsurvey/"
 
 
