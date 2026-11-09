@@ -318,14 +318,16 @@ def _finish_step(run_id: str, sequence_no: int, output: str) -> None:
 
 def _extract_tool_proposal(response: str) -> dict | None:
     """Parse one explicit, bounded model proposal marker; never infer tool calls."""
-    import re
-
-    matches = re.findall(r"^AIOS_TOOL_PROPOSAL:\s*(\{.*?\})\s*$", response or "", re.MULTILINE | re.DOTALL)
-    if not matches:
+    lines = [
+        line[len("AIOS_TOOL_PROPOSAL:"):].strip()
+        for line in (response or "").splitlines()
+        if line.startswith("AIOS_TOOL_PROPOSAL:")
+    ]
+    if not lines:
         return None
-    if len(matches) != 1:
-        raise ValueError("Only one AIOS_TOOL_PROPOSAL block is permitted per stage.")
-    payload = json.loads(matches[0])
+    if len(lines) != 1:
+        raise ValueError("Only one AIOS_TOOL_PROPOSAL line is permitted per stage.")
+    payload = json.loads(lines[0])
     if not isinstance(payload, dict) or set(payload) != {"server_id", "tool_name", "arguments"}:
         raise ValueError("Tool proposal must contain exactly server_id, tool_name and arguments.")
     if not isinstance(payload["server_id"], str) or not isinstance(payload["tool_name"], str):
