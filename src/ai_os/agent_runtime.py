@@ -311,7 +311,10 @@ def run_pending_once() -> bool:
             "\n\nTASK TITLE: " + task["title"] +
             "\nTASK DESCRIPTION: " + task.get("description", "") +
             "\n\nProduce a useful, concrete deliverable. State assumptions, research gaps and next steps. "
-            "This runtime has no browser or live web-search capability. Do not invent sources, citations, market sizes, CAGR values, revenue shares, rankings, prices, or current facts. " +\n            "For research tasks, distinguish sourced facts (only when a source is supplied in context) from hypotheses and unknowns. " +\n            "If a quantitative market figure has no traceable source, omit it or label it explicitly as an unverified planning assumption, never as a market estimate. " +\n            "Do not claim to have performed external actions or verified facts you did not verify. "
+            "This runtime has no browser or live web-search capability. Do not invent sources, citations, market sizes, CAGR values, revenue shares, rankings, prices, or current facts. " +
+            "For research tasks, distinguish sourced facts (only when a source is supplied in context) from hypotheses and unknowns. " +
+            "If a quantitative market figure has no traceable source, omit it or label it explicitly as an unverified planning assumption, never as a market estimate. " +
+            "Do not claim to have performed external actions or verified facts you did not verify. "
             "Do not spend money, publish, contact customers, modify accounts, or make commitments. "
             "Return a concise structured report."
         )
@@ -347,7 +350,8 @@ def run_pending_once() -> bool:
         ceo_agent = {"id": "executive/ceo-reviewer", "name": "CEO Quality Reviewer", "department": "executive"}
         review_prompt = (
             "You are the CEO and final quality reviewer. Integrate two specialist contributions into one useful deliverable. "
-            "Resolve contradictions explicitly. Enforce evidence discipline: remove unsupported numeric market-size, CAGR, revenue-share, ranking and pricing claims; never convert a collaborator's unsupported claim into a verified fact. " +\n            "If no traceable source URL and publication date are present, label claims as unverified hypotheses or omit them. State that live research was not performed when no browsing/source retrieval occurred. Separate facts, assumptions and unknowns, and include a QA checklist and next actions. "
+            "Resolve contradictions explicitly. Enforce evidence discipline: remove unsupported numeric market-size, CAGR, revenue-share, ranking and pricing claims; never convert a collaborator's unsupported claim into a verified fact. " +
+            "If no traceable source URL and publication date are present, label claims as unverified hypotheses or omit them. State that live research was not performed when no browsing/source retrieval occurred. Separate facts, assumptions and unknowns, and include a QA checklist and next actions. "
             "Do not claim external actions. No spending, publishing, outreach, account changes or commitments are allowed.\n\n"
             "TASK: " + task["title"] + "\nDESCRIPTION: " + task.get("description", "") +
             "\nLEAD SPECIALIST (" + specialist["name"] + "):\n" + specialist_result["response"][:8500] +
