@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from ai_os.db import connect
 from ai_os.mcp_client import _load_server, _open_session, _list_tools, _post
 from ai_os.mcp_tool_catalog import get_discovered_tool_schema, validate_discovered_tool_arguments
-from ai_os.tool_approvals import _ensure_table
+from ai_os.tool_approvals import _ensure_table, _fingerprint
 
 
 def _read_only_grants() -> set[str]:
@@ -53,6 +53,8 @@ def execute_approved_proposal(proposal_id: str) -> dict:
         args = json.loads(row["arguments_json"])
         proposal_fingerprint = row["fingerprint"]
         expected_schema = row["schema_sha256"]
+        if _fingerprint(server_id, tool_name, args, expected_schema) != proposal_fingerprint:
+            raise PermissionError("Approved proposal fingerprint does not match its stored tool and arguments.")
         department = row["department"]
         raw_allowlist = os.getenv("AI_OS_MCP_DEPARTMENT_TOOL_ALLOWLIST", "{}")
         try:
