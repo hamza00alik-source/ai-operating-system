@@ -125,6 +125,30 @@ def initialize_database() -> None:
             expires_at TEXT NOT NULL,
             last_seen_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS business_records (
+            id TEXT PRIMARY KEY, record_type TEXT NOT NULL CHECK(record_type IN ('customer','expense','revenue')),
+            title TEXT NOT NULL, amount REAL, currency TEXT NOT NULL DEFAULT 'USD',
+            status TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0,
+            contact TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_business_records_type_created ON business_records(record_type, created_at);
+        CREATE TABLE IF NOT EXISTS code_assets (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, repository_url TEXT NOT NULL DEFAULT '',
+            path TEXT NOT NULL DEFAULT '', asset_type TEXT NOT NULL DEFAULT 'source_code',
+            ownership_status TEXT NOT NULL DEFAULT 'unverified', license TEXT NOT NULL DEFAULT 'unknown',
+            dependency_review TEXT NOT NULL DEFAULT 'not_reviewed', token_estimate INTEGER,
+            token_method TEXT NOT NULL DEFAULT 'not_measured', git_history_tokens INTEGER,
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_code_assets_created ON code_assets(created_at);
+        CREATE TABLE IF NOT EXISTS license_offers (
+            id TEXT PRIMARY KEY, asset_id TEXT NOT NULL, buyer TEXT NOT NULL,
+            terms TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft_pending_owner_approval',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            FOREIGN KEY(asset_id) REFERENCES code_assets(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_license_offers_created ON license_offers(created_at);
         CREATE TABLE IF NOT EXISTS discovery_candidates (
             canonical_url TEXT PRIMARY KEY, full_name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL,
