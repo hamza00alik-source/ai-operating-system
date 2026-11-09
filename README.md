@@ -77,7 +77,7 @@ The gateway is an inference transport layer; it does not yet constitute a full m
 
 ## Agency workforce catalog and owner console
 
-The Owner Console includes a catalog of 283 specialist definitions across 18 departments from the MIT-licensed \`hamza00alik-source/agency-agents\` repository, plus a 12-repository source inventory including the separate Automaton runtime reference and ten company/platform comparison repositories. These are source catalogs and architecture references, not 283 running processes. Each specialist prompt is inspectable from its source link. The current general-purpose agent execution runtime is still under development.
+The Owner Console includes a catalog of 283 specialist definitions across 18 departments from the MIT-licensed upstream \`msitarzewski/agency-agents\` repository, pinned to commit \`b37b5bb33b78f2c1d6567d98e25ca818e3259219\` (the account-owned \`hamza00alik-source/agency-agents\` repository is a fork), plus a 12-repository source inventory including the separate Automaton runtime reference and ten company/platform comparison repositories. These are source catalogs and architecture references, not 283 running processes. Each specialist prompt is inspectable from its source link. The current general-purpose agent execution runtime is still under development.
 
 The Owner Console supports a secure browser session: sign in once with \`AI_OS_API_KEY\`, then use the HttpOnly, Secure, SameSite=Strict session cookie for up to 14 days (or until logout/cookie clearing). The raw owner key is not saved in browser storage. API-key header authentication remains available for external clients.
 
