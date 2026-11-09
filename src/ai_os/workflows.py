@@ -2,7 +2,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
-from ai_os.db import connect
+from ai_os.db import connect, initialize_database
 
 TEMPLATES = {
     "digital-product-launch": {
@@ -32,6 +32,7 @@ TEMPLATES = {
 }
 
 def initialize_workflows() -> None:
+    initialize_database()
     with connect() as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS workflow_instances (
