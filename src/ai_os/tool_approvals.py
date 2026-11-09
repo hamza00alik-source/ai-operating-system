@@ -179,6 +179,15 @@ def decide_tool_proposal(proposal_id: str, decision: str, actor: str = "owner") 
             ).rowcount
             if changed != 1:
                 raise ValueError("Proposal changed concurrently; refresh the approval inbox.")
+            db.execute(
+                """INSERT INTO audit_events
+                (event_type,actor_id,resource_type,resource_id,details_json,created_at)
+                VALUES(?,?,?,?,?,?)""",
+                ("mcp_tool_proposal.decision", actor, "mcp_tool_proposal", proposal_id,
+                 json.dumps({"decision": decision, "fingerprint": row["fingerprint"],
+                             "schema_sha256": current_schema_sha256},
+                            sort_keys=True, separators=(",", ":")), now.isoformat()),
+            )
             result = dict(db.execute("SELECT * FROM mcp_tool_proposals WHERE id=?", (proposal_id,)).fetchone())
     if result is None:
         raise ValueError("Proposal has expired.")
