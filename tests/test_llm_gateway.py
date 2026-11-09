@@ -130,26 +130,36 @@ def test_unorouter_is_eligible_for_prelaunch_aios_when_free_confirmed(monkeypatc
     assert status["model"] == "example-model:free"
     assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
 
-def test_unorouter_catalog_uses_documented_fields_and_marks_privacy_unknown(monkeypatch):
+def test_unorouter_catalog_lists_free_and_paid_and_preserves_exact_ids(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "catalog-key", "model": "gpt-oss-120b:free",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
+    } if provider == "unorouter" else None)
+    responses = [
+        {"counts":{"models":2,"free":1,"paid":1},"models":[
+            {"model_name":"gpt-oss-120b","vendor":"Vendor A","is_free":True,"online":True,"input_price":0,"output_price":0},
+            {"model_name":"paid-model","vendor":"Vendor B","is_free":False,"online":True,"input_price":1.2,"output_price":4.8}
+        ]},
+        {"data":[{"id":"gpt-oss-120b:free","name":"GPT OSS"},{"id":"paid-model","name":"Paid Model"}]}
+    ]
     class FakeResponse:
+        def __init__(self,payload): self.payload=payload
         def __enter__(self): return self
-        def __exit__(self, *args): return False
-        def read(self, limit):
-            return json.dumps({"counts":{"free":3},"models":[
-                {"model_name":"alpha","is_free":True,"online":True,"type":"text","supported_endpoint_types":["openai"]},
-                {"model_name":"beta:free","is_free":True,"online":False,"type":"text","supported_endpoint_types":["openai"]},
-                {"model_name":"paid","is_free":False,"online":True,"type":"text","supported_endpoint_types":["openai"]},
-                {"model_name":"image:free","is_free":True,"online":True,"type":"image","supported_endpoint_types":["openai"]},
-                {"model_name":"privacy-unknown:free","is_free":True,"online":True,"type":"text","supported_endpoint_types":["openai"],
-                 "own_purpose":{"trains_or_retains":True,"consent_required":True}}
-            ]}).encode()
-    monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", lambda *a, **k: FakeResponse())
-    data = llm_gateway.list_unorouter_free_models()
-    assert data["available_online_free_count"] == 2
-    assert [m["id"] for m in data["models"]] == ["alpha:free", "privacy-unknown:free"]
-    assert all(m["privacy_status"] == "unverified" for m in data["models"])
-    assert data["privacy_filtered"] is False
-    assert "research-only" in data["note"].casefold()
+        def __exit__(self,*args): return False
+        def read(self,limit): return json.dumps(self.payload).encode()
+    calls=[]
+    def fake_urlopen(request,timeout=20):
+        calls.append(request.full_url)
+        return FakeResponse(responses.pop(0))
+    monkeypatch.setattr(llm_gateway.urllib.request,"urlopen",fake_urlopen)
+    data=llm_gateway.list_unorouter_catalog()
+    assert data["available_to_key_count"]==2
+    assert data["available_free_count"]==1
+    assert data["available_paid_count"]==1
+    assert {m["id"] for m in data["models"]}=={"gpt-oss-120b:free","paid-model"}
+    assert next(m for m in data["models"] if m["id"]=="paid-model")["input_price_per_million"]==1.2
+    assert calls==["https://api.unorouter.com/api/pricing/catalog","https://api.unorouter.com/v1/models"]
+
 
 
 def test_unorouter_is_default_eligible_provider_when_free_confirmed(monkeypatch):
@@ -200,3 +210,28 @@ def test_unorouter_env_model_must_end_in_free(monkeypatch):
     assert status["configured"] is True
     assert status["eligible"] is False
     assert ":free" in status["reason"]
+
+
+def test_unorouter_paid_personal_test_requires_explicit_approval(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "uno-test-secret", "model": "paid-model",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": False
+    } if provider == "unorouter" else None)
+    with pytest.raises(PermissionError, match="Explicitly approve"):
+        llm_gateway.test_unorouter_personal("test prompt", approve_paid_request=False)
+
+
+def test_unorouter_paid_personal_test_runs_only_when_approved(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "uno-test-secret", "model": "paid-model",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": False
+    } if provider == "unorouter" else None)
+    captured={}
+    def fake_post(url,payload,headers,timeout=35):
+        captured.update(url=url,payload=payload)
+        return {"model":"paid-model","choices":[{"message":{"content":"Approved paid model test returned a valid response."}}],"usage":{}}
+    monkeypatch.setattr(llm_gateway,"_post",fake_post)
+    result=llm_gateway.test_unorouter_personal("test prompt",approve_paid_request=True)
+    assert result["model_cost_class"]=="paid"
+    assert result["paid_request_approved"] is True
+    assert captured["payload"]["model"]=="paid-model"
