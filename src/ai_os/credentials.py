@@ -49,6 +49,8 @@ PROVIDER_ENDPOINTS = {
 
 
 def save_provider_credential(provider: str, api_key: str, model: str, free_confirmed: bool) -> None:
+    if provider == "unorouter":
+        raise ValueError("UnoRouter is research-only in AIOS. Its current terms state business accounts are unavailable, so company credentials and workloads are not supported.")
     if provider not in PROVIDER_ENDPOINTS:
         raise ValueError("This provider cannot be configured through the credential vault.")
     if not api_key or len(api_key) > 512:
