@@ -122,7 +122,7 @@ def deliver_notification(notification_id: str) -> dict:
         # Atomically claim the item before the external call to prevent two
         # owner-triggered workers from sending the same notification twice.
         claimed = db.execute(
-            "UPDATE notifications SET status='sending',updated_at=? WHERE id=? AND status='sending'",
+            "UPDATE notifications SET status='sending',updated_at=? WHERE id=? AND status='queued'",
             (_now(), notification_id),
         ).rowcount
         if not claimed:
@@ -159,12 +159,12 @@ def deliver_notification(notification_id: str) -> dict:
     with connect() as db:
         if delivered:
             db.execute(
-                "UPDATE notifications SET status='sent',attempts=attempts+1,last_error=NULL,updated_at=? WHERE id=? AND status='queued'",
+                "UPDATE notifications SET status='sent',attempts=attempts+1,last_error=NULL,updated_at=? WHERE id=? AND status='sending'",
                 (now, notification_id),
             )
         else:
             db.execute(
-                "UPDATE notifications SET status='failed',attempts=attempts+1,last_error=?,updated_at=? WHERE id=? AND status='queued'",
+                "UPDATE notifications SET status='failed',attempts=attempts+1,last_error=?,updated_at=? WHERE id=? AND status='sending'",
                 ("Apprise did not confirm delivery.", now, notification_id),
             )
         updated = db.execute("SELECT * FROM notifications WHERE id=?", (notification_id,)).fetchone()
