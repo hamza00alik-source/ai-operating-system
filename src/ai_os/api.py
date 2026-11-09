@@ -627,6 +627,11 @@ def post_mcp_server_enabled(server_id: str, payload: MCPServerEnable):
 @app.post("/integrations/mcp/servers/{server_id}/test", dependencies=[Depends(require_owner_key)])
 def post_mcp_server_test(server_id: str):
     """Owner-triggered, read-only MCP handshake and tool discovery. Never invokes a tool."""
+    server = next((item for item in list_mcp_servers() if item["id"] == server_id), None)
+    if server is None:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    if not server["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable this MCP server before testing its connection")
     try:
         return probe_mcp_server(server_id)
     except LookupError as exc:
