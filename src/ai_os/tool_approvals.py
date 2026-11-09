@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -276,7 +277,7 @@ def reserve_approved_tool_proposal(proposal_id: str, actor: str = "owner") -> di
                 (reservation_id, proposal_id, row["fingerprint"], schema_digest,
                  now.isoformat(), actor),
             )
-        except Exception as exc:
+        except sqlite3.IntegrityError as exc:
             # The unique proposal_id constraint is the final replay barrier.
             raise ValueError("This approved proposal has already been reserved.") from exc
         db.execute(
