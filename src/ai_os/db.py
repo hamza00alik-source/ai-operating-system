@@ -189,6 +189,13 @@ def initialize_database() -> None:
                 connection.execute(
                     "ALTER TABLE agent_runs ADD COLUMN " + column_name + " " + column_type
                 )
+        # Persistent worker lease metadata. Expired work is failed for owner review,
+        # never automatically requeued because an inference request may have completed remotely.
+        agent_run_columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_runs)")}
+        for column_name, column_type in {"lease_owner": "TEXT", "lease_expires_at": "TEXT"}.items():
+            if column_name not in agent_run_columns:
+                connection.execute("ALTER TABLE agent_runs ADD COLUMN " + column_name + " " + column_type)
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_agent_runs_lease ON agent_runs(status, lease_expires_at)")
         # Backward-compatible migration for databases created before owner review.
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(discovery_candidates)")}
         if "review_state" not in columns:
