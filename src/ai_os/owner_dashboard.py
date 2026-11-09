@@ -633,7 +633,7 @@ requestAnimationFrame(animate);refresh();fallback.style.display="none";
   }catch(e){$("businessMessage").textContent=e.message}
  }
  ["customer","revenue","expense"].forEach(kind=>{
-  const form=$(kind+"Form");form.addEventListener("submit",async e=>{e.preventDefault();const data=formData(form);if(kind==="revenue")data.verified_payment=form.elements.verified_payment.checked;try{await send("/business/"+(kind==="customer"?"customers":kind+"s"),data);form.reset();$("businessMessage").textContent=kind==="expense"?"Expense recorded for owner approval.":kind==="revenue"?"Revenue record saved; only verified receipts count.":"Customer saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
+  const form=$(kind+"Form");form.addEventListener("submit",async e=>{e.preventDefault();const data=formData(form);if(kind==="revenue")data.verified_payment=form.elements.verified_payment.checked;try{await send("/business/"+(kind==="customer"?"customers":(kind==="expense"?"expenses":"revenue")),data);form.reset();$("businessMessage").textContent=kind==="expense"?"Expense recorded for owner approval.":kind==="revenue"?"Revenue record saved; only verified receipts count.":"Customer saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
  });
  async function loadAssets(){
   try{
