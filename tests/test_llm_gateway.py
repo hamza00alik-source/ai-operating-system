@@ -149,7 +149,7 @@ def test_unorouter_catalog_uses_documented_fields_and_marks_privacy_unknown(monk
     assert [m["id"] for m in data["models"]] == ["alpha:free", "privacy-unknown:free"]
     assert all(m["privacy_status"] == "unverified" for m in data["models"])
     assert data["privacy_filtered"] is False
-    assert "research-only" in data["note"]
+    assert "research-only" in data["note"].casefold()
 
 
 def test_unorouter_is_never_eligible_for_company_tasks(monkeypatch):
