@@ -178,3 +178,48 @@ def test_unorouter_personal_test_requires_owner_auth(monkeypatch):
     with TestClient(app) as client:
         response = client.post("/llm/unorouter/personal-test", json={"provider":"unorouter","prompt":"synthetic test"})
     assert response.status_code in (401, 403)
+
+
+def test_api_anything_routes_require_owner_auth(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    with TestClient(app) as client:
+        assert client.get("/integrations/api-anything/status").status_code == 401
+        response = client.get(
+            "/integrations/api-anything/status",
+            headers={"X-API-Key": "test-owner-key"},
+        )
+    assert response.status_code == 200
+    assert response.json()["configured"] is False
+
+
+def test_api_anything_read_call_is_owner_only_and_forwards_safe_request(monkeypatch):
+    from ai_os import api
+
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    captured = {}
+
+    def fake_call(site, operation, args, fields=None):
+        captured.update(site=site, operation=operation, args=args, fields=fields)
+        return {"ok": True, "data": [{"title": "SQLite"}]}
+
+    monkeypatch.setattr(api.website_api, "call_read", fake_call)
+    with TestClient(app) as client:
+        denied = client.post(
+            "/integrations/api-anything/call/hacker-news/search",
+            json={"args": {"query": "sqlite"}},
+        )
+        allowed = client.post(
+            "/integrations/api-anything/call/hacker-news/search",
+            headers={"X-API-Key": "test-owner-key"},
+            json={"args": {"query": "sqlite"}},
+        )
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    assert captured == {
+        "site": "hacker-news",
+        "operation": "search",
+        "args": {"query": "sqlite"},
+        "fields": None,
+    }
