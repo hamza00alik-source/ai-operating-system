@@ -84,3 +84,37 @@ def test_tool_proposal_arguments_are_bounded(monkeypatch, tmp_path):
         propose_tool_call(run_id="r1", task_id="t1", department="research",
                           server_id="research-mcp", tool_name="search",
                           arguments={"q": "x" * 70000})
+
+
+def test_owner_approval_rechecks_current_schema(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    proposal = propose_tool_call(
+        run_id="r1", task_id="t1", department="research",
+        server_id="research-mcp", tool_name="search", arguments={"q": "market"},
+    )
+    # Simulate an owner-triggered rediscovery that changes the schema.
+    persist_discovered_tools("research-mcp", [{
+        "name": "search",
+        "input_schema": {"type": "object", "properties": {"q": {"type": "string"}, "limit": {"type": "integer"}},
+                         "required": ["q"], "additionalProperties": False},
+    }])
+    with pytest.raises(ValueError, match="schema changed"):
+        decide_tool_proposal(proposal["id"], "approved")
+    with connect() as db:
+        row = db.execute("SELECT status FROM mcp_tool_proposals WHERE id=?", (proposal["id"],)).fetchone()
+    assert row["status"] == "pending"
+
+
+def test_owner_approval_rejects_disabled_server(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    proposal = propose_tool_call(
+        run_id="r1", task_id="t1", department="research",
+        server_id="research-mcp", tool_name="search", arguments={"q": "market"},
+    )
+    with connect() as db:
+        db.execute("UPDATE mcp_servers SET enabled=0 WHERE id='research-mcp'")
+    with pytest.raises(PermissionError, match="enabled server"):
+        decide_tool_proposal(proposal["id"], "approved")
+    with connect() as db:
+        row = db.execute("SELECT status FROM mcp_tool_proposals WHERE id=?", (proposal["id"],)).fetchone()
+    assert row["status"] == "pending"
