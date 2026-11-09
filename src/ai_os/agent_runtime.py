@@ -326,7 +326,7 @@ def run_pending_once() -> bool:
         )
 
         _start_step(run_id, 1, "Lead specialist", specialist, task["title"])
-        specialist_result = generate_with_fallback(context, preferred_provider="openrouter")
+        specialist_result = generate_with_fallback(context, preferred_provider="unorouter")
         if specialist_result.get("fallback_used"):
             _record_event(run_id, "provider_fallback", "Lead specialist used free fallback provider " + specialist_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 1, specialist_result["response"])
@@ -346,7 +346,7 @@ def run_pending_once() -> bool:
             "Do not claim external actions. No spending, publishing, outreach, account changes or commitments."
         )
         _start_step(run_id, 2, "Independent collaboration", collaborator, "Review and extend the lead specialist's deliverable.")
-        collaborator_result = generate_with_fallback(collaboration_prompt, preferred_provider="openrouter")
+        collaborator_result = generate_with_fallback(collaboration_prompt, preferred_provider="unorouter")
         if collaborator_result.get("fallback_used"):
             _record_event(run_id, "provider_fallback", "Collaborator used free fallback provider " + collaborator_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 2, collaborator_result["response"])
@@ -364,7 +364,7 @@ def run_pending_once() -> bool:
             "\n\nCOLLABORATING SPECIALIST (" + collaborator["name"] + "):\n" + collaborator_result["response"][:8500]
         )
         _start_step(run_id, 3, "CEO integration and QA", ceo_agent, "Integrate both specialist contributions into the final owner-ready deliverable.")
-        ceo_result = generate_with_fallback(review_prompt, preferred_provider="openrouter")
+        ceo_result = generate_with_fallback(review_prompt, preferred_provider="unorouter")
         if ceo_result.get("fallback_used"):
             _record_event(run_id, "provider_fallback", "CEO reviewer used free fallback provider " + ceo_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 3, ceo_result["response"])
