@@ -154,6 +154,16 @@ def decide_tool_proposal(proposal_id: str, decision: str, actor: str = "owner") 
             return None
         if row["status"] != "pending":
             raise ValueError("Proposal is no longer pending; decisions are one-time.")
+        # Re-check the live enabled-server catalogue at decision time. A schema
+        # refresh or server disable invalidates the proposal before approval.
+        current_schema_sha256 = validate_discovered_tool_arguments(
+            row["server_id"], row["tool_name"], json.loads(row["arguments_json"])
+        )
+        if current_schema_sha256 != row["schema_sha256"]:
+            raise ValueError("Tool schema changed after proposal creation; reject and request a fresh proposal.")
+        allowed = _department_allowlist().get(row["department"], [])
+        if f'{row["server_id"]}:{row["tool_name"]}' not in allowed:
+            raise PermissionError("Tool is no longer allowlisted for this department.")
         if datetime.fromisoformat(row["expires_at"]) <= now:
             db.execute("UPDATE mcp_tool_proposals SET status='expired' WHERE id=? AND status='pending'", (proposal_id,))
             expired = True
@@ -164,8 +174,8 @@ def decide_tool_proposal(proposal_id: str, decision: str, actor: str = "owner") 
         else:
             changed = db.execute(
                 """UPDATE mcp_tool_proposals SET status=?,decided_at=?,decided_by=?
-                WHERE id=? AND status='pending' AND fingerprint=?""",
-                (decision, now.isoformat(), actor, proposal_id, row["fingerprint"]),
+                WHERE id=? AND status='pending' AND fingerprint=? AND schema_sha256=?""",
+                (decision, now.isoformat(), actor, proposal_id, row["fingerprint"], current_schema_sha256),
             ).rowcount
             if changed != 1:
                 raise ValueError("Proposal changed concurrently; refresh the approval inbox.")
