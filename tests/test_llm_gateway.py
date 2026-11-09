@@ -176,8 +176,7 @@ def test_unorouter_credentials_are_rejected():
 
 
 def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypatch):
-    from ai_os import credentials
-    monkeypatch.setattr(credentials, "get_provider_credential", lambda provider: {
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
         "secret": "uno-test-secret", "model": "sample-model:free",
         "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
     } if provider == "unorouter" else None)
@@ -195,8 +194,7 @@ def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypa
 
 
 def test_unorouter_personal_test_rejects_paid_model(monkeypatch):
-    from ai_os import credentials
-    monkeypatch.setattr(credentials, "get_provider_credential", lambda provider: {
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
         "secret": "uno-test-secret", "model": "paid-model",
         "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
     })
