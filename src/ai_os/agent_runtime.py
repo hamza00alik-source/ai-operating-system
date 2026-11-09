@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -36,12 +37,28 @@ def _record_event(run_id: str, stage: str, message: str) -> None:
         )
 
 
+def renew_run_lease(run_id: str, worker_id: str, lease_seconds: int = 1800) -> bool:
+    """Renew only the lease currently owned by this worker."""
+    now_dt = datetime.now(timezone.utc)
+    expires_at = datetime.fromtimestamp(
+        now_dt.timestamp() + max(60, min(int(lease_seconds), 86400)), timezone.utc
+    ).isoformat()
+    with connect() as db:
+        changed = db.execute(
+            "UPDATE agent_runs SET lease_expires_at=? WHERE id=? AND status='running' AND lease_owner=?",
+            (expires_at, run_id, worker_id),
+        ).rowcount
+    return changed == 1
+
+
 def recover_interrupted_runs() -> int:
-    """Fail runs left in 'running' by a process restart; never silently replay paid/model work."""
+    """Fail expired/legacy unleased runs; never replay uncertain model work."""
     now = _now()
     with connect() as db:
         interrupted = db.execute(
-            "SELECT id, task_id FROM agent_runs WHERE status='running'"
+            """SELECT id, task_id FROM agent_runs
+               WHERE status='running' AND (lease_expires_at IS NULL OR lease_expires_at<=?)""",
+            (now,),
         ).fetchall()
         for row in interrupted:
             run_id, task_id = row["id"], row["task_id"]
@@ -343,6 +360,14 @@ def run_pending_once(worker_id: str | None = None) -> bool:
     if claim is None:
         return False
     run_id, task_id, task_row = claim["run_id"], claim["task_id"], claim["task"]
+    lease_stop = threading.Event()
+    def keep_lease_alive():
+        while not lease_stop.wait(60):
+            if not renew_run_lease(run_id, worker_id):
+                logger.error("Agent run %s lost its worker lease (%s).", run_id, worker_id)
+                return
+    lease_thread = threading.Thread(target=keep_lease_alive, name="aios-lease-" + run_id[:8], daemon=True)
+    lease_thread.start()
     try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
         task = dict(task_row)
@@ -495,6 +520,9 @@ def run_pending_once(worker_id: str | None = None) -> bool:
             )
         from ai_os.workflows import finish_workflow_task
         finish_workflow_task(task_id, False)
+    finally:
+        lease_stop.set()
+        lease_thread.join(timeout=2)
     return True
 
 
