@@ -47,7 +47,7 @@ def recover_interrupted_runs() -> int:
             run_id, task_id = row["id"], row["task_id"]
             reason = "Execution interrupted by service restart; owner can explicitly retry."
             db.execute(
-                "UPDATE agent_runs SET status='failed',error=?,finished_at=? WHERE id=? AND status='running'",
+                "UPDATE agent_runs SET status='failed',error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running'",
                 (reason, now, run_id),
             )
             if task_id:
@@ -315,22 +315,34 @@ def _finish_step(run_id: str, sequence_no: int, output: str) -> None:
         )
 
 
-def run_pending_once() -> bool:
+def claim_next_run(worker_id: str, lease_seconds: int = 1800) -> dict | None:
+    """Atomically claim one queued run under a SQLite write lock."""
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    expires = (now_dt.timestamp() + max(60, min(int(lease_seconds), 86400)))
+    expires_at = datetime.fromtimestamp(expires, timezone.utc).isoformat()
     with connect() as db:
-        row = db.execute(
-            "SELECT * FROM agent_runs WHERE status='queued' ORDER BY created_at LIMIT 1"
-        ).fetchone()
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT id,task_id FROM agent_runs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
         if row is None:
-            return False
-        run_id, task_id = row["id"], row["task_id"]
+            return None
         changed = db.execute(
-            "UPDATE agent_runs SET status='running',started_at=? WHERE id=? AND status='queued'",
-            (_now(), run_id),
+            "UPDATE agent_runs SET status='running',started_at=?,lease_owner=?,lease_expires_at=? WHERE id=? AND status='queued'",
+            (now, worker_id, expires_at, row["id"]),
         ).rowcount
         if not changed:
-            return True
-        db.execute("UPDATE tasks SET status='running' WHERE id=?", (task_id,))
-        task_row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            return None
+        db.execute("UPDATE tasks SET status='running' WHERE id=?", (row["task_id"],))
+        task_row = db.execute("SELECT * FROM tasks WHERE id=?", (row["task_id"],)).fetchone()
+        return {"run_id": row["id"], "task_id": row["task_id"], "task": dict(task_row)}
+
+
+def run_pending_once(worker_id: str | None = None) -> bool:
+    worker_id = worker_id or "inline-" + str(uuid4())
+    claim = claim_next_run(worker_id)
+    if claim is None:
+        return False
+    run_id, task_id, task_row = claim["run_id"], claim["task_id"], claim["task"]
     try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
         task = dict(task_row)
@@ -448,7 +460,7 @@ def run_pending_once() -> bool:
         with connect() as db:
             db.execute(
                 """UPDATE agent_runs SET status='completed',assigned_agent_id=?,specialist_output=?,
-                ceo_review=?,usage_json=?,finished_at=?,error=NULL WHERE id=?""",
+                ceo_review=?,usage_json=?,finished_at=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL WHERE id=?""",
                 (specialist.get("id"), specialist_result["response"], ceo_result["response"],
                  json.dumps(usage), _now(), run_id),
             )
@@ -470,7 +482,7 @@ def run_pending_once() -> bool:
             saved = db.execute("SELECT specialist_output FROM agent_runs WHERE id=?", (run_id,)).fetchone()
             has_partial_deliverable = bool(saved and saved["specialist_output"])
             final_status = "partial" if has_partial_deliverable else "failed"
-            db.execute("UPDATE agent_runs SET status=?,error=?,finished_at=? WHERE id=?",
+            db.execute("UPDATE agent_runs SET status=?,error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
                        (final_status, str(exc)[:1000], _now(), run_id))
             db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
             db.execute(
