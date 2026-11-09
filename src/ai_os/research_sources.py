@@ -110,7 +110,7 @@ def _add_redirect_provenance(text: str, submitted_url: str, final_url: str) -> s
         f"{submitted_url} but the server redirected to {final_url}. "
         "The captured page may not be the intended evidence; verify relevance before use.]"
     )
-    return note + "\\n\\n" + text
+    return note + "\n\n" + text
 
 
 def capture_source(url: str) -> dict:
