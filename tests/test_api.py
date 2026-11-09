@@ -223,3 +223,50 @@ def test_api_anything_read_call_is_owner_only_and_forwards_safe_request(monkeypa
         "args": {"query": "sqlite"},
         "fields": None,
     }
+
+
+
+def test_code_asset_repository_url_validation():
+    from ai_os.code_assets import _repo_parts, _eligible_source
+
+    assert _repo_parts("https://github.com/example/project.git") == (
+        "example", "project", "https://github.com/example/project"
+    )
+    for unsafe in (
+        "http://github.com/example/project",
+        "https://evil.example/example/project",
+        "file:///etc/passwd",
+    ):
+        try:
+            _repo_parts(unsafe)
+            raise AssertionError("Unsafe repository URL should be rejected")
+        except ValueError:
+            pass
+
+    assert _eligible_source("src/main.py") is True
+    assert _eligible_source(".env") is False
+    assert _eligible_source("vendor/lib/secret.py") is False
+    assert _eligible_source("package-lock.json") is False
+
+
+def test_code_asset_scan_requires_owner_auth(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    from ai_os import api
+
+    monkeypatch.setattr(api.code_assets, "scan_repository", lambda url: {
+        "id": "asset-test", "repository_url": url, "readiness": "needs-evidence"
+    })
+    with TestClient(app) as client:
+        denied = client.post("/code-assets/scan", json={
+            "repository_url": "https://github.com/example/project"
+        })
+        allowed = client.post("/code-assets/scan", headers={
+            "X-API-Key": "test-owner-key"
+        }, json={"repository_url": "https://github.com/example/project"})
+        listed = client.get("/code-assets", headers={"X-API-Key": "test-owner-key"})
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 201
+    assert allowed.json()["readiness"] == "needs-evidence"
+    assert listed.status_code == 200
