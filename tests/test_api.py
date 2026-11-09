@@ -171,3 +171,10 @@ def test_recover_interrupted_agent_run(monkeypatch, tmp_path):
     assert step["status"] == "failed"
     assert step["finished_at"]
     assert event["stage"] == "interrupted"
+
+
+
+def test_unorouter_personal_test_requires_owner_auth(monkeypatch):
+    with TestClient(app) as client:
+        response = client.post("/llm/unorouter/personal-test", json={"provider":"unorouter","prompt":"synthetic test"})
+    assert response.status_code in (401, 403)
