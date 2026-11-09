@@ -6,7 +6,7 @@ import unicodedata
 import json
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
 from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import (require_api_key, require_owner_key, create_owner_session, revoke_owner_session, SESSION_COOKIE, SESSION_TTL_DAYS)
@@ -586,7 +586,7 @@ def get_api_anything_sites():
 
 
 @app.get("/integrations/api-anything/find", dependencies=[Depends(require_owner_key)])
-def find_api_anything_sites(q: str = Field(min_length=1, max_length=300)):
+def find_api_anything_sites(q: str = Query(min_length=1, max_length=300)):
     try:
         return website_api.find_sites(q)
     except ValueError as exc:
