@@ -343,13 +343,17 @@ def test_code_asset_evidence_rejects_unsafe_source_and_invalid_type(monkeypatch)
             ("asset-evidence-validation", "https://github.com/example/validation",
              "example/validation", "main", "2026-11-09T00:00:00+00:00"),
         )
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
     with TestClient(app) as client:
+        headers = {"X-API-Key": "test-owner-key"}
         invalid_type = client.post(
             "/code-assets/asset-evidence-validation/evidence",
+            headers=headers,
             json={"evidence_type":"magic","title":"x","description":"y"},
         )
         unsafe_url = client.post(
             "/code-assets/asset-evidence-validation/evidence",
+            headers=headers,
             json={"evidence_type":"authorship","title":"x","description":"y",
                   "source_url":"javascript:alert(1)"},
         )
