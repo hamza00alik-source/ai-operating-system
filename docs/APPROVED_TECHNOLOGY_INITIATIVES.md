@@ -25,7 +25,7 @@ Next acceptance criteria:
 - Keep account-specific live tests owner-triggered and report only the minimum required diagnostics.
 - Maintain a model benchmark ledger only when the owner explicitly requests a test; do not issue background inference calls.
 
-Status: existing foundations verified by source inspection; freshness expiry and benchmark ledger remain pending.
+Status: added a read-only `/llm/intelligence` endpoint that summarizes configured providers, owner free-confirmation, eligibility, and blockers without network probes or inference. Provider evidence freshness expiry and benchmark ledger remain pending.
 
 ## 2. Notification Infrastructure
 
