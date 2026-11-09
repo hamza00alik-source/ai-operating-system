@@ -44,6 +44,7 @@ PROVIDER_ENDPOINTS = {
     "gemini": "https://generativelanguage.googleapis.com",
     "groq": "https://api.groq.com/openai/v1",
     "mistral": "https://api.mistral.ai/v1",
+    "unorouter": "https://api.unorouter.com/v1",
 }
 
 
@@ -54,6 +55,8 @@ def save_provider_credential(provider: str, api_key: str, model: str, free_confi
         raise ValueError("Enter a valid provider API key.")
     if not model or len(model) > 200:
         raise ValueError("Enter a valid model identifier.")
+    if provider == "unorouter" and not model.endswith(":free"):
+        raise ValueError("UnoRouter only accepts model IDs ending in :free in the AIOS free-only vault.")
     if not free_confirmed:
         raise ValueError("Confirm that this provider account and model are currently free.")
     encrypted = _fernet().encrypt(api_key.encode("utf-8")).decode("ascii")
