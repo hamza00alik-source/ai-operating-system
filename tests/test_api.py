@@ -62,6 +62,8 @@ def test_owner_dashboard_is_served():
     assert response.status_code == 200
     assert "AI Company Control Center" in response.text
     assert "Queue scan" in response.text
+    assert "AI Code Asset Management" in response.text
+    assert "codeAssetScanForm" in response.text
 
 
 def test_discovery_scan_queue_and_read_endpoints():
