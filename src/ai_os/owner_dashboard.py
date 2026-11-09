@@ -626,7 +626,8 @@ requestAnimationFrame(animate);refresh();fallback.style.display="none";
   try{
    const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"),api("/business/customers"),api("/business/investors"),api("/business/expenses"),api("/business/revenue")]);
    const verified=revenue.filter(x=>x.verified);
-   $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+verified.length+'</strong><span>Verified revenue records</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div>';
+   const mtd=(summary.verified_revenue_mtd_by_currency||[]).map(x=>money(x.total,x.currency)).join(" / ")||"0.00";
+   $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+esc(mtd)+'</strong><span>Verified revenue · MTD</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div>';
    $("customerRows").innerHTML=customers.map(x=>'<tr><td>'+esc(x.title)+'</td><td>'+esc(x.contact||"—")+'</td><td>'+esc(x.notes||"—")+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="4">No customers recorded.</td></tr>';
    $("investorRows").innerHTML=investors.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.organization||"—")+'</td><td>'+esc(x.contact||"—")+'</td><td>'+esc(x.stage)+'</td><td>'+esc(x.notes||"—")+'</td></tr>').join("")||'<tr><td colspan="5">No investor records yet.</td></tr>';
    const rows=[...expenses,...revenue].sort((a,b)=>b.created_at.localeCompare(a.created_at));
