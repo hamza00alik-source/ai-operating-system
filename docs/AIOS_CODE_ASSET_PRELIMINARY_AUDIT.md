@@ -12,7 +12,7 @@
 - The recursive file tree at the reviewed commit contains no root or nested `LICENSE` / `COPYING` file.
 - The project is primarily Python according to GitHub repository metadata.
 - `pyproject.toml` declares direct runtime dependencies: FastAPI, Uvicorn, Pydantic, and Cryptography. Development extras include pytest and httpx.
-- The README describes a 283-role Agency Agents specialist catalogue and states that its source repository, `hamza00alik-source/agency-agents`, is MIT-licensed. This is evidence of an external source dependency/reference, not proof that every file in this repository is original or that all imported material is covered by that license.
+- The README describes a 283-role specialist catalogue. The account-owned `hamza00alik-source/agency-agents` repository is a GitHub fork of `msitarzewski/agency-agents`; GitHub reports no detected license on the fork, while the upstream parent is identified as MIT-licensed and the pinned upstream commit contains an MIT LICENSE file naming AgentLand Contributors. AIOS now pins specialist instructions to upstream commit `b37b5bb33b78f2c1d6567d98e25ca818e3259219`. This supports use subject to the upstream MIT notice, but does not establish AIOS ownership of the catalogue or clear every contribution.
 - The repository includes an `.env.example` file. This audit did not inspect or reproduce secret values; secret scanning and deployment-environment review remain separate required checks.
 
 ## Ownership and provenance assessment
@@ -38,7 +38,7 @@ Before any licensing package can be marked ready:
 1. Establish file-level provenance for the AIOS code and identify copied or adapted material.
 2. Verify the exact Agency Agents upstream revision and preserve its required license and notices.
 3. Produce a versioned direct/transitive dependency inventory and review each applicable license.
-4. Confirm contributor, contractor, employment, and third-party rights.
+4. Confirm contributor, contractor, employment, and third-party rights. See `docs/AIOS_PROVENANCE_AND_DEPENDENCY_AUDIT.md` for the corrected workforce-source lineage and dependency declaration review.
 5. Review repository history and current deployment configuration for secrets, customer data, or confidential information.
 6. Obtain qualified legal review where ownership, copyleft, attribution, patent, or sublicensing obligations are unclear.
 7. Only then prepare a private package for owner review.
