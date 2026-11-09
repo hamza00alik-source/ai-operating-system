@@ -236,7 +236,7 @@ th{background:#101b2c}
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Your AI company, workforce, research pipeline and approvals — in one supervised workspace.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><span id="apiHealth" class="tag">Checking API…</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a><a href="#business" data-view="business">Business</a><a href="#code-assets" data-view="code-assets">Code Assets</a></nav>
 <section class="command-stage" aria-label="AI employee command stage">
  <div class="stage-head"><div><div class="eyebrow">Neural command deck / workforce visualization</div><div class="stage-title">Meet the AI workforce</div><div class="stage-note">Stylized role representations generated from the live workforce catalogue — not fabricated active-worker status.</div></div><span id="stageRuntime" class="stage-indicator">Runtime status loading</span></div>
  <div id="employeeStage" class="employee-stage"><div class="stage-empty">Loading real specialist roles from the AIOS workforce catalogue…</div></div>
@@ -329,6 +329,42 @@ th{background:#101b2c}
 <textarea id="modelPrompt" rows="3" style="width:100%;margin:8px 0" placeholder="Enter a small test prompt. This sends a real request to the selected provider."></textarea>
 <button id="runModel">Run real model request</button>
 <pre id="modelOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1425;border:1px solid var(--line);border-radius:9px;padding:12px;min-height:60px">No live inference run yet.</pre>
+</section>
+
+<section id="business" class="panel section" data-view-panel="business">
+<h2>Business operations · financial ledger & customers</h2>
+<p class="small">Persistent records stored in the AIOS database. Only owner-confirmed payments count as revenue. Expenses are recorded for review; no payment is initiated by this dashboard.</p>
+<div id="businessSummary" class="grid"><div class="metric"><strong>—</strong><span>Customers</span></div><div class="metric"><strong>—</strong><span>Verified revenue records</span></div><div class="metric"><strong>—</strong><span>Expenses awaiting approval</span></div></div>
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
+<div class="panel"><h3>Add customer</h3><form id="customerForm"><input name="title" required maxlength="160" placeholder="Customer / company name" style="width:100%;margin:6px 0"><input name="contact" maxlength="200" placeholder="Email or contact (optional)" style="width:100%;margin:6px 0"><textarea name="notes" maxlength="2000" placeholder="Notes" style="width:100%;margin:6px 0"></textarea><button type="submit">Save customer</button></form></div>
+<div class="panel"><h3>Record verified revenue</h3><form id="revenueForm"><input name="title" required maxlength="160" placeholder="Sale / order reference" style="width:100%;margin:6px 0"><input name="amount" required type="number" min="0" step="0.01" placeholder="Amount" style="width:100%;margin:6px 0"><select name="currency" style="width:100%;margin:6px 0"><option>USD</option><option>PKR</option><option>EUR</option><option>GBP</option></select><label><input name="verified_payment" type="checkbox"> Payment actually received and verified</label><textarea name="notes" maxlength="2000" placeholder="Payment reference / notes" style="width:100%;margin:6px 0"></textarea><button type="submit">Record revenue</button></form></div>
+<div class="panel"><h3>Record expense for approval</h3><form id="expenseForm"><input name="title" required maxlength="160" placeholder="Expense / invoice" style="width:100%;margin:6px 0"><input name="amount" required type="number" min="0" step="0.01" placeholder="Amount" style="width:100%;margin:6px 0"><select name="currency" style="width:100%;margin:6px 0"><option>USD</option><option>PKR</option><option>EUR</option><option>GBP</option></select><textarea name="notes" maxlength="2000" placeholder="Purpose / vendor" style="width:100%;margin:6px 0"></textarea><button type="submit">Submit for owner review</button></form></div>
+</div>
+<div id="businessMessage" class="status" role="status"></div>
+<h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div>
+<h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+</section>
+<section id="code-assets" class="panel section" data-view-panel="code-assets">
+<h2>Code Asset Management & Licensing</h2>
+<p class="small">Inventory original code and track ownership, dependency review and token estimates. A licensing offer can only be drafted after ownership and dependency clearance. Drafts create an approval request; no repository, source code or token is shared externally.</p>
+<div class="grid"><div class="metric"><strong id="assetCount">—</strong><span>Registered assets</span></div><div class="metric"><strong id="offerCount">—</strong><span>Draft licensing offers</span></div><div class="metric"><strong id="licensedCount">0</strong><span>Completed licenses (tracked)</span></div></div>
+<div class="panel"><h3>Register code asset</h3><form id="assetForm" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));align-items:start">
+<input name="name" required maxlength="180" placeholder="Asset / repository name">
+<input name="repository_url" type="url" placeholder="https://github.com/owner/repo">
+<input name="path" maxlength="500" placeholder="Path inside repository (optional)">
+<select name="asset_type"><option value="source_code">Source code</option><option value="library">Library</option><option value="template">Template</option><option value="automation">Automation</option><option value="documentation">Documentation</option><option value="other">Other</option></select>
+<select name="ownership_status"><option value="unverified">Ownership unverified</option><option value="verified">Ownership verified</option><option value="owner_confirmed">Owner confirmed</option><option value="third_party">Third-party owned</option></select>
+<select name="license"><option value="unknown">License unknown</option><option value="proprietary">Proprietary / original</option><option value="MIT">MIT</option><option value="Apache-2.0">Apache-2.0</option><option value="GPL">GPL family</option><option value="mixed">Mixed licenses</option></select>
+<select name="dependency_review"><option value="not_reviewed">Dependencies not reviewed</option><option value="passed">Dependency review passed</option><option value="reviewed_clear">Reviewed / clear</option><option value="issues_found">Issues found</option></select>
+<input name="token_estimate" type="number" min="0" step="1" placeholder="Token estimate (optional)">
+<input name="token_method" maxlength="100" placeholder="Estimate method / source">
+<textarea name="notes" maxlength="2000" placeholder="Ownership evidence, dependency notes, source details"></textarea>
+<button type="submit">Register asset</button>
+</form></div>
+<div id="assetMessage" class="status" role="status"></div>
+<h3>Asset inventory</h3><div class="scroll"><table><thead><tr><th>Asset</th><th>Repository / path</th><th>Ownership</th><th>License</th><th>Dependencies</th><th>Token estimate</th></tr></thead><tbody id="assetRows"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
+<div class="panel"><h3>Prepare licensing offer (draft only)</h3><form id="licenseForm" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));align-items:start"><select name="asset_id" id="licenseAsset" required><option value="">Select eligible asset</option></select><input name="buyer" required maxlength="180" placeholder="Prospective buyer"><textarea name="terms" required maxlength="3000" placeholder="Draft scope, license type, price and restrictions"></textarea><button type="submit">Create draft & request approval</button></form></div>
+<h3>Licensing pipeline</h3><div class="scroll"><table><thead><tr><th>Asset</th><th>Prospective buyer</th><th>Draft terms</th><th>Status</th><th>Created</th></tr></thead><tbody id="offerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 </section>
 </main>
 <script>
@@ -580,7 +616,44 @@ const resize=()=>{const w=canvas.clientWidth,h=canvas.clientHeight;if(w&&h){rend
 function animate(t){requestAnimationFrame(animate);const time=t*.001;people.forEach((p,i)=>{p.root.position.x+=(p.targetX-p.root.position.x)*.025;p.root.position.z+=(p.targetZ-p.root.position.z)*.025;const active=p.mode==="working"||p.mode==="review";p.body.position.y=Math.sin(time*2+p.phase)*.035;p.body.rotation.y=Math.sin(time*.7+p.phase)*.035;p.arms.forEach((a,j)=>{a.rotation.z=active?Math.sin(time*9+p.phase+j)*.22+(j===0?-.35:.35):Math.sin(time*1.7+p.phase+j)*.06});p.sleeves.forEach((a,j)=>{a.rotation.z=active?Math.sin(time*9+p.phase+j)*.18+(j===0?-.28:.28):Math.sin(time*1.7+p.phase+j)*.05});p.legs.forEach((l,j)=>{l.rotation.x=active?Math.sin(time*5+p.phase+j)*.04:Math.sin(time*1.5+p.phase+j)*.025});rings[i].material.opacity=.35+Math.sin(time*2+i)*.18});renderer.render(scene,camera);if(Date.now()-lastFetch>6000)refresh();document.getElementById("officeClock").textContent="SYNC "+new Date().toLocaleTimeString()}
 requestAnimationFrame(animate);refresh();fallback.style.display="none";
 })().catch(e=>{const f=document.getElementById("officeFallback");if(f)f.textContent="3D scene could not load. Check network access to the Three.js CDN.";});
-</script></body></html>
+</script>
+<script>
+(function(){
+ const formData=form=>Object.fromEntries(new FormData(form).entries());
+ const send=async(path,body)=>api(path,{method:"POST",body:JSON.stringify(body)});
+ const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
+ async function loadBusiness(){
+  try{
+   const [summary,customers,expenses,revenue]=await Promise.all([api("/business/summary"),api("/business/customers"),api("/business/expenses"),api("/business/revenue")]);
+   const verified=revenue.filter(x=>x.verified);
+   $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+verified.length+'</strong><span>Verified revenue records</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div>';
+   $("customerRows").innerHTML=customers.map(x=>'<tr><td>'+esc(x.title)+'</td><td>'+esc(x.contact||"—")+'</td><td>'+esc(x.notes||"—")+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="4">No customers recorded.</td></tr>';
+   const rows=[...expenses,...revenue].sort((a,b)=>b.created_at.localeCompare(a.created_at));
+   $("ledgerRows").innerHTML=rows.map(x=>'<tr><td>'+esc(x.record_type)+'</td><td>'+esc(x.title)+'</td><td>'+money(x.amount,x.currency)+'</td><td>'+esc(x.status)+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="5">No ledger entries yet.</td></tr>';
+  }catch(e){$("businessMessage").textContent=e.message}
+ }
+ ["customer","revenue","expense"].forEach(kind=>{
+  const form=$(kind+"Form");form.addEventListener("submit",async e=>{e.preventDefault();const data=formData(form);if(kind==="revenue")data.verified_payment=form.elements.verified_payment.checked;try{await send("/business/"+(kind==="customer"?"customers":kind+"s"),data);form.reset();$("businessMessage").textContent=kind==="expense"?"Expense recorded for owner approval.":kind==="revenue"?"Revenue record saved; only verified receipts count.":"Customer saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
+ });
+ async function loadAssets(){
+  try{
+   const [assets,offers]=await Promise.all([api("/code-assets"),api("/code-assets/license-offers")]);
+   $("assetCount").textContent=assets.length;$("offerCount").textContent=offers.length;
+   const eligible=assets.filter(a=>["verified","owner_confirmed"].includes(a.ownership_status)&&["passed","reviewed_clear"].includes(a.dependency_review));
+   $("licenseAsset").innerHTML='<option value="">Select eligible asset</option>'+eligible.map(a=>'<option value="'+esc(a.id)+'">'+esc(a.name)+'</option>').join("");
+   $("assetRows").innerHTML=assets.map(a=>'<tr><td>'+esc(a.name)+'</td><td>'+esc(a.repository_url||"—")+'<br>'+esc(a.path||"")+'</td><td>'+esc(a.ownership_status)+'</td><td>'+esc(a.license)+'</td><td>'+esc(a.dependency_review)+'</td><td>'+(a.token_estimate==null?"Not measured":Number(a.token_estimate).toLocaleString())+' <small>'+esc(a.token_method)+'</small></td></tr>').join("")||'<tr><td colspan="6">No assets registered.</td></tr>';
+   $("offerRows").innerHTML=offers.map(o=>'<tr><td>'+esc(o.asset_name||o.asset_id)+'</td><td>'+esc(o.buyer)+'</td><td>'+esc(o.terms)+'</td><td>'+esc(o.status)+'</td><td>'+date(o.created_at)+'</td></tr>').join("")||'<tr><td colspan="5">No licensing offers.</td></tr>';
+  }catch(e){$("assetMessage").textContent=e.message}
+ }
+ $("assetForm").addEventListener("submit",async e=>{e.preventDefault();const data=formData(e.currentTarget);data.token_estimate=data.token_estimate?Number(data.token_estimate):null;try{await send("/code-assets",data);e.currentTarget.reset();$("assetMessage").textContent="Asset registered. Ownership and dependency checks remain explicit.";await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
+ $("licenseForm").addEventListener("submit",async e=>{e.preventDefault();try{const result=await send("/code-assets/license-offers",formData(e.currentTarget));$("assetMessage").textContent="Draft created. Owner approval request "+result.approval_id+" is pending. No code was shared.";e.currentTarget.reset();await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
+ const businessLink=document.querySelector('nav.main-nav a[data-view="business"]');businessLink?.addEventListener("click",loadBusiness);
+ const assetsLink=document.querySelector('nav.main-nav a[data-view="code-assets"]');assetsLink?.addEventListener("click",loadAssets);
+ if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets();
+ window.addEventListener("hashchange",()=>{if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets()});
+})();
+</script>
+</body></html>
 """
 
 def owner_dashboard() -> HTMLResponse:
