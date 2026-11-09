@@ -1,7 +1,9 @@
-"""Owner-submitted, bounded public-web evidence capture for research tasks.
+""""Owner-submitted, bounded public-web evidence capture for research tasks.
 
 This is a read-only source collector, not a general browser. It blocks redirects,
-non-public DNS targets, oversized responses, non-text content, and private-network URLs.
+non-public DNS targets, non-text content, and private-network URLs. Responses are
+stream-read with a strict byte cap; oversized pages are captured as clearly marked
+partial evidence rather than rejected or downloaded in full.
 """
 from __future__ import annotations
 
@@ -38,7 +40,7 @@ class _TextExtractor(HTMLParser):
         if tag in {"script", "style", "noscript", "svg", "nav", "footer", "header"} and self.skip:
             self.skip -= 1
         elif tag in {"p", "div", "article", "section", "li", "h1", "h2", "h3", "br"} and not self.skip:
-            self.parts.append("\n")
+            self.parts.append("\\n")
 
     def handle_data(self, data):
         if not self.skip:
@@ -91,10 +93,14 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         self.redirect_count += 1
         if self.redirect_count > self.max_redirects:
             raise ValueError("Source exceeded the 4-redirect safety limit.")
-        # Reject HTTPS downgrades, credentials, unusual ports, and private/internal
-        # destinations at every hop, not just on the originally submitted URL.
         _validate_url(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _read_bounded(response, limit: int = MAX_BYTES) -> tuple[bytes, bool]:
+    """Read at most limit bytes plus one sentinel byte to detect truncation."""
+    raw = response.read(limit + 1)
+    return raw[:limit], len(raw) > limit
 
 
 def capture_source(url: str) -> dict:
@@ -108,14 +114,11 @@ def capture_source(url: str) -> dict:
         with opener.open(request, timeout=TIMEOUT) as response:
             if response.status != 200:
                 raise ValueError(f"Source returned HTTP {response.status}.")
-            # Persist the final validated URL, so citations point to the captured page.
             safe_url = _validate_url(response.geturl())
             content_type = response.headers.get("Content-Type", "").lower()
             if not any(kind in content_type for kind in ("text/html", "text/plain", "application/xhtml+xml")):
                 raise ValueError("Only HTML and plain-text pages can be captured.")
-            raw = response.read(MAX_BYTES + 1)
-            if len(raw) > MAX_BYTES:
-                raise ValueError("Source exceeds the 1 MB capture limit.")
+            raw, truncated = _read_bounded(response)
             charset = response.headers.get_content_charset() or "utf-8"
             page = raw.decode(charset, errors="replace")
     except urllib.error.HTTPError as exc:
@@ -130,8 +133,10 @@ def capture_source(url: str) -> dict:
     else:
         text = " ".join(page.split())
     text = text[:MAX_TEXT].strip()
+    if truncated:
+        text = (text + " [PARTIAL CAPTURE: source exceeded the 1 MB read limit; only the first 1 MB was inspected.]").strip()
     if len(text) < 120:
-        raise ValueError("The page yielded too little readable text to be useful.")
+        raise ValueError("The page yielded too little readable text within the 1 MB capture limit.")
     title = ""
     if "html" in content_type:
         import re
@@ -147,7 +152,7 @@ def capture_source(url: str) -> dict:
             VALUES(?,?,?,?,?,?)""",
             (source_id, safe_url, title, text, captured_at, content_type[:120]),
         )
-    return {"id": source_id, "url": safe_url, "title": title, "captured_at": captured_at, "characters": len(text)}
+    return {"id": source_id, "url": safe_url, "title": title, "captured_at": captured_at, "characters": len(text), "truncated": truncated, "bytes_captured": len(raw)}
 
 
 def list_sources(limit: int = 50) -> list[dict]:
@@ -172,10 +177,10 @@ def research_context(query: str, limit: int = 8) -> str:
         score = sum(haystack.count(term) for term in terms)
         if score:
             scored.append((score, row))
-    scored.sort(key=lambda item: (item[0], item[1]["captured_at"]), reverse=True)
+    scored.sort(key=lambda item: (item[0], item["captured_at"]), reverse=True)
     selected = []
     for _, row in scored[:limit]:
         selected.append(
-            f"Source URL: {row['url']}\nTitle: {row['title']}\nCaptured: {row['captured_at']}\nExtract: {row['content'][:3500]}"
+            f"Source URL: {row['url']}\\nTitle: {row['title']}\\nCaptured: {row['captured_at']}\\nExtract: {row['content'][:3500]}"
         )
-    return "\n\n---\n\n".join(selected)
+    return "\\n\\n---\\n\\n".join(selected)
