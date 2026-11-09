@@ -182,7 +182,7 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Your AI company, workforce, research pipeline and approvals — in one supervised workspace.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><span id="apiHealth" class="tag">Checking API…</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a></a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a></nav>
 <section class="command-stage" aria-label="AI employee command stage">
  <div class="stage-head"><div><div class="eyebrow">Neural command deck / workforce visualization</div><div class="stage-title">Meet the AI workforce</div><div class="stage-note">Stylized role representations generated from the live workforce catalogue — not fabricated active-worker status.</div></div><span id="stageRuntime" class="stage-indicator">Runtime status loading</span></div>
  <div id="employeeStage" class="employee-stage"><div class="stage-empty">Loading real specialist roles from the AIOS workforce catalogue…</div></div>
@@ -229,6 +229,14 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 <h3>Source quality decisions</h3><div id="freeApiSourceNotes" class="small">Source assessments load after sync.</div>
 </section>
 
+
+<section id="research" class="panel section" data-view-panel="research">
+<h2>Research evidence library · owner-triggered capture</h2>
+<p class="small">Capture public HTTPS pages for research tasks. AIOS stores the URL, capture time and readable page text, then supplies relevant excerpts to the lead specialist. Pages are reference material, not automatically verified truth. HTTPS only; redirects, private-network targets, non-text files and pages over 1 MB are blocked.</p>
+<div class="toolbar"><input id="researchSourceUrl" type="url" placeholder="https://example.com/research-report" style="flex:1;min-width:220px"><button id="captureResearchSource">Capture source</button><button id="refreshResearchSources" class="secondary">Refresh library</button></div>
+<div id="researchSourceStatus" class="status" role="status">No source capture requested.</div>
+<div id="researchSources" class="small">Loading captured sources…</div>
+</section>
 
 <section id="brain" class="panel section" data-view-panel="brain">
 <h2>Company AI Brain · persistent learning</h2>
@@ -362,6 +370,22 @@ async function pollAgentRun(runId){try{const r=await api("/agent-runs/"+encodeUR
 window.decideApproval=async(id,decision)=>{if(!confirm("Confirm "+decision+" this requested action? The CEO/agent must still execute it through the approved runtime."))return;try{await api("/approvals/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision})});await loadOperations()}catch(e){say(e.message)}};
 $("taskForm").addEventListener("submit",async e=>{e.preventDefault();const title=$("taskTitle").value.trim();if(!title)return;try{await api("/tasks",{method:"POST",body:JSON.stringify({title,department:$("taskDepartment").value})});$("taskTitle").value="";await loadOperations()}catch(e){say(e.message)}});
 $("loadAgents").onclick=loadAgents;$("agentSearch").addEventListener("input",()=>{clearTimeout(window.agentSearchTimer);window.agentSearchTimer=setTimeout(loadAgents,250)});$("departmentFilter").onchange=loadAgents;$("loadOperations").onclick=loadOperations;
+async function loadResearchSources(){
+ try{
+  const rows=await api("/research/sources");
+  $("researchSources").innerHTML=rows.length?rows.map(s=>'<article class="card" style="margin:9px 0;padding:12px"><strong>'+esc(s.title||"Untitled source")+'</strong><div class="small"><a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.url)+'</a></div><div class="small">Captured '+esc(date(s.captured_at))+' · '+esc(s.characters)+' characters</div></article>').join(""):'No captured sources yet. Add a public HTTPS page above.';
+ }catch(e){$("researchSources").textContent=e.message}
+}
+async function captureResearchSource(){
+ const url=$("researchSourceUrl").value.trim();if(!url){$("researchSourceStatus").textContent="Enter a public HTTPS URL.";return}
+ const b=$("captureResearchSource");b.disabled=true;$("researchSourceStatus").textContent="Fetching and extracting page text…";
+ try{const result=await api("/research/sources",{method:"POST",body:JSON.stringify({url})});$("researchSourceUrl").value="";$("researchSourceStatus").textContent="Captured: "+(result.title||result.url)+" · "+result.characters+" characters. It can now be used in matching research tasks.";await loadResearchSources()}
+ catch(e){$("researchSourceStatus").textContent=e.message}
+ finally{b.disabled=false}
+}
+$("captureResearchSource").onclick=captureResearchSource;
+$("refreshResearchSources").onclick=loadResearchSources;
+
 async function loadBrain(){
  try{
   const [status,proposed,approved]=await Promise.all([api("/brain/status"),api("/brain/memories?status=proposed"),api("/brain/memories?status=approved")]);
@@ -385,7 +409,7 @@ async function saveVaultProvider(){const provider=$("vaultProvider").value,api_k
 $("saveVaultProvider").onclick=saveVaultProvider;
 
 function showLogin(message=""){ $("loginPanel").style.display="flex"; $("loginStatus").textContent=message; $("loginKey").focus(); }
-async function startDashboard(){authenticated=true;$("loginPanel").style.display="none";refresh();checkGithubStatus();loadFreeApiCatalog();loadProviders();loadAgents();loadSources();loadOperations();loadBrain();api("/llm/credentials").then(x=>{$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.";const saved=Object.entries(x.providers||{}).filter(([id,v])=>v.configured).map(([id,v])=>id+" · "+v.model+" · "+(v.free_confirmed?"free-confirmed":"blocked"));$("vaultProviderStatus").textContent=saved.length?"Encrypted provider connections: "+saved.join(" | "):"No additional provider credentials saved yet."}).catch(e=>$("credentialStatus").textContent=e.message);if(!window.aiosRefreshTimer)window.aiosRefreshTimer=setInterval(refresh,10000)}
+async function startDashboard(){authenticated=true;$("loginPanel").style.display="none";refresh();checkGithubStatus();loadFreeApiCatalog();loadProviders();loadAgents();loadSources();loadOperations();loadBrain();loadResearchSources();api("/llm/credentials").then(x=>{$("credentialStatus").textContent=x.openrouter.configured?"OpenRouter credential is saved (encrypted).":"No OpenRouter credential saved yet.";const saved=Object.entries(x.providers||{}).filter(([id,v])=>v.configured).map(([id,v])=>id+" · "+v.model+" · "+(v.free_confirmed?"free-confirmed":"blocked"));$("vaultProviderStatus").textContent=saved.length?"Encrypted provider connections: "+saved.join(" | "):"No additional provider credentials saved yet."}).catch(e=>$("credentialStatus").textContent=e.message);if(!window.aiosRefreshTimer)window.aiosRefreshTimer=setInterval(refresh,10000)}
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();const b=$("loginButton");b.disabled=true;$("loginStatus").textContent="Validating owner key…";try{const r=await fetch("/auth/session",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:$("loginKey").value})});if(!r.ok)throw Error("Owner key was rejected. Check the key in Railway Variables.");$("loginKey").value="";await startDashboard()}catch(err){$("loginStatus").textContent=err.message}finally{b.disabled=false}});
 $("logoutButton").onclick=async()=>{try{await fetch("/auth/session",{method:"DELETE",credentials:"same-origin"});}finally{authenticated=false;showLogin("You have been signed out.")}};
 fetch("/auth/session",{credentials:"same-origin"}).then(r=>r.json()).then(s=>{if(s.authenticated)startDashboard();else showLogin()}).catch(()=>showLogin("Sign in to continue."));
