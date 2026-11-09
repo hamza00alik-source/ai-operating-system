@@ -233,7 +233,8 @@ def test_unorouter_env_model_must_end_in_free(monkeypatch):
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
     assert status["configured"] is True
     assert status["eligible"] is False
-    assert ":free" in status["reason"]
+    assert status["personal_test_only"] is True
+    assert "personal tests" in status["reason"]
 
 
 def test_unorouter_paid_personal_test_requires_explicit_approval(monkeypatch):
