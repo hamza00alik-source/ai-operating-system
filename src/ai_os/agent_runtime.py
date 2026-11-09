@@ -84,7 +84,7 @@ def run_agent_workflow(task: dict, *, worker_id: str) -> str:
     alias_map = {}
     catalog_warning = ""
     try:
-        catalog = discover_enabled_tool_catalog()
+        catalog = discover_enabled_tool_catalog(task.get("department"))
     except Exception as exc:
         catalog = []
         catalog_warning = (
