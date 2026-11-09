@@ -145,11 +145,13 @@ def test_unorouter_catalog_returns_only_online_free_models(monkeypatch):
         def __exit__(self, *args): return False
         def read(self, limit):
             return json.dumps({"counts":{"free":2},"models":[
-                {"model_name":"alpha","is_free":True,"online":True,"type":"text"},
-                {"model_name":"beta","is_free":True,"online":False,"type":"text"},
-                {"model_name":"gamma","is_free":False,"online":True,"type":"text"}
+                {"model_name":"alpha:free","is_free":True,"online":True,"type":"text","chat":True,"supported_endpoint_types":["openai"],"own_purpose":{"trains_or_retains":False,"consent_required":False}},
+                {"model_name":"beta:free","is_free":True,"online":False,"type":"text","chat":True,"supported_endpoint_types":["openai"]},
+                {"model_name":"gamma","is_free":False,"online":True,"type":"text","chat":True,"supported_endpoint_types":["openai"]},
+                {"model_name":"image:free","is_free":True,"online":True,"type":"image","chat":False,"supported_endpoint_types":["openai"]},
+                {"model_name":"retained:free","is_free":True,"online":True,"type":"text","chat":True,"supported_endpoint_types":["openai"],"own_purpose":{"trains_or_retains":True,"consent_required":True}}
             ]}).encode()
     monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", lambda *a, **k: FakeResponse())
     data=llm_gateway.list_unorouter_free_models()
     assert data["available_online_free_count"] == 1
-    assert data["models"][0]["id"] == "alpha:free"
+    assert data["models"][0]["id"] == "alpha:free"\n    assert data["models"][0]["data_retention"] is False
