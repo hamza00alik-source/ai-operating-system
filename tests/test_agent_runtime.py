@@ -98,3 +98,54 @@ def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist
     with connect() as db:
         assert db.execute("SELECT status FROM tasks WHERE id='task-1'").fetchone()["status"] == "queued"
         assert db.execute("SELECT output FROM agent_run_steps WHERE run_id='run-1' AND sequence_no=1").fetchone()["output"] == "Saved specialist report"
+
+
+def test_specialist_loader_uses_pinned_upstream_revision(monkeypatch):
+    from ai_os import agent_runtime
+
+    requested = []
+
+    class FakeResponse:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self, limit):
+            assert limit == 24000
+            return b"# Pinned specialist instructions"
+
+    def fake_urlopen(request, timeout):
+        requested.append(request.full_url)
+        assert timeout == 12
+        return FakeResponse()
+
+    monkeypatch.setattr(agent_runtime.urllib.request, "urlopen", fake_urlopen)
+    result = agent_runtime._load_specialist({
+        "source_repository": "msitarzewski/agency-agents",
+        "source_revision": "b37b5bb33b78f2c1d6567d98e25ca818e3259219",
+        "source_path": "engineering/engineering-frontend-developer.md",
+    })
+    assert result == "# Pinned specialist instructions"
+    assert requested == [
+        "https://raw.githubusercontent.com/msitarzewski/agency-agents/"
+        "b37b5bb33b78f2c1d6567d98e25ca818e3259219/"
+        "engineering/engineering-frontend-developer.md"
+    ]
+
+
+def test_specialist_loader_rejects_unpinned_or_untrusted_source(monkeypatch):
+    from ai_os import agent_runtime
+
+    def unexpected_urlopen(*args, **kwargs):
+        raise AssertionError("untrusted source must not be fetched")
+
+    monkeypatch.setattr(agent_runtime.urllib.request, "urlopen", unexpected_urlopen)
+    base = {
+        "source_repository": "msitarzewski/agency-agents",
+        "source_revision": "b37b5bb33b78f2c1d6567d98e25ca818e3259219",
+        "source_path": "engineering/engineering-frontend-developer.md",
+    }
+    assert agent_runtime._load_specialist({**base, "source_revision": "main"}) == ""
+    assert agent_runtime._load_specialist({**base, "source_repository": "attacker/repo"}) == ""
+    assert agent_runtime._load_specialist({**base, "source_path": "../secrets.md"}) == ""
