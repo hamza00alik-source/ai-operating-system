@@ -55,6 +55,11 @@ def initialize_database() -> None:
             PRIMARY KEY(source_id, provider_id)
         );
         CREATE INDEX IF NOT EXISTS idx_provider_catalog_category ON provider_catalog_entries(category, name);
+        CREATE TABLE IF NOT EXISTS research_sources (
+            id TEXT PRIMARY KEY, url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL, captured_at TEXT NOT NULL, content_type TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_sources_captured ON research_sources(captured_at);
         CREATE TABLE IF NOT EXISTS provider_credentials (
             provider TEXT PRIMARY KEY, encrypted_secret TEXT NOT NULL,
             model TEXT NOT NULL, base_url TEXT NOT NULL,
