@@ -55,9 +55,12 @@ def save_provider_credential(provider: str, api_key: str, model: str, free_confi
         raise ValueError("Enter a valid provider API key.")
     if not model or len(model) > 200:
         raise ValueError("Enter a valid model identifier.")
-    if provider == "unorouter" and not model.endswith(":free"):
-        raise ValueError("UnoRouter personal testing is restricted to model IDs ending in :free.")
-    if not free_confirmed:
+    if provider == "unorouter":
+        if model.endswith(":free") and not free_confirmed:
+            raise ValueError("Confirm that this :free model is zero-cost before enabling automatic free-only routing.")
+        if not model.endswith(":free") and free_confirmed:
+            raise ValueError("A paid UnoRouter model cannot be marked free or enabled for automatic routing.")
+    elif not free_confirmed:
         raise ValueError("Confirm that this provider account and model are currently free.")
     encrypted = _fernet().encrypt(api_key.encode("utf-8")).decode("ascii")
     with connect() as db:
