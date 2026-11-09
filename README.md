@@ -141,3 +141,18 @@ AIOS can store an UnoRouter consumer API key encrypted in the existing credentia
 AIOS reads UnoRouter's public pricing catalogue and, when a key is saved, the account-specific \`GET /v1/models\` list. The dashboard displays both free and paid models with current input/output prices where available. Model IDs are preserved exactly as returned by UnoRouter; AIOS never appends or invents a \`:free\` suffix.
 
 Only exact model IDs ending in \`:free\` can be eligible for automatic free-only agent routing, and they must be owner-confirmed as free. Paid model credentials may be saved for evaluation but remain ineligible for background agents and automatic fallback. A paid direct test requires an explicit per-request owner approval; the API rejects paid test requests without that approval. Catalogue reads are read-only and do not send prompts or run inference. No paid fallback, automatic top-up, or background paid request is enabled.
+
+
+## UnoRouter free-model intelligence and task routing
+
+The owner saves one encrypted UnoRouter API key and confirms one free-only connection; individual models do not need to be saved one by one. Before an UnoRouter text task is sent, AIOS reads the authenticated account model list and matches it with public endpoint metadata. A five-minute in-memory cache avoids repeating catalogue discovery for every specialist/CEO stage.
+
+The task router classifies a prompt as coding, reasoning, research, creative, or general using local keyword rules, then ranks only account-callable model IDs that:
+- end in the exact `:free` suffix returned by UnoRouter;
+- are reported callable by the authenticated account model list;
+- are identified as supporting chat completions (image/audio/embedding-only models are excluded); and
+- are not explicitly marked offline.
+
+The selected model ID is used for that request and recorded in run metadata. The saved model remains a fallback preference in ranking, not a requirement to manually configure every model. If no eligible free chat model can be verified, the UnoRouter route fails closed and the normal free-confirmed provider failover may continue. Paid models are never candidates for automatic task routing.
+
+This is a metadata/name heuristic, not a benchmark or a guarantee that a model is best. It does not run background benchmark prompts or make extra inference calls. Provider rate limits, availability, and actual billing behavior remain controlled by UnoRouter. Only owner-authorized task execution sends the task prompt; catalogue discovery itself is read-only.

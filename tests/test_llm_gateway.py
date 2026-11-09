@@ -235,3 +235,58 @@ def test_unorouter_paid_personal_test_runs_only_when_approved(monkeypatch):
     assert result["model_cost_class"]=="paid"
     assert result["paid_request_approved"] is True
     assert captured["payload"]["model"]=="paid-model"
+
+
+
+def test_unorouter_task_router_selects_free_chat_model_for_coding(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "uno-router-test-key", "model": "albedobase-xl-sdxl:free",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
+    } if provider == "unorouter" else None)
+    monkeypatch.setattr(llm_gateway, "_UNO_CATALOG_CACHE", {
+        "fingerprint": None, "expires_at": 0.0, "catalog": None
+    })
+    monkeypatch.setattr(llm_gateway, "list_unorouter_catalog", lambda: {
+        "models": [
+            {"id": "albedobase-xl-sdxl:free", "free": True, "callable": True,
+             "online": True, "supported_endpoint_types": ["images"]},
+            {"id": "qwen-coder:free", "free": True, "callable": True,
+             "online": True, "vendor": "Qwen", "context_length": 32000,
+             "supported_endpoint_types": ["chat.completions"]},
+            {"id": "gpt-oss-chat:free", "free": True, "callable": True,
+             "online": True, "context_length": 64000,
+             "supported_endpoint_types": ["chat.completions"]},
+            {"id": "paid-coder", "free": False, "callable": True,
+             "online": True, "supported_endpoint_types": ["chat.completions"]},
+        ]
+    })
+    selected = llm_gateway.select_unorouter_model("Implement a Python API endpoint")
+    assert selected["task_category"] == "coding"
+    assert selected["model_id"] == "qwen-coder:free"
+    assert selected["candidate_count"] == 2
+    assert selected["benchmark_status"].startswith("not benchmarked")
+
+
+def test_unorouter_auto_selection_uses_selected_free_chat_model_without_paid_requests(monkeypatch):
+    provider = next(p for p in llm_gateway.PROVIDERS if p.key == "unorouter")
+    monkeypatch.setattr(llm_gateway, "_resolve", lambda provider_id: (
+        provider, {"base_url": "https://api.unorouter.com/v1",
+                   "_secret": "uno-test-secret", "model": "default:free"}
+    ))
+    selection = {
+        "task_category": "research", "model_id": "research-chat:free",
+        "strategy": "account-accessible free chat models; metadata/name heuristic",
+        "candidate_count": 3, "benchmark_status": "not benchmarked; no extra inference calls made",
+    }
+    monkeypatch.setattr(llm_gateway, "select_unorouter_model", lambda prompt: selection)
+    captured = {}
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {"model": "research-chat:free",
+                "choices": [{"message": {"content": "This is a sufficiently detailed response from the selected free chat model."}}],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 12}}
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.generate("unorouter", "Research current market evidence")
+    assert captured["payload"]["model"] == "research-chat:free"
+    assert result["model_selection"]["task_category"] == "research"
+    assert result["model_selection"]["model_id"].endswith(":free")

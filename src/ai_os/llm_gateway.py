@@ -5,8 +5,10 @@ from server environment variables and are never returned by status endpoints.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -14,6 +16,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from ai_os.credentials import get_provider_credential
+
+
+_UNO_CATALOG_CACHE: dict[str, Any] = {"fingerprint": None, "expires_at": 0.0, "catalog": None}
+_UNO_CATALOG_LOCK = threading.Lock()
+_UNO_CATALOG_TTL_SECONDS = 300
 
 
 class ProviderHTTPError(RuntimeError):
@@ -180,7 +187,7 @@ def list_unorouter_catalog() -> dict[str, Any]:
                 "currency": "USD", "callable": True,
                 "context_length": item.get("context_length"),
                 "max_output_tokens": item.get("max_output_tokens"),
-                "supported_endpoint_types": price.get("supported_endpoint_types", ["openai"]),
+                "supported_endpoint_types": price.get("supported_endpoint_types") or item.get("supported_endpoint_types") or [],
             })
         available.sort(key=lambda item: (not item["free"], str(item.get("vendor") or ""), item["id"]))
     public_summary = [{
@@ -204,11 +211,124 @@ def list_unorouter_catalog() -> dict[str, Any]:
     }
 
 
+
+def _task_category(prompt: str) -> str:
+    """Classify the request with conservative keyword rules; no extra model call."""
+    text = (prompt or "").casefold()
+    rules = (
+        ("coding", ("write code", "debug", "python", "javascript", "typescript", "sql", "api", "code review", "refactor", "implement", "programming", "function", "class ")),
+        ("reasoning", ("prove", "solve", "reason", "step by step", "logic puzzle", "derive", "mathematical", "trade-off", "architecture decision")),
+        ("research", ("research", "competitor", "market analysis", "compare sources", "evidence", "literature review", "investigate", "industry analysis")),
+        ("creative", ("story", "creative", "brainstorm", "brand voice", "write a poem", "character concept", "slogan", "fiction")),
+    )
+    for category, terms in rules:
+        if any(term in text for term in terms):
+            return category
+    return "general"
+
+
+def _cached_unorouter_catalog() -> dict[str, Any]:
+    saved = get_provider_credential("unorouter")
+    if not saved or not saved.get("secret"):
+        raise PermissionError("Save the UnoRouter API key before automatic model discovery.")
+    fingerprint = hashlib.sha256(saved["secret"].encode("utf-8")).hexdigest()
+    now = time.monotonic()
+    with _UNO_CATALOG_LOCK:
+        if (_UNO_CATALOG_CACHE["fingerprint"] == fingerprint
+                and _UNO_CATALOG_CACHE["catalog"] is not None
+                and _UNO_CATALOG_CACHE["expires_at"] > now):
+            return _UNO_CATALOG_CACHE["catalog"]
+    catalog = list_unorouter_catalog()
+    with _UNO_CATALOG_LOCK:
+        _UNO_CATALOG_CACHE.update(
+            fingerprint=fingerprint,
+            expires_at=now + _UNO_CATALOG_TTL_SECONDS,
+            catalog=catalog,
+        )
+    return catalog
+
+
+def _supports_chat_completions(model: dict[str, Any]) -> bool:
+    """Exclude image/audio/embedding-only models from the text chat route."""
+    endpoint_types = model.get("supported_endpoint_types") or []
+    if isinstance(endpoint_types, str):
+        endpoint_types = [endpoint_types]
+    normalized = [str(value).casefold().replace("_", "-") for value in endpoint_types]
+    return any(
+        value in {"openai", "openai-compatible", "chat", "chat-completions",
+                  "chat/completions", "text-generation"}
+        or "chat" in value or "completion" in value
+        for value in normalized
+    )
+
+
+def select_unorouter_model(prompt: str) -> dict[str, Any]:
+    """Select an account-callable, explicitly :free chat model; discovery sends no prompt."""
+    saved = get_provider_credential("unorouter")
+    if not saved or not saved.get("free_confirmed"):
+        raise PermissionError("UnoRouter free-only credentials are not owner-confirmed.")
+    catalog = _cached_unorouter_catalog()
+    models = [
+        model for model in catalog.get("models", [])
+        if isinstance(model, dict)
+        and model.get("callable") is True
+        and model.get("free") is True
+        and str(model.get("id", "")).endswith(":free")
+        and model.get("online") is not False
+        and _supports_chat_completions(model)
+    ]
+    if not models:
+        raise RuntimeError(
+            "UnoRouter has no account-accessible :free model verified for chat completions. "
+            "The selected dashboard model may support another modality; no prompt was sent."
+        )
+
+    category = _task_category(prompt)
+    default_model = str(saved.get("model") or "")
+    preference_terms = {
+        "coding": ("coder", "codestral", "starcoder", "codeqwen", "devstral", "deepseek-coder"),
+        "reasoning": ("deepseek-r1", "qwq", "reasoning", "thinking", "r1", "o1"),
+        "research": ("sonar", "search", "long-context", "longcontext", "gpt-oss", "instruct"),
+        "creative": ("creative", "writer", "llama", "mistral", "gemma", "qwen"),
+        "general": ("instruct", "chat", "gpt-oss", "llama", "qwen", "mistral", "gemma"),
+    }
+    terms = preference_terms[category]
+
+    def score(model: dict[str, Any]) -> tuple[int, int, int, str]:
+        model_id = str(model.get("id", "")).casefold()
+        vendor = str(model.get("vendor") or "").casefold()
+        name = str(model.get("name") or "").casefold()
+        identity = " ".join((model_id, vendor, name))
+        points = sum(12 for term in terms if term in identity)
+        if model.get("online") is True:
+            points += 5
+        if model.get("id") == default_model:
+            points += 8
+        try:
+            context_score = min(int(model.get("context_length") or 0), 1_000_000)
+        except (TypeError, ValueError):
+            context_score = 0
+        return (points, context_score, int(model.get("online") is True), str(model.get("id", "")))
+
+    chosen = max(models, key=score)
+    return {
+        "task_category": category,
+        "model_id": chosen["id"],
+        "strategy": "account-accessible free chat models; metadata/name heuristic",
+        "candidate_count": len(models),
+        "benchmark_status": "not benchmarked; no extra inference calls made",
+    }
+
+
 def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     provider, config = _resolve(provider_id)
     base = config.get("base_url") or os.getenv(provider.base_url_env, "").strip().rstrip("/")
     model = config.get("model") or os.getenv(provider.model_env, "").strip()
     secret = config.get("_secret") or os.getenv(provider.secret_env, "").strip()
+    model_selection = None
+    if provider.key == "unorouter":
+        model_selection = select_unorouter_model(prompt)
+        model = model_selection["model_id"]
     started = time.monotonic()
 
     if provider.protocol == "gemini":
@@ -250,7 +370,7 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 24:
         raise RuntimeError(f"{provider.label} returned empty or placeholder text; refusing to mark this agent stage complete")
 
-    return {
+    result = {
         "provider": provider.key, "model": data.get("model", model), "response": answer,
         "latency_ms": round((time.monotonic() - started) * 1000),
         "usage": {
@@ -262,6 +382,9 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
         "cost_guard": "free-confirmed-by-owner; provider limits still apply",
         "live": True,
     }
+    if model_selection:
+        result["model_selection"] = model_selection
+    return result
 
 
 

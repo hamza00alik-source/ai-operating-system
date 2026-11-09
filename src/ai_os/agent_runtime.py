@@ -372,6 +372,8 @@ def run_pending_once() -> bool:
         usage = {
             "provider": "multiple" if len({specialist_result.get("provider"), collaborator_result.get("provider"), ceo_result.get("provider")}) > 1 else specialist_result.get("provider"),
             "provider_by_stage": {"specialist": specialist_result.get("provider"), "collaborator": collaborator_result.get("provider"), "ceo_review": ceo_result.get("provider")},
+            "model_by_stage": {"specialist": specialist_result.get("model"), "collaborator": collaborator_result.get("model"), "ceo_review": ceo_result.get("model")},
+            "model_selection_by_stage": {"specialist": specialist_result.get("model_selection"), "collaborator": collaborator_result.get("model_selection"), "ceo_review": ceo_result.get("model_selection")},
             "fallback_used": any(result.get("fallback_used") for result in (specialist_result, collaborator_result, ceo_result)),
             "provider_attempts_by_stage": {"specialist": specialist_result.get("provider_attempts", []), "collaborator": collaborator_result.get("provider_attempts", []), "ceo_review": ceo_result.get("provider_attempts", [])},
             "specialist": specialist_result.get("usage", {}),
