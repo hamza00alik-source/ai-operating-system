@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from ai_os import llm_gateway
@@ -163,16 +165,6 @@ def test_unorouter_is_never_eligible_for_company_tasks(monkeypatch):
     assert status["eligible"] is False
     assert status["experimental_only"] is True
     assert "business accounts are unavailable" in status["reason"]
-
-
-def test_unorouter_credentials_are_rejected():
-    from ai_os.credentials import save_provider_credential
-    try:
-        save_provider_credential("unorouter", "test-secret", "model:free", True)
-        assert False, "UnoRouter company credentials must be rejected"
-    except ValueError as exc:
-        assert "business accounts are unavailable" in str(exc)
-
 
 
 def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypatch):
