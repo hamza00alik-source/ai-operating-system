@@ -46,6 +46,7 @@ PROVIDER_ENDPOINTS = {
     "mistral": "https://api.mistral.ai/v1",
     "nvidia": "https://integrate.api.nvidia.com/v1",
     "sambanova": "https://api.sambanova.ai/v1",
+    "cloudflare": "",
 }
 
 
