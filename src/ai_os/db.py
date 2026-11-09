@@ -129,7 +129,7 @@ def initialize_database() -> None:
             id TEXT PRIMARY KEY, record_type TEXT NOT NULL CHECK(record_type IN ('customer','expense','revenue')),
             title TEXT NOT NULL, amount REAL, currency TEXT NOT NULL DEFAULT 'USD',
             status TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0,
-            contact TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+            approval_id TEXT, contact TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_business_records_type_created ON business_records(record_type, created_at);
@@ -191,6 +191,9 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_notes TEXT NOT NULL DEFAULT ''")
         if "review_updated_at" not in columns:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_updated_at TEXT")
+        business_columns = {row["name"] for row in connection.execute("PRAGMA table_info(business_records)")}
+        if "approval_id" not in business_columns:
+            connection.execute("ALTER TABLE business_records ADD COLUMN approval_id TEXT")
         provider_columns = {row["name"] for row in connection.execute("PRAGMA table_info(provider_catalog_entries)")}
         if "sources_json" not in provider_columns:
             connection.execute("ALTER TABLE provider_catalog_entries ADD COLUMN sources_json TEXT NOT NULL DEFAULT '[]'")
