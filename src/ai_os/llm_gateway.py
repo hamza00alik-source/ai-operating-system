@@ -40,9 +40,9 @@ PROVIDERS = (
              "AI_OS_GEMINI_API_KEY", "AI_OS_GEMINI_FREE_CONFIRMED", "gemini"),
     Provider("openrouter", "OpenRouter", "AI_OS_OPENROUTER_BASE_URL", "AI_OS_OPENROUTER_MODEL",
              "AI_OS_OPENROUTER_API_KEY", "AI_OS_OPENROUTER_FREE_CONFIRMED"),
-    Provider("unorouter", "UnoRouter · free model gateway", "AI_OS_UNOROUTER_BASE_URL",
+    Provider("unorouter", "UnoRouter · primary free model gateway", "AI_OS_UNOROUTER_BASE_URL",
              "AI_OS_UNOROUTER_MODEL", "AI_OS_UNOROUTER_API_KEY",
-             "AI_OS_UNOROUTER_FREE_CONFIRMED", experimental_only=True),
+             "AI_OS_UNOROUTER_FREE_CONFIRMED", ),
     Provider("groq", "Groq", "AI_OS_GROQ_BASE_URL", "AI_OS_GROQ_MODEL",
              "AI_OS_GROQ_API_KEY", "AI_OS_GROQ_FREE_CONFIRMED"),
     Provider("mistral", "Mistral", "AI_OS_MISTRAL_BASE_URL", "AI_OS_MISTRAL_MODEL",
@@ -66,7 +66,8 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         base, model, secret = saved["base_url"], saved["model"], saved["secret"]
         free = saved["free_confirmed"]
     configured = bool(base and model and secret)
-    eligible = configured and free and not provider.experimental_only
+    uno_free_model = provider.key != "unorouter" or model.endswith(":free")
+    eligible = configured and free and uno_free_model and not provider.experimental_only
     return {
         "id": provider.key, "name": provider.label, "protocol": provider.protocol,
         "_secret": secret,
@@ -76,8 +77,8 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
-            "UnoRouter is research-only in AIOS; current terms state business accounts are unavailable."
-            if provider.experimental_only else
+            "UnoRouter requires an owner-confirmed model ID ending in :free."
+            if provider.key == "unorouter" and not uno_free_model else
             "Set base URL, model, API secret, and explicitly confirm this endpoint "
             "is currently free. Paid or unverified endpoints are blocked."
         ),
@@ -224,7 +225,46 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
 
 
 
-def generate_with_fallback(prompt: str, preferred_provider: str = "openrouter") -> dict[str, Any]:
+
+def test_unorouter_personal(prompt: str) -> dict[str, Any]:
+    """Owner-triggered consumer-account test only; never used by task routing."""
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
+        raise ValueError("Enter a test prompt of 1 to 12,000 characters.")
+    config = get_provider_credential("unorouter")
+    if not config:
+        raise PermissionError("Save a UnoRouter consumer API key in the owner console first.")
+    if not config.get("free_confirmed") or not str(config.get("model", "")).endswith(":free"):
+        raise PermissionError("Personal test is restricted to an owner-confirmed :free model.")
+    base = (config.get("base_url") or "https://api.unorouter.com/v1").rstrip("/")
+    model = config["model"]
+    started = time.monotonic()
+    data = _post(
+        f"{base}/chat/completions",
+        {"model": model, "messages": [{"role": "user", "content": prompt}],
+         "temperature": 0.2, "max_tokens": 800},
+        {"Authorization": f"Bearer {config['secret']}"},
+        timeout=45,
+    )
+    choices = data.get("choices") or []
+    answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
+    if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 8:
+        raise RuntimeError("UnoRouter returned empty or placeholder text.")
+    usage = data.get("usage") or {}
+    return {
+        "provider": "unorouter", "model": data.get("model", model),
+        "response": answer, "latency_ms": round((time.monotonic() - started) * 1000),
+        "usage": {"input_tokens": usage.get("prompt_tokens"),
+                  "output_tokens": usage.get("completion_tokens"),
+                  "total_tokens": usage.get("total_tokens"),
+                  "reported_by_provider": bool(usage)},
+        "mode": "owner_personal_test_only",
+        "company_task_routing": False,
+        "warning": "Consumer-account test only. Do not submit customer, company, confidential, or sensitive personal data. Provider/model-specific data terms apply.",
+        "live": True,
+    }
+
+
+def generate_with_fallback(prompt: str, preferred_provider: str = "unorouter") -> dict[str, Any]:
     """Use the preferred free-confirmed provider first, then other eligible providers.
 
     Fallback is restricted to providers explicitly configured and owner-confirmed
