@@ -32,6 +32,20 @@ def test_owner_login_creates_persistent_cookie_session(monkeypatch, tmp_path):
         assert client.get("/tasks").status_code == 401
 
 
+def test_company_department_registry_exposes_twelve_departments():
+    with TestClient(app) as client:
+        response = client.get("/company/departments")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["department_count"] == 12
+    assert payload["catalogued_agent_count"] == 283
+    assert payload["runtime_model"].startswith("one shared worker")
+    ids = {item["id"] for item in payload["departments"]}
+    assert {"executive", "research", "design", "customer-support", "legal-compliance",
+            "quality-assurance", "people-workforce"} <= ids
+    assert all(item["workflow_status"] == "catalogue-only" for item in payload["departments"])
+
+
 def test_workforce_manifest_has_full_agency_roster():
     with TestClient(app) as client:
         response = client.get("/workforce/agents")
