@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-TaskStatus = Literal["queued", "running", "completed", "failed", "blocked"]
+TaskStatus = Literal["queued", "running", "awaiting_approval", "completed", "failed", "blocked"]
 ApprovalStatus = Literal["pending", "approved", "rejected", "consumed", "expired"]
 
 

@@ -104,6 +104,9 @@ def initialize_database() -> None:
         ):
             if name not in approval_columns:
                 connection.execute(f"ALTER TABLE approvals ADD COLUMN {name} {sql_type}")
+        step_columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_steps)")}
+        if "pending_mcp_request_id" not in step_columns:
+            connection.execute("ALTER TABLE agent_steps ADD COLUMN pending_mcp_request_id TEXT")
         task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(tasks)")}
         for name, sql_type in (
             ("worker_id", "TEXT"), ("started_at", "TEXT"), ("finished_at", "TEXT"),

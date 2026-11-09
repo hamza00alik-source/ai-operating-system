@@ -149,8 +149,11 @@ def test_worker_runs_opt_in_agent_graph_and_persists_final_review(monkeypatch, t
     monkeypatch.setenv("AI_OS_AGENT_GRAPH_ENABLED", "true")
     calls = []
     monkeypatch.setattr(
-        "ai_os.agent_runtime.generate_text",
-        lambda prompt: calls.append(prompt) or f"agent-output-{len(calls)}",
+        "ai_os.agent_runtime.generate_agent_turn",
+        lambda prompt, tools: calls.append(prompt) or {
+            "kind": "final",
+            "content": f"agent-output-{len(calls)}",
+        },
     )
 
     result = run_once(worker_id="graph-worker")
