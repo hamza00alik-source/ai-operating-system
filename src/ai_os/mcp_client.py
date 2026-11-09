@@ -5,13 +5,14 @@ Secrets are referenced by environment-variable name and never returned.
 """
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import os
 import socket
 import ssl
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler, HTTPSHandler, ProxyHandler
 from uuid import uuid4
 
 from ai_os.db import connect
@@ -25,18 +26,74 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def _public_endpoint(endpoint: str) -> None:
+def _resolve_public_endpoint(endpoint: str) -> tuple[str, int, str]:
+    """Resolve once, reject every non-public answer, and return the IP to pin."""
     from urllib.parse import urlsplit
+
     parsed = urlsplit(endpoint)
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError("MCP endpoint must be HTTPS.")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise ValueError("MCP endpoint must not contain user information or a fragment.")
     host = parsed.hostname
+    port = parsed.port or 443
     try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
-    except OSError as exc:
-        raise RuntimeError("MCP hostname could not be resolved.") from exc
-    if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+        records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        addresses = sorted({item[4][0] for item in records})
+        parsed_addresses = [ipaddress.ip_address(address) for address in addresses]
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("MCP hostname could not be resolved to valid IP addresses.") from exc
+    if not parsed_addresses or any(not address.is_global for address in parsed_addresses):
         raise ValueError("MCP endpoint resolves to a non-public IP address; connection refused.")
+    return host, port, addresses[0]
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """Connect to the validated IP while retaining hostname-based TLS verification."""
+
+    def __init__(self, host, *, pinned_ip: str, **kwargs):
+        self._pinned_ip = pinned_ip
+        super().__init__(host, **kwargs)
+
+    def connect(self):
+        if self._tunnel_host:
+            raise OSError("MCP HTTPS proxy tunnels are disabled.")
+        raw_socket = socket.create_connection(
+            (self._pinned_ip, self.port), self.timeout, self.source_address
+        )
+        try:
+            self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+        except Exception:
+            raw_socket.close()
+            raise
+
+
+class _PinnedHTTPSHandler(HTTPSHandler):
+    def __init__(self, pinned_ip: str):
+        super().__init__(context=ssl.create_default_context())
+        self._pinned_ip = pinned_ip
+
+    def https_open(self, request):
+        return self.do_open(
+            lambda host, **kwargs: _PinnedHTTPSConnection(
+                host, pinned_ip=self._pinned_ip, **kwargs
+            ),
+            request,
+            context=self._context,
+            check_hostname=self._check_hostname,
+        )
+
+
+def _public_endpoint(endpoint: str) -> None:
+    """Compatibility validation helper; network calls use the pinned opener below."""
+    _resolve_public_endpoint(endpoint)
+
+
+def _build_pinned_opener(endpoint: str):
+    _host, _port, pinned_ip = _resolve_public_endpoint(endpoint)
+    # Disable environment-configured proxies: a proxy would resolve the hostname
+    # independently and bypass the validated-IP connection boundary.
+    return build_opener(ProxyHandler({}), _NoRedirect(), _PinnedHTTPSHandler(pinned_ip))
 
 
 def _decode_response(raw: bytes, content_type: str):
@@ -65,7 +122,10 @@ def _post(opener, endpoint: str, payload: dict, headers: dict):
     }, method="POST")
     try:
         with opener.open(request, timeout=_TIMEOUT_SECONDS) as response:
-            return _decode_response(response.read(1_000_000), response.headers.get("Content-Type", "")), response.headers
+            raw = response.read(1_000_001)
+            if len(raw) > 1_000_000:
+                raise RuntimeError("MCP server response exceeded the 1 MB limit.")
+            return _decode_response(raw, response.headers.get("Content-Type", "")), response.headers
     except HTTPError as exc:
         detail = exc.read(1000).decode("utf-8", errors="replace")
         raise RuntimeError(f"MCP HTTP {exc.code}: {detail[:300]}") from exc
@@ -84,11 +144,11 @@ def _load_server(server_id: str):
     missing = [name for name in env_names if not os.getenv(name)]
     if missing:
         raise ValueError("Missing configured credential environment variables: " + ", ".join(missing))
-    _public_endpoint(row["endpoint"])
+    opener = _build_pinned_opener(row["endpoint"])
     headers = {}
     if env_names:
         headers["Authorization"] = "Bearer " + os.environ[env_names[0]]
-    return row, build_opener(_NoRedirect), headers
+    return row, opener, headers
 
 
 def _open_session(row, opener, headers):
