@@ -78,6 +78,31 @@ def test_openrouter_free_route_uses_compatible_api_and_reports_usage(monkeypatch
     assert captured["payload"]["model"] == "provider/model:free"
 
 
+def test_nvidia_nim_uses_openai_compatible_gateway(monkeypatch):
+    monkeypatch.setenv("AI_OS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    monkeypatch.setenv("AI_OS_NVIDIA_MODEL", "deepseek-ai/deepseek-v4.1-flash")
+    monkeypatch.setenv("AI_OS_NVIDIA_API_KEY", "test-nvidia-secret")
+    monkeypatch.setenv("AI_OS_NVIDIA_FREE_CONFIRMED", "true")
+    captured = {}
+
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {
+            "choices": [{"message": {"content": "AIOS live connection successful"}}],
+            "usage": {"prompt_tokens": 9, "completion_tokens": 6, "total_tokens": 15},
+        }
+
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.test_provider("nvidia")
+    assert result["test_passed"] is True
+    assert result["provider"] == "nvidia"
+    assert result["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert result["usage"]["total_tokens"] == 15
+    assert captured["url"] == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer test-nvidia-secret"
+    assert captured["payload"]["model"] == "deepseek-ai/deepseek-v4.1-flash"
+
+
 def test_openrouter_is_blocked_unless_owner_confirms_free(monkeypatch):
     monkeypatch.setenv("AI_OS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     monkeypatch.setenv("AI_OS_OPENROUTER_MODEL", "provider/model:free")
