@@ -22,6 +22,7 @@ from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, 
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
+from ai_os.workflows import list_templates, create_workflow, get_workflow, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
 from pydantic import BaseModel, Field
 
@@ -394,6 +395,30 @@ def post_brain_memory_review(memory_id: str, payload: BrainMemoryReview):
     return result
 
 
+
+@app.get("/company/workflows", dependencies=[Depends(require_api_key)])
+def get_workflow_templates():
+    """List available gated department workflow templates."""
+    return list_templates()
+
+
+@app.post("/company/workflows/{template_id}/start", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_start_workflow(template_id: str):
+    """Create a persisted workflow; only its first task is queued."""
+    try:
+        return create_workflow(template_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/company/workflows/{workflow_id}", dependencies=[Depends(require_api_key)])
+def get_workflow_detail(workflow_id: str):
+    result = get_workflow(workflow_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return result
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ai-operating-system"}
@@ -412,9 +437,13 @@ def get_tasks():
 @app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
 def execute_task(task_id: str):
     try:
+        if not task_is_runnable(task_id):
+            raise ValueError("This workflow step is blocked until the previous department step completes.")
         return create_run(task_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/agent-runs/{run_id}/retry", status_code=202, dependencies=[Depends(require_api_key)])
