@@ -191,6 +191,7 @@ def scan_repository(repository_url: str) -> dict:
 
     history = _github_json(f"/repos/{quote(owner)}/{quote(repo)}/commits?per_page={MAX_HISTORY_COMMITS}")
     commits = history if isinstance(history, list) else []
+    snapshot_commit_sha = (commits[0].get("sha") or "") if commits and isinstance(commits[0], dict) else ""
     additions = deletions = 0
     history_stats_complete = True
     for commit in commits[:MAX_HISTORY_COMMITS]:
@@ -233,7 +234,7 @@ def scan_repository(repository_url: str) -> dict:
         "full_name": metadata.get("full_name") or f"{owner}/{repo}",
         "description": metadata.get("description") or "",
         "visibility": "public", "default_branch": branch,
-        "snapshot_commit_sha": (metadata.get("pushed_at") or "") + ":" + str(metadata.get("size") or 0),
+        "snapshot_commit_sha": snapshot_commit_sha,
         "provenance": "unknown",
         "ownership_status": "unverified",
         "license": declared_license,
