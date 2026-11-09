@@ -358,7 +358,7 @@ th{background:#101b2c}
 <div class="toolbar section"><strong>Registered servers</strong><button id="mcpRefresh" class="secondary" type="button">Refresh</button><span id="mcpStatus" class="small">Not loaded.</span></div>
 <div class="scroll"><table><thead><tr><th>Server</th><th>Endpoint</th><th>Credentials</th><th>Capabilities</th><th>State</th><th>Actions</th></tr></thead><tbody id="mcpRows"><tr><td colspan="6">Load server registry.</td></tr></tbody></table></div>
 <h3>Agent tool proposals · owner review</h3>
-<p class="small">Agents can pause and request an allowlisted read-only tool. Review the exact arguments before deciding. Approval records your decision only; it does not execute the tool or resume the agent.</p>
+<p class="small">Agents can pause and request an allowlisted read-only tool. Review the exact arguments before deciding. Approval records your decision only. You may separately reserve an approved low-risk proposal once as an audit checkpoint; neither action executes the tool or resumes the agent.</p>
 <div class="toolbar"><button id="mcpProposalRefresh" class="secondary" type="button">Refresh proposals</button><span id="mcpProposalStatus" class="small">Not loaded.</span></div>
 <div class="scroll"><table><thead><tr><th>Department / run</th><th>Tool</th><th>Arguments</th><th>Risk</th><th>Expires</th><th>Owner gate</th></tr></thead><tbody id="mcpProposalRows"><tr><td colspan="6">Load owner proposals.</td></tr></tbody></table></div>
 <h3>Read-only connection test</h3><pre id="mcpTestOutput" style="max-height:360px;overflow:auto;white-space:pre-wrap;background:#091323;padding:12px;border-radius:10px">No connection test executed.</pre>
