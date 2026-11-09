@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 import logging
 import threading
+import unicodedata
 import json
 from pathlib import Path
 
@@ -288,9 +289,18 @@ def get_research_sources():
 def post_research_source(payload: ResearchSourceRequest):
     """Owner-triggered read-only capture of one public HTTPS research page."""
     try:
-        return capture_source(payload.url)
+        # Strip invisible Unicode formatting/control characters at the API boundary too;
+        # mobile copy/paste can append U+2060 WORD JOINER without displaying it.
+        submitted_url = unicodedata.normalize("NFC", payload.url)
+        submitted_url = "".join(
+            ch for ch in submitted_url
+            if unicodedata.category(ch) not in {"Cf", "Cc", "Cs", "Zl", "Zp"}
+        ).strip()
+        return capture_source(submitted_url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except UnicodeError as exc:
+        raise HTTPException(status_code=422, detail="The URL contains unsupported invisible or non-ASCII characters. Remove hidden formatting characters and try again.") from exc
 
 
 @app.get("/brain/status", dependencies=[Depends(require_api_key)])
