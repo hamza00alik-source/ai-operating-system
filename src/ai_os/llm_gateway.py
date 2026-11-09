@@ -220,10 +220,18 @@ def generate_with_fallback(prompt: str, preferred_provider: str = "openrouter") 
             last_error = exc
 
     detail = str(last_error)[:700] if last_error else "No provider returned a usable response."
+    # Include provider IDs and HTTP statuses, but never credentials or request headers,
+    # so the owner can identify which upstream rejected the request.
+    attempt_summary = "; ".join(
+        f"{item['provider']}: {item.get('status', 'unknown')}"
+        + (f" (HTTP {item['http_status']})" if item.get("http_status") else "")
+        for item in attempts
+    )
     raise RuntimeError(
         "All configured free-confirmed providers were unavailable. "
         + detail
-        + " No paid fallback was attempted. Connect another verified free provider or wait for quota reset."
+        + " Provider attempts: " + (attempt_summary or "none recorded") + "."
+        + " No paid fallback was attempted. Check the named provider's status, model access, and quota."
     )
 
 
