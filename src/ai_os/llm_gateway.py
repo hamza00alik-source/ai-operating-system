@@ -224,6 +224,45 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
 
 
 
+
+def test_unorouter_personal(prompt: str) -> dict[str, Any]:
+    """Owner-triggered consumer-account test only; never used by task routing."""
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
+        raise ValueError("Enter a test prompt of 1 to 12,000 characters.")
+    config = get_provider_credential("unorouter")
+    if not config:
+        raise PermissionError("Save a UnoRouter consumer API key in the owner console first.")
+    if not config.get("free_confirmed") or not str(config.get("model", "")).endswith(":free"):
+        raise PermissionError("Personal test is restricted to an owner-confirmed :free model.")
+    base = (config.get("base_url") or "https://api.unorouter.com/v1").rstrip("/")
+    model = config["model"]
+    started = time.monotonic()
+    data = _post(
+        f"{base}/chat/completions",
+        {"model": model, "messages": [{"role": "user", "content": prompt}],
+         "temperature": 0.2, "max_tokens": 800},
+        {"Authorization": f"Bearer {config['secret']}"},
+        timeout=45,
+    )
+    choices = data.get("choices") or []
+    answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
+    if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 8:
+        raise RuntimeError("UnoRouter returned empty or placeholder text.")
+    usage = data.get("usage") or {}
+    return {
+        "provider": "unorouter", "model": data.get("model", model),
+        "response": answer, "latency_ms": round((time.monotonic() - started) * 1000),
+        "usage": {"input_tokens": usage.get("prompt_tokens"),
+                  "output_tokens": usage.get("completion_tokens"),
+                  "total_tokens": usage.get("total_tokens"),
+                  "reported_by_provider": bool(usage)},
+        "mode": "owner_personal_test_only",
+        "company_task_routing": False,
+        "warning": "Consumer-account test only. Do not submit customer, company, confidential, or sensitive personal data. Provider/model-specific data terms apply.",
+        "live": True,
+    }
+
+
 def generate_with_fallback(prompt: str, preferred_provider: str = "openrouter") -> dict[str, Any]:
     """Use the preferred free-confirmed provider first, then other eligible providers.
 
