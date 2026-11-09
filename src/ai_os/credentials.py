@@ -44,6 +44,7 @@ PROVIDER_ENDPOINTS = {
     "gemini": "https://generativelanguage.googleapis.com",
     "groq": "https://api.groq.com/openai/v1",
     "mistral": "https://api.mistral.ai/v1",
+    "nvidia": "https://integrate.api.nvidia.com/v1",
 }
 
 
