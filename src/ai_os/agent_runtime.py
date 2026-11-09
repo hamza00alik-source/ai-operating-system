@@ -153,6 +153,9 @@ def run_agent_workflow(task: dict, *, worker_id: str) -> str:
                     (task_id, step_key, agent_name, prompt, worker_id, _now()),
                 )
 
+        if catalog_warning:
+            prompt += "\n\n" + catalog_warning
+
         # Each successful owner-approved tool result resumes the same step.
         try:
             for _tool_round in range(6):
