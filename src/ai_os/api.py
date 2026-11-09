@@ -29,6 +29,7 @@ from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_serv
 from ai_os.mcp_client import probe_mcp_server
 from ai_os.mcp_tool_catalog import persist_discovered_tools
 from ai_os.tool_approvals import list_tool_proposals, decide_tool_proposal
+from ai_os.mcp_execution import execute_approved_proposal
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -727,6 +728,21 @@ def post_mcp_tool_proposal_decision(proposal_id: str, payload: MCPToolProposalDe
     if result is None:
         raise HTTPException(status_code=404, detail="Tool proposal not found")
     return result
+
+
+@app.post("/integrations/mcp/proposals/{proposal_id}/execute", dependencies=[Depends(require_owner_key)])
+def post_mcp_tool_proposal_execute(proposal_id: str):
+    """Owner-triggered, one-time execution after approval; read-only tools only."""
+    try:
+        return execute_approved_proposal(proposal_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/integrations/mcp/servers", response_model=MCPServerOut, status_code=201, dependencies=[Depends(require_owner_key)])
