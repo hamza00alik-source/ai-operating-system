@@ -154,4 +154,5 @@ def test_unorouter_catalog_returns_only_online_free_models(monkeypatch):
     monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", lambda *a, **k: FakeResponse())
     data=llm_gateway.list_unorouter_free_models()
     assert data["available_online_free_count"] == 1
-    assert data["models"][0]["id"] == "alpha:free"\n    assert data["models"][0]["data_retention"] is False
+    assert data["models"][0]["id"] == "alpha:free"
+    assert data["models"][0]["data_retention"] is False
