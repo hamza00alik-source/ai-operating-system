@@ -32,6 +32,7 @@ class Provider:
     secret_env: str
     free_confirm_env: str
     protocol: str = "openai"
+    experimental_only: bool = False
 
 
 PROVIDERS = (
@@ -41,7 +42,7 @@ PROVIDERS = (
              "AI_OS_OPENROUTER_API_KEY", "AI_OS_OPENROUTER_FREE_CONFIRMED"),
     Provider("unorouter", "UnoRouter · free model gateway", "AI_OS_UNOROUTER_BASE_URL",
              "AI_OS_UNOROUTER_MODEL", "AI_OS_UNOROUTER_API_KEY",
-             "AI_OS_UNOROUTER_FREE_CONFIRMED"),
+             "AI_OS_UNOROUTER_FREE_CONFIRMED", experimental_only=True),
     Provider("groq", "Groq", "AI_OS_GROQ_BASE_URL", "AI_OS_GROQ_MODEL",
              "AI_OS_GROQ_API_KEY", "AI_OS_GROQ_FREE_CONFIRMED"),
     Provider("mistral", "Mistral", "AI_OS_MISTRAL_BASE_URL", "AI_OS_MISTRAL_MODEL",
@@ -65,11 +66,12 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         base, model, secret = saved["base_url"], saved["model"], saved["secret"]
         free = saved["free_confirmed"]
     configured = bool(base and model and secret)
-    eligible = configured and free
+    eligible = configured and free and not provider.experimental_only
     return {
         "id": provider.key, "name": provider.label, "protocol": provider.protocol,
         "_secret": secret,
         "configured": configured, "free_confirmed": free, "eligible": eligible,
+        "experimental_only": provider.experimental_only,
         "model": model if model else None,
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
@@ -117,7 +119,7 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
 
 
 def list_unorouter_free_models() -> dict[str, Any]:
-    """Read UnoRouter's public pricing catalog; never sends prompts or credentials."""
+    """Read UnoRouter public catalog for research only; no prompts or credentials."""
     url = "https://api.unorouter.com/api/pricing/catalog"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
@@ -130,52 +132,34 @@ def list_unorouter_free_models() -> dict[str, Any]:
     except (json.JSONDecodeError, UnicodeError) as exc:
         raise RuntimeError("UnoRouter returned an invalid model catalog") from exc
 
-    models = []
     catalog_models = payload.get("models", [])
-    total_free_models = sum(1 for item in catalog_models if isinstance(item, dict) and item.get("is_free"))
+    models = []
+    total_free_models = sum(1 for item in catalog_models if isinstance(item, dict) and item.get("is_free") is True)
     for item in catalog_models:
-        if not isinstance(item, dict) or not item.get("is_free") or not item.get("online", True):
+        if not isinstance(item, dict) or item.get("is_free") is not True or item.get("online") is not True:
             continue
-        # This gateway currently sends chat-completions requests only. Exclude image,
-        # audio, embedding and non-chat models even when the global catalog calls them free.
-        endpoints = item.get("supported_endpoint_types") or []
-        if item.get("chat") is not True or "openai" not in endpoints:
+        endpoints = item.get("supported_endpoint_types")
+        if not isinstance(endpoints, list) or "openai" not in endpoints:
             continue
-        # Keep prompts away from models whose catalog policy says they train on or
-        # retain inputs. Unknown policy is surfaced as unknown rather than assumed safe.
-        purpose = item.get("own_purpose") if isinstance(item.get("own_purpose"), dict) else {}
-        if purpose.get("trains_or_retains") is not False or purpose.get("consent_required") is not False:
+        if str(item.get("type") or "").lower() not in {"text", "chat"}:
             continue
         name = str(item.get("model_name") or item.get("id") or "").strip()
         if not name:
             continue
         model_id = name if name.endswith(":free") else name + ":free"
-        models.append({
-            "id": model_id,
-            "name": name,
-            "type": item.get("type") or "text",
-            "vendor": item.get("vendor"),
-            "online": True,
-            "free": True,
-            "supported_endpoints": endpoints,
-            "data_retention": purpose.get("trains_or_retains", "unknown"),
-            "consent_required": purpose.get("consent_required", "unknown"),
-            "processing_countries": purpose.get("countries") or [],
-        })
-    models.sort(key=lambda item: (item["type"] != "text", item["vendor"] or "", item["id"]))
+        models.append({"id": model_id, "name": name, "type": item.get("type"),
+            "vendor": item.get("vendor"), "online": True, "free": True,
+            "supported_endpoints": endpoints, "privacy_status": "unverified",
+            "data_retention": "unknown", "consent_required": "unknown",
+            "processing_countries": [], "usage_status": "research_only_business_use_blocked"})
+    models.sort(key=lambda item: (item["vendor"] or "", item["id"]))
     counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
-    return {
-        "provider": "unorouter",
-        "base_url": "https://api.unorouter.com/v1",
-        "source": url,
-        "global_catalog_free_count": counts.get("free", len(models)),
-        "available_online_free_count": len(models),
-        "privacy_filtered": True,
-        "not_returned_from_global_free_catalog": max(0, total_free_models - len(models)),
-        "models": models,
-        "note": "Privacy-screened global chat catalog only: only online free OpenAI-compatible chat models with no catalog-declared training/retention or consent requirement are listed. Your API key may expose fewer models; test it. Free quotas and availability can change.",
-    }
-
+    return {"provider": "unorouter", "base_url": "https://api.unorouter.com/v1",
+        "source": url, "global_catalog_free_count": counts.get("free", total_free_models),
+        "available_online_free_count": len(models), "privacy_filtered": False, "models": models,
+        "note": "Research-only catalog. Current terms state business accounts are unavailable. "
+            "Provider-level retention, training, consent, and account-specific access are unverified. "
+            "AIOS blocks UnoRouter from company tasks and automatic failover. Do not send business prompts."}
 
 def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     provider, config = _resolve(provider_id)
