@@ -45,10 +45,11 @@ PROVIDER_ENDPOINTS = {
     "groq": "https://api.groq.com/openai/v1",
     "mistral": "https://api.mistral.ai/v1",
     "nvidia": "https://integrate.api.nvidia.com/v1",
+    "sambanova": "https://api.sambanova.ai/v1",
 }
 
 
-def save_provider_credential(provider: str, api_key: str, model: str, free_confirmed: bool) -> None:
+def save_provider_credential(provider: str, api_key: str, model: str, free_confirmed: bool, base_url: str | None = None) -> None:
     if provider not in PROVIDER_ENDPOINTS:
         raise ValueError("This provider cannot be configured through the credential vault.")
     if not api_key or len(api_key) > 512:
@@ -57,6 +58,11 @@ def save_provider_credential(provider: str, api_key: str, model: str, free_confi
         raise ValueError("Enter a valid model identifier.")
     if not free_confirmed:
         raise ValueError("Confirm that this provider account and model are currently free.")
+    endpoint = PROVIDER_ENDPOINTS.get(provider, "")
+    if provider == "cloudflare":
+        endpoint = (base_url or "").strip().rstrip("/")
+        if not endpoint.startswith("https://api.cloudflare.com/client/v4/accounts/") or not endpoint.endswith("/ai/run"):
+            raise ValueError("Cloudflare base URL must be the account-specific HTTPS /ai/run endpoint.")
     encrypted = _fernet().encrypt(api_key.encode("utf-8")).decode("ascii")
     with connect() as db:
         db.execute(
@@ -64,7 +70,7 @@ def save_provider_credential(provider: str, api_key: str, model: str, free_confi
                VALUES(?, ?, ?, ?, 1)
                ON CONFLICT(provider) DO UPDATE SET encrypted_secret=excluded.encrypted_secret,
                model=excluded.model, base_url=excluded.base_url, free_confirmed=excluded.free_confirmed""",
-            (provider, encrypted, model, PROVIDER_ENDPOINTS[provider]),
+            (provider, encrypted, model, endpoint),
         )
 
 
