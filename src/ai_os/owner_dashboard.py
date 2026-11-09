@@ -220,7 +220,7 @@ th{background:#101b2c}
 @media(max-width:900px){main{margin-left:200px;padding:16px 14px 40px}nav.main-nav{width:184px}#companyDepartmentCards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){
  main{margin:0;padding:12px 11px 38px}
- nav.main-nav{position:sticky;top:0;left:auto;bottom:auto;width:auto;height:auto;flex-direction:row;align-items:center;gap:5px;margin:0 -11px 10px;padding:8px 10px;border:0;border-bottom:1px solid #1b2940;border-radius:0;background:rgba(7,12,22,.96);backdrop-filter:blur(12px)}
+ nav.main-nav{position:sticky;top:0;left:auto;bottom:auto;width:auto;height:auto;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:5px;margin:0 -11px 10px;padding:8px 10px;border:0;border-bottom:1px solid #1b2940;border-radius:0;background:rgba(7,12,22,.96);backdrop-filter:blur(12px);overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
  nav.main-nav:before{display:none}
  nav.main-nav a{width:auto;min-height:34px;flex:0 0 auto;padding:8px 10px;font-size:11px}
  nav.main-nav a:before{display:none}
