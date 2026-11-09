@@ -73,6 +73,28 @@ def save_provider_credential(provider: str, api_key: str, model: str, free_confi
         )
 
 
+
+def update_provider_model(provider: str, model: str, free_confirmed: bool) -> None:
+    """Change the selected model without resubmitting or exposing the stored API key."""
+    if provider not in PROVIDER_ENDPOINTS:
+        raise ValueError("This provider cannot be configured through the credential vault.")
+    if not model or len(model) > 200 or model == "__catalog_only__":
+        raise ValueError("Choose an exact model ID returned by the provider.")
+    if provider == "unorouter":
+        if model.endswith(":free") and not free_confirmed:
+            raise ValueError("Confirm that this :free model is zero-cost before enabling free-only routing.")
+        if not model.endswith(":free") and free_confirmed:
+            raise ValueError("A paid UnoRouter model cannot be marked free or enabled for automatic routing.")
+    elif not free_confirmed:
+        raise ValueError("Confirm that this provider account and model are currently free.")
+    with connect() as db:
+        result = db.execute(
+            "UPDATE provider_credentials SET model=?, free_confirmed=? WHERE provider=?",
+            (model, int(free_confirmed), provider),
+        )
+        if result.rowcount == 0:
+            raise ValueError("Save the provider API key before selecting its model.")
+
 def get_provider_credential(provider: str) -> dict | None:
     try:
         with connect() as db:
