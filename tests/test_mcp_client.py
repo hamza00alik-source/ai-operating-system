@@ -56,6 +56,49 @@ def test_mcp_probe_rejects_private_dns_resolution(monkeypatch):
         mcp_client.probe_mcp_server("server-1")
 
 
+def test_endpoint_resolution_pins_a_validated_public_address(monkeypatch):
+    monkeypatch.setattr(mcp_client.socket, "getaddrinfo", lambda *a, **k: [
+        (2, 1, 6, "", ("8.8.8.8", 443)),
+        (2, 1, 6, "", ("1.1.1.1", 443)),
+    ])
+    host, port, pinned_ip = mcp_client._resolve_public_endpoint("https://mcp.example.com/mcp")
+    assert (host, port, pinned_ip) == ("mcp.example.com", 443, "1.1.1.1")
+
+
+def test_endpoint_resolution_rejects_mixed_public_and_private_dns(monkeypatch):
+    monkeypatch.setattr(mcp_client.socket, "getaddrinfo", lambda *a, **k: [
+        (2, 1, 6, "", ("8.8.8.8", 443)),
+        (2, 1, 6, "", ("10.0.0.8", 443)),
+    ])
+    with pytest.raises(ValueError, match="non-public IP"):
+        mcp_client._resolve_public_endpoint("https://mcp.example.com/mcp")
+
+
+def test_pinned_connection_uses_ip_for_socket_and_hostname_for_tls(monkeypatch):
+    calls = {}
+    raw_socket = object()
+
+    class FakeContext:
+        def wrap_socket(self, sock, *, server_hostname):
+            calls["tls_socket"] = sock
+            calls["server_hostname"] = server_hostname
+            return "wrapped-tls-socket"
+
+    def fake_create_connection(address, timeout, source_address):
+        calls["address"] = address
+        return raw_socket
+
+    monkeypatch.setattr(mcp_client.socket, "create_connection", fake_create_connection)
+    connection = mcp_client._PinnedHTTPSConnection(
+        "mcp.example.com", pinned_ip="8.8.8.8", timeout=3
+    )
+    connection._context = FakeContext()
+    connection.connect()
+    assert calls["address"] == ("8.8.8.8", 443)
+    assert calls["server_hostname"] == "mcp.example.com"
+    assert connection.sock == "wrapped-tls-socket"
+
+
 def test_sse_json_rpc_response_is_decoded():
     payload = b": keepalive\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"abc\",\"result\":{\"tools\":[]}}\n\n"
     result = mcp_client._decode_response(payload, "text/event-stream")
