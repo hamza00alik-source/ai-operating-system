@@ -414,8 +414,12 @@ def run_pending_once(worker_id: str | None = None) -> bool:
             specialist_result = {"response": saved_specialist["output"], "provider": "previously_completed", "usage": {}, "latency_ms": 0}
             _record_event(run_id, "specialist_reused", "Reused the previously completed lead specialist deliverable; no duplicate inference request was sent.")
         else:
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lost its lease before lead-specialist inference.")
             _start_step(run_id, 1, "Lead specialist", specialist, task["title"])
             specialist_result = generate_with_fallback(context, preferred_provider="unorouter")
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lease expired during lead-specialist inference; result was not committed.")
             if specialist_result.get("fallback_used"):
                 _record_event(run_id, "provider_fallback", "Lead specialist used free fallback provider " + specialist_result["provider"] + " after preferred provider was unavailable.")
             _finish_step(run_id, 1, specialist_result["response"])
@@ -444,8 +448,12 @@ def run_pending_once(worker_id: str | None = None) -> bool:
             collaborator_result = {"response": saved_collaborator["output"], "provider": "previously_completed", "usage": {}, "latency_ms": 0}
             _record_event(run_id, "collaborator_reused", "Reused the previously completed independent review; no duplicate inference request was sent.")
         else:
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lost its lease before collaborator inference.")
             _start_step(run_id, 2, "Independent collaboration", collaborator, "Review and extend the lead specialist's deliverable.")
             collaborator_result = generate_with_fallback(collaboration_prompt, preferred_provider="unorouter")
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lease expired during collaborator inference; result was not committed.")
             if collaborator_result.get("fallback_used"):
                 _record_event(run_id, "provider_fallback", "Collaborator used free fallback provider " + collaborator_result["provider"] + " after preferred provider was unavailable.")
             _finish_step(run_id, 2, collaborator_result["response"])
@@ -462,8 +470,12 @@ def run_pending_once(worker_id: str | None = None) -> bool:
             "\nLEAD SPECIALIST (" + specialist["name"] + "):\n" + specialist_result["response"][:8500] +
             "\n\nCOLLABORATING SPECIALIST (" + collaborator["name"] + "):\n" + collaborator_result["response"][:8500]
         )
+        if not renew_run_lease(run_id, worker_id):
+            raise RuntimeError("Agent worker lost its lease before CEO-review inference.")
         _start_step(run_id, 3, "CEO integration and QA", ceo_agent, "Integrate both specialist contributions into the final owner-ready deliverable.")
         ceo_result = generate_with_fallback(review_prompt, preferred_provider="unorouter")
+        if not renew_run_lease(run_id, worker_id):
+            raise RuntimeError("Agent worker lease expired during CEO-review inference; result was not committed.")
         if ceo_result.get("fallback_used"):
             _record_event(run_id, "provider_fallback", "CEO reviewer used free fallback provider " + ceo_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 3, ceo_result["response"])
@@ -485,10 +497,12 @@ def run_pending_once(worker_id: str | None = None) -> bool:
         with connect() as db:
             db.execute(
                 """UPDATE agent_runs SET status='completed',assigned_agent_id=?,specialist_output=?,
-                ceo_review=?,usage_json=?,finished_at=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL WHERE id=?""",
+                ceo_review=?,usage_json=?,finished_at=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=?""",
                 (specialist.get("id"), specialist_result["response"], ceo_result["response"],
-                 json.dumps(usage), _now(), run_id),
+                 json.dumps(usage), _now(), run_id, worker_id),
             )
+            if db.execute("SELECT changes()").fetchone()[0] != 1:
+                raise RuntimeError("Agent worker no longer owns this run; completion was not committed.")
             db.execute("UPDATE tasks SET status='completed' WHERE id=?", (task_id,))
             db.execute(
                 "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
@@ -507,9 +521,12 @@ def run_pending_once(worker_id: str | None = None) -> bool:
             saved = db.execute("SELECT specialist_output FROM agent_runs WHERE id=?", (run_id,)).fetchone()
             has_partial_deliverable = bool(saved and saved["specialist_output"])
             final_status = "partial" if has_partial_deliverable else "failed"
-            db.execute("UPDATE agent_runs SET status=?,error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=?",
-                       (final_status, str(exc)[:1000], _now(), run_id))
-            db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
+            changed = db.execute(
+                "UPDATE agent_runs SET status=?,error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=?",
+                (final_status, str(exc)[:1000], _now(), run_id, worker_id),
+            ).rowcount
+            if changed:
+                db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
             db.execute(
                 "UPDATE agent_run_steps SET status='failed',error=?,finished_at=? WHERE run_id=? AND status='running'",
                 (str(exc)[:500], _now(), run_id),
