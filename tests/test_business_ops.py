@@ -17,6 +17,15 @@ def test_business_records_distinguish_verified_revenue_and_pending_expenses(monk
         }, headers=headers)
         assert expense.status_code == 201
         assert expense.json()["status"] == "awaiting_owner_approval"
+        approval_id = expense.json()["approval_id"]
+        assert approval_id
+        decision = client.post(
+            f"/approvals/{approval_id}/decision", json={"decision": "approved"}, headers=headers
+        )
+        assert decision.status_code == 200
+        expenses = client.get("/business/expenses", headers=headers)
+        linked_expense = next(x for x in expenses.json() if x["id"] == expense.json()["id"])
+        assert linked_expense["status"] == "approved_for_manual_payment"
 
         expected = client.post("/business/revenue", json={
             "title": "Unsigned order", "amount": 99, "currency": "USD"
