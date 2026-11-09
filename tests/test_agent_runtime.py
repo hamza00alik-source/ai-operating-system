@@ -52,6 +52,24 @@ def test_general_market_research_routes_to_research_role():
 
 
 
+def test_company_department_routes_to_mapped_specialist():
+    from ai_os.agent_runtime import _select_specialist
+
+    manifest = {
+        "agents": [
+            {"id": "engineering/backend-developer", "name": "Backend Developer",
+             "department": "engineering", "source_path": ""},
+            {"id": "support/customer-support-specialist", "name": "Customer Support Specialist",
+             "department": "support", "source_path": ""},
+        ]
+    }
+    selected = _select_specialist(
+        {"title": "Prepare a customer response workflow", "description": "", "department": "customer-support"},
+        manifest,
+    )
+    assert selected["id"] == "support/customer-support-specialist"
+
+
 def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist(monkeypatch, tmp_path):
     from ai_os.agent_runtime import retry_run, _now
     from ai_os.db import connect, initialize_database
