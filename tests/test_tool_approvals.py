@@ -194,3 +194,35 @@ def test_reservation_rejects_fingerprint_tampering(monkeypatch, tmp_path):
         )
     with pytest.raises(ValueError, match="fingerprint integrity"):
         reserve_approved_tool_proposal(proposal["id"])
+
+
+
+def test_owner_reservation_endpoint_records_checkpoint_only(monkeypatch, tmp_path):
+    proposal = _approved_proposal(monkeypatch, tmp_path)
+    headers = {"X-API-Key": "test-owner-key"}
+    with TestClient(api.app) as client:
+        response = client.post(
+            f"/integrations/mcp/proposals/{proposal['id']}/reserve",
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "reserved"
+        assert response.json()["execution_enabled"] is False
+        assert response.json()["remote_call_performed"] is False
+        inbox = client.get("/integrations/mcp/proposals", headers=headers)
+        listed = next(item for item in inbox.json() if item["id"] == proposal["id"])
+        assert listed["reservation_id"] == response.json()["reservation_id"]
+        replay = client.post(
+            f"/integrations/mcp/proposals/{proposal['id']}/reserve",
+            headers=headers,
+        )
+        assert replay.status_code == 409
+
+
+def test_owner_reservation_endpoint_requires_auth(monkeypatch, tmp_path):
+    proposal = _approved_proposal(monkeypatch, tmp_path)
+    with TestClient(api.app) as client:
+        response = client.post(
+            f"/integrations/mcp/proposals/{proposal['id']}/reserve"
+        )
+        assert response.status_code == 401
