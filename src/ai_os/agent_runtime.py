@@ -63,10 +63,13 @@ def recover_interrupted_runs() -> int:
         for row in interrupted:
             run_id, task_id = row["id"], row["task_id"]
             reason = "Execution interrupted by service restart; owner can explicitly retry."
-            db.execute(
-                "UPDATE agent_runs SET status='failed',error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running'",
-                (reason, now, run_id),
-            )
+            changed = db.execute(
+                """UPDATE agent_runs SET status='failed',error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL
+                   WHERE id=? AND status='running' AND (lease_expires_at IS NULL OR lease_expires_at<=?)""",
+                (reason, now, run_id, now),
+            ).rowcount
+            if not changed:
+                continue
             if task_id:
                 db.execute(
                     "UPDATE tasks SET status='failed' WHERE id=? AND status='running'",
