@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "description": "Company-level department registry mapped to the existing Agency Agents specialist catalogue. Catalogue availability is not proof of a live dedicated department or completed workflow.",
+  "departments": [
+    {
+      "id": "executive",
+      "name": "Executive & Strategy",
+      "owner_role": "CEO / Executive Reviewer",
+      "responsibilities": [
+        "Set company priorities and objectives",
+        "Review specialist outputs and resolve conflicts",
+        "Approve high-impact plans and escalate risks"
+      ],
+      "source_departments": [
+        "project-management",
+        "specialized"
+      ],
+      "built_in_roles": [
+        "CEO Reviewer"
+      ],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "research",
+      "name": "Research & Intelligence",
+      "owner_role": "Research Lead",
+      "responsibilities": [
+        "Market and competitor research",
+        "Customer demand and evidence analysis",
+        "Opportunity and risk briefs"
+      ],
+      "source_departments": [
+        "research",
+        "academic",
+        "gis",
+        "specialized"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "product",
+      "name": "Product & R&D",
+      "owner_role": "Product Lead",
+      "responsibilities": [
+        "Product discovery and specifications",
+        "Roadmaps, feature design and prototyping plans",
+        "Validate product-market fit assumptions"
+      ],
+      "source_departments": [
+        "product",
+        "project-management",
+        "specialized"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "design",
+      "name": "Design & 3D Production",
+      "owner_role": "Creative Lead",
+      "responsibilities": [
+        "Brand and visual design",
+        "UI/UX and product presentation",
+        "3D and game-asset design briefs"
+      ],
+      "source_departments": [
+        "design",
+        "spatial-computing",
+        "game-development"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "engineering",
+      "name": "Engineering & Technology",
+      "owner_role": "Engineering Lead",
+      "responsibilities": [
+        "Software and systems engineering",
+        "API, infrastructure and integration work",
+        "Technical maintenance and documentation"
+      ],
+      "source_departments": [
+        "engineering",
+        "game-development",
+        "spatial-computing"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "marketing",
+      "name": "Marketing & Growth",
+      "owner_role": "Growth Lead",
+      "responsibilities": [
+        "Content and channel strategy",
+        "SEO, audience research and campaign plans",
+        "Measure acquisition and conversion"
+      ],
+      "source_departments": [
+        "marketing",
+        "paid-media"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "sales-marketplace",
+      "name": "Sales & Marketplace Operations",
+      "owner_role": "Commercial Operations Lead",
+      "responsibilities": [
+        "Marketplace catalogue and listing preparation",
+        "Pricing and sales-performance analysis",
+        "Order workflow design; publishing requires owner approval"
+      ],
+      "source_departments": [
+        "sales",
+        "marketing",
+        "finance",
+        "specialized"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "customer-support",
+      "name": "Customer Support",
+      "owner_role": "Support Lead",
+      "responsibilities": [
+        "Classify customer questions and issues",
+        "Prepare support replies for owner review",
+        "Track recurring issues and product feedback"
+      ],
+      "source_departments": [
+        "support",
+        "specialized"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "finance",
+      "name": "Finance & Accounting",
+      "owner_role": "Finance Lead",
+      "responsibilities": [
+        "Track verified costs, revenue and margins",
+        "Prepare budgets and financial reports",
+        "Flag spend; no autonomous payments or purchases"
+      ],
+      "source_departments": [
+        "finance",
+        "engineering",
+        "specialized"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "legal-compliance",
+      "name": "Legal & Compliance",
+      "owner_role": "Compliance Lead",
+      "responsibilities": [
+        "Review platform terms and policy risks",
+        "Check licensing and intellectual-property concerns",
+        "Flag claims requiring qualified legal advice"
+      ],
+      "source_departments": [
+        "security",
+        "specialized"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "quality-assurance",
+      "name": "Quality Assurance",
+      "owner_role": "QA Lead",
+      "responsibilities": [
+        "Test deliverables and integrations",
+        "Run regression and release checks",
+        "Record defects and acceptance evidence"
+      ],
+      "source_departments": [
+        "testing",
+        "security",
+        "engineering"
+      ],
+      "built_in_roles": [],
+      "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "people-workforce",
+      "name": "People & AI Workforce",
+      "owner_role": "Workforce Lead",
+      "responsibilities": [
+        "Maintain role definitions and permissions",
+        "Review agent workload and performance evidence",
+        "Propose workforce improvements for owner approval"
+      ],
+      "source_departments": [
+        "project-management",
+        "specialized"
+      ],
+      "built_in_roles": [
+        "Workforce Registry"
+      ],
+      "workflow_state": "catalogue-only"
+    }
+  ]
+}

@@ -264,6 +264,35 @@ def post_llm_run(payload: ModelRunRequest):
 
 
 
+@app.get("/company/departments", dependencies=[Depends(require_api_key)])
+def get_company_departments():
+    """Return the business department registry enriched with source-catalogue counts."""
+    registry_path = Path(__file__).resolve().parents[2] / "data" / "company_departments.json"
+    manifest_path = Path(__file__).resolve().parents[2] / "data" / "agency_agents_manifest.json"
+    if not registry_path.exists() or not manifest_path.exists():
+        raise HTTPException(status_code=503, detail="Company department registry or workforce manifest is unavailable.")
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    source_counts = {item["id"]: item["agent_count"] for item in manifest.get("departments", [])}
+    departments = []
+    for item in registry.get("departments", []):
+        specialist_count = sum(source_counts.get(source, 0) for source in item.get("source_departments", []))
+        departments.append({
+            **item,
+            "specialist_count": specialist_count,
+            "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
+            "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
+            "workflow_status": "catalogue-only",
+        })
+    return {
+        "department_count": len(departments),
+        "source_department_count": manifest.get("department_count", 0),
+        "catalogued_agent_count": manifest.get("agent_count", 0),
+        "runtime_model": "one shared worker invokes selected specialist instructions on demand; no dedicated always-on department processes",
+        "departments": departments,
+    }
+
+
 @app.get("/workforce/agents", dependencies=[Depends(require_api_key)])
 def get_workforce_agents(department: str | None = None, q: str | None = None):
     """Return the complete catalogued Agency workforce; catalog entries are not live workers."""
@@ -308,7 +337,7 @@ def get_company_overview():
         candidates = db.execute("SELECT COUNT(*) AS n FROM discovery_candidates").fetchone()["n"]
         agent_runs = db.execute("SELECT status, COUNT(*) AS n FROM agent_runs GROUP BY status").fetchall()
     return {
-        "workforce": {"agents": 283, "departments": 18, "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
+        "workforce": {"agents": 283, "departments": 18, "company_departments": 12, "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
         "tasks": {r["status"]: r["n"] for r in tasks},
         "approvals": {r["status"]: r["n"] for r in approvals},
         "discovery_scans": {r["status"]: r["n"] for r in scans},
