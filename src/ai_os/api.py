@@ -24,7 +24,7 @@ from ai_os.credentials import save_openrouter, credential_status, CredentialVaul
 from ai_os.brain import brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
-from ai_os import website_api
+from ai_os import website_api, code_assets
 from pydantic import BaseModel, Field
 
 
@@ -108,6 +108,10 @@ app = FastAPI(
 @app.get("/owner", include_in_schema=False)
 def get_owner_dashboard():
     return owner_dashboard()
+
+
+class CodeAssetScanRequest(BaseModel):
+    repository_url: str = Field(min_length=20, max_length=500)
 
 
 class OwnerLoginRequest(BaseModel):
@@ -422,6 +426,32 @@ def get_workflow_detail(workflow_id: str):
     result = get_workflow(workflow_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
+    return result
+
+
+@app.post("/code-assets/scan", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_code_asset_scan(payload: CodeAssetScanRequest):
+    """Owner-triggered, read-only audit of a public GitHub repository."""
+    try:
+        return code_assets.scan_repository(payload.repository_url)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/code-assets", dependencies=[Depends(require_api_key)])
+def get_code_assets():
+    return code_assets.list_assets()
+
+
+@app.get("/code-assets/{asset_id}", dependencies=[Depends(require_api_key)])
+def get_code_asset(asset_id: str):
+    result = code_assets.get_asset(asset_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Code asset not found.")
     return result
 
 
