@@ -108,15 +108,15 @@ The AI Brain is a provider-independent subsystem stored in the same persistent S
 This first version uses local lexical retrieval and SQLite; it requires no embedding service, extra model call, or separate training job. It does not train a new neural network, create a foundation model, or eliminate inference compute. It reduces repeated context-building by retaining approved company knowledge, while advanced reasoning still uses the configured model gateway. The owner must review proposed lessons before they can influence future agents. Only successful completed runs are recorded as experiences; failed runs are not treated as lessons.
 
 
-## UnoRouter free-model gateway
+## UnoRouter catalog (research-only)
 
-The owner console can connect UnoRouter as an additional OpenAI-compatible provider. Its public pricing catalog is read without credentials and can populate the model picker; the selected API key is stored only in the encrypted provider vault. AIOS accepts only model IDs ending in `:free` for this provider, and still requires the owner to confirm free-only use. The gateway calls `https://api.unorouter.com/v1/chat/completions`.
+AIOS can read UnoRouter's public pricing catalog without sending credentials or prompts. It uses documented catalog fields to identify entries marked free, online, text/chat, and OpenAI-compatible. The catalog is informational only: it does not establish account-specific access or provider-level prompt retention, training, consent, or processing location.
 
-The public catalog is not a promise that every model is enabled for your account. AIOS currently lists only online, free, OpenAI-compatible chat models and filters out entries whose catalog policy declares prompt training/retention or consent requirements, plus entries with unknown data policy; image, audio, and embedding models are not yet routed by the text gateway. The account-scoped model list, provider quotas, latency, privacy/training terms, and regional availability can differ. Test the chosen model through **Test live connection** before routing agent work. UnoRouter documents light free-tier limits (approximately one request per minute per model/account); do not treat this as production throughput. No paid model, credit top-up, or billing upgrade is enabled by this integration.
+**Business-use restriction:** UnoRouter's current Terms of Service state that business accounts are unavailable. Accordingly, AIOS marks UnoRouter as research-only, rejects credential storage, and excludes it from direct inference and automatic provider failover. Do not send company, customer, confidential, or personal data to it through this AIOS deployment. The public catalog must not be described as privacy-screened.
 
-- `GET /llm/unorouter/catalog` — authenticated, read-only list of globally listed online free models.
-- `POST /llm/credentials/unorouter` — owner-authenticated encrypted key storage; model ID must end in `:free`.
-- The catalog call sends no prompt and no API key. Inference requests send only the selected prompt to UnoRouter.
+- `GET /llm/unorouter/catalog` — authenticated, read-only public catalog lookup.
+- No UnoRouter API key is stored or used by AIOS.
+- Other providers remain subject to their own current pricing, privacy, commercial-use, region, and quota checks. Free confirmation is an owner assertion, not a guarantee of zero billing.
 
 ## Free-provider failover
 
