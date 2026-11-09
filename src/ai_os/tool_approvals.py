@@ -144,15 +144,22 @@ def decide_tool_proposal(proposal_id: str, decision: str, actor: str = "owner") 
             raise ValueError("Proposal is no longer pending; decisions are one-time.")
         if datetime.fromisoformat(row["expires_at"]) <= now:
             db.execute("UPDATE mcp_tool_proposals SET status='expired' WHERE id=? AND status='pending'", (proposal_id,))
-            raise ValueError("Proposal has expired.")
-        changed = db.execute(
-            """UPDATE mcp_tool_proposals SET status=?,decided_at=?,decided_by=?
-            WHERE id=? AND status='pending' AND fingerprint=?""",
-            (decision, now.isoformat(), actor, proposal_id, row["fingerprint"]),
-        ).rowcount
-        if changed != 1:
-            raise ValueError("Proposal changed concurrently; refresh the approval inbox.")
-        result = dict(db.execute("SELECT * FROM mcp_tool_proposals WHERE id=?", (proposal_id,)).fetchone())
+            expired = True
+        else:
+            expired = False
+        if expired:
+            result = None
+        else:
+            changed = db.execute(
+                """UPDATE mcp_tool_proposals SET status=?,decided_at=?,decided_by=?
+                WHERE id=? AND status='pending' AND fingerprint=?""",
+                (decision, now.isoformat(), actor, proposal_id, row["fingerprint"]),
+            ).rowcount
+            if changed != 1:
+                raise ValueError("Proposal changed concurrently; refresh the approval inbox.")
+            result = dict(db.execute("SELECT * FROM mcp_tool_proposals WHERE id=?", (proposal_id,)).fetchone())
+    if result is None:
+        raise ValueError("Proposal has expired.")
     result["arguments"] = json.loads(result.pop("arguments_json"))
     result["execution_enabled"] = False
     return result
