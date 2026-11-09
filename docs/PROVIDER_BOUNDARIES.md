@@ -33,3 +33,23 @@ Public source repositories may contain reusable code, schemas, documentation, an
 ## Zero-budget policy
 
 Free-tier labels are not guarantees. The owner must verify current pricing, account eligibility, quota, privacy, data retention, model terms, and commercial-use restrictions. Do not add a payment method or enable paid fallback as a workaround. If all eligible free routes are unavailable, stop and request owner action.
+
+
+## Supported provider adapters
+
+The company gateway includes guarded adapters for Google Gemini, OpenRouter,
+Groq, Mistral, NVIDIA NIM, SambaNova Cloud, and Cloudflare Workers AI.
+UnoRouter remains personal-test-only. Cohere trial credentials are deliberately
+not enabled for company routing because a limited evaluation trial is not a
+production free tier.
+
+Every provider remains disabled until its credential is stored securely and
+the owner explicitly confirms the selected account/model is available on a
+no-overage free arrangement. That confirmation is an owner assertion, not an
+automated guarantee. Do not attach a payment method or enable automatic
+overages. If the free allowance cannot be verified, leave the provider disabled.
+
+Cloudflare credentials require an account-specific HTTPS API endpoint. The
+credential vault validates the Cloudflare API host and account URL shape before
+saving it. Provider connectivity still requires a separate owner-triggered
+test; no API keys or live provider calls are included in CI.
