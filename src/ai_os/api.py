@@ -28,7 +28,8 @@ from ai_os import website_api
 from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
 from ai_os.mcp_client import probe_mcp_server
 from ai_os.mcp_tool_catalog import persist_discovered_tools
-from ai_os.tool_approvals import (list_tool_proposals, decide_tool_proposal,\n                                  reserve_approved_tool_proposal)
+from ai_os.tool_approvals import (list_tool_proposals, decide_tool_proposal,
+                                  reserve_approved_tool_proposal)
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
