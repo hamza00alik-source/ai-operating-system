@@ -77,7 +77,7 @@ def create_run(task_id: str) -> dict:
         if task is None:
             raise LookupError("Task not found")
         active = db.execute(
-            "SELECT id FROM agent_runs WHERE task_id=? AND status IN ('queued','running')",
+            "SELECT id FROM agent_runs WHERE task_id=? AND status IN ('queued','running','awaiting_approval')",
             (task_id,),
         ).fetchone()
         if active:
@@ -320,7 +320,7 @@ def _extract_tool_proposal(response: str) -> dict | None:
     """Parse one explicit, bounded model proposal marker; never infer tool calls."""
     import re
 
-    matches = re.findall(r"^AIOS_TOOL_PROPOSAL:\\s*(\\{.*?\\})\\s*$", response or "", re.MULTILINE | re.DOTALL)
+    matches = re.findall(r"^AIOS_TOOL_PROPOSAL:\s*(\{.*?\})\s*$", response or "", re.MULTILINE | re.DOTALL)
     if not matches:
         return None
     if len(matches) != 1:
