@@ -77,6 +77,26 @@ def test_safe_redirect_enforces_hop_limit(monkeypatch):
         handler.redirect_request(request, None, 302, "Found", {}, "https://example.com/next")
 
 
+def test_redirect_provenance_is_preserved_for_research_agents():
+    body = "Steam homepage content"
+    stored = research_sources._add_redirect_provenance(
+        body,
+        "https://store.steampowered.com/hwsurvey/",
+        "https://store.steampowered.com/",
+    )
+    assert "SOURCE REDIRECT WARNING" in stored
+    assert "https://store.steampowered.com/hwsurvey/" in stored
+    assert "https://store.steampowered.com/" in stored
+    assert stored.endswith(body)
+
+
+def test_redirect_provenance_is_omitted_without_redirect():
+    body = "Original page content"
+    assert research_sources._add_redirect_provenance(
+        body, "https://example.com/report", "https://example.com/report"
+    ) == body
+
+
 def test_read_bounded_returns_partial_data_and_marks_truncation():
     raw, truncated = research_sources._read_bounded(io.BytesIO(b"abcdefghij"), limit=6)
     assert raw == b"abcdef"
