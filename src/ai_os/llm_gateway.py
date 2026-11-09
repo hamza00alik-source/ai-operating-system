@@ -325,6 +325,10 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     base = config.get("base_url") or os.getenv(provider.base_url_env, "").strip().rstrip("/")
     model = config.get("model") or os.getenv(provider.model_env, "").strip()
     secret = config.get("_secret") or os.getenv(provider.secret_env, "").strip()
+    model_selection = None
+    if provider.key == "unorouter":
+        model_selection = select_unorouter_model(prompt)
+        model = model_selection["model_id"]
     started = time.monotonic()
 
     if provider.protocol == "gemini":
@@ -366,7 +370,7 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 24:
         raise RuntimeError(f"{provider.label} returned empty or placeholder text; refusing to mark this agent stage complete")
 
-    return {
+    result = {
         "provider": provider.key, "model": data.get("model", model), "response": answer,
         "latency_ms": round((time.monotonic() - started) * 1000),
         "usage": {
@@ -378,6 +382,9 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
         "cost_guard": "free-confirmed-by-owner; provider limits still apply",
         "live": True,
     }
+    if model_selection:
+        result["model_selection"] = model_selection
+    return result
 
 
 
