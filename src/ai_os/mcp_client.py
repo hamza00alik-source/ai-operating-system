@@ -150,6 +150,45 @@ def probe_mcp_server(server_id: str) -> dict:
     }
 
 
+def _validate_tool_arguments(schema: dict, arguments: dict) -> None:
+    """Validate untrusted model arguments against the server's JSON Schema."""
+    if not isinstance(schema, dict) or len(json.dumps(schema)) > 65536:
+        raise ValueError("MCP tool input schema is invalid or too large.")
+    if not isinstance(arguments, dict) or len(json.dumps(arguments)) > 65536:
+        raise ValueError("MCP tool arguments must be a JSON object no larger than 64 KiB.")
+    try:
+        from jsonschema import Draft202012Validator
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema)
+        error = next(iter(validator.iter_errors(arguments)), None)
+    except ImportError as exc:
+        raise RuntimeError("JSON Schema validation dependency is unavailable.") from exc
+    except Exception as exc:
+        raise ValueError("MCP server supplied an invalid JSON Schema.") from exc
+    if error is not None:
+        path = ".".join(str(part) for part in error.absolute_path) or "(root)"
+        raise ValueError(f"MCP tool arguments failed schema validation at {path}: {error.message[:300]}")
+
+
+def _department_tool_allowlist(department: str | None) -> set[str]:
+    """Return exact server-id:tool-name grants; default-deny for agent departments."""
+    if not department:
+        return set()
+    raw = os.getenv("AI_OS_MCP_DEPARTMENT_TOOL_ALLOWLIST", "{}")
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("AI_OS_MCP_DEPARTMENT_TOOL_ALLOWLIST must be valid JSON.") from exc
+    if not isinstance(config, dict):
+        raise ValueError("MCP department allowlist must be a JSON object.")
+    entries = config.get(department, [])
+    if not isinstance(entries, list) or any(
+        not isinstance(item, str) or ":" not in item or len(item) > 256 for item in entries
+    ):
+        raise ValueError(f"MCP allowlist for department {department!r} must be a list of server-id:tool-name entries.")
+    return set(entries)
+
+
 def call_mcp_tool(server_id: str, tool_name: str, arguments: dict) -> dict:
     """Invoke one remote tool; caller must consume a matching one-time approval first."""
     row, opener, headers = _load_server(server_id)
@@ -158,17 +197,8 @@ def call_mcp_tool(server_id: str, tool_name: str, arguments: dict) -> dict:
     match = next((tool for tool in tools if tool.get("name") == tool_name), None)
     if match is None:
         raise LookupError("Requested tool is not currently advertised by this MCP server.")
-    schema = match.get("inputSchema") or {}
-    if schema.get("type") == "object" and not isinstance(arguments, dict):
-        raise ValueError("MCP tool arguments must be a JSON object.")
-    required = schema.get("required", [])
-    properties = schema.get("properties", {})
-    missing = [key for key in required if key not in arguments]
-    if missing:
-        raise ValueError("Missing required tool arguments: " + ", ".join(missing))
-    unknown = [key for key in arguments if schema.get("additionalProperties") is False and key not in properties]
-    if unknown:
-        raise ValueError("Unexpected tool arguments: " + ", ".join(unknown))
+    schema = match.get("inputSchema") or {"type": "object", "properties": {}}
+    _validate_tool_arguments(schema, arguments)
     request_id = str(uuid4())
     result, _ = _post(opener, row["endpoint"], {
         "jsonrpc": "2.0", "id": request_id, "method": "tools/call",
