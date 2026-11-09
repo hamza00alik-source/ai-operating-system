@@ -18,7 +18,7 @@ from ai_os.discovery import create_scan, list_scans, list_candidates, github_api
 from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
-from ai_os.llm_gateway import list_providers, list_unorouter_free_models, generate, generate_with_fallback, test_provider
+from ai_os.llm_gateway import list_providers, list_unorouter_free_models, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
@@ -200,6 +200,19 @@ def get_llm_providers():
 def get_unorouter_catalog():
     try:
         return list_unorouter_free_models()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/llm/unorouter/personal-test", dependencies=[Depends(require_owner_key)])
+def post_unorouter_personal_test(payload: ModelRunRequest):
+    """Owner-only consumer-account experiment; deliberately outside company routing."""
+    try:
+        return test_unorouter_personal(payload.prompt)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
