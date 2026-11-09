@@ -116,3 +116,40 @@ def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
         assert "groq: unavailable (HTTP 403)" in message
         assert "No paid fallback was attempted" in message
         assert "secret" not in message.lower()
+
+
+def test_unorouter_uses_openai_compatible_free_model_route(monkeypatch):
+    monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
+    monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
+    monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "unorouter-test-secret")
+    monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
+    captured = {}
+
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {"choices": [{"message": {"content": "AIOS live connection successful"}}],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}}
+
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.test_provider("unorouter")
+    assert result["test_passed"] is True
+    assert captured["url"] == "https://api.unorouter.com/v1/chat/completions"
+    assert captured["payload"]["model"] == "example-model:free"
+    assert captured["headers"]["Authorization"] == "Bearer unorouter-test-secret"
+    assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
+
+
+def test_unorouter_catalog_returns_only_online_free_models(monkeypatch):
+    class FakeResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, limit):
+            return json.dumps({"counts":{"free":2},"models":[
+                {"model_name":"alpha","is_free":True,"online":True,"type":"text"},
+                {"model_name":"beta","is_free":True,"online":False,"type":"text"},
+                {"model_name":"gamma","is_free":False,"online":True,"type":"text"}
+            ]}).encode()
+    monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", lambda *a, **k: FakeResponse())
+    data=llm_gateway.list_unorouter_free_models()
+    assert data["available_online_free_count"] == 1
+    assert data["models"][0]["id"] == "alpha:free"
