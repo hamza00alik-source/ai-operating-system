@@ -25,6 +25,7 @@ from ai_os.brain import brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
+from ai_os import business_ops
 from pydantic import BaseModel, Field
 
 
@@ -423,6 +424,107 @@ def get_workflow_detail(workflow_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
     return result
+
+
+
+class BusinessRecordRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    amount: float | None = Field(default=None, ge=0, le=1000000000)
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    contact: str = Field(default="", max_length=200)
+    notes: str = Field(default="", max_length=2000)
+    verified_payment: bool = False
+
+
+class CodeAssetRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    repository_url: str = Field(default="", max_length=2048)
+    path: str = Field(default="", max_length=500)
+    asset_type: str = Field(default="source_code", max_length=50)
+    ownership_status: str = Field(default="unverified", max_length=50)
+    license: str = Field(default="unknown", max_length=100)
+    dependency_review: str = Field(default="not_reviewed", max_length=50)
+    token_estimate: int | None = Field(default=None, ge=0)
+    token_method: str = Field(default="not_measured", max_length=100)
+    notes: str = Field(default="", max_length=2000)
+
+
+class LicenseOfferRequest(BaseModel):
+    asset_id: str = Field(min_length=1, max_length=80)
+    buyer: str = Field(min_length=1, max_length=180)
+    terms: str = Field(min_length=1, max_length=3000)
+
+
+@app.get("/business/summary", dependencies=[Depends(require_api_key)])
+def get_business_summary():
+    return business_ops.business_summary()
+
+
+@app.get("/business/customers", dependencies=[Depends(require_api_key)])
+def get_business_customers():
+    return business_ops.list_records("customer")
+
+
+@app.post("/business/customers", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_business_customer(payload: BusinessRecordRequest):
+    try:
+        return business_ops.create_record("customer", payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/business/expenses", dependencies=[Depends(require_api_key)])
+def get_business_expenses():
+    return business_ops.list_records("expense")
+
+
+@app.post("/business/expenses", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_business_expense(payload: BusinessRecordRequest):
+    try:
+        return business_ops.create_record("expense", payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/business/revenue", dependencies=[Depends(require_api_key)])
+def get_business_revenue():
+    return business_ops.list_records("revenue")
+
+
+@app.post("/business/revenue", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_business_revenue(payload: BusinessRecordRequest):
+    try:
+        return business_ops.create_record("revenue", payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/code-assets", dependencies=[Depends(require_api_key)])
+def get_code_assets():
+    return business_ops.list_assets()
+
+
+@app.post("/code-assets", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_code_asset(payload: CodeAssetRequest):
+    try:
+        return business_ops.create_asset(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/code-assets/license-offers", dependencies=[Depends(require_api_key)])
+def get_code_license_offers():
+    return business_ops.list_license_offers()
+
+
+@app.post("/code-assets/license-offers", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_code_license_offer(payload: LicenseOfferRequest):
+    try:
+        return business_ops.create_license_offer(payload.model_dump())
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/health")
