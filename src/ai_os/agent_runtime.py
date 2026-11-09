@@ -318,6 +318,7 @@ def run_pending_once() -> bool:
             "\n\nProduce a useful, concrete deliverable. State assumptions, research gaps and next steps. "
             "This runtime has no browser or live web-search capability. Do not invent sources, citations, market sizes, CAGR values, revenue shares, rankings, prices, or current facts. " +
             "For research tasks, distinguish sourced facts (only when a source is supplied in context) from hypotheses and unknowns. " +
+            "Treat [SOURCE REDIRECT WARNING] as source-provenance metadata: the submitted URL redirected, so do not claim the submitted page was captured; assess whether the final URL is relevant and cite the final captured URL. Preserve this warning in the deliverable whenever the redirected source is used. " +
             "If a quantitative market figure has no traceable source, omit it or label it explicitly as an unverified planning assumption, never as a market estimate. " +
             "Do not claim to have performed external actions or verified facts you did not verify. "
             "Do not spend money, publish, contact customers, modify accounts, or make commitments. "
