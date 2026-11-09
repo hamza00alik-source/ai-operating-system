@@ -189,19 +189,37 @@ def _select_specialist(task: dict, manifest: dict) -> dict:
     if not agents:
         return {"id": "general/generalist", "name": "Generalist", "department": "general", "source_path": ""}
 
-    # Explicit department match is a strong prior, but task wording can select a
-    # more relevant role within that department instead of always taking row one.
+    # Infer a functional department from explicit task intent before scoring role
+    # names. This prevents incidental words such as "global" from routing market
+    # research to an unrelated "Global Podcast Strategist" role.
+    intent_departments = [
+        (("research", "market analysis", "competitor", "industry", "customer demand", "market size"), "research"),
+        (("code", "software", "api", "backend", "frontend", "deploy", "bug", "database"), "engineering"),
+        (("design", "visual", "ui", "ux", "branding"), "design"),
+        (("product", "roadmap", "feature", "product strategy"), "product"),
+        (("test", "qa", "quality assurance", "verification", "audit"), "testing"),
+        (("sales", "revenue", "pricing", "lead generation"), "sales"),
+        (("marketing", "campaign", "social media", "advertising"), "marketing"),
+        (("finance", "budget", "cost", "accounting"), "finance"),
+    ]
+    inferred_department = next(
+        (dept for phrases, dept in intent_departments if any(phrase in task_text for phrase in phrases)),
+        "",
+    )
+    target_department = department if department and department != "general" else inferred_department
+
+    # Department fit is weighted more strongly than incidental name-token overlap.
     tokens = {t for t in re.findall(r"[a-z0-9]+", task_text) if len(t) > 2}
     best = None
     best_score = -1
     for agent in agents:
         name_tokens = {t for t in re.findall(r"[a-z0-9]+", agent.get("name", "").casefold()) if len(t) > 2}
-        score = len(tokens & name_tokens) * 5
-        if agent.get("department", "").casefold() == department:
-            score += 4
+        score = len(tokens & name_tokens) * 2
+        if agent.get("department", "").casefold() == target_department:
+            score += 30
         # Exact role phrases in the task should dominate generic department matches.
         if agent.get("name", "").casefold() in task_text:
-            score += 20
+            score += 40
         if score > best_score:
             best, best_score = agent, score
 
@@ -216,7 +234,7 @@ def _select_specialist(task: dict, manifest: dict) -> dict:
             "support": ("Support", "support"),
             "operations": ("Senior Project Manager", "project-management"),
         }
-        name, dept = preferred.get(department, ("Trend Researcher", "research"))
+        name, dept = preferred.get(target_department or department, ("Research Synthesist", "research"))
         best = next((a for a in agents if a.get("department") == dept and name.casefold() in a.get("name", "").casefold()), agents[0])
     return best
 
@@ -293,7 +311,7 @@ def run_pending_once() -> bool:
             "\n\nTASK TITLE: " + task["title"] +
             "\nTASK DESCRIPTION: " + task.get("description", "") +
             "\n\nProduce a useful, concrete deliverable. State assumptions, research gaps and next steps. "
-            "Do not claim to have performed external actions or verified facts you did not verify. "
+            "This runtime has no browser or live web-search capability. Do not invent sources, citations, market sizes, CAGR values, revenue shares, rankings, prices, or current facts. " +\n            "For research tasks, distinguish sourced facts (only when a source is supplied in context) from hypotheses and unknowns. " +\n            "If a quantitative market figure has no traceable source, omit it or label it explicitly as an unverified planning assumption, never as a market estimate. " +\n            "Do not claim to have performed external actions or verified facts you did not verify. "
             "Do not spend money, publish, contact customers, modify accounts, or make commitments. "
             "Return a concise structured report."
         )
@@ -329,7 +347,7 @@ def run_pending_once() -> bool:
         ceo_agent = {"id": "executive/ceo-reviewer", "name": "CEO Quality Reviewer", "department": "executive"}
         review_prompt = (
             "You are the CEO and final quality reviewer. Integrate two specialist contributions into one useful deliverable. "
-            "Resolve contradictions explicitly, flag unsupported claims, separate facts from hypotheses, and include a QA checklist and next actions. "
+            "Resolve contradictions explicitly. Enforce evidence discipline: remove unsupported numeric market-size, CAGR, revenue-share, ranking and pricing claims; never convert a collaborator's unsupported claim into a verified fact. " +\n            "If no traceable source URL and publication date are present, label claims as unverified hypotheses or omit them. State that live research was not performed when no browsing/source retrieval occurred. Separate facts, assumptions and unknowns, and include a QA checklist and next actions. "
             "Do not claim external actions. No spending, publishing, outreach, account changes or commitments are allowed.\n\n"
             "TASK: " + task["title"] + "\nDESCRIPTION: " + task.get("description", "") +
             "\nLEAD SPECIALIST (" + specialist["name"] + "):\n" + specialist_result["response"][:8500] +
