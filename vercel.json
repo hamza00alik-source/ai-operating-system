@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "https://aios-api-production-e878.up.railway.app/owner"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "https://aios-api-production-e878.up.railway.app/$1"
+    }
+  ]
+}
