@@ -66,6 +66,15 @@ def test_schema_discovery_rejects_external_references(monkeypatch, tmp_path):
         }])
 
 
+def test_schema_discovery_rejects_missing_or_null_input_schema(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    for tool in ({"name": "missing"}, {"name": "null", "input_schema": None}):
+        with pytest.raises(ValueError, match="missing a valid input_schema"):
+            persist_discovered_tools("server-1", [tool])
+    # A failed catalogue refresh must not erase the previously reviewed catalogue.
+    assert get_discovered_tool_schema("server-1", "search") is None
+
+
 def test_disabled_server_schema_is_not_usable(monkeypatch, tmp_path):
     _setup(monkeypatch, tmp_path, enabled=False)
     with pytest.raises(ValueError, match="enabled"):
