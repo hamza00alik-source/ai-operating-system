@@ -178,6 +178,60 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 .office-employee strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.office-employee span{display:block;color:var(--muted);font-size:11px;margin-top:3px}
 @media(max-width:760px){.office-viewport{height:350px}.office-roster{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){.office-viewport{scroll-behavior:auto}}
+
+/* OWNER CONSOLE REFERENCE IMPLEMENTATION */
+:root{--bg:#070c16;--panel:#0e1727;--line:#1d2b42;--muted:#91a2bd;--text:#edf3ff;--accent:#477de8;--green:#35d69a;--amber:#f2bd59}
+html{scroll-behavior:smooth}
+body{background:#070c16;background-image:radial-gradient(ellipse at 35% -18%,rgba(34,77,145,.22),transparent 54%);font-size:13px}
+main{max-width:none;margin:0 0 0 226px;padding:22px 24px 48px}
+nav.main-nav{position:fixed;z-index:30;left:0;top:0;bottom:0;width:210px;height:100vh;margin:0;padding:18px 12px 20px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:5px;overflow-y:auto;overflow-x:hidden;border:0;border-right:1px solid #1b2940;border-radius:0;background:#080f1c;box-shadow:8px 0 30px rgba(0,0,0,.18)}
+nav.main-nav:before{content:"AIOS  /  AI Operating System";display:block;padding:7px 9px 22px;margin-bottom:7px;border-bottom:1px solid #1a2940;color:#e7efff;font-weight:850;font-size:15px;letter-spacing:.02em}
+nav.main-nav a{display:flex;align-items:center;min-height:37px;width:100%;padding:9px 10px;border:1px solid transparent;border-radius:8px;color:#a8b7d0;font-size:12px;font-weight:600;white-space:normal}
+nav.main-nav a:before{content:"";width:6px;height:6px;margin-right:10px;border-radius:2px;background:#62748f;flex:0 0 auto}
+nav.main-nav a.active{background:#18366c;border-color:#244b8c;color:#fff;box-shadow:none}
+nav.main-nav a.active:before{background:#6ba0ff;box-shadow:0 0 9px #6ba0ff}
+.top{padding:12px 16px 15px;border:0;border-bottom:1px solid #1b2940;border-radius:0;background:transparent;box-shadow:none;align-items:center}
+.top:before,.top:after{display:none}
+.top .muted{font-size:10px;letter-spacing:.14em;color:#7f96b8}
+h1{font-size:25px;letter-spacing:-.035em;background:none;color:#f0f5ff;-webkit-text-fill-color:initial}
+.top .hint{font-size:12px;color:#93a4bf}
+.top .toolbar{gap:8px}
+.tag{font-size:10px;padding:5px 9px;background:#0d1a2b}
+.command-stage{display:none}
+.panel{margin-top:14px;padding:17px;border:1px solid #1c2b43;border-radius:12px;background:#0d1625;box-shadow:none}
+.panel:hover{border-color:#2a4164}
+.panel>h2{font-size:15px;letter-spacing:0;margin-bottom:12px}
+.grid{gap:10px;margin:12px 0}
+.metric{padding:14px;border:1px solid #1d2d46;border-radius:10px;background:#101d30;box-shadow:none}
+.metric:after{display:none}
+.metric strong{font-size:25px;letter-spacing:-.03em}
+.metric span{font-size:11px;color:#94a6c2}
+button{min-height:36px;padding:8px 11px;border-radius:8px;box-shadow:none}
+button.secondary{background:#14233a}
+input,select,textarea{min-height:36px;border-radius:8px}
+.scroll{border-radius:9px}
+th{background:#101b2c}
+#overview .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+#workforce .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+#companyDepartmentCards{grid-template-columns:repeat(4,minmax(0,1fr))}
+#runtimeStatus{background:#0d2828;border-color:#1a4b45}
+#loginPanel form{max-width:390px}
+@media(min-width:1200px){main{padding-left:28px;padding-right:28px}#overview .grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:900px){main{margin-left:200px;padding:16px 14px 40px}nav.main-nav{width:184px}#companyDepartmentCards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){
+ main{margin:0;padding:12px 11px 38px}
+ nav.main-nav{position:sticky;top:0;left:auto;bottom:auto;width:auto;height:auto;flex-direction:row;align-items:center;gap:5px;margin:0 -11px 10px;padding:8px 10px;border:0;border-bottom:1px solid #1b2940;border-radius:0;background:rgba(7,12,22,.96);backdrop-filter:blur(12px)}
+ nav.main-nav:before{display:none}
+ nav.main-nav a{width:auto;min-height:34px;flex:0 0 auto;padding:8px 10px;font-size:11px}
+ nav.main-nav a:before{display:none}
+ .top{padding:8px 2px 13px}
+ .top .toolbar{width:100%;justify-content:flex-start}
+ h1{font-size:22px}
+ #overview .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #companyDepartmentCards{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .panel{padding:13px}
+}
+
 </style>
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
