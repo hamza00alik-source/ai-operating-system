@@ -24,7 +24,7 @@ from ai_os.credentials import save_openrouter, credential_status, CredentialVaul
 from ai_os.brain import brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
-from ai_os import website_api, code_assets
+from ai_os import website_api, code_assets, code_asset_evidence
 from pydantic import BaseModel, Field
 
 
@@ -112,6 +112,19 @@ def get_owner_dashboard():
 
 class CodeAssetScanRequest(BaseModel):
     repository_url: str = Field(min_length=20, max_length=500)
+
+
+class CodeAssetEvidenceCreate(BaseModel):
+    evidence_type: str = Field(min_length=1, max_length=40)
+    title: str = Field(min_length=1, max_length=160)
+    description: str = Field(min_length=1, max_length=5000)
+    source_url: str = Field(default="", max_length=1000)
+    metadata: dict = Field(default_factory=dict)
+
+
+class CodeAssetEvidenceReview(BaseModel):
+    decision: str = Field(pattern="^(accepted|rejected)$")
+    note: str = Field(default="", max_length=2000)
 
 
 class OwnerLoginRequest(BaseModel):
@@ -453,6 +466,42 @@ def get_code_asset(asset_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail="Code asset not found.")
     return result
+
+
+@app.post("/code-assets/{asset_id}/evidence", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_code_asset_evidence(asset_id: str, payload: CodeAssetEvidenceCreate):
+    """Record provenance evidence; records remain pending until owner review."""
+    try:
+        return code_asset_evidence.add_evidence(
+            asset_id, payload.evidence_type, payload.title, payload.description,
+            payload.source_url, payload.metadata,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/code-assets/{asset_id}/evidence", dependencies=[Depends(require_api_key)])
+def get_code_asset_evidence(asset_id: str):
+    try:
+        return {
+            "records": code_asset_evidence.list_evidence(asset_id),
+            "summary": code_asset_evidence.evidence_summary(asset_id),
+        }
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/code-assets/evidence/{evidence_id}/review", dependencies=[Depends(require_owner_key)])
+def post_code_asset_evidence_review(evidence_id: str, payload: CodeAssetEvidenceReview):
+    """Owner-only evidence review; accepted is an owner decision, not legal verification."""
+    try:
+        return code_asset_evidence.review_evidence(evidence_id, payload.decision, payload.note)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/health")
