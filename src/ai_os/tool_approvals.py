@@ -194,3 +194,109 @@ def decide_tool_proposal(proposal_id: str, decision: str, actor: str = "owner") 
     result["arguments"] = json.loads(result.pop("arguments_json"))
     result["execution_enabled"] = False
     return result
+
+
+def reserve_approved_tool_proposal(proposal_id: str, actor: str = "owner") -> dict:
+    """Atomically reserve an approved proposal once; this never invokes an MCP tool.
+
+    A reservation is an auditable, one-time authorization checkpoint for a future
+    isolated executor. It deliberately does not load credentials, perform network
+    I/O, alter the proposal decision, or enable execution.
+    """
+    if not isinstance(proposal_id, str) or not proposal_id.strip():
+        raise ValueError("Proposal ID is required.")
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError("Reservation actor is required.")
+
+    now = _now()
+    with connect() as db:
+        _ensure_table(db)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS mcp_tool_execution_reservations (
+                id TEXT PRIMARY KEY,
+                proposal_id TEXT NOT NULL UNIQUE,
+                proposal_fingerprint TEXT NOT NULL,
+                schema_sha256 TEXT NOT NULL,
+                reserved_at TEXT NOT NULL,
+                reserved_by TEXT NOT NULL
+            )
+        """)
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT * FROM mcp_tool_proposals WHERE id=?", (proposal_id,)
+        ).fetchone()
+        if row is None:
+            raise LookupError("Proposal was not found.")
+        if row["status"] != "approved":
+            raise PermissionError("Only an approved proposal can be reserved.")
+        if datetime.fromisoformat(row["expires_at"]) <= now:
+            raise ValueError("Approved proposal has expired.")
+        arguments = json.loads(row["arguments_json"])
+        expected_fingerprint = _fingerprint(
+            row["server_id"], row["tool_name"], arguments, row["schema_sha256"]
+        )
+        if expected_fingerprint != row["fingerprint"]:
+            raise ValueError("Proposal fingerprint integrity check failed.")
+
+        # Validate against the current enabled-server catalogue within the same
+        # transaction, avoiding a time-of-check/time-of-use gap.
+        schema_row = db.execute(
+            """SELECT t.input_schema_json,t.schema_sha256
+            FROM mcp_discovered_tools t JOIN mcp_servers s ON s.id=t.server_id
+            WHERE t.server_id=? AND t.tool_name=? AND s.enabled=1""",
+            (row["server_id"], row["tool_name"]),
+        ).fetchone()
+        if schema_row is None:
+            raise PermissionError("Tool has no current schema on an enabled server.")
+        schema = json.loads(schema_row["input_schema_json"])
+        schema_digest = hashlib.sha256(
+            json.dumps(schema, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        if schema_digest != schema_row["schema_sha256"] or schema_digest != row["schema_sha256"]:
+            raise ValueError("Tool schema changed or failed integrity validation.")
+        try:
+            from jsonschema import Draft202012Validator
+            Draft202012Validator(schema).validate(arguments)
+        except ImportError as exc:
+            raise RuntimeError("JSON Schema validation dependency is unavailable.") from exc
+        except Exception as exc:
+            raise ValueError("Approved arguments no longer satisfy the current tool schema.") from exc
+
+        allowed = _department_allowlist().get(row["department"], [])
+        if f'{row["server_id"]}:{row["tool_name"]}' not in allowed:
+            raise PermissionError("Tool is no longer allowlisted for this department.")
+
+        reservation_id = str(uuid4())
+        try:
+            db.execute(
+                """INSERT INTO mcp_tool_execution_reservations
+                (id,proposal_id,proposal_fingerprint,schema_sha256,reserved_at,reserved_by)
+                VALUES(?,?,?,?,?,?)""",
+                (reservation_id, proposal_id, row["fingerprint"], schema_digest,
+                 now.isoformat(), actor),
+            )
+        except Exception as exc:
+            # The unique proposal_id constraint is the final replay barrier.
+            raise ValueError("This approved proposal has already been reserved.") from exc
+        db.execute(
+            """INSERT INTO audit_events
+            (event_type,actor_id,resource_type,resource_id,details_json,created_at)
+            VALUES(?,?,?,?,?,?)""",
+            ("mcp_tool_proposal.execution_reserved", actor, "mcp_tool_proposal",
+             proposal_id, json.dumps({
+                 "reservation_id": reservation_id,
+                 "fingerprint": row["fingerprint"],
+                 "schema_sha256": schema_digest,
+                 "execution_enabled": False,
+             }, sort_keys=True, separators=(",", ":")), now.isoformat()),
+        )
+
+    return {
+        "reservation_id": reservation_id,
+        "proposal_id": proposal_id,
+        "status": "reserved",
+        "reserved_at": now.isoformat(),
+        "execution_enabled": False,
+        "remote_call_performed": False,
+    }
