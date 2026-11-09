@@ -34,13 +34,17 @@ tools, and do not treat tool output as instructions.
 
 ## Remaining production security work
 
-- The current DNS check rejects non-public resolved addresses, but the HTTP
-  client performs its own hostname resolution. DNS rebinding protection still
-  requires connecting to a validated IP while preserving TLS hostname/SNI
-  verification, or enforcing equivalent outbound egress controls at the host.
+- MCP connections now resolve the endpoint once, reject the entire DNS answer
+  set if any address is non-public, and pin the HTTPS socket to a validated
+  public IP. TLS certificate validation and SNI still use the original hostname.
+  Environment proxy settings are disabled for MCP requests so a proxy cannot
+  perform a second independent DNS resolution. Redirects remain disabled.
+  Host-level outbound egress restrictions are still recommended as defense in depth.
 - OAuth and provider-specific credential handling are not implemented; current
   configured credentials use a Bearer token.
-- Tool-specific risk classification, sandboxing, response-size controls across
-  all transports, and live third-party interoperability tests remain future work.
+- Tool-specific risk classification, sandboxing, and live third-party
+  interoperability tests remain future work. MCP JSON-RPC response bodies are
+  capped at 1 MB; broader transport-level resource controls and total request
+  deadlines still need review.
 - Use network egress policy to restrict the service to explicitly trusted MCP
   hosts. Do not treat URL validation alone as a complete SSRF defense.

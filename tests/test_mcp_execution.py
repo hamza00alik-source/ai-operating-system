@@ -28,7 +28,7 @@ def install_server(monkeypatch):
         yield FakeDB(row)
 
     monkeypatch.setattr(mcp_client, "connect", fake_connect)
-    monkeypatch.setattr(mcp_client, "_public_endpoint", lambda _endpoint: None)
+    monkeypatch.setattr(mcp_client, "_build_pinned_opener", lambda _endpoint: object())
     monkeypatch.setattr(mcp_client, "_open_session", lambda *_args: ({"MCP-Protocol-Version": "2025-03-26"}, "2025-03-26", {}))
     monkeypatch.setattr(mcp_client, "_list_tools", lambda *_args: [{
         "name": "lookup", "inputSchema": {
