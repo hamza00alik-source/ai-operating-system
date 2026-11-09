@@ -18,7 +18,7 @@ from ai_os.discovery import create_scan, list_scans, list_candidates, github_api
 from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
-from ai_os.llm_gateway import list_providers, list_unorouter_free_models, generate, generate_with_fallback, test_provider, test_unorouter_personal
+from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
@@ -142,6 +142,7 @@ def session_status(request: Request):
 class ModelRunRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=8000)
+    approve_paid_request: bool = False
 
 
 class ResearchSourceRequest(BaseModel):
@@ -196,10 +197,11 @@ def get_llm_providers():
     return list_providers()
 
 
-@app.get("/llm/unorouter/catalog", dependencies=[Depends(require_api_key)])
+@app.get("/llm/unorouter/catalog", dependencies=[Depends(require_owner_key)])
 def get_unorouter_catalog():
+    """Read-only public pricing catalogue and exact models allowed by saved key."""
     try:
-        return list_unorouter_free_models()
+        return list_unorouter_catalog()
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -208,7 +210,7 @@ def get_unorouter_catalog():
 def post_unorouter_personal_test(payload: ModelRunRequest):
     """Owner-only consumer-account experiment; deliberately outside company routing."""
     try:
-        return test_unorouter_personal(payload.prompt)
+        return test_unorouter_personal(payload.prompt, payload.approve_paid_request)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PermissionError as exc:
