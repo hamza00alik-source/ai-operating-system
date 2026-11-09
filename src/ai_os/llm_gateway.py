@@ -78,7 +78,7 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
             "UnoRouter requires an owner-confirmed model ID ending in :free."
-            if provider.experimental_only else
+            if provider.key == "unorouter" and not uno_free_model else
             "Set base URL, model, API secret, and explicitly confirm this endpoint "
             "is currently free. Paid or unverified endpoints are blocked."
         ),
