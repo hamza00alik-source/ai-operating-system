@@ -159,3 +159,21 @@ def test_sambanova_uses_openai_compatible_gateway(monkeypatch):
     assert captured["url"] == "https://api.sambanova.ai/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer test-sambanova-secret"
     assert captured["payload"]["model"] == "DeepSeek-V3.1"
+
+
+def test_cohere_trial_uses_compatibility_endpoint(monkeypatch):
+    monkeypatch.setenv("AI_OS_COHERE_BASE_URL", "https://api.cohere.ai/compatibility/v1")
+    monkeypatch.setenv("AI_OS_COHERE_MODEL", "command-a-plus-05-2026")
+    monkeypatch.setenv("AI_OS_COHERE_API_KEY", "test-cohere-trial-secret")
+    monkeypatch.setenv("AI_OS_COHERE_FREE_CONFIRMED", "true")
+    captured = {}
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {"choices": [{"message": {"content": "AIOS live connection successful"}}],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}}
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.test_provider("cohere")
+    assert result["test_passed"] is True
+    assert captured["url"] == "https://api.cohere.ai/compatibility/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer test-cohere-trial-secret"
+    assert captured["payload"]["model"] == "command-a-plus-05-2026"
