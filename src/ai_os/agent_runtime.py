@@ -457,6 +457,8 @@ def run_pending_once() -> bool:
                 "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
                 (run_id, "completed", "Run completed successfully. No external actions were taken.", _now()),
             )
+        from ai_os.workflows import finish_workflow_task
+        finish_workflow_task(task_id, True)
         experience_id = record_experience(
             run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"]
         )
@@ -479,6 +481,8 @@ def run_pending_once() -> bool:
                 "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
                 (run_id, final_status, ("Run partially completed; saved deliverables are preserved. Remaining stage failed: " if has_partial_deliverable else "Run failed before a deliverable was saved: ") + str(exc)[:350], _now()),
             )
+        from ai_os.workflows import finish_workflow_task
+        finish_workflow_task(task_id, False)
     return True
 
 
