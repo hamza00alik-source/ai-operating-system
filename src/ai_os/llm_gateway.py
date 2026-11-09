@@ -39,6 +39,9 @@ PROVIDERS = (
              "AI_OS_GEMINI_API_KEY", "AI_OS_GEMINI_FREE_CONFIRMED", "gemini"),
     Provider("openrouter", "OpenRouter", "AI_OS_OPENROUTER_BASE_URL", "AI_OS_OPENROUTER_MODEL",
              "AI_OS_OPENROUTER_API_KEY", "AI_OS_OPENROUTER_FREE_CONFIRMED"),
+    Provider("unorouter", "UnoRouter · free model gateway", "AI_OS_UNOROUTER_BASE_URL",
+             "AI_OS_UNOROUTER_MODEL", "AI_OS_UNOROUTER_API_KEY",
+             "AI_OS_UNOROUTER_FREE_CONFIRMED"),
     Provider("groq", "Groq", "AI_OS_GROQ_BASE_URL", "AI_OS_GROQ_MODEL",
              "AI_OS_GROQ_API_KEY", "AI_OS_GROQ_FREE_CONFIRMED"),
     Provider("mistral", "Mistral", "AI_OS_MISTRAL_BASE_URL", "AI_OS_MISTRAL_MODEL",
@@ -110,6 +113,51 @@ def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
         raise RuntimeError(f"Provider connection failed: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise RuntimeError("Provider returned invalid JSON") from exc
+
+
+
+def list_unorouter_free_models() -> dict[str, Any]:
+    """Read UnoRouter's public pricing catalog; never sends prompts or credentials."""
+    url = "https://api.unorouter.com/api/pricing/catalog"
+    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read(1_000_000).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise ProviderHTTPError(exc.code, "UnoRouter catalog request failed") from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise RuntimeError("UnoRouter catalog is temporarily unreachable") from exc
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise RuntimeError("UnoRouter returned an invalid model catalog") from exc
+
+    models = []
+    for item in payload.get("models", []):
+        if not isinstance(item, dict) or not item.get("is_free") or not item.get("online", True):
+            continue
+        name = str(item.get("model_name") or item.get("id") or "").strip()
+        if not name:
+            continue
+        model_id = name if name.endswith(":free") else name + ":free"
+        models.append({
+            "id": model_id,
+            "name": name,
+            "type": item.get("type") or "text",
+            "vendor": item.get("vendor"),
+            "online": True,
+            "free": True,
+            "supported_endpoints": item.get("supported_endpoint_types") or ["openai"],
+        })
+    models.sort(key=lambda item: (item["type"] != "text", item["vendor"] or "", item["id"]))
+    counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
+    return {
+        "provider": "unorouter",
+        "base_url": "https://api.unorouter.com/v1",
+        "source": url,
+        "global_catalog_free_count": counts.get("free", len(models)),
+        "available_online_free_count": len(models),
+        "models": models,
+        "note": "Public global catalog only. Your API key may have a smaller account-scoped model list; verify with Test live connection. Free quotas and availability can change.",
+    }
 
 
 def generate(provider_id: str, prompt: str) -> dict[str, Any]:
