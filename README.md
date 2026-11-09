@@ -125,7 +125,7 @@ AIOS can store an UnoRouter consumer API key encrypted in the existing credentia
 
 AIOS reads UnoRouter's public pricing catalogue and, when a key is saved, the account-specific \`GET /v1/models\` list. The dashboard displays both free and paid models with current input/output prices where available. Model IDs are preserved exactly as returned by UnoRouter; AIOS never appends or invents a \`:free\` suffix.
 
-Only exact model IDs ending in \`:free\` can be eligible for automatic free-only agent routing, and they must be owner-confirmed as free. Paid model credentials may be saved for evaluation but remain ineligible for background agents and automatic fallback. A paid direct test requires an explicit per-request owner approval; the API rejects paid test requests without that approval. Catalogue reads are read-only and do not send prompts or run inference. No paid fallback, automatic top-up, or background paid request is enabled.
+UnoRouter model IDs are never eligible for company routing or automatic fallback, including IDs ending in `:free`. The isolated personal-test endpoint accepts a free model only when the exact ID ends in `:free` and the owner has confirmed the route is free. A paid direct test requires an explicit per-request owner approval; the API rejects paid test requests without that approval. Catalogue reads are read-only and do not send prompts or run inference. No paid fallback, automatic top-up, or background paid request is enabled.
 
 
 ## UnoRouter catalogue discovery
