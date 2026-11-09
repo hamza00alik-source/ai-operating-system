@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from ai_os.db import connect
+from ai_os.mcp_tool_catalog import validate_discovered_tool_arguments
 
 MAX_ARGUMENT_BYTES = 64 * 1024
 DEFAULT_TTL_MINUTES = 30
@@ -22,9 +23,9 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _fingerprint(server_id: str, tool_name: str, arguments: dict) -> str:
+def _fingerprint(server_id: str, tool_name: str, arguments: dict, schema_sha256: str) -> str:
     canonical = json.dumps(
-        {"server_id": server_id, "tool_name": tool_name, "arguments": arguments},
+        {"server_id": server_id, "tool_name": tool_name, "arguments": arguments, "schema_sha256": schema_sha256},
         sort_keys=True, separators=(",", ":"), ensure_ascii=False,
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -63,6 +64,7 @@ def _ensure_table(db) -> None:
             tool_name TEXT NOT NULL,
             arguments_json TEXT NOT NULL,
             fingerprint TEXT NOT NULL,
+            schema_sha256 TEXT NOT NULL DEFAULT '',
             risk_level TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending'
                 CHECK(status IN ('pending','approved','rejected','expired')),
@@ -72,6 +74,9 @@ def _ensure_table(db) -> None:
             decided_by TEXT
         )
     """)
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(mcp_tool_proposals)")}
+    if "schema_sha256" not in columns:
+        db.execute("ALTER TABLE mcp_tool_proposals ADD COLUMN schema_sha256 TEXT NOT NULL DEFAULT ''")
     db.execute("CREATE INDEX IF NOT EXISTS idx_mcp_tool_proposals_status ON mcp_tool_proposals(status, created_at)")
 
 
@@ -96,16 +101,17 @@ def propose_tool_call(*, run_id: str, task_id: str, department: str,
     now = _now()
     ttl = max(1, min(int(ttl_minutes), 1440))
     proposal_id = str(uuid4())
-    fingerprint = _fingerprint(server_id, tool_name, arguments)
+    schema_sha256 = validate_discovered_tool_arguments(server_id, tool_name, arguments)
+    fingerprint = _fingerprint(server_id, tool_name, arguments, schema_sha256)
     with connect() as db:
         _ensure_table(db)
         db.execute(
             """INSERT INTO mcp_tool_proposals
             (id,run_id,task_id,department,server_id,tool_name,arguments_json,
-             fingerprint,risk_level,status,created_at,expires_at)
-            VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?)""",
+             fingerprint,schema_sha256,risk_level,status,created_at,expires_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,'pending',?,?)""",
             (proposal_id, run_id, task_id, department, server_id, tool_name,
-             encoded, fingerprint, risk_level, now.isoformat(),
+             encoded, fingerprint, schema_sha256, risk_level, now.isoformat(),
              (now + timedelta(minutes=ttl)).isoformat()),
         )
     return {"id": proposal_id, "status": "pending", "risk_level": risk_level,
