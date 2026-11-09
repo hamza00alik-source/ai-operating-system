@@ -133,6 +133,12 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_business_records_type_created ON business_records(record_type, created_at);
+        CREATE TABLE IF NOT EXISTS investor_contacts (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, organization TEXT NOT NULL DEFAULT '',
+            contact TEXT NOT NULL DEFAULT '', stage TEXT NOT NULL DEFAULT 'prospect',
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_investor_contacts_stage ON investor_contacts(stage, created_at);
         CREATE TABLE IF NOT EXISTS code_assets (
             id TEXT PRIMARY KEY, name TEXT NOT NULL, repository_url TEXT NOT NULL DEFAULT '',
             path TEXT NOT NULL DEFAULT '', asset_type TEXT NOT NULL DEFAULT 'source_code',
