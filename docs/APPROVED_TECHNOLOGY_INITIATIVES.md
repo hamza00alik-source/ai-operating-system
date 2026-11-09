@@ -39,7 +39,7 @@ Required design:
 - Redact credentials and sensitive payloads from logs.
 - Keep Apprise optional so core AIOS can install and run without it.
 
-Status: design approved; delivery adapter and queue are not yet connected. No notification has been sent.
+Status: SQLite notification queue and optional Apprise adapter implemented on the feature branch. Enqueueing never sends. Customer notifications remain pending until the linked owner approval is approved. Delivery is disabled unless the owner explicitly enables it and configures a destination. Apprise remains optional and is not installed by default. No notification has been sent.
 
 ## 3. Persistent Agent Execution
 
@@ -49,7 +49,7 @@ Important remaining limitation:
 - The current run_pending_once queue claims are not a distributed lease protocol. Run one worker process against one persistent SQLite database; do not scale to multiple replicas until atomic claims, lease renewal, stale-claim recovery, and retry limits are implemented and tested.
 - A host restart may leave a run marked running; the current startup recovery marks interrupted runs failed for explicit owner retry. It does not silently replay model requests.
 
-Status: standalone worker import/runtime path repaired on this branch; multi-worker lease hardening remains pending.
+Status: standalone worker import/runtime path repaired on this branch with bounded process-level backoff and graceful shutdown. CI covers both-queue processing and transient recovery. Multi-worker leases, atomic queue claims, stale-claim recovery, and bounded job retries remain pending.
 
 ## 4. AI Video Production Research — LongCat-Video
 
