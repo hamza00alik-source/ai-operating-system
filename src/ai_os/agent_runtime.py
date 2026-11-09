@@ -16,6 +16,7 @@ from uuid import uuid4
 from ai_os.db import connect
 from ai_os.llm_gateway import generate_with_fallback
 from ai_os.brain import retrieve_memories, record_experience
+from ai_os.research_sources import research_context
 
 logger = logging.getLogger("ai_os.agent_runtime")
 MANIFEST_PATH = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "agency_agents_manifest.json"
