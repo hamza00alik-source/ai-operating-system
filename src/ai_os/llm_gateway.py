@@ -157,7 +157,10 @@ def list_unorouter_free_models() -> dict[str, Any]:
             "vendor": item.get("vendor"),
             "online": True,
             "free": True,
-            "supported_endpoints": endpoints,\n            "data_retention": purpose.get("trains_or_retains", "unknown"),\n            "consent_required": purpose.get("consent_required", "unknown"),\n            "processing_countries": purpose.get("countries") or [],
+            "supported_endpoints": endpoints,
+            "data_retention": purpose.get("trains_or_retains", "unknown"),
+            "consent_required": purpose.get("consent_required", "unknown"),
+            "processing_countries": purpose.get("countries") or [],
         })
     models.sort(key=lambda item: (item["type"] != "text", item["vendor"] or "", item["id"]))
     counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
