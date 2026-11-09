@@ -41,3 +41,15 @@ def test_owner_session_rejects_untrusted_cross_site_origin(session_client):
         json={"decision": "rejected", "note": "auth regression test"},
     )
     assert response.status_code == 401
+
+
+def test_owner_dashboard_mobile_navigation_is_horizontally_scrollable():
+    response = TestClient(app).get("/owner")
+    assert response.status_code == 200
+    html = response.text
+    assert "@media(max-width:680px)" in html
+    mobile_rules = html.split("@media(max-width:680px)", 1)[1].split("</style>", 1)[0]
+    assert "overflow-x:auto" in mobile_rules
+    assert "overflow-y:hidden" in mobile_rules
+    assert "flex-wrap:nowrap" in mobile_rules
+    assert "-webkit-overflow-scrolling:touch" in mobile_rules
