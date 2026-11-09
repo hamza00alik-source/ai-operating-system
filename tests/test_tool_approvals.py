@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 
 from ai_os import api
 from ai_os.db import connect
-from ai_os.tool_approvals import (propose_tool_call, decide_tool_proposal,\n                                  reserve_approved_tool_proposal)
+from ai_os.tool_approvals import (propose_tool_call, decide_tool_proposal,
+                                  reserve_approved_tool_proposal)
 from ai_os.db import initialize_database
 from ai_os.mcp_tool_catalog import persist_discovered_tools
 
