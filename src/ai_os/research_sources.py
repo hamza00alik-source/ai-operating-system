@@ -1,9 +1,8 @@
 """Owner-submitted, bounded public-web evidence capture for research tasks.
 
-This is a read-only source collector, not a general browser. It blocks redirects,
-non-public DNS targets, non-text content, and private-network URLs. Responses are
-stream-read with a strict byte cap; oversized pages are captured as clearly marked
-partial evidence rather than rejected or downloaded in full.
+This is a read-only source collector, not a general browser. Redirect destinations
+are revalidated, non-public DNS targets and non-text content are blocked. Responses
+are stream-read with a strict byte cap; oversized pages are marked as partial.
 """
 from __future__ import annotations
 
@@ -103,12 +102,14 @@ def _read_bounded(response, limit: int = MAX_BYTES) -> tuple[bytes, bool]:
 
 
 def capture_source(url: str) -> dict:
-    safe_url = _validate_url(url)
+    submitted_url = _validate_url(url)
+    safe_url = submitted_url
+    redirect_handler = _SafeRedirect()
     request = urllib.request.Request(
         safe_url,
         headers={"User-Agent": "AIOS-ResearchEvidence/1.0 (+owner-triggered)", "Accept": "text/html,text/plain,application/xhtml+xml"},
     )
-    opener = urllib.request.build_opener(_SafeRedirect)
+    opener = urllib.request.build_opener(redirect_handler)
     try:
         with opener.open(request, timeout=TIMEOUT) as response:
             if response.status != 200:
@@ -151,7 +152,23 @@ def capture_source(url: str) -> dict:
             VALUES(?,?,?,?,?,?)""",
             (source_id, safe_url, title, text, captured_at, content_type[:120]),
         )
-    return {"id": source_id, "url": safe_url, "title": title, "captured_at": captured_at, "characters": len(text), "truncated": truncated, "bytes_captured": len(raw)}
+    redirected = safe_url != submitted_url
+    return {
+        "id": source_id,
+        "url": safe_url,
+        "submitted_url": submitted_url,
+        "redirected": redirected,
+        "redirect_count": redirect_handler.redirect_count,
+        "redirect_warning": (
+            "The submitted URL redirected to a different page. Review the final URL and page title; capture success does not establish that this is the intended evidence."
+            if redirected else None
+        ),
+        "title": title,
+        "captured_at": captured_at,
+        "characters": len(text),
+        "truncated": truncated,
+        "bytes_captured": len(raw),
+    }
 
 
 def list_sources(limit: int = 50) -> list[dict]:
