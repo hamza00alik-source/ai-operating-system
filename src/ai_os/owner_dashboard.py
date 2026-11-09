@@ -682,14 +682,20 @@ async function loadMcpServers(){
 async function loadMcpProposals(){
  const status=$("mcpProposalStatus"),rows=$("mcpProposalRows");if(!rows)return;status.textContent="Loading proposals…";
  try{const data=await api("/integrations/mcp/proposals");
- rows.innerHTML=data.length?data.map(p=>'<tr><td>'+esc(p.department)+'<div class="small">'+esc(p.run_id)+'</div></td><td><strong>'+esc(p.server_id)+':'+esc(p.tool_name)+'</strong><div class="small">'+esc(p.status)+'</div></td><td><pre style="white-space:pre-wrap;max-width:300px">'+esc(JSON.stringify(p.arguments,null,2))+'</pre></td><td>'+esc(p.risk_level)+'</td><td>'+esc(p.expires_at)+'</td><td>'+(p.status==="pending"?'<button class="secondary" type="button" data-proposal-decision="approved" data-id="'+esc(p.id)+'">Approve</button> <button class="secondary" type="button" data-proposal-decision="rejected" data-id="'+esc(p.id)+'">Reject</button>':'—')+'</td></tr>').join(""):'<tr><td colspan="6">No proposals found.</td></tr>';
- status.textContent=data.length+" proposal(s) · approval never executes a tool";
+ rows.innerHTML=data.length?data.map(p=>'<tr><td>'+esc(p.department)+'<div class="small">'+esc(p.run_id)+'</div></td><td><strong>'+esc(p.server_id)+':'+esc(p.tool_name)+'</strong><div class="small">'+esc(p.status)+'</div></td><td><pre style="white-space:pre-wrap;max-width:300px">'+esc(JSON.stringify(p.arguments,null,2))+'</pre></td><td>'+esc(p.risk_level)+'</td><td>'+esc(p.expires_at)+'</td><td>'+(p.status==="pending"?'<button class="secondary" type="button" data-proposal-decision="approved" data-id="'+esc(p.id)+'">Approve</button> <button class="secondary" type="button" data-proposal-decision="rejected" data-id="'+esc(p.id)+'">Reject</button>':(p.status==="approved"&&p.risk_level==="low"&&!p.execution_status?'<button type="button" data-proposal-execute="true" data-id="'+esc(p.id)+'">Execute approved read-only tool</button>':(p.execution_status||'—')))+'</td></tr>').join(""):'<tr><td colspan="6">No proposals found.</td></tr>';
+ status.textContent=data.length+" proposal(s) · approval does not execute; low-risk read-only calls require a separate owner confirmation";
  }catch(e){status.textContent=e.message}
 }
 async function decideMcpProposal(id,decision){
  const status=$("mcpProposalStatus");
  try{await api("/integrations/mcp/proposals/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision})});status.textContent="Decision saved. No tool was executed and the agent has not resumed.";await loadMcpProposals()}
  catch(e){status.textContent=e.message}
+}
+async function executeMcpProposal(id){
+ const status=$("mcpProposalStatus");
+ if(!confirm("Execute this exact owner-approved tool call? It is one-time and requires the server to declare the tool read-only."))return;
+ try{const result=await api("/integrations/mcp/proposals/"+encodeURIComponent(id)+"/execute",{method:"POST"});status.textContent="Execution "+result.execution_status+". Result returned to owner.";await loadMcpProposals()}
+ catch(e){status.textContent=e.message;await loadMcpProposals()}
 }
 async function toggleMcpServer(id,enabled){try{await api("/integrations/mcp/servers/"+encodeURIComponent(id)+"/enabled",{method:"POST",body:JSON.stringify({enabled})});await loadMcpServers()}catch(e){$("mcpStatus").textContent=e.message}}
 async function testMcpServer(id){$("mcpTestOutput").textContent="Running read-only initialize/tools-list handshake…";try{const result=await api("/integrations/mcp/servers/"+encodeURIComponent(id)+"/test",{method:"POST"});$("mcpTestOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("mcpTestOutput").textContent=e.message}}
@@ -701,6 +707,7 @@ document.getElementById("mcpRegistryForm")?.addEventListener("submit",async even
 document.getElementById("mcpRows")?.addEventListener("click",event=>{const button=event.target.closest("button[data-mcp-action]");if(!button)return;if(button.dataset.mcpAction==="toggle")toggleMcpServer(button.dataset.id,button.dataset.enabled==="true");if(button.dataset.mcpAction==="test")testMcpServer(button.dataset.id)});
 document.getElementById("mcpProposalRefresh")?.addEventListener("click",loadMcpProposals);
 document.getElementById("mcpProposalRows")?.addEventListener("click",event=>{const button=event.target.closest("button[data-proposal-decision]");if(button)decideMcpProposal(button.dataset.id,button.dataset.proposalDecision)});
+document.getElementById("mcpProposalRows")?.addEventListener("click",event=>{const button=event.target.closest("button[data-proposal-execute]");if(button)executeMcpProposal(button.dataset.id)});
 document.getElementById("mcpRefresh")?.addEventListener("click",loadMcpServers);
 document.querySelector('nav.main-nav a[data-view="mcp"]')?.addEventListener("click",()=>{loadMcpServers();loadMcpProposals()});
 if(location.hash==="#mcp"){loadMcpServers();loadMcpProposals();}
