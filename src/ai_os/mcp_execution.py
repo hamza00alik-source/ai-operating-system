@@ -59,7 +59,9 @@ def execute_approved_proposal(proposal_id: str) -> dict:
             dept_allowlist = json.loads(raw_allowlist)
         except json.JSONDecodeError as exc:
             raise PermissionError("Department tool allowlist is invalid; execution is blocked.") from exc
-        if tool_id not in dept_allowlist.get(department, []):
+        if not isinstance(dept_allowlist, dict) or not isinstance(dept_allowlist.get(department), list):
+            raise PermissionError("Department tool allowlist is invalid; execution is blocked.")
+        if tool_id not in dept_allowlist[department]:
             raise PermissionError("Tool is no longer allowlisted for this department.")
         changed = db.execute(
             """UPDATE mcp_tool_proposals SET execution_status='running',
