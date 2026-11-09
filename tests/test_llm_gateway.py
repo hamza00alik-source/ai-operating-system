@@ -93,3 +93,26 @@ def test_llm_endpoint_blocks_unconfigured_provider(monkeypatch):
     with TestClient(app) as client:
         response = client.post("/llm/test", json={"provider": "groq", "prompt": "hello"})
     assert response.status_code == 403
+
+
+
+def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
+    def fake_config(provider):
+        eligible = provider.key in {"openrouter", "groq"}
+        return {"eligible": eligible, "configured": eligible, "free_confirmed": eligible}
+
+    def fake_generate(provider_id, prompt):
+        raise llm_gateway.ProviderHTTPError(403, "error code: 1010")
+
+    monkeypatch.setattr(llm_gateway, "_provider_config", fake_config)
+    monkeypatch.setattr(llm_gateway, "generate", fake_generate)
+
+    try:
+        llm_gateway.generate_with_fallback("test", preferred_provider="openrouter")
+        assert False, "Expected all providers to fail"
+    except RuntimeError as exc:
+        message = str(exc)
+        assert "openrouter: unavailable (HTTP 403)" in message
+        assert "groq: unavailable (HTTP 403)" in message
+        assert "No paid fallback was attempted" in message
+        assert "secret" not in message.lower()
