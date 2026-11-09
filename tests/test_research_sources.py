@@ -49,3 +49,29 @@ def test_validate_url_strips_invisible_word_joiner(monkeypatch):
     )
     submitted = "https://store.steampowered.com/hwsurvey\u2060/"
     assert research_sources._validate_url(submitted) == "https://store.steampowered.com/hwsurvey/"
+
+
+
+def test_safe_redirect_rejects_private_destination(monkeypatch):
+    monkeypatch.setattr(
+        research_sources.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 443))],
+    )
+    handler = research_sources._SafeRedirect()
+    request = research_sources.urllib.request.Request("https://example.com/start")
+    with pytest.raises(ValueError, match="Private"):
+        handler.redirect_request(request, None, 302, "Found", {}, "https://internal.example/secret")
+
+
+def test_safe_redirect_enforces_hop_limit(monkeypatch):
+    monkeypatch.setattr(
+        research_sources,
+        "_validate_url",
+        lambda url: "https://example.com/next",
+    )
+    handler = research_sources._SafeRedirect()
+    handler.redirect_count = handler.max_redirects
+    request = research_sources.urllib.request.Request("https://example.com/start")
+    with pytest.raises(ValueError, match="4-redirect"):
+        handler.redirect_request(request, None, 302, "Found", {}, "https://example.com/next")
