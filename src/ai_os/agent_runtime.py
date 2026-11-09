@@ -78,10 +78,20 @@ def _resume_prompt_if_ready(task_id: str, step_key: str, existing) -> tuple[str 
 def run_agent_workflow(task: dict, *, worker_id: str) -> str:
     task_id = task["id"]
     final_output = None
-    # Discover at task execution time, so disabled or changed tools are not silently reused.
-    catalog = discover_enabled_tool_catalog()
+    # Discover at task execution time, but do not strand a task whose approved
+    # tool result is already persisted if an MCP server is temporarily unavailable.
     aliased_tools = []
     alias_map = {}
+    catalog_warning = ""
+    try:
+        catalog = discover_enabled_tool_catalog()
+    except Exception as exc:
+        catalog = []
+        catalog_warning = (
+            "MCP tool discovery is temporarily unavailable "
+            f"({type(exc).__name__}). No MCP tools are exposed in this run. "
+            "Do not claim external research or actions were performed."
+        )
     for index, item in enumerate(catalog):
         alias = f"aios_tool_{index}"
         alias_map[alias] = item
