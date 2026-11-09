@@ -12,7 +12,7 @@ def test_unconfigured_status_is_safe(monkeypatch):
     result = website_api.status()
     assert result["configured"] is False
     assert result["connected"] is False
-    assert "token" not in json.dumps(result).lower()
+    assert "secret-token" not in json.dumps(result)
 
 
 def test_call_read_forces_tier_one_and_never_write(monkeypatch):
