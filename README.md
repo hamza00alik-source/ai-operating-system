@@ -108,15 +108,19 @@ The AI Brain is a provider-independent subsystem stored in the same persistent S
 This first version uses local lexical retrieval and SQLite; it requires no embedding service, extra model call, or separate training job. It does not train a new neural network, create a foundation model, or eliminate inference compute. It reduces repeated context-building by retaining approved company knowledge, while advanced reasoning still uses the configured model gateway. The owner must review proposed lessons before they can influence future agents. Only successful completed runs are recorded as experiences; failed runs are not treated as lessons.
 
 
-## UnoRouter catalog (research-only)
+## UnoRouter as the pre-launch default provider
 
-AIOS can read UnoRouter's public pricing catalog without sending credentials or prompts. It uses documented catalog fields to identify entries marked free, online, text/chat, and OpenAI-compatible. The catalog is informational only: it does not establish account-specific access or provider-level prompt retention, training, consent, or processing location.
+UnoRouter is the default provider for the personally owned, pre-launch AIOS development and internal testing environment. The owner configures the UnoRouter API key and selects a model ID ending in `:free`, then explicitly confirms that the selected route is currently free. Agent specialist, collaboration, and CEO-review stages try UnoRouter first. If unavailable, the gateway may try another provider only when it is configured and owner-confirmed as free.
 
-**Business-use restriction:** UnoRouter's current Terms of Service state that business accounts are unavailable. Accordingly, AIOS marks UnoRouter as research-only, rejects credential storage, and excludes it from direct inference and automatic provider failover. Do not send company, customer, confidential, or personal data to it through this AIOS deployment. The public catalog must not be described as privacy-screened.
+AIOS never upgrades billing, selects a paid model, or uses paid fallback. The UnoRouter credential is encrypted in the existing provider vault and never returned by status endpoints. The owner can change the preferred provider without rebuilding the agent runtime.
+
+The public UnoRouter catalog is informational: it does not prove account-specific access or provider-level prompt retention, training, consent, or processing location. Use synthetic, non-sensitive prompts while testing free models. Do not send customer data, secrets, credentials, or confidential material to free-model routes. The user remains responsible for following current provider and model terms.
 
 - `GET /llm/unorouter/catalog` — authenticated, read-only public catalog lookup.
-- No UnoRouter API key is stored or used by AIOS.
-- Other providers remain subject to their own current pricing, privacy, commercial-use, region, and quota checks. Free confirmation is an owner assertion, not a guarantee of zero billing.
+- `POST /llm/credentials/unorouter` — owner-authenticated encrypted credential storage; only `:free` model IDs are accepted.
+- `POST /llm/unorouter/personal-test` — owner-triggered direct connection test.
+- `POST /llm/run` and agent runtime — UnoRouter-first, free-confirmed routing.
+- Paid fallback is disabled; every fallback provider must also be explicitly confirmed free.
 
 ## Free-provider failover
 
