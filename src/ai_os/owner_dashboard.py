@@ -357,6 +357,10 @@ th{background:#101b2c}
 <div class="small">HTTPS only. DNS must resolve exclusively to public IP addresses when tested. Ports 443 and 8443 are accepted. New servers are never enabled automatically.</div></div>
 <div class="toolbar section"><strong>Registered servers</strong><button id="mcpRefresh" class="secondary" type="button">Refresh</button><span id="mcpStatus" class="small">Not loaded.</span></div>
 <div class="scroll"><table><thead><tr><th>Server</th><th>Endpoint</th><th>Credentials</th><th>Capabilities</th><th>State</th><th>Actions</th></tr></thead><tbody id="mcpRows"><tr><td colspan="6">Load server registry.</td></tr></tbody></table></div>
+<h3>Agent tool proposals · owner review</h3>
+<p class="small">Agents can pause and request an allowlisted read-only tool. Review the exact arguments before deciding. Approval records your decision only; it does not execute the tool or resume the agent.</p>
+<div class="toolbar"><button id="mcpProposalRefresh" class="secondary" type="button">Refresh proposals</button><span id="mcpProposalStatus" class="small">Not loaded.</span></div>
+<div class="scroll"><table><thead><tr><th>Department / run</th><th>Tool</th><th>Arguments</th><th>Risk</th><th>Expires</th><th>Decision</th></tr></thead><tbody id="mcpProposalRows"><tr><td colspan="6">Load owner proposals.</td></tr></tbody></table></div>
 <h3>Read-only connection test</h3><pre id="mcpTestOutput" style="max-height:360px;overflow:auto;white-space:pre-wrap;background:#091323;padding:12px;border-radius:10px">No connection test executed.</pre>
 </section>
 <section id="code-assets" class="panel section" data-view-panel="code-assets">
@@ -675,6 +679,18 @@ async function loadMcpServers(){
  status.textContent=data.length+" server(s) · registry only; no tools executed";
  }catch(e){status.textContent=e.message}
 }
+async function loadMcpProposals(){
+ const status=$("mcpProposalStatus"),rows=$("mcpProposalRows");if(!rows)return;status.textContent="Loading proposals…";
+ try{const data=await api("/integrations/mcp/proposals");
+ rows.innerHTML=data.length?data.map(p=>'<tr><td>'+esc(p.department)+'<div class="small">'+esc(p.run_id)+'</div></td><td><strong>'+esc(p.server_id)+':'+esc(p.tool_name)+'</strong><div class="small">'+esc(p.status)+'</div></td><td><pre style="white-space:pre-wrap;max-width:300px">'+esc(JSON.stringify(p.arguments,null,2))+'</pre></td><td>'+esc(p.risk_level)+'</td><td>'+esc(p.expires_at)+'</td><td>'+(p.status==="pending"?'<button class="secondary" type="button" data-proposal-decision="approved" data-id="'+esc(p.id)+'">Approve</button> <button class="secondary" type="button" data-proposal-decision="rejected" data-id="'+esc(p.id)+'">Reject</button>':'—')+'</td></tr>').join(""):'<tr><td colspan="6">No proposals found.</td></tr>';
+ status.textContent=data.length+" proposal(s) · approval never executes a tool";
+ }catch(e){status.textContent=e.message}
+}
+async function decideMcpProposal(id,decision){
+ const status=$("mcpProposalStatus");
+ try{await api("/integrations/mcp/proposals/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision})});status.textContent="Decision saved. No tool was executed and the agent has not resumed.";await loadMcpProposals()}
+ catch(e){status.textContent=e.message}
+}
 async function toggleMcpServer(id,enabled){try{await api("/integrations/mcp/servers/"+encodeURIComponent(id)+"/enabled",{method:"POST",body:JSON.stringify({enabled})});await loadMcpServers()}catch(e){$("mcpStatus").textContent=e.message}}
 async function testMcpServer(id){$("mcpTestOutput").textContent="Running read-only initialize/tools-list handshake…";try{const result=await api("/integrations/mcp/servers/"+encodeURIComponent(id)+"/test",{method:"POST"});$("mcpTestOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("mcpTestOutput").textContent=e.message}}
 document.getElementById("mcpRegistryForm")?.addEventListener("submit",async event=>{
@@ -683,9 +699,11 @@ document.getElementById("mcpRegistryForm")?.addEventListener("submit",async even
  try{await api("/integrations/mcp/servers",{method:"POST",body:JSON.stringify(payload)});form.reset();$("mcpStatus").textContent="Registered disabled. Configure its referenced secret privately before enabling.";await loadMcpServers()}catch(e){$("mcpStatus").textContent=e.message}
 });
 document.getElementById("mcpRows")?.addEventListener("click",event=>{const button=event.target.closest("button[data-mcp-action]");if(!button)return;if(button.dataset.mcpAction==="toggle")toggleMcpServer(button.dataset.id,button.dataset.enabled==="true");if(button.dataset.mcpAction==="test")testMcpServer(button.dataset.id)});
+document.getElementById("mcpProposalRefresh")?.addEventListener("click",loadMcpProposals);
+document.getElementById("mcpProposalRows")?.addEventListener("click",event=>{const button=event.target.closest("button[data-proposal-decision]");if(button)decideMcpProposal(button.dataset.id,button.dataset.proposalDecision)});
 document.getElementById("mcpRefresh")?.addEventListener("click",loadMcpServers);
-document.querySelector('nav.main-nav a[data-view="mcp"]')?.addEventListener("click",loadMcpServers);
-if(location.hash==="#mcp")loadMcpServers();
+document.querySelector('nav.main-nav a[data-view="mcp"]')?.addEventListener("click",()=>{loadMcpServers();loadMcpProposals()});
+if(location.hash==="#mcp"){loadMcpServers();loadMcpProposals();}
 </script>
 </body></html>
 """
