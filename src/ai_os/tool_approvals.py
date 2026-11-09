@@ -123,8 +123,22 @@ def propose_tool_call(*, run_id: str, task_id: str, department: str,
 def list_tool_proposals() -> list[dict]:
     with connect() as db:
         _ensure_table(db)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS mcp_tool_execution_reservations (
+                id TEXT PRIMARY KEY,
+                proposal_id TEXT NOT NULL UNIQUE,
+                proposal_fingerprint TEXT NOT NULL,
+                schema_sha256 TEXT NOT NULL,
+                reserved_at TEXT NOT NULL,
+                reserved_by TEXT NOT NULL
+            )
+        """)
         rows = db.execute(
-            "SELECT * FROM mcp_tool_proposals ORDER BY created_at DESC LIMIT 200"
+            """SELECT p.*, r.id AS reservation_id, r.reserved_at,
+            r.reserved_by
+            FROM mcp_tool_proposals p
+            LEFT JOIN mcp_tool_execution_reservations r ON r.proposal_id=p.id
+            ORDER BY p.created_at DESC LIMIT 200"""
         ).fetchall()
     result = []
     now = _now()
