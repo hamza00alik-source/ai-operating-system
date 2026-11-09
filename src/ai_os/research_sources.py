@@ -9,6 +9,7 @@ import html
 import ipaddress
 import json
 import socket
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -46,8 +47,17 @@ class _TextExtractor(HTMLParser):
                 self.parts.append(value)
 
 
+def _clean_submitted_url(url: str) -> str:
+    """Remove invisible formatting characters commonly introduced by copy/paste."""
+    if not isinstance(url, str):
+        raise ValueError("Enter a valid public HTTPS URL.")
+    cleaned = unicodedata.normalize("NFC", url)
+    cleaned = "".join(ch for ch in cleaned if unicodedata.category(ch) != "Cf")
+    return cleaned.strip()
+
+
 def _validate_url(url: str) -> str:
-    parsed = urllib.parse.urlsplit(url.strip())
+    parsed = urllib.parse.urlsplit(_clean_submitted_url(url))
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
         raise ValueError("Only public HTTPS URLs without embedded credentials are accepted.")
     if parsed.port not in (None, 443):
