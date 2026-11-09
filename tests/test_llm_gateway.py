@@ -116,3 +116,59 @@ def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
         assert "groq: unavailable (HTTP 403)" in message
         assert "No paid fallback was attempted" in message
         assert "secret" not in message.lower()
+
+
+def test_unorouter_direct_inference_is_blocked_for_company_workloads(monkeypatch):
+    monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
+    monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
+    monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "unorouter-test-secret")
+    monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
+    try:
+        llm_gateway.test_provider("unorouter")
+        assert False, "UnoRouter must not execute company prompts"
+    except PermissionError as exc:
+        assert "business accounts are unavailable" in str(exc)
+    assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
+
+def test_unorouter_catalog_uses_documented_fields_and_marks_privacy_unknown(monkeypatch):
+    class FakeResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, limit):
+            return json.dumps({"counts":{"free":3},"models":[
+                {"model_name":"alpha","is_free":True,"online":True,"type":"text","supported_endpoint_types":["openai"]},
+                {"model_name":"beta:free","is_free":True,"online":False,"type":"text","supported_endpoint_types":["openai"]},
+                {"model_name":"paid","is_free":False,"online":True,"type":"text","supported_endpoint_types":["openai"]},
+                {"model_name":"image:free","is_free":True,"online":True,"type":"image","supported_endpoint_types":["openai"]},
+                {"model_name":"privacy-unknown:free","is_free":True,"online":True,"type":"text","supported_endpoint_types":["openai"],
+                 "own_purpose":{"trains_or_retains":True,"consent_required":True}}
+            ]}).encode()
+    monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", lambda *a, **k: FakeResponse())
+    data = llm_gateway.list_unorouter_free_models()
+    assert data["available_online_free_count"] == 2
+    assert [m["id"] for m in data["models"]] == ["alpha:free", "privacy-unknown:free"]
+    assert all(m["privacy_status"] == "unverified" for m in data["models"])
+    assert data["privacy_filtered"] is False
+    assert "research-only" in data["note"].casefold()
+
+
+def test_unorouter_is_never_eligible_for_company_tasks(monkeypatch):
+    monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
+    monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
+    monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "test-secret")
+    monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
+    assert status["configured"] is True
+    assert status["free_confirmed"] is True
+    assert status["eligible"] is False
+    assert status["experimental_only"] is True
+    assert "business accounts are unavailable" in status["reason"]
+
+
+def test_unorouter_credentials_are_rejected():
+    from ai_os.credentials import save_provider_credential
+    try:
+        save_provider_credential("unorouter", "test-secret", "model:free", True)
+        assert False, "UnoRouter company credentials must be rejected"
+    except ValueError as exc:
+        assert "business accounts are unavailable" in str(exc)

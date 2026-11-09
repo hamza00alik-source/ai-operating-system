@@ -108,6 +108,16 @@ The AI Brain is a provider-independent subsystem stored in the same persistent S
 This first version uses local lexical retrieval and SQLite; it requires no embedding service, extra model call, or separate training job. It does not train a new neural network, create a foundation model, or eliminate inference compute. It reduces repeated context-building by retaining approved company knowledge, while advanced reasoning still uses the configured model gateway. The owner must review proposed lessons before they can influence future agents. Only successful completed runs are recorded as experiences; failed runs are not treated as lessons.
 
 
+## UnoRouter catalog (research-only)
+
+AIOS can read UnoRouter's public pricing catalog without sending credentials or prompts. It uses documented catalog fields to identify entries marked free, online, text/chat, and OpenAI-compatible. The catalog is informational only: it does not establish account-specific access or provider-level prompt retention, training, consent, or processing location.
+
+**Business-use restriction:** UnoRouter's current Terms of Service state that business accounts are unavailable. Accordingly, AIOS marks UnoRouter as research-only, rejects credential storage, and excludes it from direct inference and automatic provider failover. Do not send company, customer, confidential, or personal data to it through this AIOS deployment. The public catalog must not be described as privacy-screened.
+
+- `GET /llm/unorouter/catalog` — authenticated, read-only public catalog lookup.
+- No UnoRouter API key is stored or used by AIOS.
+- Other providers remain subject to their own current pricing, privacy, commercial-use, region, and quota checks. Free confirmation is an owner assertion, not a guarantee of zero billing.
+
 ## Free-provider failover
 
 Agent task stages now use a free-only provider router. The preferred provider (OpenRouter by default) is attempted first; if it hits a rate limit/quota response, an authentication/model availability error, or a connection/upstream failure, AIOS tries the next provider that is both configured and explicitly owner-confirmed as free. The route never upgrades billing, selects a paid model, or falls back to an unconfirmed endpoint. A malformed task request or a model's empty/placeholder response is not blindly retried. Provider attempts and the provider used for each agent stage are recorded in the run usage metadata and execution timeline.
