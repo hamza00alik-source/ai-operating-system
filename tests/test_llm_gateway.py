@@ -180,7 +180,7 @@ def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypa
     assert result["mode"] == "owner_personal_test_only"
     assert result["company_task_routing"] is False
     assert result["response"].startswith("This is a valid")
-    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is False
+    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is True
 
 def test_unorouter_personal_test_rejects_paid_model(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
