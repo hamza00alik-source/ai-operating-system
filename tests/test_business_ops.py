@@ -17,6 +17,15 @@ def test_business_records_distinguish_verified_revenue_and_pending_expenses(monk
         }, headers=headers)
         assert expense.status_code == 201
         assert expense.json()["status"] == "awaiting_owner_approval"
+        approval_id = expense.json()["approval_id"]
+        assert approval_id
+        decision = client.post(
+            f"/approvals/{approval_id}/decision", json={"decision": "approved"}, headers=headers
+        )
+        assert decision.status_code == 200
+        expenses = client.get("/business/expenses", headers=headers)
+        linked_expense = next(x for x in expenses.json() if x["id"] == expense.json()["id"])
+        assert linked_expense["status"] == "approved_for_manual_payment"
 
         expected = client.post("/business/revenue", json={
             "title": "Unsigned order", "amount": 99, "currency": "USD"
@@ -72,3 +81,21 @@ def test_code_asset_license_offer_requires_ownership_and_dependency_review(monke
         approvals = client.get("/approvals", headers=headers)
         assert approvals.status_code == 200
         assert any(x["action"] == "review_code_license_offer" for x in approvals.json())
+
+
+
+def test_investor_relationship_management(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    headers = {"X-API-Key": "test-owner-key"}
+    with TestClient(app) as client:
+        created = client.post("/business/investors", headers=headers, json={
+            "name": "Example Capital", "organization": "Example Ventures",
+            "contact": "partner@example.test", "stage": "interested",
+            "notes": "Initial inbound interest."
+        })
+        assert created.status_code == 201
+        assert created.json()["stage"] == "interested"
+        listing = client.get("/business/investors", headers=headers)
+        assert listing.status_code == 200
+        assert any(x["id"] == created.json()["id"] for x in listing.json())

@@ -436,6 +436,14 @@ class BusinessRecordRequest(BaseModel):
     verified_payment: bool = False
 
 
+class InvestorRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    organization: str = Field(default="", max_length=180)
+    contact: str = Field(default="", max_length=200)
+    stage: str = Field(default="prospect", max_length=40)
+    notes: str = Field(default="", max_length=2000)
+
+
 class CodeAssetRequest(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     repository_url: str = Field(default="", max_length=2048)
@@ -495,6 +503,19 @@ def get_business_revenue():
 def post_business_revenue(payload: BusinessRecordRequest):
     try:
         return business_ops.create_record("revenue", payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/business/investors", dependencies=[Depends(require_api_key)])
+def get_business_investors():
+    return business_ops.list_investors()
+
+
+@app.post("/business/investors", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_business_investor(payload: InvestorRequest):
+    try:
+        return business_ops.create_investor(payload.model_dump())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -638,6 +659,7 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
+    business_ops.apply_expense_approval(approval_id, payload.decision)
     return result
 
 

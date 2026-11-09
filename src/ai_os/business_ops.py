@@ -66,10 +66,11 @@ def create_record(kind: str, payload: dict) -> dict:
         # Never count unverified/expected revenue as earned.
         verified = 1 if payload.get("verified_payment") is True else 0
         status = "payment_verified" if verified else "unverified_not_counted"
+    approval_id = str(uuid4()) if kind == "expense" else None
     record = {
         "id": str(uuid4()), "record_type": kind, "title": title,
         "amount": amount, "currency": currency,
-        "status": status, "verified": verified,
+        "status": status, "verified": verified, "approval_id": approval_id,
         "contact": _clean(payload.get("contact"), 200),
         "notes": _clean(payload.get("notes"), 2000),
         "created_at": now(),
@@ -77,10 +78,18 @@ def create_record(kind: str, payload: dict) -> dict:
     with connect() as db:
         db.execute(
             """INSERT INTO business_records
-            (id,record_type,title,amount,currency,status,verified,contact,notes,created_at)
-            VALUES (:id,:record_type,:title,:amount,:currency,:status,:verified,:contact,:notes,:created_at)""",
+            (id,record_type,title,amount,currency,status,verified,approval_id,contact,notes,created_at)
+            VALUES (:id,:record_type,:title,:amount,:currency,:status,:verified,:approval_id,:contact,:notes,:created_at)""",
             record,
         )
+        if approval_id:
+            db.execute(
+                """INSERT INTO approvals (id,task_id,action,details,status,created_at,decided_at)
+                VALUES (?,NULL,?,?,?, ?,NULL)""",
+                (approval_id, "review_business_expense",
+                 "Review expense " + record["id"] + ": " + title + " — " + str(amount) + " " + currency + ". No payment is initiated.",
+                 "pending", record["created_at"]),
+            )
     return record
 
 
@@ -93,6 +102,12 @@ def business_summary() -> dict:
             """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
             WHERE record_type='revenue' AND verified=1 GROUP BY currency"""
         ).fetchall()
+        revenue_mtd = db.execute(
+            """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
+            WHERE record_type='revenue' AND verified=1 AND substr(created_at,1,7)=?
+            GROUP BY currency""",
+            (now()[:7],),
+        ).fetchall()
         customers = db.execute(
             "SELECT COUNT(*) n FROM business_records WHERE record_type='customer'"
         ).fetchone()["n"]
@@ -102,6 +117,7 @@ def business_summary() -> dict:
     return {
         "customers": customers,
         "verified_revenue_by_currency": [dict(x) for x in revenue],
+        "verified_revenue_mtd_by_currency": [dict(x) for x in revenue_mtd],
         "expenses_by_currency": [dict(x) for x in expenses],
         "expenses_awaiting_owner_approval": pending_expenses,
         "revenue_policy": "Only owner-marked verified payments are included. Expected or unverified revenue is excluded.",
@@ -200,3 +216,48 @@ def create_license_offer(payload: dict) -> dict:
             approval,
         )
     return {**offer, "approval_id": approval["id"], "external_sharing": False}
+
+
+def apply_expense_approval(approval_id: str, decision: str) -> None:
+    """Mirror a completed owner decision onto the linked expense ledger row."""
+    status = {"approved": "approved_for_manual_payment", "rejected": "rejected_by_owner"}.get(decision)
+    if status is None:
+        return
+    with connect() as db:
+        db.execute(
+            "UPDATE business_records SET status=? WHERE approval_id=? AND record_type='expense'",
+            (status, approval_id),
+        )
+
+
+def list_investors(limit: int = 300) -> list[dict]:
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM investor_contacts ORDER BY created_at DESC LIMIT ?",
+            (max(1, min(limit, 500)),),
+        ).fetchall()
+    return [dict(x) for x in rows]
+
+
+def create_investor(payload: dict) -> dict:
+    name = _clean(payload.get("name"), 180)
+    if not name:
+        raise ValueError("Investor name is required.")
+    stage = _clean(payload.get("stage", "prospect"), 40).lower()
+    if stage not in {"prospect", "contacted", "interested", "due_diligence", "committed", "declined"}:
+        raise ValueError("Unsupported investor stage.")
+    item = {
+        "id": str(uuid4()), "name": name,
+        "organization": _clean(payload.get("organization"), 180),
+        "contact": _clean(payload.get("contact"), 200),
+        "stage": stage, "notes": _clean(payload.get("notes"), 2000),
+        "created_at": now(), "updated_at": now(),
+    }
+    with connect() as db:
+        db.execute(
+            """INSERT INTO investor_contacts
+            (id,name,organization,contact,stage,notes,created_at,updated_at)
+            VALUES (:id,:name,:organization,:contact,:stage,:notes,:created_at,:updated_at)""",
+            item,
+        )
+    return item
