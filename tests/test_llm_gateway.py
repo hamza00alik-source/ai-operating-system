@@ -172,3 +172,33 @@ def test_unorouter_credentials_are_rejected():
         assert False, "UnoRouter company credentials must be rejected"
     except ValueError as exc:
         assert "business accounts are unavailable" in str(exc)
+
+
+
+def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypatch):
+    from ai_os import credentials
+    monkeypatch.setattr(credentials, "get_provider_credential", lambda provider: {
+        "secret": "uno-test-secret", "model": "sample-model:free",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
+    } if provider == "unorouter" else None)
+    class FakeResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, limit):
+            return json.dumps({"model":"sample-model:free","choices":[{"message":{"content":"This is a valid personal test response."}}],"usage":{"prompt_tokens":5,"completion_tokens":8,"total_tokens":13}}).encode()
+    monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", lambda *a, **k: FakeResponse())
+    result = llm_gateway.test_unorouter_personal("Explain a harmless programming concept.")
+    assert result["mode"] == "owner_personal_test_only"
+    assert result["company_task_routing"] is False
+    assert result["response"].startswith("This is a valid")
+    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is False
+
+
+def test_unorouter_personal_test_rejects_paid_model(monkeypatch):
+    from ai_os import credentials
+    monkeypatch.setattr(credentials, "get_provider_credential", lambda provider: {
+        "secret": "uno-test-secret", "model": "paid-model",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
+    })
+    with pytest.raises(PermissionError):
+        llm_gateway.test_unorouter_personal("test")
