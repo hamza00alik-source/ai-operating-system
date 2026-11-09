@@ -1,4 +1,4 @@
-""""Owner-submitted, bounded public-web evidence capture for research tasks.
+"""Owner-submitted, bounded public-web evidence capture for research tasks.
 
 This is a read-only source collector, not a general browser. It blocks redirects,
 non-public DNS targets, non-text content, and private-network URLs. Responses are
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import html
 import ipaddress
-import json
 import socket
 import unicodedata
 import urllib.error
@@ -40,7 +39,7 @@ class _TextExtractor(HTMLParser):
         if tag in {"script", "style", "noscript", "svg", "nav", "footer", "header"} and self.skip:
             self.skip -= 1
         elif tag in {"p", "div", "article", "section", "li", "h1", "h2", "h3", "br"} and not self.skip:
-            self.parts.append("\\n")
+            self.parts.append("\n")
 
     def handle_data(self, data):
         if not self.skip:
@@ -177,10 +176,10 @@ def research_context(query: str, limit: int = 8) -> str:
         score = sum(haystack.count(term) for term in terms)
         if score:
             scored.append((score, row))
-    scored.sort(key=lambda item: (item[0], item["captured_at"]), reverse=True)
+    scored.sort(key=lambda item: (item[0], item[1]["captured_at"]), reverse=True)
     selected = []
     for _, row in scored[:limit]:
         selected.append(
-            f"Source URL: {row['url']}\\nTitle: {row['title']}\\nCaptured: {row['captured_at']}\\nExtract: {row['content'][:3500]}"
+            f"Source URL: {row['url']}\nTitle: {row['title']}\nCaptured: {row['captured_at']}\nExtract: {row['content'][:3500]}"
         )
-    return "\\n\\n---\\n\\n".join(selected)
+    return "\n\n---\n\n".join(selected)
