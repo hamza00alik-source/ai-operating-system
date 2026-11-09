@@ -66,10 +66,10 @@ def save_provider_credential(provider: str, api_key: str, model: str, free_confi
     with connect() as db:
         db.execute(
             """INSERT INTO provider_credentials(provider, encrypted_secret, model, base_url, free_confirmed)
-               VALUES(?, ?, ?, ?, 1)
+               VALUES(?, ?, ?, ?, ?)
                ON CONFLICT(provider) DO UPDATE SET encrypted_secret=excluded.encrypted_secret,
                model=excluded.model, base_url=excluded.base_url, free_confirmed=excluded.free_confirmed""",
-            (provider, encrypted, model, PROVIDER_ENDPOINTS[provider]),
+            (provider, encrypted, model, PROVIDER_ENDPOINTS[provider], int(free_confirmed)),
         )
 
 
