@@ -23,6 +23,7 @@ from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recov
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
 from ai_os.research_sources import capture_source, list_sources
+from ai_os import website_api
 from pydantic import BaseModel, Field
 
 
@@ -562,3 +563,44 @@ def post_candidate_review(payload: CandidateReviewDecision):
             (payload.decision, payload.notes.strip(), updated, url),
         )
     return {"repository_url": url, "review_state": payload.decision, "review_notes": payload.notes.strip(), "review_updated_at": updated, "side_effects": "none"}
+
+
+
+
+class WebsiteApiCallRequest(BaseModel):
+    args: dict = Field(default_factory=dict)
+    fields: list[str] | None = None
+
+
+@app.get("/integrations/api-anything/status", dependencies=[Depends(require_owner_key)])
+def get_api_anything_status():
+    return website_api.status()
+
+
+@app.get("/integrations/api-anything/sites", dependencies=[Depends(require_owner_key)])
+def get_api_anything_sites():
+    try:
+        return website_api.list_sites()
+    except website_api.WebsiteApiUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/integrations/api-anything/find", dependencies=[Depends(require_owner_key)])
+def find_api_anything_sites(q: str = Field(min_length=1, max_length=300)):
+    try:
+        return website_api.find_sites(q)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except website_api.WebsiteApiUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/integrations/api-anything/call/{site}/{operation}", dependencies=[Depends(require_owner_key)])
+def call_api_anything_read(site: str, operation: str, payload: WebsiteApiCallRequest):
+    """Owner-triggered read only. The bridge never exposes API Anything's write endpoint."""
+    try:
+        return website_api.call_read(site, operation, payload.args, payload.fields)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except website_api.WebsiteApiUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
