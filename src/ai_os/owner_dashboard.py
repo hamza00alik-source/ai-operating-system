@@ -377,7 +377,7 @@ async function loadResearchSources(){
  }catch(e){$("researchSources").textContent=e.message}
 }
 async function captureResearchSource(){
- const url=$("researchSourceUrl").value.trim();if(!url){$("researchSourceStatus").textContent="Enter a public HTTPS URL.";return}
+ const field=$("researchSourceUrl");const url=field.value.normalize("NFC").replace(/[\\u200B-\\u200F\\u2060\\uFEFF]/g,"").trim();field.value=url;if(!url){$("researchSourceStatus").textContent="Enter a public HTTPS URL.";return}
  const b=$("captureResearchSource");b.disabled=true;$("researchSourceStatus").textContent="Fetching and extracting page text…";
  try{const result=await api("/research/sources",{method:"POST",body:JSON.stringify({url})});$("researchSourceUrl").value="";$("researchSourceStatus").textContent="Captured: "+(result.title||result.url)+" · "+result.characters+" characters. It can now be used in matching research tasks.";await loadResearchSources()}
  catch(e){$("researchSourceStatus").textContent=e.message}
