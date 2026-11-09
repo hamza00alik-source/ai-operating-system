@@ -21,7 +21,10 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Worker lease/claim safety for multiple worker instances
 - [ ] CEO-led agent orchestration beyond discovery
 - [ ] Load specialist instruction files into bounded execution contexts
-- [ ] Department-specific workflows, task assignment, dependency graph, execution artifacts, and specialist reports
+- [x] Initial department workflow templates with persisted workflow instances and ordered task dependencies
+- [x] Owner-triggered workflow creation; first step queued and downstream steps blocked by default
+- [x] Dependency-gated task execution and automatic next-step handoff after successful completion
+- [ ] Workflow-level artifact aggregation, cancellation, parallel branches, and specialist-specific deliverable schemas
 - [ ] Task dependencies and assignment
 - [x] Static specialist registry sourced from Agency Agents
 - [ ] Live agent runtime and worker registry
