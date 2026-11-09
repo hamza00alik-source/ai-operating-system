@@ -152,9 +152,9 @@ def probe_mcp_server(server_id: str) -> dict:
 
 def _validate_tool_arguments(schema: dict, arguments: dict) -> None:
     """Validate untrusted model arguments against the server's JSON Schema."""
-    if not isinstance(schema, dict) or len(json.dumps(schema)) > 65536:
+    if not isinstance(schema, dict) or len(json.dumps(schema, ensure_ascii=False).encode("utf-8")) > 65536:
         raise ValueError("MCP tool input schema is invalid or too large.")
-    if not isinstance(arguments, dict) or len(json.dumps(arguments)) > 65536:
+    if not isinstance(arguments, dict) or len(json.dumps(arguments, ensure_ascii=False, allow_nan=False).encode("utf-8")) > 65536:
         raise ValueError("MCP tool arguments must be a JSON object no larger than 64 KiB.")
     try:
         from jsonschema import Draft202012Validator
