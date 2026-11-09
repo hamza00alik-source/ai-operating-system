@@ -118,3 +118,9 @@ def finish_workflow_task(task_id: str, success: bool) -> None:
             db.execute("UPDATE tasks SET status='queued' WHERE id=?", (following["task_id"],))
         else:
             db.execute("UPDATE workflow_instances SET status='completed' WHERE id=?", (step["workflow_id"],))
+
+def list_workflows(limit: int = 50) -> list[dict]:
+    initialize_workflows()
+    with connect() as db:
+        rows = db.execute("SELECT id FROM workflow_instances ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 100)),)).fetchall()
+    return [item for row in rows if (item := get_workflow(row["id"])) is not None]
