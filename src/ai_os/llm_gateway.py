@@ -43,6 +43,8 @@ PROVIDERS = (
              "AI_OS_GROQ_API_KEY", "AI_OS_GROQ_FREE_CONFIRMED"),
     Provider("nvidia", "NVIDIA NIM", "AI_OS_NVIDIA_BASE_URL", "AI_OS_NVIDIA_MODEL",
              "AI_OS_NVIDIA_API_KEY", "AI_OS_NVIDIA_FREE_CONFIRMED"),
+    Provider("sambanova", "SambaNova Cloud", "AI_OS_SAMBANOVA_BASE_URL", "AI_OS_SAMBANOVA_MODEL",
+             "AI_OS_SAMBANOVA_API_KEY", "AI_OS_SAMBANOVA_FREE_CONFIRMED"),
     Provider("mistral", "Mistral", "AI_OS_MISTRAL_BASE_URL", "AI_OS_MISTRAL_MODEL",
              "AI_OS_MISTRAL_API_KEY", "AI_OS_MISTRAL_FREE_CONFIRMED"),
     Provider("cloudflare", "Cloudflare Workers AI", "AI_OS_CLOUDFLARE_BASE_URL",
