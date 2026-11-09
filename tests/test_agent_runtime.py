@@ -98,3 +98,56 @@ def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist
     with connect() as db:
         assert db.execute("SELECT status FROM tasks WHERE id='task-1'").fetchone()["status"] == "queued"
         assert db.execute("SELECT output FROM agent_run_steps WHERE run_id='run-1' AND sequence_no=1").fetchone()["output"] == "Saved specialist report"
+
+
+def test_agent_run_claim_is_atomic_and_persists_lease(monkeypatch, tmp_path):
+    from ai_os.agent_runtime import claim_next_run, _now
+    from ai_os.db import connect, initialize_database
+
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'leases.db'}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO tasks(id,title,description,department,status,created_at) VALUES(?,?,?,?,?,?)",
+            ("lease-task", "Lease test", "", "research", "queued", _now()),
+        )
+        db.execute(
+            "INSERT INTO agent_runs(id,task_id,status,created_at) VALUES(?,?,?,?)",
+            ("lease-run", "lease-task", "queued", _now()),
+        )
+
+    claim = claim_next_run("worker-a", lease_seconds=300)
+    assert claim["run_id"] == "lease-run"
+    with connect() as db:
+        row = db.execute("SELECT status,lease_owner,lease_expires_at FROM agent_runs WHERE id='lease-run'").fetchone()
+    assert row["status"] == "running"
+    assert row["lease_owner"] == "worker-a"
+    assert row["lease_expires_at"]
+    assert claim_next_run("worker-b") is None
+
+
+def test_interrupted_run_recovery_clears_lease_without_requeue(monkeypatch, tmp_path):
+    from ai_os.agent_runtime import recover_interrupted_runs, _now
+    from ai_os.db import connect, initialize_database
+
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'recover-lease.db'}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO tasks(id,title,description,department,status,created_at) VALUES(?,?,?,?,?,?)",
+            ("recover-task", "Recovery test", "", "research", "running", _now()),
+        )
+        db.execute(
+            "INSERT INTO agent_runs(id,task_id,status,created_at,lease_owner,lease_expires_at) VALUES(?,?,?,?,?,?)",
+            ("recover-run", "recover-task", "running", _now(), "dead-worker", "2000-01-01T00:00:00+00:00"),
+        )
+
+    assert recover_interrupted_runs() == 1
+    with connect() as db:
+        row = db.execute("SELECT status,lease_owner,lease_expires_at FROM agent_runs WHERE id='recover-run'").fetchone()
+    assert row["status"] == "failed"
+    assert row["lease_owner"] is None
+    assert row["lease_expires_at"] is None
+    assert recover_interrupted_runs() == 0
