@@ -675,9 +675,7 @@ function renderDepartmentCards(){
 async function refresh(){
  if(refreshing)return;refreshing=true;
  try{
-  const responses=await Promise.all(["/company/departments","/tasks","/agent-runs","/company/overview"].map(url=>fetch(url,{credentials:"same-origin"})));
-  for(const r of responses)if(!r.ok)throw new Error("AIOS data request failed ("+r.status+"). Sign in again if your owner session expired.");
-  const [deptData,taskData,runData,overviewData]=await Promise.all(responses.map(r=>r.json()));
+  const [deptData,taskData,runData,overviewData]=await Promise.all(["/company/departments","/tasks","/agent-runs","/company/overview"].map(url=>api(url)));
   const nextDepartments=deptData.departments||[];
   if(!stations.length){
    departments=nextDepartments;
