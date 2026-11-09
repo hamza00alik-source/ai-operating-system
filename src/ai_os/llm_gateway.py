@@ -131,7 +131,9 @@ def list_unorouter_free_models() -> dict[str, Any]:
         raise RuntimeError("UnoRouter returned an invalid model catalog") from exc
 
     models = []
-    for item in payload.get("models", []):
+    catalog_models = payload.get("models", [])
+    total_free_models = sum(1 for item in catalog_models if isinstance(item, dict) and item.get("is_free"))
+    for item in catalog_models:
         if not isinstance(item, dict) or not item.get("is_free") or not item.get("online", True):
             continue
         # This gateway currently sends chat-completions requests only. Exclude image,
@@ -142,7 +144,7 @@ def list_unorouter_free_models() -> dict[str, Any]:
         # Keep prompts away from models whose catalog policy says they train on or
         # retain inputs. Unknown policy is surfaced as unknown rather than assumed safe.
         purpose = item.get("own_purpose") if isinstance(item.get("own_purpose"), dict) else {}
-        if purpose.get("trains_or_retains") is True or purpose.get("consent_required") is True:
+        if purpose.get("trains_or_retains") is not False or purpose.get("consent_required") is not False:
             continue
         name = str(item.get("model_name") or item.get("id") or "").strip()
         if not name:
@@ -164,7 +166,7 @@ def list_unorouter_free_models() -> dict[str, Any]:
         "base_url": "https://api.unorouter.com/v1",
         "source": url,
         "global_catalog_free_count": counts.get("free", len(models)),
-        "available_online_free_count": len(models),\n        "privacy_filtered": True,\n        "excluded_for_privacy_or_non_chat": max(0, int(counts.get("free", len(models))) - len(models)),
+        "available_online_free_count": len(models),\n        "privacy_filtered": True,\n        "not_returned_from_global_free_catalog": max(0, total_free_models - len(models)),
         "models": models,
         "note": "Privacy-screened global chat catalog only: only online free OpenAI-compatible chat models with no catalog-declared training/retention or consent requirement are listed. Your API key may expose fewer models; test it. Free quotas and availability can change.",
     }
