@@ -212,16 +212,24 @@ def call_mcp_tool(server_id: str, tool_name: str, arguments: dict) -> dict:
             "protocol_version": negotiated, "result": result.get("result")}
 
 
-def discover_enabled_tool_catalog() -> list[dict]:
-    """Discover current tools on enabled servers; never execute them."""
+def discover_enabled_tool_catalog(department: str | None = None) -> list[dict]:
+    """Discover only tools explicitly granted to this department; default-deny."""
+    allowed = _department_tool_allowlist(department)
+    if not allowed:
+        return []
     with connect() as db:
         rows = db.execute(
             "SELECT id,name FROM mcp_servers WHERE enabled=1 ORDER BY name,id"
         ).fetchall()
     catalog = []
     for row in rows:
+        prefix = row["id"] + ":"
+        if not any(entry.startswith(prefix) for entry in allowed):
+            continue
         discovered = probe_mcp_server(row["id"])
         for tool in discovered["tools"]:
+            if f"{row['id']}:{tool['name']}" not in allowed:
+                continue
             catalog.append({
                 "server_id": row["id"],
                 "server_name": row["name"],
