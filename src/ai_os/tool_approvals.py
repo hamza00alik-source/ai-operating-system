@@ -79,8 +79,9 @@ def propose_tool_call(*, run_id: str, task_id: str, department: str,
                       server_id: str, tool_name: str, arguments: dict,
                       risk_level: str = "read", ttl_minutes: int = DEFAULT_TTL_MINUTES) -> dict:
     """Persist a worker-generated proposal only when explicitly allowlisted."""
-    if risk_level not in RISK_LEVELS.values():
-        raise ValueError("Unknown risk level; proposal rejected.")
+    if risk_level not in RISK_LEVELS:
+        raise ValueError("Unknown risk classification; proposal rejected.")
+    risk_level = RISK_LEVELS[risk_level]
     if not all(isinstance(v, str) and v.strip() for v in (run_id, task_id, department, server_id, tool_name)):
         raise ValueError("Proposal identifiers and tool name are required.")
     if not isinstance(arguments, dict):
