@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -46,6 +47,19 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
     model = os.getenv(provider.model_env, "").strip()
     secret = os.getenv(provider.secret_env, "").strip()
     free = os.getenv(provider.free_confirm_env, "").strip().lower() == "true"
+    try:
+        from ai_os.credential_vault import PROVIDER_META, get_provider_secret
+        if provider.key in PROVIDER_META:
+            saved = get_provider_secret(provider.key)
+            if saved:
+                model, secret, free = saved
+                base = PROVIDER_META[provider.key]["base_url"]
+    except sqlite3.OperationalError:
+        # Local/test databases may not have initialized the credential table yet.
+        pass
+    except RuntimeError:
+        # Surface vault/key failures as blocked configuration, never silently bypass.
+        raise
     configured = bool(base and model and secret)
     eligible = configured and free
     return {
@@ -101,6 +115,18 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
     base = os.getenv(provider.base_url_env, "").strip().rstrip("/")
     model = os.getenv(provider.model_env, "").strip()
     secret = os.getenv(provider.secret_env, "").strip()
+    try:
+        from ai_os.credential_vault import PROVIDER_META, get_provider_secret
+        if provider.key in PROVIDER_META:
+            saved = get_provider_secret(provider.key)
+            if saved:
+                model, secret, _free = saved
+                base = PROVIDER_META[provider.key]["base_url"]
+    except sqlite3.OperationalError:
+        # Fresh test/local databases may not have run the vault migration yet.
+        pass
+    except Exception as exc:
+        raise RuntimeError("Could not load encrypted provider credentials.") from exc
     started = time.monotonic()
 
     if provider.protocol == "gemini":

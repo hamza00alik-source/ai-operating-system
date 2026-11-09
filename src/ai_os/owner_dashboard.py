@@ -49,8 +49,23 @@ table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;
 <section class="panel section"><h2>Discovered projects</h2><div class="scroll"><table><thead><tr><th>Project</th><th>Category</th><th>License</th><th>Maintenance</th><th>Stars</th><th>Review state</th><th>Evidence</th></tr></thead><tbody id="candidateRows"><tr><td colspan="7" class="muted">No data loaded</td></tr></tbody></table></div></section>
 <p class="small section">Cost, security, commercial-use rights, and provider terms remain unverified unless the evidence record explicitly says otherwise. A discovered project is not an approved integration.</p>
 
+<section class="panel section" id="providerVault">
+<h2>API &amp; Model Connections</h2>
+<p class="small">Provider keys are encrypted on the server using the private vault encryption key. Keys are never returned to this page after saving. Supported providers: Gemini, Groq and Mistral.</p>
+<div class="toolbar">
+<select id="vaultProvider"><option value="gemini">Google Gemini</option><option value="groq">Groq</option><option value="mistral">Mistral</option></select>
+<input id="vaultModel" autocomplete="off" placeholder="Model ID (e.g. provider model name)" style="flex:1;min-width:180px">
+</div>
+<div class="toolbar" style="margin-top:10px">
+<input id="vaultKey" type="password" autocomplete="new-password" placeholder="Paste provider API key" style="flex:1;min-width:200px">
+<label><input id="vaultFree" type="checkbox"> I checked current pricing and confirm this model/API endpoint is within a free tier or free allowance.</label>
+</div>
+<div class="toolbar" style="margin-top:10px"><button id="saveVault">Encrypt &amp; Save</button><button class="secondary" id="removeVault">Remove saved key</button><button class="secondary" id="refreshVault">Refresh status</button></div>
+<div id="vaultStatus" class="status">No credential status loaded.</div>
+<div id="vaultRows" class="small">Saved provider status will appear here. Secret values are never displayed.</div>
+</section>
 <section class="panel section"><h2>Live AI model gateway</h2>
-<div class="small">Only providers explicitly configured on the server and marked free by the owner can run. API secrets stay in server environment variables; never paste secrets into this page or GitHub.</div>
+<div class="small">Only providers explicitly configured on the server and marked free by the owner can run. Provider secrets are encrypted in the owner credential vault; never paste secrets into GitHub.</div>
 <div class="toolbar" style="margin-top:12px"><select id="providerSelect"><option value="">Loading providers…</option></select><button class="secondary" id="loadProviders">Refresh providers</button><button id="testProvider">Test live connection</button></div>
 <div id="providerStatus" class="status">Provider status not loaded.</div>
 <textarea id="modelPrompt" rows="3" style="width:100%;margin:8px 0" placeholder="Enter a small test prompt. This sends a real request to the selected provider."></textarea>
@@ -80,6 +95,34 @@ say("Live data loaded at "+new Date().toLocaleTimeString()+".");}catch(e){say(e.
 $("run").onclick=async()=>{const categories=[...document.querySelectorAll('input[name="cat"]:checked')].map(x=>x.value);if(!categories.length){say("Select at least one category.");return}try{$("run").disabled=true;const result=await api("/discovery/scans",{method:"POST",body:JSON.stringify({categories})});say("Scan queued: "+result.id+". The background worker must be running to process it.");await refresh()}catch(e){say(e.message)}finally{$("run").disabled=false}};
 $("refresh").onclick=refresh;
 
+async function refreshVault(){
+ try{
+  const rows=await api("/owner/providers");
+  $("vaultRows").innerHTML=rows.map(p=>esc(p.name)+": "+(p.configured?(p.enabled?"saved · enabled":"saved · disabled"):"not connected")+" · model: "+esc(p.model||"—")).join("<br>");
+  $("vaultStatus").textContent="Vault status refreshed. Secret values are never displayed.";
+ }catch(e){$("vaultStatus").textContent=e.message}
+}
+async function saveVault(){
+ const provider=$("vaultProvider").value,model=$("vaultModel").value.trim(),api_key=$("vaultKey").value;
+ if(!api_key||!model){$("vaultStatus").textContent="Enter both a model ID and API key.";return}
+ if(!$("vaultFree").checked){$("vaultStatus").textContent="Please confirm you checked the provider's current pricing before enabling it.";return}
+ $("saveVault").disabled=true;$("vaultStatus").textContent="Encrypting and saving credential securely…";
+ try{
+  await api("/owner/providers/"+encodeURIComponent(provider),{method:"PUT",body:JSON.stringify({model,api_key,free_confirmed:true})});
+  $("vaultKey").value="";$("vaultFree").checked=false;
+  $("vaultStatus").textContent="Credential encrypted and saved. The key field has been cleared.";
+  await refreshVault();await loadProviders();
+ }catch(e){$("vaultStatus").textContent="Save failed: "+e.message}
+ finally{$("saveVault").disabled=false}
+}
+async function removeVault(){
+ const provider=$("vaultProvider").value;
+ if(!confirm("Remove the saved credential for this provider?"))return;
+ try{await api("/owner/providers/"+encodeURIComponent(provider),{method:"DELETE"});$("vaultStatus").textContent="Saved credential removed.";await refreshVault();await loadProviders()}
+ catch(e){$("vaultStatus").textContent=e.message}
+}
+$("saveVault").onclick=saveVault;$("removeVault").onclick=removeVault;$("refreshVault").onclick=refreshVault;
+$("vaultProvider").onchange=()=>{$("vaultKey").value="";$("vaultModel").value="";refreshVault()};
 async function loadProviders(){try{const providers=await api("/llm/providers");const select=$("providerSelect");select.innerHTML=providers.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+' · '+(p.eligible?'eligible':'blocked')+'</option>').join("");$("providerStatus").textContent=providers.map(p=>p.name+": "+(p.eligible?"eligible (free status owner-confirmed)":p.reason)).join("\\n");}catch(e){$("providerStatus").textContent=e.message}}
 async function runModel(test){const provider=$("providerSelect").value;if(!provider){$("modelOutput").textContent="Select a provider first.";return}const prompt=test?"Reply with exactly: AIOS live connection successful":$("modelPrompt").value.trim();if(!prompt){$("modelOutput").textContent="Enter a prompt first.";return}const button=test?$("testProvider"):$("runModel");button.disabled=true;$("modelOutput").textContent="Sending live request…";try{const result=await api(test?"/llm/test":"/llm/run",{method:"POST",body:JSON.stringify({provider,prompt})});$("modelOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("modelOutput").textContent="Live request failed: "+e.message}finally{button.disabled=false}}
 $("loadProviders").onclick=loadProviders;$("testProvider").onclick=()=>runModel(true);$("runModel").onclick=()=>runModel(false);
@@ -89,7 +132,7 @@ async function refreshAgentRuns(){try{const runs=await api("/agents/runs");$("ag
 async function runResearchAgent(){const provider=$("providerSelect").value;const goal=$("agentGoal").value.trim();if(!provider){$("agentStatus").textContent="Choose an eligible provider in Live AI model gateway first.";return}if(goal.length<10){$("agentStatus").textContent="Enter a brief of at least 10 characters.";return}const button=$("runAgent");button.disabled=true;$("agentStatus").textContent="Agent is working…";$("agentOutput").textContent="Waiting for model response and saving run…";try{const run=await api("/agents/runs",{method:"POST",body:JSON.stringify({provider,goal})});$("agentStatus").textContent="Run "+run.id+" queued. The background worker will process it."; $("agentOutput").textContent="Queued. This panel refreshes run history automatically while the owner console is open.";await refreshAgentRuns()}catch(e){$("agentStatus").textContent="Agent run failed: "+e.message;$("agentOutput").textContent=e.message;await refreshAgentRuns()}finally{button.disabled=false}}
 $("runAgent").onclick=runResearchAgent;$("refreshAgentRuns").onclick=refreshAgentRuns;
 \nif(!key){key=prompt("Enter your AIOS owner API key (kept only for this browser tab):")||"";if(key)sessionStorage.setItem("aios_owner_key",key)}
-if(key){refresh();loadProviders();refreshAgentRuns();setInterval(refresh,10000);setInterval(refreshAgentRuns,5000)}
+if(key){refresh();loadProviders();refreshVault();refreshAgentRuns();setInterval(refresh,10000);setInterval(refreshAgentRuns,5000)}
 </script></body></html>
 """
 
