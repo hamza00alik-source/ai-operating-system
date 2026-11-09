@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -181,11 +182,20 @@ def _public_row(row) -> dict:
 
 
 def _load_specialist(agent: dict) -> str:
-    # Only fetch a fixed-path markdown instruction file from the configured public repo.
+    # Fetch only pinned Markdown from the verified upstream source. The revision
+    # and repository are carried by the checked-in manifest; never follow "main".
     path = agent.get("source_path", "")
-    if not path or path.startswith("/") or ".." in path.split("/"):
+    repository = agent.get("source_repository", "")
+    revision = agent.get("source_revision", "")
+    if repository != "msitarzewski/agency-agents":
         return ""
-    url = "https://raw.githubusercontent.com/hamza00alik-source/agency-agents/main/" + path
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        return ""
+    if not path or not path.endswith(".md") or path.startswith("/") or ".." in path.split("/"):
+        return ""
+    if not all(re.fullmatch(r"[A-Za-z0-9._-]+", part) for part in path.split("/")):
+        return ""
+    url = f"https://raw.githubusercontent.com/{repository}/{revision}/{path}"
     request = urllib.request.Request(url, headers={"User-Agent": "AIOS-owner-supervised-runtime"})
     try:
         with urllib.request.urlopen(request, timeout=12) as response:

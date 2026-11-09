@@ -24,7 +24,7 @@ from ai_os.credentials import save_openrouter, credential_status, CredentialVaul
 from ai_os.brain import brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
-from ai_os import website_api
+from ai_os import website_api, code_assets, code_asset_evidence
 from pydantic import BaseModel, Field
 
 
@@ -108,6 +108,23 @@ app = FastAPI(
 @app.get("/owner", include_in_schema=False)
 def get_owner_dashboard():
     return owner_dashboard()
+
+
+class CodeAssetScanRequest(BaseModel):
+    repository_url: str = Field(min_length=20, max_length=500)
+
+
+class CodeAssetEvidenceCreate(BaseModel):
+    evidence_type: str = Field(min_length=1, max_length=40)
+    title: str = Field(min_length=1, max_length=160)
+    description: str = Field(min_length=1, max_length=5000)
+    source_url: str = Field(default="", max_length=1000)
+    metadata: dict = Field(default_factory=dict)
+
+
+class CodeAssetEvidenceReview(BaseModel):
+    decision: str = Field(pattern="^(accepted|rejected)$")
+    note: str = Field(default="", max_length=2000)
 
 
 class OwnerLoginRequest(BaseModel):
@@ -284,7 +301,7 @@ def get_company_departments():
             "specialist_count": specialist_count,
             "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
             "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
-            "workflow_status": "catalogue-only",
+            "workflow_status": item.get("workflow_state", "catalogue-only"),
         })
     return {
         "department_count": len(departments),
@@ -339,7 +356,7 @@ def get_company_overview():
         candidates = db.execute("SELECT COUNT(*) AS n FROM discovery_candidates").fetchone()["n"]
         agent_runs = db.execute("SELECT status, COUNT(*) AS n FROM agent_runs GROUP BY status").fetchall()
     return {
-        "workforce": {"agents": 283, "departments": 18, "company_departments": 12, "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
+        "workforce": {"agents": 283, "departments": 18, "company_departments": len(json.loads((Path(__file__).resolve().parents[2] / "data" / "company_departments.json").read_text(encoding="utf-8")).get("departments", [])), "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
         "tasks": {r["status"]: r["n"] for r in tasks},
         "approvals": {r["status"]: r["n"] for r in approvals},
         "discovery_scans": {r["status"]: r["n"] for r in scans},
@@ -423,6 +440,68 @@ def get_workflow_detail(workflow_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
     return result
+
+
+@app.post("/code-assets/scan", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_code_asset_scan(payload: CodeAssetScanRequest):
+    """Owner-triggered, read-only audit of a public GitHub repository."""
+    try:
+        return code_assets.scan_repository(payload.repository_url)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/code-assets", dependencies=[Depends(require_api_key)])
+def get_code_assets():
+    return code_assets.list_assets()
+
+
+@app.get("/code-assets/{asset_id}", dependencies=[Depends(require_api_key)])
+def get_code_asset(asset_id: str):
+    result = code_assets.get_asset(asset_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Code asset not found.")
+    return result
+
+
+@app.post("/code-assets/{asset_id}/evidence", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_code_asset_evidence(asset_id: str, payload: CodeAssetEvidenceCreate):
+    """Record provenance evidence; records remain pending until owner review."""
+    try:
+        return code_asset_evidence.add_evidence(
+            asset_id, payload.evidence_type, payload.title, payload.description,
+            payload.source_url, payload.metadata,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/code-assets/{asset_id}/evidence", dependencies=[Depends(require_api_key)])
+def get_code_asset_evidence(asset_id: str):
+    try:
+        return {
+            "records": code_asset_evidence.list_evidence(asset_id),
+            "summary": code_asset_evidence.evidence_summary(asset_id),
+        }
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/code-assets/evidence/{evidence_id}/review", dependencies=[Depends(require_owner_key)])
+def post_code_asset_evidence_review(evidence_id: str, payload: CodeAssetEvidenceReview):
+    """Owner-only evidence review; accepted is an owner decision, not legal verification."""
+    try:
+        return code_asset_evidence.review_evidence(evidence_id, payload.decision, payload.note)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/health")
