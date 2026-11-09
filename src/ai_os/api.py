@@ -19,6 +19,7 @@ from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
+from ai_os.model_intelligence import provider_intelligence
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
@@ -214,6 +215,12 @@ def post_provider_model(provider_id: str, payload: ProviderModelRequest):
 @app.get("/llm/providers", dependencies=[Depends(require_api_key)])
 def get_llm_providers():
     return list_providers()
+
+
+@app.get("/llm/intelligence", dependencies=[Depends(require_api_key)])
+def get_llm_intelligence():
+    """Owner-visible provider capability summary; performs no external requests."""
+    return provider_intelligence()
 
 
 @app.get("/llm/unorouter/catalog", dependencies=[Depends(require_owner_key)])
