@@ -83,6 +83,14 @@ The dashboard exposes an owner-triggered sync and a review table. `bradAGI/aweso
 
 Catalog entries are research leads, not integrations. Before connecting a provider, independently verify current official free pricing, quota, commercial-use terms, privacy/training policy, data retention, regional availability, and account-specific access. Never infer that a listed provider is free for the user's account. The owner must explicitly confirm free-only use; paid routes remain blocked.
 
+## Research evidence capture
+
+The owner dashboard includes a **Research Evidence** panel. The owner can submit a public HTTPS page URL; AIOS captures readable HTML/plain text, stores the canonical URL, page title, capture timestamp and bounded text excerpt, and supplies lexically relevant excerpts to the lead specialist on later matching tasks. The collaborator and CEO receive the lead specialist's source-backed draft for review.
+
+Capture is owner-triggered and read-only. It does not discover URLs or perform general web search. The collector rejects non-HTTPS URLs, non-standard ports, embedded URL credentials, private/reserved DNS results, redirects, non-text content, responses larger than 1 MB, and requests exceeding 12 seconds. Captured text is limited to 18,000 characters per page; only the top eight lexical matches are supplied to a task. Source content is untrusted input and must not be followed as instructions. AIOS must cite only the exact URLs and capture timestamps supplied.
+
+The DNS check is a defense-in-depth guard, not a substitute for a hardened outbound proxy; a future production hardening step should pin the validated address at connection time to eliminate DNS-rebinding risk. Pages that require login, JavaScript rendering, cookies, or anti-bot clearance are not supported. The system does not claim a captured page's statements are independently verified.
+
 ## Remaining delivery sequence
 
 1. Run a live scan from the authenticated owner dashboard and verify completed scan records and persisted candidates.
