@@ -151,3 +151,12 @@ def test_agent_tool_discovery_does_not_query_servers_without_grants(monkeypatch)
     monkeypatch.setattr(mcp_client, "_department_tool_allowlist", lambda _department: set())
     monkeypatch.setattr(mcp_client, "connect", lambda: pytest.fail("no server should be queried"))
     assert mcp_client.discover_enabled_tool_catalog("research") == []
+
+
+def test_mcp_tool_execution_is_disabled_even_before_network(monkeypatch):
+    monkeypatch.setattr(
+        mcp_client, "_load_server",
+        lambda _server_id: pytest.fail("disabled execution must not load credentials or connect"),
+    )
+    with pytest.raises(RuntimeError, match="execution is disabled"):
+        mcp_client.call_mcp_tool("server-1", "search", {"query": "test"})
