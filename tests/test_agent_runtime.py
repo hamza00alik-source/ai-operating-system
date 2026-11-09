@@ -49,3 +49,34 @@ def test_general_market_research_routes_to_research_role():
         manifest,
     )
     assert selected["id"] == "research/research-synthesist"
+
+
+
+def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist(monkeypatch, tmp_path):
+    from ai_os.agent_runtime import retry_run, _now
+    from ai_os.db import connect, initialize_database
+
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'resume.db'}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO tasks(id,title,description,department,status,created_at) VALUES(?,?,?,?,?,?)",
+            ("task-1", "Research market", "", "research", "partial", _now()),
+        )
+        db.execute(
+            "INSERT INTO agent_runs(id,task_id,status,specialist_output,created_at,finished_at,error) VALUES(?,?,?,?,?,?,?)",
+            ("run-1", "task-1", "partial", "Saved specialist report", _now(), _now(), "collaborator provider failed"),
+        )
+        db.execute(
+            """INSERT INTO agent_run_steps
+            (run_id,sequence_no,role,agent_id,agent_name,status,input_summary,output,created_at,finished_at)
+            VALUES(?,?,?,?,?,'completed',?,?,?,?)""",
+            ("run-1", 1, "Lead specialist", "research/research-synthesist", "Research Synthesist",
+             "Research market", "Saved specialist report", _now(), _now()),
+        )
+    queued = retry_run("run-1")
+    assert queued["status"] == "queued"
+    with connect() as db:
+        assert db.execute("SELECT status FROM tasks WHERE id='task-1'").fetchone()["status"] == "queued"
+        assert db.execute("SELECT output FROM agent_run_steps WHERE run_id='run-1' AND sequence_no=1").fetchone()["output"] == "Saved specialist report"
