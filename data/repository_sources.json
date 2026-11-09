@@ -3,12 +3,14 @@
   "policy": "Reference repositories are not dependencies and are not installed or executed without owner approval.",
   "sources": [
     {
-      "repository": "hamza00alik-source/agency-agents",
+      "repository": "msitarzewski/agency-agents",
       "role": "Specialist workforce catalog",
-      "status": "catalogued",
-      "purpose": "283 specialist role definitions across 18 departments; instructions and runbooks, not executable workers.",
-      "license": "MIT",
-      "priority": "core-workforce"
+      "status": "catalogued-pinned-upstream",
+      "purpose": "283 specialist role definitions across 18 departments; markdown instructions fetched on demand as untrusted context, not executable workers.",
+      "license": "MIT (upstream metadata and LICENSE; attribution required)",
+      "priority": "core-workforce",
+      "account_fork": "hamza00alik-source/agency-agents",
+      "revision": "b37b5bb33b78f2c1d6567d98e25ca818e3259219"
     },
     {
       "repository": "hamza00alik-source/automaton",
