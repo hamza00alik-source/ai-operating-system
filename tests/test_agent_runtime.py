@@ -42,7 +42,7 @@ def test_agents_share_persisted_handoffs_and_resume_completed_steps(monkeypatch,
         calls.append(prompt)
         return {"kind": "final", "content": f"output-{len(calls)}"}
 
-    monkeypatch.setattr("ai_os.agent_runtime.discover_enabled_tool_catalog", lambda: [])
+    monkeypatch.setattr("ai_os.agent_runtime.discover_enabled_tool_catalog", lambda _department=None: [])
     monkeypatch.setattr("ai_os.agent_runtime.generate_agent_turn", fake_turn)
     assert run_agent_workflow(task, worker_id="agent-worker-a") == "output-3"
     assert len(calls) == 3
@@ -94,7 +94,8 @@ def test_agent_tool_request_pauses_and_resumes_after_owner_result(monkeypatch, t
                     "arguments": {"query": "market size"}}
         return {"kind": "final", "content": "Research completed using approved search result."}
 
-    monkeypatch.setattr("ai_os.agent_runtime.discover_enabled_tool_catalog", lambda: catalog)
+    monkeypatch.setenv("AI_OS_MCP_DEPARTMENT_TOOL_ALLOWLIST", '{"marketing":["server-1:search"]}')
+    monkeypatch.setattr("ai_os.agent_runtime.discover_enabled_tool_catalog", lambda _department=None: catalog)
     monkeypatch.setattr("ai_os.agent_runtime.generate_agent_turn", fake_turn)
     with pytest.raises(AgentPausedForApproval):
         run_agent_workflow(task, worker_id="worker-a")
@@ -114,7 +115,7 @@ def test_agent_tool_request_pauses_and_resumes_after_owner_result(monkeypatch, t
         )
     # A completed owner-approved result must remain resumable even if the MCP
     # server becomes unavailable before the worker restarts.
-    def unavailable_catalog():
+    def unavailable_catalog(_department=None):
         raise ConnectionError("temporary MCP outage")
 
     monkeypatch.setattr("ai_os.agent_runtime.discover_enabled_tool_catalog", unavailable_catalog)
