@@ -118,26 +118,17 @@ def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
         assert "secret" not in message.lower()
 
 
-def test_unorouter_uses_openai_compatible_free_model_route(monkeypatch):
+def test_unorouter_direct_inference_is_blocked_for_company_workloads(monkeypatch):
     monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
     monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
     monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "unorouter-test-secret")
     monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
-    captured = {}
-
-    def fake_post(url, payload, headers, timeout=35):
-        captured.update(url=url, payload=payload, headers=headers)
-        return {"choices": [{"message": {"content": "AIOS live connection successful"}}],
-                "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}}
-
-    monkeypatch.setattr(llm_gateway, "_post", fake_post)
-    result = llm_gateway.test_provider("unorouter")
-    assert result["test_passed"] is True
-    assert captured["url"] == "https://api.unorouter.com/v1/chat/completions"
-    assert captured["payload"]["model"] == "example-model:free"
-    assert captured["headers"]["Authorization"] == "Bearer unorouter-test-secret"
+    try:
+        llm_gateway.test_provider("unorouter")
+        assert False, "UnoRouter must not execute company prompts"
+    except PermissionError as exc:
+        assert "business accounts are unavailable" in str(exc)
     assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
-
 
 def test_unorouter_catalog_uses_documented_fields_and_marks_privacy_unknown(monkeypatch):
     class FakeResponse:
