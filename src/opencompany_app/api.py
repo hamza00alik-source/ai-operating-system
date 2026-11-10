@@ -117,9 +117,12 @@ def workforce_roles() -> dict:
     return {
         "catalogue": "opencompany-original",
         "count": len(roles),
+        "specialist_count": sum(1 for role in roles if "__" in role.key),
+        "manager_role_count": sum(1 for role in roles if "__" not in role.key),
+        "team_count": len({role.team_key for role in roles if "__" in role.key}),
         "roles": [
             {
-                "key": role.key, "title": role.title, "function": role.function,
+                "key": role.key, "title": role.title, "function": role.function, "team_key": role.team_key,
                 "mission": role.mission, "capabilities": list(role.capabilities),
                 "permitted_outputs": list(role.permitted_outputs),
                 "prohibited_actions": list(role.prohibited_actions),
