@@ -16,6 +16,7 @@ from opencompany_core.worker_queue import DurableWorkerQueue
 from opencompany_core.worker_runner import OpenCompanyWorker
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.owner_sessions import OwnerSessionStore
+from opencompany_core.worker_fleet import WorkerFleet
 
 
 @dataclass(slots=True)
@@ -25,9 +26,11 @@ class OpenCompanyRuntime:
     worker: OpenCompanyWorker
     delegations: DelegationRepository
     sessions: OwnerSessionStore
+    fleet: WorkerFleet
 
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
+        self.fleet.stop(timeout_seconds=5.0)
         self.delegations.close()
         self.store.close()
 
@@ -58,4 +61,5 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
-    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions)
+    fleet = WorkerFleet(worker, store)
+    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet)
