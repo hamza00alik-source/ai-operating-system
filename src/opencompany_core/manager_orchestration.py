@@ -11,7 +11,7 @@ from typing import Iterable
 
 from .domain import WorkItem
 from .organization import default_organization
-from .workforce import RoleSpec, default_workforce
+from .workforce import RoleSpec, default_workforce, specialist_role_keys
 
 
 class DelegationMode(StrEnum):
@@ -26,6 +26,7 @@ class SpecialistSelection:
     title: str
     team_key: str
     matched_capabilities: tuple[str, ...]
+    supporting_member: bool
     permitted_outputs: tuple[str, ...]
 
 
@@ -100,14 +101,34 @@ def plan_department_work(
         return (-len(coverage), -total, team_key)
 
     selected_team, members = sorted(by_team.items(), key=team_score)[0]
-    members.sort(key=lambda value: (-value[0], value[1].key))
+    # Select the full capability team, not only the specialists whose tags
+    # directly matched. Team members with adjacent responsibilities can support
+    # the work; their lack of a direct tag match is visible in the plan.
+    team_roles = [
+        workforce.get(role_key)
+        for role_key in specialist_role_keys(item.department)
+        if workforce.get(role_key).team_key == selected_team
+    ]
+    team_roles.sort(key=lambda role: (
+        -sum(1 for capability in requested if capability in {
+            value.casefold() for value in role.capabilities
+        }),
+        role.key,
+    ))
     selected = tuple(
         SpecialistSelection(
             role_key=role.key, title=role.title, team_key=role.team_key,
-            matched_capabilities=matched,
+            matched_capabilities=tuple(
+                capability for capability in requested
+                if capability in {value.casefold() for value in role.capabilities}
+            ),
+            supporting_member=not any(
+                capability in {value.casefold() for value in role.capabilities}
+                for capability in requested
+            ),
             permitted_outputs=role.permitted_outputs,
         )
-        for _, role, matched in members[:max_specialists]
+        for role in team_roles[:max_specialists]
     )
     covered = set(manager_covered) | {
         capability for member in selected for capability in member.matched_capabilities
