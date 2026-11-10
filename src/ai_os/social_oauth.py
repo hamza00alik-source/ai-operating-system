@@ -24,6 +24,13 @@ from ai_os.credentials import save_business_integration, _fernet, CredentialVaul
 class OAuthError(RuntimeError):
     pass
 
+class _SameOriginRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if (old.scheme, old.hostname, old.port) != (new.scheme, new.hostname, new.port):
+            raise OAuthError("Cross-origin OAuth endpoint redirect blocked.")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
 # Meta is one OAuth app for Facebook Pages and linked Instagram professional
 # accounts. The owner chooses the business environment in the dashboard.
 PROVIDERS = {
@@ -176,7 +183,7 @@ def _request_json(url: str, data: dict | None = None, headers: dict | None = Non
         **(headers or {}),
     }, method="POST" if body is not None else "GET")
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.build_opener(_SameOriginRedirect()).open(request, timeout=20) as response:
             raw = response.read(256001)
             if len(raw) > 256000:
                 raise OAuthError("OAuth provider response exceeded the safe size limit.")
