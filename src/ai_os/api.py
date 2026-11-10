@@ -592,8 +592,10 @@ def post_task(payload: TaskCreate):
 
 
 @app.get("/tasks", response_model=list[TaskOut], dependencies=[Depends(require_api_key)])
-def get_tasks():
-    return list_tasks()
+def get_tasks(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_tasks(business_id)
 
 
 @app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
@@ -619,8 +621,10 @@ def retry_agent_run(run_id: str):
 
 
 @app.get("/agent-runs", dependencies=[Depends(require_api_key)])
-def get_agent_runs(task_id: str | None = None):
-    return list_runs(task_id)
+def get_agent_runs(task_id: str | None = None, business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_runs(task_id, business_id)
 
 
 @app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
@@ -676,8 +680,10 @@ def post_approval(payload: ApprovalCreate):
     response_model=list[ApprovalOut],
     dependencies=[Depends(require_api_key)],
 )
-def get_approvals():
-    return list_approvals()
+def get_approvals(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_approvals(business_id)
 
 
 @app.post(
