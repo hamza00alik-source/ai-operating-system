@@ -173,6 +173,22 @@ def _default_runtime() -> OpenCompanyRuntime:
     return create_runtime()
 
 
+@app.on_event("startup")
+def initialize_autonomous_runtime() -> None:
+    if (
+        os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true"
+        and os.environ.get("OPENCOMPANY_OWNER_API_KEY")
+    ):
+        _default_runtime()
+
+
+@app.on_event("shutdown")
+def close_autonomous_runtime() -> None:
+    if _default_runtime.cache_info().currsize:
+        _default_runtime().close()
+        _default_runtime.cache_clear()
+
+
 def get_runtime() -> OpenCompanyRuntime:
     if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
         raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
