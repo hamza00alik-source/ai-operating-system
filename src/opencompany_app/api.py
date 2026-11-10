@@ -281,6 +281,7 @@ def provider_runtime_status() -> dict:
 @app.get("/providers/candidates")
 def provider_candidates() -> dict:
     items = free_provider_candidates()
+    uno_configured = unorouter_configuration_status()["configured"]
     return {
         "gateway_enabled": False,
         "count": len(items),
@@ -291,7 +292,7 @@ def provider_candidates() -> dict:
                 "current_free_evidence": item.current_free_evidence,
                 "limits_or_conditions": list(item.limits_or_conditions),
                 "activation_gate": item.activation_gate,
-                "configured": False,
+                "configured": bool(uno_configured) if item.key == "unorouter-free-models" else False,
             }
             for item in items
         ],
