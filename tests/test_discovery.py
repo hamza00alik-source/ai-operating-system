@@ -124,3 +124,16 @@ def test_discovery_scan_stops_when_lease_is_lost(monkeypatch, tmp_path):
         discovery.run_scan(scan['id'], 'owner-a', already_claimed=True)
     with connect() as db:
         assert db.execute('SELECT COUNT(*) AS n FROM discovery_candidates').fetchone()['n'] == 0
+
+
+
+def test_expired_discovery_lease_cannot_be_renewed(monkeypatch, tmp_path):
+    from ai_os.discovery import claim_next_scan, renew_scan_lease
+    from ai_os.db import connect
+    monkeypatch.setenv('AI_OS_DATABASE_URL', f"sqlite:///{tmp_path / 'discovery-expired-renew.db'}")
+    initialize_database()
+    scan = create_scan(['agent-frameworks'])
+    claim_next_scan('worker-a')
+    with connect() as db:
+        db.execute("UPDATE discovery_scans SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE id=?", (scan['id'],))
+    assert renew_scan_lease(scan['id'], 'worker-a') is False
