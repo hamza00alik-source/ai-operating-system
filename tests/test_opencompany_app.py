@@ -1,9 +1,12 @@
 import pytest
+from datetime import datetime, timezone
 from fastapi.testclient import TestClient
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from opencompany_app.api import app, get_store, get_delegation_store
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.domain import AuditRecord, TaskState
+from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
 
 
@@ -306,7 +309,7 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
     item_id = created.json()["item_id"]
     assert created.json()["state"] == "draft"
 
-    for state in ("ready", "queued", "in_progress", "review", "completed"):
+    for state in ("ready", "queued", "in_progress", "review"):
         response = owner_client.post(
             f"/work-items/{item_id}/transition", headers=headers,
             json={"target_state": state},
@@ -314,13 +317,36 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
         assert response.status_code == 200
         assert response.json()["state"] == state
 
+    direct_completion = owner_client.post(
+        f"/work-items/{item_id}/transition", headers=headers,
+        json={"target_state": "completed"},
+    )
+    assert direct_completion.status_code == 409
+    store = app.dependency_overrides[get_store]()
+    deliverable = AgentDeliverable(
+        id=uuid4(), work_item_id=UUID(item_id), role_key="market_intelligence_analyst",
+        content="Review-ready draft", provider="fake", model="deterministic", cost_usd=0.0,
+    )
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+        actor_id="test-agent", action="worker.deliverable_saved", subject_type="work_item",
+        subject_id=item_id, outcome="recorded", correlation_id="api-review-test",
+    )
+    assert store.save_deliverable_with_audit(deliverable, event)
+    reviewed = owner_client.post(
+        f"/work-items/{item_id}/review", headers=headers,
+        json={"approved": True, "rationale": "The draft meets the acceptance criteria."},
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["state"] == "completed"
+
     listed = owner_client.get("/work-items", headers=headers)
     assert listed.status_code == 200
     assert listed.json()["items"][0]["state"] == "completed"
 
     audit = owner_client.get("/audit/verify", headers=headers)
     assert audit.status_code == 200
-    assert audit.json() == {"event_count": 6, "chain_valid": True}
+    assert audit.json() == {"event_count": 7, "chain_valid": True}
 
 
 def test_owner_can_preview_manager_specialist_team_without_assigning_work(owner_client):
