@@ -54,3 +54,16 @@ def test_role_with_no_safety_boundary_is_rejected():
     with pytest.raises(ValueError, match="prohibited actions"):
         RoleSpec("one", "Role", "Function", "Mission",
                  ("research",), ("brief",), ())
+
+
+def test_all_specialists_have_domain_specific_capability_profiles_and_playbooks():
+    roles = [role for role in default_workforce().all() if "__" in role.key]
+    assert len(roles) == 500
+    for role in roles:
+        profile = role.capabilities[1:5]
+        assert len(profile) >= 2
+        assert all("_" in capability for capability in profile)
+        assert all(capability not in {"specialist_execution", "evidence_synthesis", "quality_review"} for capability in profile)
+        assert all(capability.replace("_", " ") in " ".join(role.playbook.workflow_steps) for capability in profile[:2])
+    assert "competitor_benchmarking" in default_workforce().get("intelligence_research__competitor_intelligence_analyst").capabilities
+    assert "three_dimensional_asset_workflow" in default_workforce().get("media_creative_production__3d_character_sculpting_planner").capabilities
