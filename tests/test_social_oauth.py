@@ -32,7 +32,7 @@ def test_readiness_reports_missing_provider_app(oauth_env, monkeypatch):
 def test_begin_social_oauth_uses_official_authorization_and_scopes(oauth_env):
     url = social_oauth.begin("tiktok", "digital-products")
     assert url.startswith("https://www.tiktok.com/v2/auth/authorize/")
-    assert "client_key=client-key-tiktok" not in url
+    assert "client_key=client-id-tiktok" in url
     assert "user.info.basic" in url
     assert "digital-products" not in url
 
