@@ -652,10 +652,10 @@ def test_owner_can_start_and_stop_worker_fleet_explicitly(owner_client):
     status = owner_client.get("/workers/status", headers=headers)
     assert status.status_code == 200
     assert status.json()["running"] is False
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway()
     blocked = owner_client.post("/workers/start", headers=headers, json={})
     assert blocked.status_code == 503
-
-    runtime = app.dependency_overrides[get_runtime]()
 
     class ReadyFreeGateway:
         def eligible_providers(self, *, request_budget_usd=0.0):
@@ -1015,12 +1015,12 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
 
     # Without a confirmed free provider, the API must not admit work that
     # cannot execute. A deterministic test gateway then exercises the path.
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway()
     blocked = owner_client.post(
         f"/work-items/{child_task['id']}/enqueue", headers=headers,
     )
     assert blocked.status_code == 503
-
-    runtime = app.dependency_overrides[get_runtime]()
 
     class ReadyFreeGateway:
         def eligible_providers(self, *, request_budget_usd=0.0):
