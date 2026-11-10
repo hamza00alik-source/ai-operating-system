@@ -28,6 +28,8 @@ from opencompany_core.unorouter_adapter import unorouter_configuration_status
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
 from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_core.delegation_records import DelegationRepository
+from opencompany_core.worker_queue import QueueError
+from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
@@ -84,9 +86,14 @@ class WorkItemReviewInput(BaseModel):
 
 
 @lru_cache(maxsize=1)
-def _default_store() -> SQLiteStore:
-    database = os.environ.get("OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3")
-    return SQLiteStore(database)
+def _default_runtime() -> OpenCompanyRuntime:
+    return create_runtime()
+
+
+def get_runtime() -> OpenCompanyRuntime:
+    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
+        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
+    return _default_runtime()
 
 
 @lru_cache(maxsize=1)
@@ -104,7 +111,7 @@ def get_delegation_store() -> DelegationRepository:
 def get_store() -> SQLiteStore:
     if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
         raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
-    return _default_store()
+    return _default_runtime().store
 
 
 def require_owner_key(
@@ -462,6 +469,7 @@ def list_work_items(store: SQLiteStore = Depends(get_store)) -> dict:
             {
                 "id": str(item.id), "title": item.title, "objective": item.objective,
                 "department": item.department, "state": item.state.value,
+                "assigned_agent_id": str(item.assigned_agent_id) if item.assigned_agent_id else None,
                 "depends_on": [str(value) for value in item.depends_on],
                 "created_at": item.created_at.isoformat(),
             }
@@ -490,6 +498,73 @@ def create_work_item(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     store.save_work_item_with_audit(item, _record(item, "work_item.created"))
     return {"item_id": str(item.id), "state": item.state.value}
+
+
+@app.post("/work-items/{item_id}/enqueue", dependencies=[Depends(require_owner_key)])
+def enqueue_work_item(
+    item_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Owner explicitly admits an approved, assigned READY task to the durable queue."""
+    from datetime import datetime, timezone
+
+    item = runtime.store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state != TaskState.READY or item.assigned_agent_id is None:
+        raise HTTPException(status_code=409, detail="Only READY tasks with an explicit assignee can be queued.")
+    agent = runtime.store.get_agent(item.assigned_agent_id)
+    if agent is None or agent.state != AgentState.ACTIVE or agent.department != item.department:
+        raise HTTPException(status_code=409, detail="Assigned agent must be active in the task department.")
+    if not agent.role_key or not agent.team_key:
+        raise HTTPException(status_code=409, detail="Assigned agent must have a verified role and team.")
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner", action="work_item.queued",
+        subject_type="work_item", subject_id=str(item.id), outcome="recorded",
+        correlation_id=str(uuid4()),
+        details={"agent_id": str(agent.id), "role_key": agent.role_key, "team_key": agent.team_key},
+    )
+    try:
+        runtime.queue.enqueue_authorized(
+            item, agent.id, {"role_key": agent.role_key, "team_key": agent.team_key}, event
+        )
+    except (QueueError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "item_id": str(item.id), "agent_id": str(agent.id),
+        "state": TaskState.QUEUED.value, "queue_admitted": True,
+        "worker_started": False,
+    }
+
+
+@app.get("/workers/queue", dependencies=[Depends(require_owner_key)])
+def worker_queue_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    counts = runtime.queue.counts()
+    return {
+        "counts": counts,
+        "total": sum(counts.values()),
+        "worker_process_autostarted": False,
+        "execution_requires_explicit_worker_process": True,
+    }
+
+
+@app.post("/workers/{agent_id}/run-once", dependencies=[Depends(require_owner_key)])
+def run_agent_once(
+    agent_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Owner-trigger one bounded internal worker cycle for one active profile."""
+    agent = runtime.store.get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent profile not found.")
+    if agent.state != AgentState.ACTIVE or not agent.role_key:
+        raise HTTPException(status_code=409, detail="Agent must be explicitly ACTIVE with a role.")
+    try:
+        result = runtime.worker.run_once(agent.id, agent.role_key)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Worker cycle failed: {type(exc).__name__}") from exc
+    return {"agent_id": str(agent.id), "role_key": agent.role_key, "result": result}
 
 
 @app.post("/work-items/{item_id}/delegation-preview", dependencies=[Depends(require_owner_key)])
