@@ -56,7 +56,10 @@ def create_executive_plan(
         f"Departments: {json.dumps(department_context, separators=(',', ':'))}"
     )
     result = gateway.complete(
-        ModelRequest(prompt=prompt, request_id=str(uuid4()), max_output_tokens=2400),
+        ModelRequest(
+            prompt=prompt, request_id=str(uuid4()), max_output_tokens=2400,
+            work_item_id="executive-plan", role_key="chief_executive_orchestrator",
+        ),
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
