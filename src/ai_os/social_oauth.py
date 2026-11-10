@@ -207,8 +207,8 @@ def _request_json(url: str, data: dict | None = None, headers: dict | None = Non
     except (urllib.error.URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise OAuthError("Could not complete OAuth provider exchange (" + type(exc).__name__ + ").") from exc
 
-def verify_etsy_credential(secret: str, config: dict) -> dict:
-    """Verify an already linked Etsy shop using read-only OAuth-scoped requests."""
+def verify_etsy_credential(secret: str, config: dict, business_id: str | None = None) -> dict:
+    """Verify an Etsy shop; refresh an expired access token using its stored refresh grant."""
     try:
         credential = json.loads(secret)
     except (TypeError, json.JSONDecodeError) as exc:
@@ -220,7 +220,25 @@ def verify_etsy_credential(secret: str, config: dict) -> dict:
     if not access_token or not api_key or not shared_secret:
         raise OAuthError("Stored Etsy connection is incomplete; reconnect the shop.")
     if expires_at and int(time.time()) >= int(expires_at):
-        raise OAuthError("Etsy access token has expired. Reconnect the shop to authorize a fresh token.")
+        refresh_token = credential.get("refresh_token")
+        if not refresh_token:
+            raise OAuthError("Etsy access token expired and no refresh token is stored. Reconnect the shop.")
+        refreshed = _request_json(PROVIDERS["etsy"]["token"], {
+            "grant_type": "refresh_token", "client_id": api_key,
+            "refresh_token": refresh_token,
+        })
+        new_access = refreshed.get("access_token")
+        new_refresh = refreshed.get("refresh_token") or refresh_token
+        lifetime = refreshed.get("expires_in")
+        if not isinstance(new_access, str) or not new_access or not lifetime:
+            raise OAuthError("Etsy refresh grant returned an incomplete token response. Reconnect the shop.")
+        credential.update({"access_token": new_access, "refresh_token": new_refresh,
+                           "token_type": refreshed.get("token_type", "Bearer"),
+                           "expires_at": int(time.time()) + int(lifetime),
+                           "scope": refreshed.get("scope") or credential.get("scope")})
+        access_token = new_access
+        if business_id:
+            save_business_integration(business_id, "etsy", json.dumps(credential), config)
     headers = {"Authorization": "Bearer " + access_token, "x-api-key": api_key + ":" + shared_secret}
     identity = _request_json("https://api.etsy.com/v3/application/users/me", headers=headers)
     shop_id = identity.get("shop_id")
@@ -228,8 +246,9 @@ def verify_etsy_credential(secret: str, config: dict) -> dict:
         raise OAuthError("Etsy did not return an owner shop for this account.")
     shop = _request_json("https://api.etsy.com/v3/application/shops/" + str(int(shop_id)), headers=headers)
     return {"provider": "etsy", "connected": True, "account": shop.get("shop_name") or "Etsy shop",
-            "shop_id": shop_id, "capability": "read-only Etsy shop access",
-            "external_actions": "GET only; no listings, orders or shop settings changed"}
+            "shop_id": shop_id, "token_refreshed": bool(expires_at and int(time.time()) < int(credential.get("expires_at") or 0)),
+            "capability": "read-only Etsy shop access",
+            "external_actions": "OAuth refresh and GET only; no listings, orders or shop settings changed"}
 
 
 def complete(provider: str, state: str, code: str) -> dict:
