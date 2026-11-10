@@ -18,6 +18,7 @@ The businesses reuse the same provider-neutral model gateway, bounded execution 
 - Investor/partner contact records.
 - Approvals generated from tasks or business expense records.
 - Agent-run list queries are scoped through the owning task's business ID.
+- Workflow instances and all generated workflow tasks inherit one selected business scope.
 - Per-business integration credential vault for WooCommerce, Shopify, Meta, TikTok, PayPal, Stripe, marketplace and other supported provider labels. Secrets are encrypted at rest using the existing AIOS Fernet key; status APIs never return secret values. Only owner-authenticated endpoints can add, list status, or delete these credentials.
 
 ## Integration credential boundaries
@@ -42,6 +43,8 @@ The businesses reuse the same provider-neutral model gateway, bounded execution 
 - `GET /tasks?business_id=digital-products`
 - `GET /approvals?business_id=physical-agency`
 - `GET /agent-runs?business_id=physical-agency`
+- `GET /company/workflows/instances?business_id=physical-brand`
+- `POST /company/workflows/technology-evaluation/start?business_id=physical-agency`
 - `GET /business/summary?business_id=physical-agency`
 - `GET /business/customers?business_id=physical-brand`
 - `GET /business/revenue?business_id=physical-agency`
@@ -50,6 +53,6 @@ The businesses reuse the same provider-neutral model gateway, bounded execution 
 - `POST /business-integrations/physical-agency/woocommerce` (owner-authenticated; stores encrypted secret)
 
 ## Remaining isolation work
-This is an implemented foundation, not a claim of complete multi-tenant or regulatory-grade isolation. Before storing confidential client data or onboarding staff/users, add row-level authorization for individual users, business-scoped workflow instances and execution event/detail endpoints, scoped audit logs, backup/export boundaries, secret rotation/access audit, and tests for every route that can expose a record by identifier. Review all future tables and integrations for an explicit business owner. The owner console currently provides a single-owner business selector, not separate logins for each business.
+This is an implemented foundation, not a claim of complete multi-tenant or regulatory-grade isolation. Before storing confidential client data or onboarding staff/users, add row-level authorization for individual users, execution event/detail endpoint checks, scoped audit logs, backup/export boundaries, secret rotation/access audit, and tests for every route that can expose a record by identifier. Review all future tables and integrations for an explicit business owner. The owner console currently provides a single-owner business selector, not separate logins for each business.
 
 The shared worker is one on-demand process and the specialist catalogue is shared. This is not three independent always-on agents and does not train separate neural networks.
