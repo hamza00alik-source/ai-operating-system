@@ -68,6 +68,11 @@ def test_worker_saves_review_required_artifact_then_completes(tmp_path):
     artifact = next(iter(sink.items.values()))
     assert artifact.review_required is True
     assert queue.counts() == {"done": 1}
+    assert store.get_work_item(item.id).state == TaskState.REVIEW
+    saved = store.list_deliverables(item.id)
+    assert len(saved) == 1
+    assert saved[0]["content"] == "Draft for review"
+    assert saved[0]["review_required"] is True
     assert store.audit_event_count() == 1
     assert store.verify_audit_chain()
     queue.close()
