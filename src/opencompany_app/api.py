@@ -627,6 +627,7 @@ def get_github_evolution_settings(runtime: OpenCompanyRuntime = Depends(get_runt
         "repository": runtime.github_evolution.repository if runtime.github_evolution else os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY"),
         "base_branch": runtime.github_evolution.base_branch if runtime.github_evolution else os.environ.get("OPENCOMPANY_GITHUB_BASE_BRANCH", "clean-room-rebuild"),
         "token_present": runtime.secret_vault.status("github_evolution")["configured"],
+        "configuration_error": runtime.secret_vault_errors.get("github_evolution"),
         "token": None,
         "auto_merge": False,
         "auto_deploy": False,
