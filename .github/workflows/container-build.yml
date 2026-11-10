@@ -1,0 +1,23 @@
+name: OpenCompany container build
+
+on:
+  push:
+    branches:
+      - clean-room-rebuild
+      - "feat/**"
+  pull_request:
+    branches:
+      - main
+      - "feat/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Build production container without publishing
+        run: docker build --pull --tag opencompany-api:ci .

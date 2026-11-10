@@ -4,6 +4,19 @@ A modular, human-supervised foundation for running an AI-powered company.
 
 > Early development: this is a supervised operating-system foundation, not a fully autonomous company. The GitHub discovery worker is implemented as an initial capability; general-purpose AI agent execution, ecommerce, and social integrations are not yet production-connected.
 
+## Independent OpenCompany rebuild status
+
+The `clean-room-rebuild` branch and draft PR #105 contain a separate, independently authored OpenCompany core. It is not merged or deployed. The current `main` application, Docker entrypoint, Vercel routing, and Railway service still select the legacy `ai_os` application. See [the repository comparison audit](docs/REPOSITORY_COMPARISON_AUDIT_2026-11-10.md) for the capability comparison and release blockers.
+
+The clean-room branch currently has ten original departments, 500 specialist role contracts (50 per department across 100 capability teams), ten department-manager roles, and one owner-subordinate executive orchestrator: 511 role contracts in total. These are role definitions and draft profiles, not 511 continuously running agents. The expanded second specialist wave is registered and provisionable; deep per-role playbooks and evaluation rubrics, manager-led execution, persistent assignments, queue wiring, live model execution, durable artifacts, and always-on operation remain under development.
+
+
+## UnoRouter company inference provider
+
+UnoRouter is a first-class provider in the independent OpenCompany runtime, not a read-only catalogue or personal-test-only integration. The new core includes an OpenAI-compatible chat adapter and a gateway factory usable by AgentExecutor. Owner configuration requires a private `OPENCOMPANY_UNOROUTER_API_KEY`, an exact `OPENCOMPANY_UNOROUTER_FREE_MODEL` ending in `:free`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true`. The provider status endpoint reports configuration without exposing credentials. Paid model IDs and paid fallback are excluded; non-zero provider-reported cost is rejected. See [the UnoRouter adapter guide](docs/UNOROUTER_FREE_ADAPTER.md).
+
+This implementation does not import or reuse the legacy AIOS provider code. The new runtime still requires deployment configuration and an owner-authorized live inference test before real provider execution can be claimed as verified.
+
 ## Principles
 - Human approval before external or consequential actions.
 - No spending, publishing, customer commitments, or production changes without explicit approval.
@@ -75,7 +88,7 @@ Secrets are not stored in SQLite, returned by status endpoints, or meant to be p
 
 The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner or MCP execution runtime.
 
-## Agency workforce catalog and owner console
+## Legacy Agency-Agent catalogue (quarantined from the independent rebuild)
 
 The Owner Console includes a catalog of 283 specialist definitions across 18 departments from the MIT-licensed \`hamza00alik-source/agency-agents\` repository, plus a 12-repository source inventory including the separate Automaton runtime reference and ten company/platform comparison repositories. These are source catalogs and architecture references, not 283 running processes. Each specialist prompt is inspectable from its source link. The current general-purpose agent execution runtime is still under development.
 
@@ -96,7 +109,7 @@ The first route is hard-pinned to OpenRouter's `openrouter/free` free-model rout
 
 ## Bounded AI task execution
 
-The Owner Console can queue a task for the in-service agent worker. The worker selects a specialist definition from the 283-role Agency Agents catalogue, retrieves that role's Markdown instructions from the public source repository as untrusted prompt context, asks the configured free-confirmed OpenRouter model for a deliverable, then performs a separate CEO-style quality review call. Results and token/latency metadata are persisted in SQLite and shown in the task panel.
+The Owner Console can queue a task for the in-service agent worker. The worker selects a specialist definition from the 283-role Agency Agents catalogue, retrieves that role's Markdown instructions from the public source repository as untrusted prompt context, asks the configured eligible free-confirmed model provider for a deliverable, then performs a separate CEO-style quality review call. Results and token/latency metadata are persisted in SQLite and shown in the task panel.
 
 This is deliberately a bounded first execution runtime. It performs text-only research, planning and drafting. It has no shell, filesystem, browser, MCP, email, payment, store, publishing or customer-contact tools. It cannot perform external side effects. Free-model availability and rate limits are controlled by the provider; if the configured free model is unavailable, the run fails and reports the error rather than using a paid fallback. Do not classify the catalogue as 283 concurrently running agents: one selected specialist plus one CEO review are invoked per task run.
 
@@ -108,51 +121,47 @@ The AI Brain is a provider-independent subsystem stored in the same persistent S
 This first version uses local lexical retrieval and SQLite; it requires no embedding service, extra model call, or separate training job. It does not train a new neural network, create a foundation model, or eliminate inference compute. It reduces repeated context-building by retaining approved company knowledge, while advanced reasoning still uses the configured model gateway. The owner must review proposed lessons before they can influence future agents. Only successful completed runs are recorded as experiences; failed runs are not treated as lessons.
 
 
-## UnoRouter as the pre-launch default provider
-
-UnoRouter is the default provider for the personally owned, pre-launch AIOS development and internal testing environment. The owner configures the UnoRouter API key and selects a model ID ending in `:free`, then explicitly confirms that the selected route is currently free. Agent specialist, collaboration, and CEO-review stages try UnoRouter first. If unavailable, the gateway may try another provider only when it is configured and owner-confirmed as free.
-
-AIOS never upgrades billing, selects a paid model, or uses paid fallback. The UnoRouter credential is encrypted in the existing provider vault and never returned by status endpoints. The owner can change the preferred provider without rebuilding the agent runtime.
-
-The public UnoRouter catalog is informational: it does not prove account-specific access or provider-level prompt retention, training, consent, or processing location. Use synthetic, non-sensitive prompts while testing free models. Do not send customer data, secrets, credentials, or confidential material to free-model routes. The user remains responsible for following current provider and model terms.
-
-- `GET /llm/unorouter/catalog` — authenticated, read-only public catalog lookup.
-- `POST /llm/credentials/unorouter` — owner-authenticated encrypted credential storage; only `:free` model IDs are accepted.
-- `POST /llm/unorouter/personal-test` — owner-triggered direct connection test.
-- `POST /llm/run` and agent runtime — UnoRouter-first, free-confirmed routing.
-- Paid fallback is disabled; every fallback provider must also be explicitly confirmed free.
-
 ## Free-provider failover
 
-Agent task stages now use a free-only provider router. UnoRouter is attempted first by default; if it hits a rate limit/quota response, an authentication/model availability error, or a connection/upstream failure, AIOS tries the next provider that is both configured and explicitly owner-confirmed as free. The route never upgrades billing, selects a paid model, or falls back to an unconfirmed endpoint. A malformed task request or a model's empty/placeholder response is not blindly retried. Provider attempts and the provider used for each agent stage are recorded in the run usage metadata and execution timeline.
+Company task stages may use only providers that are configured and explicitly owner-confirmed as free. The gateway never upgrades billing, selects a paid model, or falls back to an unconfirmed endpoint. If every eligible provider is unavailable or out of quota, the task fails safely and waits for owner action or quota reset. Provider attempts and the provider used for each stage are recorded in run metadata.
 
-The owner console can store encrypted credentials for UnoRouter, Google Gemini, Groq, and Mistral in the existing SQLite credential vault. Select a model ID that is currently free on your own provider account and confirm the free-only condition before saving. The API key is encrypted at rest and never returned. The owner must obtain each provider's key and confirm its current free-tier terms; free quotas are limited and may change. OpenRouter remains available as an optional free-confirmed alternative. Cloudflare Workers AI and custom OpenAI-compatible endpoints remain configurable through private server environment variables, with the same explicit free-confirmation gate.
+**UnoRouter is a first-class optional company inference provider in the independent OpenCompany runtime.** The adapter requires a server-side API key, an exact free model ID ending in `:free`, and explicit owner confirmation. It has no paid-model selection or paid fallback and rejects non-zero provider-reported cost. The live credential and real inference remain unverified; review the provider's current terms, billing state, privacy and data handling before sending confidential or customer data. Use synthetic, non-sensitive input for the first owner-authorized live test.
 
-**Important:** failover is only as resilient as the providers actually connected. If every configured free quota is exhausted or every provider is unavailable, the task fails safely and waits for owner action or quota reset. No paid fallback is attempted.
-
-
-## UnoRouter personal testing (isolated)
-
-AIOS can store an UnoRouter consumer API key encrypted in the existing credential vault and run a manually initiated owner-only test from the Owner Console. This path is intentionally separate from `generate`, task execution, provider failover, and company workloads. UnoRouter remains marked ineligible for company routing. Only model IDs ending in `:free` and explicitly owner-confirmed as free are accepted by the personal test path. Use synthetic, non-sensitive prompts only; provider and model data handling can differ. The public catalog is informational and does not prove account-specific access. Current UnoRouter Terms state that business accounts are not offered; this personal test connector is not a business integration or production authorization. See the [UnoRouter Terms](https://unorouter.com/en/terms) and [Platform API documentation](https://unorouter.com/en/docs/platform/platform-api).
+- New OpenCompany configuration: `OPENCOMPANY_UNOROUTER_API_KEY`, `OPENCOMPANY_UNOROUTER_FREE_MODEL`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true`.
+- `AgentExecutor` resolves the configured UnoRouter gateway when no explicit gateway is injected.
+- The legacy `/llm/unorouter/catalog` and `/llm/unorouter/personal-test` routes belong to the old application and are not the integration path for the independent rebuild.
+- The new API/worker composition and manager-led multi-agent execution are still incomplete; enabling the adapter alone does not make the company runtime fully operational.
 
 
-### UnoRouter model catalogue and owner approval
-
-AIOS reads UnoRouter's public pricing catalogue and, when a key is saved, the account-specific \`GET /v1/models\` list. The dashboard displays both free and paid models with current input/output prices where available. Model IDs are preserved exactly as returned by UnoRouter; AIOS never appends or invents a \`:free\` suffix.
-
-Only exact model IDs ending in \`:free\` can be eligible for automatic free-only agent routing, and they must be owner-confirmed as free. Paid model credentials may be saved for evaluation but remain ineligible for background agents and automatic fallback. A paid direct test requires an explicit per-request owner approval; the API rejects paid test requests without that approval. Catalogue reads are read-only and do not send prompts or run inference. No paid fallback, automatic top-up, or background paid request is enabled.
 
 
-## UnoRouter free-model intelligence and task routing
+## Runtime and owner-controlled execution
 
-The owner saves one encrypted UnoRouter API key and confirms one free-only connection; individual models do not need to be saved one by one. Before an UnoRouter text task is sent, AIOS reads the authenticated account model list and matches it with public endpoint metadata. A five-minute in-memory cache avoids repeating catalogue discovery for every specialist/CEO stage.
+The independent OpenCompany API and worker now compose around one SQLite connection and transaction boundary. The API does not start workers at import or process startup.
 
-The task router classifies a prompt as coding, reasoning, research, creative, or general using local keyword rules, then ranks only account-callable model IDs that:
-- end in the exact `:free` suffix returned by UnoRouter;
-- are reported callable by the authenticated account model list;
-- are identified as supporting chat completions (image/audio/embedding-only models are excluded); and
-- are not explicitly marked offline.
+- Run the API container with `python main.py`; its ASGI target is `opencompany_app.api:app`.
+- The owner dashboard exchanges the owner bootstrap key for a revocable 12-hour HttpOnly session. Write requests require a CSRF token held in page memory. Sessions are stored as token hashes and can be revoked at logout.
+- The owner must explicitly activate agent profiles, approve manager delegation proposals, and admit each READY assigned task to the durable worker queue.
+- Queue admission verifies the active assignee, department, approved delegation state, and completed prerequisites; it atomically changes READY to QUEUED and appends audit evidence.
+- Worker claims use the same SQLite connection, atomically change QUEUED to IN_PROGRESS, and append audit evidence. Specialist execution writes review-required deliverables; the owner dashboard is the review gate.
+- The owner can explicitly start or stop the in-process worker fleet from the dashboard. The fleet processes only queued work assigned to ACTIVE profiles. It has no publishing, customer messaging, purchasing, or financial-action tools.
+- The worker fleet is in-process by design for a single persistent Railway container and a single mounted SQLite volume. Do not run a separate worker service against the same SQLite file on another host or volume.
+- Set `OPENCOMPANY_DATABASE_PATH=/data/opencompany_core.sqlite3` and mount a persistent Railway volume at `/data`. Keep secrets in the host's secret-variable manager; never paste tokens into source files or logs.
+- Set `OPENCOMPANY_COOKIE_SECURE=true` behind HTTPS. Set `OPENCOMPANY_WORKER_AUTOSTART=true` to keep the worker fleet running while the owner is offline; workers still process only explicitly owner-admitted queue entries. The owner bootstrap key is `OPENCOMPANY_OWNER_API_KEY`; Railway staging can reference the existing owner's `AI_OS_API_KEY` without revealing or changing its value.
+- The UnoRouter provider requires `OPENCOMPANY_UNOROUTER_API_KEY`, `OPENCOMPANY_UNOROUTER_FREE_MODEL` ending in `:free`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true`. No paid fallback is enabled.
+- API Anything read-only research requires `OPENCOMPANY_API_ANYTHING_BASE_URL` and `OPENCOMPANY_API_ANYTHING_TOKEN`. The staged Railway configuration references the existing private `api-anything` service token; all calls are capped at tier 1 and no write endpoint is implemented. The specialist research broker can discover public sites, inspect operation schemas, choose only confirmed `readOnly=true` / `minTier=1` operations, reject credential/PII-like arguments, and attach bounded source results to specialist prompts as untrusted evidence.
+- AI code evolution requires `OPENCOMPANY_GITHUB_TOKEN` and `OPENCOMPANY_GITHUB_REPOSITORY=hamza00alik-source/ai-operating-system`; `OPENCOMPANY_GITHUB_BASE_BRANCH=clean-room-rebuild` selects the rebuild branch. The token needs repository contents-write and pull-request-write permissions, but the runtime only creates isolated draft PRs and never merges.
+- `worker_main.py` is available as a foreground worker entrypoint for controlled single-host use, but the API dashboard's in-process fleet is the intended single-container deployment mode.
 
-The selected model ID is used for that request and recorded in run metadata. The saved model remains a fallback preference in ranking, not a requirement to manually configure every model. If no eligible free chat model can be verified, the UnoRouter route fails closed and the normal free-confirmed provider failover may continue. Paid models are never candidates for automatic task routing.
+The current `vercel.json` still points at the legacy Railway service. Do not promote this branch or change production routing until the new Railway service has been deployed and verified with a persistent volume, owner session, worker queue, provider test, backup/restore and rollback rehearsal. No production migration or replacement is implied by a passing unit-test run.
 
-This is a metadata/name heuristic, not a benchmark or a guarantee that a model is best. It does not run background benchmark prompts or make extra inference calls. Provider rate limits, availability, and actual billing behavior remain controlled by UnoRouter. Only owner-authorized task execution sends the task prompt; catalogue discovery itself is read-only.
+
+## CEO planning, manager delegation, collaboration and learning
+
+- An explicitly ACTIVE Chief Executive Orchestrator can decompose an owner objective into up to ten draft department tasks. The plan is validated for known departments and backward-only dependencies, then all draft tasks and audit events are persisted atomically.
+- An explicitly ACTIVE department manager can use the configured free model to select exact capability identifiers from the 500-specialist catalogue. The result is validated against the catalogue and saved as a delegation proposal. Owner approval is still required before child tasks are created.
+- Each of the 500 specialist roles now has an individual operating procedure generated from its unique role title, mission and capability contract: intake requirements, task steps, deliverable contract, quality rubric, escalation triggers and tool scopes. The procedure is injected into the role's execution prompt.
+- Agent handoffs are persisted with sender/recipient identity checks, artifact provenance, state transitions and hash-linked audit events.
+- Owner review automatically records an outcome evaluation against the reviewed deliverable. The free model can turn selected evaluations into a proposed role-learning note; an owner must approve it and explicitly apply it before the note is injected into future prompts.
+- AI code evolution can generate complete file replacements for up to three allowlisted source/test/documentation files and open a DRAFT pull request on a new feature branch. The branch is tested by GitHub Actions. It cannot modify secrets, deployment workflows or production configuration, and it cannot merge or deploy.
+- Code evolution requires server-side `OPENCOMPANY_GITHUB_TOKEN` and `OPENCOMPANY_GITHUB_REPOSITORY`. The token is never returned by the API. The initial PR is draft and owner review is mandatory.
