@@ -125,6 +125,7 @@ def readiness() -> list[dict]:
     for provider, spec in PROVIDERS.items():
         try:
             _config(provider)
+            _fernet()
             ready, reason = True, ""
         except OAuthError as exc:
             ready, reason = False, str(exc)
