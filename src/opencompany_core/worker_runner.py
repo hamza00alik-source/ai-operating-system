@@ -90,14 +90,19 @@ class OpenCompanyWorker:
             return "completed_review_required"
         except Exception as exc:
             # Do not leak exception text into persistent queue metadata.
+            queue_state = None
             try:
-                self.queue.fail(lease, type(exc).__name__[:120])
+                queue_state = self.queue.fail(lease, type(exc).__name__[:120])
             except QueueError:
                 pass
-            self.store.append_audit_record(self._audit(
+            failure_event = self._audit(
                 lease, "worker.execution_failed",
-                {"role_key": role_key, "error_type": type(exc).__name__},
-            ))
+                {"role_key": role_key, "error_type": type(exc).__name__, "queue_state": queue_state},
+            )
+            if queue_state == "dead":
+                self.store.fail_work_item_with_audit(lease.work_item_id, failure_event)
+            else:
+                self.store.append_audit_record(failure_event)
             raise
 
     def _execute_lease(self, lease: WorkerLease, role_key: str) -> AgentDeliverable:
