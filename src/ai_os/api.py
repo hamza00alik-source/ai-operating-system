@@ -262,7 +262,7 @@ def complete_social_oauth(provider: str, code: str = Query(default="", max_lengt
     try:
         result = social_oauth.complete(provider, state, code)
         return HTMLResponse("<h2>Account connected successfully</h2><p>" +
-            result["provider"] + " · " + result["account"] +
+            escape(result["provider"]) + " · " + escape(result["account"]) +
             "</p><p>Return to the AIOS owner dashboard and refresh the account list.</p>")
     except (ValueError, social_oauth.OAuthError, CredentialVaultUnavailable) as exc:
         return HTMLResponse("<h2>Account connection failed</h2><p>" +
