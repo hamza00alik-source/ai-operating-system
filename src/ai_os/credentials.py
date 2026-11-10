@@ -164,3 +164,68 @@ def credential_status() -> dict:
         "model": row["model"] if row else None,
         "free_confirmed": bool(row["free_confirmed"]) if row else False,
     }
+
+
+BUSINESS_INTEGRATION_PROVIDERS = {"woocommerce", "shopify", "meta", "tiktok", "paypal", "stripe", "marketplace", "other"}
+
+
+def save_business_integration(business_id: str, provider: str, secret: str, config: dict | None = None) -> dict:
+    """Store one business integration secret encrypted and never return its value."""
+    from datetime import datetime, timezone
+    from ai_os.brain import BUSINESS_IDS
+    scope = (business_id or "").strip()
+    provider_id = (provider or "").strip().lower()
+    if scope not in BUSINESS_IDS or scope == "core":
+        raise ValueError("Choose one of the three business environments.")
+    if provider_id not in BUSINESS_INTEGRATION_PROVIDERS:
+        raise ValueError("Unsupported business integration provider.")
+    if not isinstance(secret, str) or len(secret) < 8 or len(secret) > 4096:
+        raise ValueError("Integration secret must contain between 8 and 4096 characters.")
+    if config is None:
+        config = {}
+    if not isinstance(config, dict):
+        raise ValueError("Integration configuration must be an object.")
+    import json
+    config_json = json.dumps(config, ensure_ascii=False)[:8000]
+    now = datetime.now(timezone.utc).isoformat()
+    encrypted = _fernet().encrypt(secret.encode("utf-8")).decode("ascii")
+    with connect() as db:
+        db.execute("""INSERT INTO business_integration_credentials
+            (business_id,provider,encrypted_secret,config_json,created_at,updated_at)
+            VALUES(?,?,?,?,?,?)
+            ON CONFLICT(business_id,provider) DO UPDATE SET
+            encrypted_secret=excluded.encrypted_secret,config_json=excluded.config_json,updated_at=excluded.updated_at""",
+            (scope, provider_id, encrypted, config_json, now, now))
+    return {"business_id": scope, "provider": provider_id, "configured": True, "secret_returned": False, "updated_at": now}
+
+
+def business_integration_statuses(business_id: str) -> list[dict]:
+    from ai_os.brain import BUSINESS_IDS
+    scope = (business_id or "").strip()
+    if scope not in BUSINESS_IDS or scope == "core":
+        raise ValueError("Choose one of the three business environments.")
+    with connect() as db:
+        rows = db.execute("""SELECT provider,created_at,updated_at FROM business_integration_credentials
+            WHERE business_id=? ORDER BY provider""", (scope,)).fetchall()
+    return [{"business_id": scope, "provider": row["provider"], "configured": True,
+             "created_at": row["created_at"], "updated_at": row["updated_at"]} for row in rows]
+
+
+def get_business_integration_credential(business_id: str, provider: str) -> dict | None:
+    """Internal-only decryptor for future provider adapters; never expose through an API."""
+    from ai_os.brain import BUSINESS_IDS
+    scope = (business_id or "").strip()
+    provider_id = (provider or "").strip().lower()
+    if scope not in BUSINESS_IDS or scope == "core" or provider_id not in BUSINESS_INTEGRATION_PROVIDERS:
+        raise ValueError("Unknown business integration scope or provider.")
+    with connect() as db:
+        row = db.execute("""SELECT encrypted_secret,config_json FROM business_integration_credentials
+            WHERE business_id=? AND provider=?""", (scope, provider_id)).fetchone()
+    if row is None:
+        return None
+    try:
+        secret = _fernet().decrypt(row["encrypted_secret"].encode("ascii")).decode("utf-8")
+    except InvalidToken as exc:
+        raise CredentialVaultUnavailable("Business integration credential cannot be decrypted.") from exc
+    import json
+    return {"business_id": scope, "provider": provider_id, "secret": secret, "config": json.loads(row["config_json"])}
