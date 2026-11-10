@@ -30,6 +30,25 @@ TEMPLATES = {
             ("operations", "Deliver adoption recommendation", "Summarize evidence, risks, owner decisions and a reversible next step. Do not enable integrations.")
         ]
     }
+    ,
+    "company-wide-operating-cycle": {
+        "name": "Company-wide cross-department operating cycle",
+        "description": "A supervised end-to-end cycle for one objective in exactly one business environment. Business records and customer data must never be mixed.",
+        "steps": [
+            ("executive", "Set objective, scope and owner decision gates", "Define the objective, selected business environment, measurable outcome, exclusions, risks and owner approval gates. Keep the physical-products agency, own physical-products brand and digital-products business separate."),
+            ("research", "Validate the opportunity with evidence", "Collect dated, attributable evidence about customers, demand, competitors, market conditions and risks. Separate verified facts, estimates and hypotheses; cite primary sources and mark unknowns."),
+            ("product", "Specify the offer and acceptance criteria", "Define the proposed offer, target buyer, value proposition, deliverables, exclusions, acceptance criteria and assumptions. Do not promise availability or delivery."),
+            ("design", "Prepare creative and production specifications", "Produce a detailed creative brief, visual direction, required assets, file formats and quality criteria. Distinguish a brief from assets actually created."),
+            ("engineering", "Assess technical delivery and integrations", "Define implementation tasks, dependencies, architecture, security, data handling and integration requirements. Prefer free/read-only options; do not connect accounts or deploy."),
+            ("legal-compliance", "Review licensing, platform and policy risks", "Identify applicable platform terms, intellectual-property/licensing concerns, privacy and advertising-claim risks. Cite authoritative sources and flag matters needing qualified legal review."),
+            ("quality-assurance", "Verify deliverables and release readiness", "Create and execute only available safe tests; record test evidence, defects, compatibility, acceptance status and release blockers. Never mark untested work as passed."),
+            ("marketing", "Prepare audience and campaign materials", "Develop positioning, channel strategy, content calendar, SEO/marketplace keywords and draft creative copy. Draft only; no publishing, paid promotion or customer outreach."),
+            ("sales-marketplace", "Prepare inbound sales and listing operations", "Prepare listing drafts, pricing hypotheses, marketplace requirements, enquiry qualification and order handoff procedures. Do not publish, accept orders or make customer commitments."),
+            ("customer-support", "Prepare support and feedback handling", "Create support categories, draft response templates, escalation rules, refund/complaint triage and feedback capture. Do not send messages or promise refunds."),
+            ("finance", "Validate costs, pricing and financial controls", "Record only evidenced costs and verified revenue inputs, estimate unit economics with assumptions visible, identify free-tier limits and flag any spend. No purchases, payments or financial commitments."),
+            ("people-workforce", "Review departmental performance and workload", "Review outputs, missing evidence, workload and capability gaps. Propose role, workflow or training improvements for owner review; do not change permissions autonomously.")
+        ]
+    }
 }
 
 def initialize_workflows() -> None:
@@ -43,7 +62,7 @@ def initialize_workflows() -> None:
         CREATE TABLE IF NOT EXISTS workflow_steps (
             id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, task_id TEXT NOT NULL,
             sequence_no INTEGER NOT NULL, department TEXT NOT NULL, title TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'blocked', created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'blocked', output TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
             UNIQUE(workflow_id, sequence_no), UNIQUE(task_id),
             FOREIGN KEY(workflow_id) REFERENCES workflow_instances(id),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
@@ -54,6 +73,9 @@ def initialize_workflows() -> None:
         if "business_id" not in columns:
             db.execute("ALTER TABLE workflow_instances ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'")
         db.execute("CREATE INDEX IF NOT EXISTS idx_workflow_instances_scope ON workflow_instances(business_id, created_at)")
+        step_columns = {row["name"] for row in db.execute("PRAGMA table_info(workflow_steps)")}
+        if "output" not in step_columns:
+            db.execute("ALTER TABLE workflow_steps ADD COLUMN output TEXT NOT NULL DEFAULT ''")
 
 def list_templates() -> dict:
     return {"templates": [{"id": key, "name": value["name"], "description": value["description"],
@@ -106,7 +128,7 @@ def task_is_runnable(task_id: str) -> bool:
             return True
         return step["status"] == "queued"
 
-def finish_workflow_task(task_id: str, success: bool) -> None:
+def finish_workflow_task(task_id: str, success: bool, output: str = "") -> None:
     initialize_workflows()
     now = datetime.now(timezone.utc).isoformat()
     with connect() as db:
@@ -117,12 +139,12 @@ def finish_workflow_task(task_id: str, success: bool) -> None:
             db.execute("UPDATE workflow_steps SET status='failed' WHERE task_id=?", (task_id,))
             db.execute("UPDATE workflow_instances SET status='blocked' WHERE id=?", (step["workflow_id"],))
             return
-        db.execute("UPDATE workflow_steps SET status='completed' WHERE task_id=?", (task_id,))
+        db.execute("UPDATE workflow_steps SET status='completed', output=? WHERE task_id=?", (output[:12000], task_id))
         following = db.execute("""SELECT * FROM workflow_steps WHERE workflow_id=? AND sequence_no=?
             AND status='blocked'""", (step["workflow_id"], step["sequence_no"] + 1)).fetchone()
         if following:
             db.execute("UPDATE workflow_steps SET status='queued' WHERE id=?", (following["id"],))
-            db.execute("UPDATE tasks SET status='queued' WHERE id=?", (following["task_id"],))
+            db.execute("UPDATE tasks SET status='queued', description=description || ? WHERE id=?", ("\n\nPREVIOUS DEPARTMENT HANDOFF (same business/workflow; verify claims):\n" + output[:12000], following["task_id"]))
         else:
             db.execute("UPDATE workflow_instances SET status='completed' WHERE id=?", (step["workflow_id"],))
 
