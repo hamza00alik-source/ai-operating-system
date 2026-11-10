@@ -126,6 +126,56 @@ class SQLiteStore:
                  _json(list(agent.capabilities)), agent.state.value, agent.revision),
             )
 
+    def list_agents(self, *, department: str | None = None, limit: int = 100) -> tuple[AgentProfile, ...]:
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        with self._lock:
+            if department is None:
+                rows = self._connection.execute(
+                    "SELECT id FROM agent_profiles ORDER BY department,name,id LIMIT ?", (limit,)
+                ).fetchall()
+            else:
+                rows = self._connection.execute(
+                    "SELECT id FROM agent_profiles WHERE department=? ORDER BY name,id LIMIT ?",
+                    (department, limit),
+                ).fetchall()
+        return tuple(self.get_agent(UUID(row["id"])) for row in rows)
+
+    def save_agent_with_audit(self, agent: AgentProfile, record: AuditRecord) -> str:
+        """Persist an agent profile and its audit evidence atomically."""
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._connection.execute(
+                    """INSERT INTO agent_profiles
+                       (id,name,department,purpose,capabilities_json,state,revision)
+                       VALUES(?,?,?,?,?,?,?)
+                       ON CONFLICT(id) DO UPDATE SET
+                         name=excluded.name, department=excluded.department,
+                         purpose=excluded.purpose, capabilities_json=excluded.capabilities_json,
+                         state=excluded.state, revision=excluded.revision""",
+                    (str(agent.id), agent.name, agent.department, agent.purpose,
+                     _json(list(agent.capabilities)), agent.state.value, agent.revision),
+                )
+                row = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    """INSERT INTO audit_events
+                       (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                       VALUES(?,?,?,?,?)""",
+                    (str(record.id), record.occurred_at.isoformat(), _json(payload),
+                     previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return event_hash
+            except Exception:
+                self._connection.execute("ROLLBACK")
+                raise
+
     def get_agent(self, agent_id: UUID) -> AgentProfile | None:
         with self._lock:
             row = self._connection.execute(
