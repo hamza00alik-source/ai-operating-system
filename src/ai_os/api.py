@@ -4,9 +4,11 @@ import logging
 import threading
 import unicodedata
 import json
+import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
+from fastapi.responses import HTMLResponse
 from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import (require_api_key, require_owner_key, create_owner_session, revoke_owner_session, SESSION_COOKIE, SESSION_TTL_DAYS)
@@ -19,14 +21,16 @@ from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
-from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
-from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration
-from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
+from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, worker_pool, run_pending_once as run_agent_pending_once
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
+from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory, run_learning_cycle
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
-from ai_os.executive_supervisor import executive_status, supervise_once
+from ai_os.executive_supervisor import executive_status, supervise_once, executive_supervisor_loop
+from ai_os.inbox_supervisor import process_inbox_once
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
+from ai_os import platform_integrations, social_oauth, marketplace_integrations, code_evolution
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -55,18 +59,77 @@ _discovery_stop = threading.Event()
 _discovery_thread: threading.Thread | None = None
 _agent_stop = threading.Event()
 _agent_thread: threading.Thread | None = None
+_learning_thread: threading.Thread | None = None
+_inbox_thread: threading.Thread | None = None
+_executive_thread: threading.Thread | None = None
+
+
+def _has_eligible_model() -> bool:
+    try:
+        return any(item.get("eligible") for item in list_providers())
+    except Exception:
+        logger.exception("Could not check free model-provider readiness.")
+        return False
 
 
 def _agent_worker_loop() -> None:
-    logger.info("Bounded agent execution worker started.")
+    """Run bounded queue consumers in the same single-replica API service."""
+    poll_seconds = max(1, min(int(__import__("os").getenv("AI_OS_WORKER_POLL_SECONDS", "3")), 30))
+    concurrency = max(1, min(int(__import__("os").getenv("AI_OS_WORKER_CONCURRENCY", "2")), 4))
+    while not _agent_stop.is_set():
+        if not _has_eligible_model():
+            logger.warning("Agent queue is idle: no owner-confirmed eligible free model provider is configured.")
+            _agent_stop.wait(30)
+            continue
+        try:
+            recovered = recover_interrupted_runs()
+            if recovered:
+                logger.warning("Recovered %s interrupted run(s); they require owner retry.", recovered)
+            worker_pool(_agent_stop, poll_seconds=poll_seconds, concurrency=concurrency)
+        except Exception:
+            logger.exception("Agent worker pool recovered from a process-level error.")
+            _agent_stop.wait(5)
+
+
+def _brain_learning_loop() -> None:
+    """Run business-isolated deterministic learning cycles every six hours."""
+    next_cycle = 0.0
     while not _agent_stop.is_set():
         try:
-            if not run_agent_pending_once():
-                _agent_stop.wait(3)
+            if time.monotonic() >= next_cycle:
+                for business_id in sorted(BUSINESS_IDS):
+                    if _agent_stop.is_set():
+                        break
+                    try:
+                        result = run_learning_cycle(business_id)
+                        if not result.get("already_ran"):
+                            logger.info("Autonomous brain cycle completed for %s: %s proposals",
+                                        business_id, result.get("proposals_created", 0))
+                    except Exception:
+                        logger.exception("Autonomous brain cycle failed for %s", business_id)
+                next_cycle = time.monotonic() + 21600
+            _agent_stop.wait(30)
         except Exception:
-            logger.exception("Agent worker recovered from an error.")
-            _agent_stop.wait(3)
-    logger.info("Bounded agent execution worker stopped.")
+            logger.exception("Brain learning scheduler recovered from an error.")
+            _agent_stop.wait(30)
+
+
+def _inbox_worker_loop() -> None:
+    """Interpret internal department messages only when a free model is available."""
+    while not _agent_stop.is_set():
+        try:
+            if not _has_eligible_model():
+                _agent_stop.wait(30)
+                continue
+            result = process_inbox_once()
+            if result.get("processed"):
+                logger.info("Department inbox supervisor processed %s message(s), queued %s internal task(s).",
+                            result.get("processed"), result.get("tasks_created"))
+            else:
+                _agent_stop.wait(5)
+        except Exception:
+            logger.exception("Department inbox supervisor recovered from an error.")
+            _agent_stop.wait(10)
 
 
 def _discovery_worker_loop() -> None:
@@ -84,7 +147,7 @@ def _discovery_worker_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global _discovery_thread, _agent_thread
+    global _discovery_thread, _agent_thread, _learning_thread, _inbox_thread, _executive_thread
     settings = get_settings()
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
@@ -96,22 +159,33 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     _discovery_thread.start()
-    # Development keeps an in-process worker. Production runs the dedicated worker process.
-    if settings.environment == "development":
+
+    # Production runs the bounded worker in this same single-replica service.
+    # This avoids a second Railway service needing to share the SQLite volume.
+    import os
+    embedded_worker = settings.environment == "development" or os.getenv("AI_OS_EMBEDDED_WORKER", "false").strip().casefold() in {"1", "true", "yes", "on"}
+    if embedded_worker:
         _agent_stop.clear()
-        _agent_thread = threading.Thread(target=_agent_worker_loop, name="aios-agent-worker-dev", daemon=True)
-        _agent_thread.start()
+        _agent_thread = threading.Thread(target=_agent_worker_loop, name="aios-agent-worker", daemon=True)
+        _learning_thread = threading.Thread(target=_brain_learning_loop, name="aios-brain-learning", daemon=True)
+        _inbox_thread = threading.Thread(target=_inbox_worker_loop, name="aios-inbox-supervisor", daemon=True)
+        _executive_thread = threading.Thread(
+            target=executive_supervisor_loop, args=(_agent_stop, 15),
+            name="aios-executive-supervisor", daemon=True,
+        )
+        for thread in (_agent_thread, _learning_thread, _inbox_thread, _executive_thread):
+            thread.start()
+        logger.info("Embedded AIOS worker suite started; one service replica and shared persistent volume are required.")
+
     try:
         yield
     finally:
         _discovery_stop.set()
         _agent_stop.set()
-        if _agent_thread is not None:
-            _agent_thread.join(timeout=10)
-            _agent_thread = None
-        if _discovery_thread is not None:
-            _discovery_thread.join(timeout=10)
-            _discovery_thread = None
+        for thread in (_agent_thread, _learning_thread, _inbox_thread, _executive_thread, _discovery_thread):
+            if thread is not None:
+                thread.join(timeout=10)
+        _agent_thread = _learning_thread = _inbox_thread = _executive_thread = _discovery_thread = None
 
 
 app = FastAPI(
@@ -174,6 +248,11 @@ class BrainMemoryReview(BaseModel):
     note: str = Field(default="", max_length=1000)
 
 
+class CodeEvolutionRequest(BaseModel):
+    objective: str = Field(min_length=1, max_length=5000)
+    target_path: str = Field(min_length=1, max_length=300)
+
+
 class OpenRouterCredentialRequest(BaseModel):
     api_key: str = Field(min_length=8, max_length=512)
     confirm_free_only: bool
@@ -212,6 +291,85 @@ def post_business_integration(business_id: str, provider: str, payload: Business
         return save_business_integration(business_id, provider, payload.secret, payload.config)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/business-integrations/{business_id}/{provider}/connect", dependencies=[Depends(require_owner_key)])
+def connect_business_integration(business_id: str, provider: str, payload: BusinessIntegrationRequest):
+    """Verify owner-supplied credentials with a read-only platform request before storing."""
+    try:
+        if provider == "playerauctions":
+            verification = marketplace_integrations.verify_playerauctions(payload.secret, payload.config)
+        elif provider in {"wordpress", "woocommerce"}:
+            verification = platform_integrations.verify_connection(provider, payload.secret, payload.config)
+        else:
+            raise HTTPException(status_code=422, detail="This provider does not yet have a supported direct account connection flow.")
+        saved = save_business_integration(business_id, provider, payload.secret, payload.config)
+        return {**saved, "verification": verification, "external_actions": "read-only verification only"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError, social_oauth.OAuthError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/business-integrations/social/status", dependencies=[Depends(require_owner_key)])
+def get_social_oauth_status():
+    return {"providers": social_oauth.readiness(),
+            "security": "OAuth app secrets remain server-side; account tokens are encrypted in the business vault."}
+
+
+@app.post("/business-integrations/{business_id}/social/{provider}/start", dependencies=[Depends(require_owner_key)])
+def start_social_oauth(business_id: str, provider: str):
+    try:
+        return {"provider": provider, "authorize_url": social_oauth.begin(provider, business_id),
+                "scopes": social_oauth.PROVIDERS[provider]["scopes"],
+                "external_actions": "authorization only; read-oriented scopes"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (social_oauth.OAuthError, CredentialVaultUnavailable) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/business-integrations/social/{provider}/callback", response_class=HTMLResponse)
+def complete_social_oauth(provider: str, code: str = Query(default="", max_length=4096),
+                          state: str = Query(default="", max_length=256),
+                          error: str = Query(default="", max_length=300)):
+    if error:
+        return HTMLResponse("<h2>Account connection was cancelled or rejected.</h2><p>Return to the AIOS owner dashboard and try again if intended.</p>", status_code=400)
+    try:
+        result = social_oauth.complete(provider, state, code)
+        return HTMLResponse("<h2>Account connected successfully</h2><p>" +
+            escape(result["provider"]) + " · " + escape(result["account"]) +
+            "</p><p>Return to the AIOS owner dashboard and refresh the account list.</p>")
+    except (ValueError, social_oauth.OAuthError, CredentialVaultUnavailable) as exc:
+        return HTMLResponse("<h2>Account connection failed</h2><p>" +
+            str(exc).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") +
+            "</p><p>No publishing or other external action was performed.</p>", status_code=400)
+
+
+@app.post("/business-integrations/{business_id}/{provider}/test", dependencies=[Depends(require_owner_key)])
+def test_business_integration(business_id: str, provider: str):
+    """Recheck an already saved platform credential without exposing it."""
+    try:
+        credential = get_business_integration_credential(business_id, provider)
+        if credential is None:
+            raise HTTPException(status_code=404, detail="No saved platform connection.")
+        if provider == "playerauctions":
+            verification = marketplace_integrations.verify_playerauctions(credential["secret"], credential["config"])
+        elif provider == "etsy":
+            verification = social_oauth.verify_etsy_credential(credential["secret"], credential["config"], business_id)
+        elif provider in social_oauth.PROVIDERS:
+            verification = social_oauth.verify_social_credential(provider, credential["secret"], credential["config"], business_id)
+        else:
+            verification = platform_integrations.verify_connection(provider, credential["secret"], credential["config"])
+        return {**verification, "external_actions": "read-only verification only"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError, social_oauth.OAuthError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -444,11 +602,38 @@ def get_business_environments():
     }
 
 
+@app.get("/code-evolution/status", dependencies=[Depends(require_owner_key)])
+def get_code_evolution_status():
+    """Report whether guarded branch-only AI code evolution is configured."""
+    return code_evolution.readiness()
+
+
+@app.post("/code-evolution/proposals", dependencies=[Depends(require_owner_key)])
+def post_code_evolution_proposal(payload: CodeEvolutionRequest):
+    """Generate one allowlisted code change in a new branch and open a draft PR."""
+    try:
+        return code_evolution.create_proposal(payload.objective, payload.target_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except code_evolution.CodeEvolutionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/brain/status", dependencies=[Depends(require_api_key)])
 def get_brain_status(business_id: str = "core"):
     if business_id not in BUSINESS_IDS:
         raise HTTPException(status_code=422, detail="Unknown business environment.")
     return brain_status(business_id)
+
+
+@app.post("/brain/learn", dependencies=[Depends(require_owner_key)])
+def post_brain_learning_cycle(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    try:
+        return run_learning_cycle(business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/brain/memories", dependencies=[Depends(require_api_key)])
@@ -909,6 +1094,16 @@ def get_api_anything_sites():
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.get("/integrations/api-anything/sites/{site}", dependencies=[Depends(require_owner_key)])
+def get_api_anything_site_operations(site: str):
+    try:
+        return website_api.list_operations(site)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except website_api.WebsiteApiUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.get("/integrations/api-anything/find", dependencies=[Depends(require_owner_key)])
 def find_api_anything_sites(q: str = Query(min_length=1, max_length=300)):
     try:
@@ -928,3 +1123,8 @@ def call_api_anything_read(site: str, operation: str, payload: WebsiteApiCallReq
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except website_api.WebsiteApiUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# Owner-only Supabase diagnostics; the router never exposes credentials or applies migrations.
+from ai_os.supabase_integration import router as supabase_router
+app.include_router(supabase_router)

@@ -51,3 +51,20 @@ def test_redirect_must_remain_same_origin():
     request = urllib.request.Request("https://api.example/v1/health")
     with pytest.raises(website_api.WebsiteApiUnavailable):
         handler.redirect_request(request, None, 302, "Found", {}, "https://attacker.example/steal")
+
+
+def test_list_operations_uses_documented_site_endpoint(monkeypatch):
+    captured = {}
+    def fake_request(method, path, body=None, **kwargs):
+        captured.update(method=method, path=path, body=body)
+        return {"ok": True, "site": "woocommerce"}
+    monkeypatch.setattr(website_api, "_request", fake_request)
+    result = website_api.list_operations("woocommerce")
+    assert result["ok"] is True
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/v1/sites/woocommerce"
+
+
+def test_list_operations_rejects_invalid_site_names():
+    with pytest.raises(ValueError):
+        website_api.list_operations("../private")

@@ -5,6 +5,7 @@ on:
     branches: [main, "feat/**", "feature/**"]
   pull_request:
     branches: [main, "feat/**", "feature/**"]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -17,3 +18,30 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: pytest
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: aios_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aios_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      AI_OS_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/aios_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/test_postgres_adapter.py

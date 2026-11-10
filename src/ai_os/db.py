@@ -1,4 +1,5 @@
-"""SQLite persistence layer."""
+"""SQLite and PostgreSQL persistence adapters."""
+import re
 import sqlite3
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from ai_os.config import get_settings
 def _database_path() -> str:
     url = get_settings().database_url
     if not url.startswith("sqlite:///"):
-        raise ValueError("This starter currently supports SQLite URLs only.")
+        raise ValueError("A SQLite URL is required for the SQLite adapter.")
     path = url.removeprefix("sqlite:///")
     if path == ":memory:":
         return path
@@ -17,10 +18,163 @@ def _database_path() -> str:
     return str(database_path)
 
 
-def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(_database_path(), check_same_thread=False)
-    connection.row_factory = sqlite3.Row
-    return connection
+def _postgres_sql(statement: str) -> str | tuple[str, tuple[str, ...]]:
+    """Translate the SQLite-specific SQL used by the existing persistence layer."""
+    pragma = re.fullmatch(r"\s*PRAGMA\s+table_info\((\w+)\)\s*;?\s*", statement, re.IGNORECASE)
+    if pragma:
+        table = pragma.group(1).lower()
+        return (
+            'SELECT (c.ordinal_position - 1) AS cid, c.column_name AS name, '
+            'upper(c.data_type) AS type, '
+            "CASE WHEN c.is_nullable = 'NO' THEN 1 ELSE 0 END AS \"notnull\", "
+            'c.column_default AS dflt_value, '
+            'CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END AS pk '
+            'FROM information_schema.columns AS c '
+            'LEFT JOIN ('
+            'SELECT kcu.column_name FROM information_schema.table_constraints AS tc '
+            'JOIN information_schema.key_column_usage AS kcu '
+            'ON tc.constraint_name = kcu.constraint_name '
+            'AND tc.table_schema = kcu.table_schema '
+            'AND tc.table_name = kcu.table_name '
+            "WHERE tc.constraint_type = 'PRIMARY KEY' "
+            'AND tc.table_schema = current_schema() AND tc.table_name = %s'
+            ') AS pk ON pk.column_name = c.column_name '
+            'WHERE c.table_schema = current_schema() AND c.table_name = %s '
+            'ORDER BY c.ordinal_position',
+            (table, table),
+        )
+    insert_ignore = re.match(r"\s*INSERT\s+OR\s+IGNORE\s+INTO\b", statement, re.IGNORECASE)
+    if insert_ignore:
+        statement = re.sub(
+            r"INSERT\s+OR\s+IGNORE\s+INTO",
+            "INSERT INTO",
+            statement,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        statement = statement.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+    statement = re.sub(
+        r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
+        "BIGSERIAL PRIMARY KEY",
+        statement,
+        flags=re.IGNORECASE,
+    )
+    # Replace SQLite bind markers without altering question marks inside
+    # quoted SQL strings or comments.
+    return _replace_sqlite_placeholders(statement)
+
+
+def _replace_sqlite_placeholders(statement: str) -> str:
+    output = []
+    index = 0
+    quote = None
+    line_comment = False
+    block_comment = False
+    while index < len(statement):
+        char = statement[index]
+        following = statement[index + 1] if index + 1 < len(statement) else ""
+        if line_comment:
+            output.append(char)
+            if char == "\n":
+                line_comment = False
+        elif block_comment:
+            output.append(char)
+            if char == "*" and following == "/":
+                output.append(following)
+                index += 1
+                block_comment = False
+        elif quote:
+            output.append(char)
+            if char == quote:
+                if following == quote:
+                    output.append(following)
+                    index += 1
+                else:
+                    quote = None
+        elif char in ("'", '"'):
+            quote = char
+            output.append(char)
+        elif char == "-" and following == "-":
+            output.extend((char, following))
+            index += 1
+            line_comment = True
+        elif char == "/" and following == "*":
+            output.extend((char, following))
+            index += 1
+            block_comment = True
+        elif char == "?":
+            output.append("%s")
+        elif char == ":" and following and (following.isalpha() or following == "_") and (index == 0 or statement[index - 1] != ":"):
+            # SQLite accepts :name mappings; psycopg uses %(name)s.
+            end = index + 1
+            while end < len(statement) and (statement[end].isalnum() or statement[end] == "_"):
+                end += 1
+            output.append("%(" + statement[index + 1:end] + ")s")
+            index = end - 1
+        else:
+            output.append(char)
+        index += 1
+    return "".join(output)
+
+
+class _PostgresConnection:
+    """Expose the sqlite-style execute/executescript interface over psycopg."""
+    def __init__(self, connection):
+        self._connection = connection
+
+    def __enter__(self):
+        self._connection.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return self._connection.__exit__(exc_type, exc, traceback)
+
+    def execute(self, statement, parameters=()):
+        translated = _postgres_sql(statement)
+        if isinstance(translated, tuple):
+            statement, fixed_parameters = translated
+            parameters = fixed_parameters
+        else:
+            statement = translated
+        try:
+            return self._connection.execute(statement, parameters)
+        except Exception as exc:
+            # Preserve the legacy SQLite-facing missing-table contract used by
+            # credential status helpers; let all other database errors surface.
+            try:
+                from psycopg.errors import UndefinedTable
+            except ImportError:
+                raise
+            if isinstance(exc, UndefinedTable):
+                raise sqlite3.OperationalError(str(exc)) from exc
+            raise
+
+    def executescript(self, script):
+        for statement in script.split(";"):
+            if statement.strip():
+                self.execute(statement)
+        return self
+
+    def close(self):
+        return self._connection.close()
+
+
+def connect():
+    url = get_settings().database_url
+    if url.startswith("sqlite:///"):
+        connection = sqlite3.connect(_database_path(), check_same_thread=False)
+        connection.row_factory = sqlite3.Row
+        return connection
+    if url.startswith(("postgres://", "postgresql://")):
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError(
+                "PostgreSQL support requires psycopg[binary]. Install project dependencies."
+            ) from exc
+        return _PostgresConnection(psycopg.connect(url, row_factory=dict_row))
+    raise ValueError("AI_OS_DATABASE_URL must use sqlite:/// or postgresql://.")
 
 
 def initialize_database() -> None:
