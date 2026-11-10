@@ -12,6 +12,7 @@ from functools import lru_cache
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from opencompany_core.domain import AuditRecord, TaskState, WorkItem
@@ -23,6 +24,7 @@ from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
 from opencompany_core.provisioning import bootstrap_department_managers
+from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
 app = FastAPI(
@@ -89,6 +91,19 @@ def _record(item: WorkItem, action: str) -> AuditRecord:
         outcome="recorded", correlation_id=str(uuid4()),
         details={"state": item.state.value, "department": item.department},
     )
+
+
+@app.get("/owner", response_class=HTMLResponse)
+def owner_dashboard() -> HTMLResponse:
+    response = HTMLResponse(OWNER_DASHBOARD_HTML)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+        "connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @app.get("/health")
