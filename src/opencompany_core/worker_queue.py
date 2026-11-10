@@ -198,6 +198,24 @@ class DurableWorkerQueue:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
+                expired_dead = self._db.execute(
+                    "SELECT work_item_id,agent_id FROM worker_queue "
+                    "WHERE state='leased' AND lease_expires_at<=? AND attempts>=?",
+                    (instant.isoformat(), self.max_attempts),
+                ).fetchall()
+                for expired in expired_dead:
+                    cursor = self._db.execute(
+                        "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                        (TaskState.FAILED.value, expired["work_item_id"], TaskState.IN_PROGRESS.value),
+                    )
+                    if cursor.rowcount == 1:
+                        self._append_audit(AuditRecord(
+                            id=uuid4(), occurred_at=instant, actor_type="worker",
+                            actor_id=expired["agent_id"], action="worker.lease_dead_lettered",
+                            subject_type="work_item", subject_id=expired["work_item_id"],
+                            outcome="failed", correlation_id=str(uuid4()),
+                            details={"reason": "lease_expired_retry_limit"},
+                        ), self._db)
                 self._db.execute(
                     """UPDATE worker_queue SET
                        state=CASE WHEN attempts>=? THEN 'dead' ELSE 'queued' END,
