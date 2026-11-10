@@ -188,14 +188,16 @@ def save_business_integration(business_id: str, provider: str, secret: str, conf
     import json
     config_json = json.dumps(config, ensure_ascii=False)[:8000]
     now = datetime.now(timezone.utc).isoformat()
-    encrypted = _fernet().encrypt(secret.encode("utf-8")).decode("ascii")
+    vault = _fernet()
+    encrypted = vault.encrypt(secret.encode("utf-8")).decode("ascii")
+    encrypted_config = vault.encrypt(config_json.encode("utf-8")).decode("ascii")
     with connect() as db:
         db.execute("""INSERT INTO business_integration_credentials
             (business_id,provider,encrypted_secret,config_json,created_at,updated_at)
             VALUES(?,?,?,?,?,?)
             ON CONFLICT(business_id,provider) DO UPDATE SET
             encrypted_secret=excluded.encrypted_secret,config_json=excluded.config_json,updated_at=excluded.updated_at""",
-            (scope, provider_id, encrypted, config_json, now, now))
+            (scope, provider_id, encrypted, encrypted_config, now, now))
     return {"business_id": scope, "provider": provider_id, "configured": True, "secret_returned": False, "updated_at": now}
 
 
@@ -228,7 +230,11 @@ def get_business_integration_credential(business_id: str, provider: str) -> dict
     except InvalidToken as exc:
         raise CredentialVaultUnavailable("Business integration credential cannot be decrypted.") from exc
     import json
-    return {"business_id": scope, "provider": provider_id, "secret": secret, "config": json.loads(row["config_json"])}
+    try:
+        config = json.loads(_fernet().decrypt(row["config_json"].encode("ascii")).decode("utf-8"))
+    except InvalidToken as exc:
+        raise CredentialVaultUnavailable("Business integration configuration cannot be decrypted.") from exc
+    return {"business_id": scope, "provider": provider_id, "secret": secret, "config": config}
 
 
 def delete_business_integration(business_id: str, provider: str) -> bool:
