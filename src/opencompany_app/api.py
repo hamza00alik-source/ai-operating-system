@@ -27,6 +27,8 @@ from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
 from opencompany_core.unorouter_adapter import unorouter_configuration_status
+from opencompany_core.secret_vault import SecretVaultError
+from opencompany_app.provider_settings_ui import OWNER_PROVIDER_SETTINGS_HTML, OWNER_PROVIDER_SETTINGS_JS
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
 from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_core.delegation_records import DelegationRepository
@@ -52,6 +54,13 @@ app = FastAPI(
 
 class OwnerLoginInput(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
+
+
+class UnoRouterSettingsInput(BaseModel):
+    api_key: str = Field(min_length=16, max_length=512)
+    model: str = Field(min_length=3, max_length=200, pattern=r"^[A-Za-z0-9._/-]+:free$")
+    confirm_free: bool
+
 
 
 class PlanItemInput(BaseModel):
@@ -328,7 +337,11 @@ def revoke_owner_session(
 
 @app.get("/owner", response_class=HTMLResponse)
 def owner_dashboard() -> HTMLResponse:
-    response = HTMLResponse(OWNER_DASHBOARD_HTML)
+    html = OWNER_DASHBOARD_HTML.replace("</main>", OWNER_PROVIDER_SETTINGS_HTML + "\n</main>")
+    before, marker, after = html.rpartition("})();")
+    if marker:
+        html = before + OWNER_PROVIDER_SETTINGS_JS + "\n  const previousLoad=load; load=async function(){await previousLoad(); await loadUnoRouterSettings();};\n})();" + after
+    response = HTMLResponse(html)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
@@ -446,10 +459,15 @@ def media_capabilities() -> dict:
 
 
 @app.get("/providers/status")
-def provider_runtime_status() -> dict:
-    # Credentials are never returned. UnoRouter is a first-class company provider;
-    # OpenRouter remains an optional independent provider.
-    uno = unorouter_configuration_status()
+def provider_runtime_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    # Credentials are never returned. Saved owner settings take precedence over legacy env configuration.
+    try:
+        saved_uno = runtime.secret_vault.get("unorouter")
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored UnoRouter settings cannot be decrypted; check the server encryption key.") from exc
+    uno = unorouter_configuration_status({
+        "api_key": saved_uno["api_key"], "model": saved_uno["model"], "confirmed_free": "true"
+    }) if saved_uno else unorouter_configuration_status()
     openrouter_key = os.environ.get("OPENCOMPANY_OPENROUTER_API_KEY", "").strip()
     openrouter_model = os.environ.get("OPENCOMPANY_OPENROUTER_FREE_MODEL", "").strip()
     openrouter_confirm = os.environ.get("OPENCOMPANY_CONFIRM_OPENROUTER_FREE", "").strip().lower()
@@ -480,6 +498,62 @@ def provider_runtime_status() -> dict:
         "real_inference_verified": False,
         "paid_fallback": False,
     }
+
+
+
+
+@app.get("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
+def get_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        saved = runtime.secret_vault.get("unorouter")
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored UnoRouter settings cannot be decrypted; check the server encryption key.") from exc
+    return {
+        "configured": saved is not None, "model": saved["model"] if saved else None,
+        "api_key_present": bool(saved), "real_inference_verified": runtime.unorouter_tested_at is not None,
+        "last_tested_at": runtime.unorouter_tested_at, "automatic_paid_fallback": False,
+        **runtime.secret_vault.status("unorouter"),
+    }
+
+
+@app.put("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
+def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if payload.confirm_free is not True:
+        raise HTTPException(status_code=422, detail="Owner must explicitly confirm the selected model is free.")
+    if not payload.model.endswith(":free"):
+        raise HTTPException(status_code=422, detail="Only explicitly free model IDs ending in :free are accepted.")
+    try:
+        revision = runtime.secret_vault.put("unorouter", {"api_key": payload.api_key, "model": payload.model})
+        runtime.configure_unorouter({"api_key": payload.api_key, "model": payload.model, "confirmed_free": "true"})
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"configured": True, "model": payload.model, "api_key_saved": True, "revision": revision,
+            "billing_mode": "free_confirmed", "automatic_paid_fallback": False, "live_inference_tested": False}
+
+
+@app.post("/settings/providers/unorouter/test", dependencies=[Depends(require_owner_key)])
+def test_unorouter_connection(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        result = runtime.gateway.complete(
+            ModelRequest(prompt="Reply with exactly: OPENCOMPANY_UNOROUTER_OK",
+                         request_id=f"owner-unorouter-test-{uuid4()}", max_output_tokens=24),
+            request_budget_usd=0.0, preferred_provider="unorouter",
+        )
+    except NoEligibleProvider as exc:
+        raise HTTPException(status_code=503, detail="No confirmed-free UnoRouter model is configured and available.") from exc
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        raise HTTPException(status_code=502, detail=f"UnoRouter test failed safely: {type(exc).__name__}. No paid fallback was attempted.") from exc
+    runtime.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
+    return {"success": True, "provider": result.provider, "model": result.model, "cost_usd": result.cost_usd,
+            "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
+            "output_preview": result.text[:160], "tested_at": runtime.unorouter_tested_at, "paid_fallback": False}
+
+
+@app.delete("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
+def remove_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    removed = runtime.secret_vault.delete("unorouter")
+    runtime.configure_unorouter(None)
+    return {"removed": removed, "configured": False, "paid_fallback": False}
 
 
 @app.get("/providers/candidates")
