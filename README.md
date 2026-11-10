@@ -8,7 +8,7 @@ A modular, human-supervised foundation for running an AI-powered company.
 
 The `clean-room-rebuild` branch and draft PR #105 contain a separate, independently authored OpenCompany core. It is not merged or deployed. The current `main` application, Docker entrypoint, Vercel routing, and Railway service still select the legacy `ai_os` application. See [the repository comparison audit](docs/REPOSITORY_COMPARISON_AUDIT_2026-11-10.md) for the capability comparison and release blockers.
 
-The clean-room branch currently has ten original departments, 250 specialist role contracts, ten department-manager roles, and one owner-subordinate executive orchestrator. These are role definitions and draft profiles, not 261 continuously running agents. Manager delegation is currently a deterministic preview; assignment persistence, queue wiring, live model execution, durable artifacts, and always-on operation remain under development.
+The clean-room branch currently has ten original departments, 500 specialist role contracts (50 per department across 100 capability teams), ten department-manager roles, and one owner-subordinate executive orchestrator: 511 role contracts in total. These are role definitions and draft profiles, not 511 continuously running agents. The expanded second specialist wave is registered and provisionable; deep per-role playbooks and evaluation rubrics, manager-led execution, persistent assignments, queue wiring, live model execution, durable artifacts, and always-on operation remain under development.
 
 
 ## UnoRouter company inference provider
