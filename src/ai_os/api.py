@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
+from fastapi.responses import HTMLResponse
 from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import (require_api_key, require_owner_key, create_owner_session, revoke_owner_session, SESSION_COOKIE, SESSION_TTL_DAYS)
@@ -20,13 +21,14 @@ from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
-from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.executive_supervisor import executive_status, supervise_once
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
+from ai_os import platform_integrations, social_oauth, marketplace_integrations
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -212,6 +214,85 @@ def post_business_integration(business_id: str, provider: str, payload: Business
         return save_business_integration(business_id, provider, payload.secret, payload.config)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/business-integrations/{business_id}/{provider}/connect", dependencies=[Depends(require_owner_key)])
+def connect_business_integration(business_id: str, provider: str, payload: BusinessIntegrationRequest):
+    """Verify owner-supplied credentials with a read-only platform request before storing."""
+    try:
+        if provider == "playerauctions":
+            verification = marketplace_integrations.verify_playerauctions(payload.secret, payload.config)
+        elif provider in {"wordpress", "woocommerce"}:
+            verification = platform_integrations.verify_connection(provider, payload.secret, payload.config)
+        else:
+            raise HTTPException(status_code=422, detail="This provider does not yet have a supported direct account connection flow.")
+        saved = save_business_integration(business_id, provider, payload.secret, payload.config)
+        return {**saved, "verification": verification, "external_actions": "read-only verification only"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError, social_oauth.OAuthError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/business-integrations/social/status", dependencies=[Depends(require_owner_key)])
+def get_social_oauth_status():
+    return {"providers": social_oauth.readiness(),
+            "security": "OAuth app secrets remain server-side; account tokens are encrypted in the business vault."}
+
+
+@app.post("/business-integrations/{business_id}/social/{provider}/start", dependencies=[Depends(require_owner_key)])
+def start_social_oauth(business_id: str, provider: str):
+    try:
+        return {"provider": provider, "authorize_url": social_oauth.begin(provider, business_id),
+                "scopes": social_oauth.PROVIDERS[provider]["scopes"],
+                "external_actions": "authorization only; read-oriented scopes"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (social_oauth.OAuthError, CredentialVaultUnavailable) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/business-integrations/social/{provider}/callback", response_class=HTMLResponse)
+def complete_social_oauth(provider: str, code: str = Query(default="", max_length=4096),
+                          state: str = Query(default="", max_length=256),
+                          error: str = Query(default="", max_length=300)):
+    if error:
+        return HTMLResponse("<h2>Account connection was cancelled or rejected.</h2><p>Return to the AIOS owner dashboard and try again if intended.</p>", status_code=400)
+    try:
+        result = social_oauth.complete(provider, state, code)
+        return HTMLResponse("<h2>Account connected successfully</h2><p>" +
+            escape(result["provider"]) + " · " + escape(result["account"]) +
+            "</p><p>Return to the AIOS owner dashboard and refresh the account list.</p>")
+    except (ValueError, social_oauth.OAuthError, CredentialVaultUnavailable) as exc:
+        return HTMLResponse("<h2>Account connection failed</h2><p>" +
+            str(exc).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") +
+            "</p><p>No publishing or other external action was performed.</p>", status_code=400)
+
+
+@app.post("/business-integrations/{business_id}/{provider}/test", dependencies=[Depends(require_owner_key)])
+def test_business_integration(business_id: str, provider: str):
+    """Recheck an already saved platform credential without exposing it."""
+    try:
+        credential = get_business_integration_credential(business_id, provider)
+        if credential is None:
+            raise HTTPException(status_code=404, detail="No saved platform connection.")
+        if provider == "playerauctions":
+            verification = marketplace_integrations.verify_playerauctions(credential["secret"], credential["config"])
+        elif provider == "etsy":
+            verification = social_oauth.verify_etsy_credential(credential["secret"], credential["config"], business_id)
+        elif provider in social_oauth.PROVIDERS:
+            verification = social_oauth.verify_social_credential(provider, credential["secret"], credential["config"], business_id)
+        else:
+            verification = platform_integrations.verify_connection(provider, credential["secret"], credential["config"])
+        return {**verification, "external_actions": "read-only verification only"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError, social_oauth.OAuthError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -905,6 +986,16 @@ def get_api_anything_status():
 def get_api_anything_sites():
     try:
         return website_api.list_sites()
+    except website_api.WebsiteApiUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/integrations/api-anything/sites/{site}", dependencies=[Depends(require_owner_key)])
+def get_api_anything_site_operations(site: str):
+    try:
+        return website_api.list_operations(site)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except website_api.WebsiteApiUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
