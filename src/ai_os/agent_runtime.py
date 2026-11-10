@@ -318,25 +318,38 @@ def _finish_step(run_id: str, sequence_no: int, output: str) -> None:
         )
 
 
-def run_pending_once() -> bool:
+def _claim_next_run() -> tuple[str, dict] | None:
+    """Atomically claim one queued run and return its task snapshot."""
     with connect() as db:
         row = db.execute(
-            "SELECT * FROM agent_runs WHERE status='queued' ORDER BY created_at LIMIT 1"
+            """UPDATE agent_runs
+               SET status='running', started_at=?
+               WHERE id = (
+                   SELECT id FROM agent_runs
+                   WHERE status='queued'
+                   ORDER BY created_at, id
+                   LIMIT 1
+               )
+               AND status='queued'
+               RETURNING *""",
+            (_now(),),
         ).fetchone()
         if row is None:
-            return False
+            return None
         run_id, task_id = row["id"], row["task_id"]
-        changed = db.execute(
-            "UPDATE agent_runs SET status='running',started_at=? WHERE id=? AND status='queued'",
-            (_now(), run_id),
-        ).rowcount
-        if not changed:
-            return True
         db.execute("UPDATE tasks SET status='running' WHERE id=?", (task_id,))
         task_row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+    return run_id, dict(task_row)
+
+
+def run_pending_once() -> bool:
+    # The atomic claim prevents two processes from executing the same queued run.
+    claimed = _claim_next_run()
+    if claimed is None:
+        return False
+    run_id, task = claimed
     try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
-        task = dict(task_row)
         with connect() as db:
             prior_steps = {item["sequence_no"]: dict(item) for item in db.execute(
                 "SELECT * FROM agent_run_steps WHERE run_id=? ORDER BY sequence_no", (run_id,)

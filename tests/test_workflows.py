@@ -76,3 +76,33 @@ def test_workflow_handoff_persists_output_for_next_department(monkeypatch, tmp_p
     assert "three verified buyer interviews" in next_task["description"]
     refreshed = get_workflow(workflow["id"])
     assert "three verified buyer interviews" in refreshed["steps"][0]["output"]
+
+
+def test_full_company_cycle_completes_with_isolated_handoffs_for_each_business(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'all-business-cycles.db'}")
+    from ai_os.workflows import create_workflow, finish_workflow_task, get_workflow
+
+    business_ids = ("physical-agency", "physical-brand", "digital-products")
+    completed_workflows = []
+    for business_id in business_ids:
+        workflow = create_workflow("company-wide-operating-cycle", business_id=business_id)
+        for index, step in enumerate(workflow["steps"]):
+            deliverable = f"{business_id} department {index + 1} verified deliverable"
+            finish_workflow_task(step["task_id"], True, deliverable)
+            refreshed = get_workflow(workflow["id"])
+            assert refreshed["steps"][index]["status"] == "completed"
+            assert refreshed["steps"][index]["output"] == deliverable
+            if index + 1 < len(workflow["steps"]):
+                from ai_os.db import connect
+                with connect() as db:
+                    following = db.execute("SELECT description, business_id FROM tasks WHERE id=?",
+                                           (workflow["steps"][index + 1]["task_id"],)).fetchone()
+                assert deliverable in following["description"]
+                assert following["business_id"] == business_id
+        final = get_workflow(workflow["id"])
+        assert final["status"] == "completed"
+        assert all(step["status"] == "completed" for step in final["steps"])
+        assert final["business_id"] == business_id
+        completed_workflows.append(final["id"])
+
+    assert len(set(completed_workflows)) == 3

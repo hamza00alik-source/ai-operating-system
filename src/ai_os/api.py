@@ -68,9 +68,6 @@ async def lifespan(_: FastAPI):
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
     initialize_database()
-    # This service is intentionally deployed as one worker replica. A process restart
-    # must not leave runs permanently marked as running.
-    recover_interrupted_runs()
     _discovery_stop.clear()
     _discovery_thread = threading.Thread(
         target=_discovery_worker_loop,
@@ -78,13 +75,11 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     _discovery_thread.start()
-    _agent_stop.clear()
-    _agent_thread = threading.Thread(
-        target=_agent_worker_loop,
-        name="aios-agent-worker",
-        daemon=True,
-    )
-    _agent_thread.start()
+    # Development keeps an in-process worker. Production runs the dedicated worker process.
+    if settings.environment == "development":
+        _agent_stop.clear()
+        _agent_thread = threading.Thread(target=_agent_worker_loop, name="aios-agent-worker-dev", daemon=True)
+        _agent_thread.start()
     try:
         yield
     finally:
