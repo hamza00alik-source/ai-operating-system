@@ -26,11 +26,11 @@ The rebuild is a cleaner independently authored domain foundation, with original
 |---|---|---|
 | Application entrypoint | `src/ai_os.api:app`, used by current deployment | Separate `src/opencompany_app.api:app`; not selected by deployment config |
 | Organization | Legacy department mapping plus imported catalogue | Ten original OpenCompany departments |
-| Workforce | 283 Agency-Agent specialist definitions across 18 source departments | 250 original specialist titles plus 10 department-manager roles and one executive orchestrator (261 role contracts) |
-| Specialist depth | Imported Markdown instructions fetched at runtime | Basic role contracts; specialist mission/capability fields are currently generated from title words and shared templates, not 250 individually authored specialist playbooks |
+| Workforce | 283 Agency-Agent specialist definitions across 18 source departments | 500 original specialist titles plus 10 department-manager roles and one executive orchestrator (511 role contracts) |
+| Specialist depth | Imported Markdown instructions fetched at runtime | Basic role contracts for 500 roles; specialist mission/capability fields are currently generated from title words and shared templates, not 250 individually authored specialist playbooks |
 | Task execution | Bounded single-specialist run plus CEO-style review; text-only | Executor and worker abstractions exist, but no end-to-end API assignment/queue/worker composition |
-| Provider routing | Existing free-confirmed provider gateway; UnoRouter can be selected by the legacy fallback router when configured | Provider-neutral gateway and an OpenRouter free adapter; no provider is wired into the new API/runtime |
-| UnoRouter | Integrated in legacy provider code; repository docs conflict on whether it is company-routable | Not integrated |
+| Provider routing | Existing free-confirmed provider gateway; UnoRouter can be selected by the legacy fallback router when configured | Provider-neutral gateway with OpenRouter and UnoRouter free adapters; UnoRouter is resolved by AgentExecutor when owner-configured, while API/worker composition remains incomplete |
+| UnoRouter | Integrated in legacy provider code; repository docs conflict on whether it is company-routable | Separately authored free-model adapter is implemented; live credentials and inference are not verified |
 | AI Brain / memory | Existing SQLite experiences and owner-reviewed memories | Learning proposal contracts only; no persistent learning loop |
 | Agent collaboration | Specialist/CEO stages; no broad team delegation | Handoff contracts only; no persistent end-to-end handoff orchestration |
 | Persistence | Existing SQLite-backed business, run, credential and memory records | SQLite currently persists agent profiles, work items and audit events; queue is a separate component; artifacts/handoffs/learning are not persisted by the new store |
@@ -43,7 +43,7 @@ The rebuild is a cleaner independently authored domain foundation, with original
 
 ### High — UnoRouter terms and company use are unresolved
 
-The legacy code originally included UnoRouter in its provider list and the generic free-provider fallback defaulted to it, despite README statements describing it as personal-test-only. The current UnoRouter Terms (last updated 2026-10-20) state that UnoRouter does not offer business-customer accounts and impose additional routing/data restrictions for business customers. This branch now adds a fail-closed eligibility gate that excludes UnoRouter from legacy company task routing/failover while preserving the isolated owner-triggered personal-test and read-only catalogue paths. Written provider clarification is still required before any company workload can use it.
+The rebuild now includes an independently authored UnoRouter chat-completions adapter as an optional company inference provider. It accepts only an explicitly configured model ID ending in `:free`, requires explicit owner confirmation, rejects non-zero provider-reported cost, and has no paid fallback. The adapter has been tested with mocked HTTP responses only; no live credentials or real inference have been verified. The owner should review current provider terms, privacy and data-handling rules before sending confidential or customer data. This is an operational verification item, not a reason to reduce UnoRouter to read-only catalogue access.
 
 ### High — the new owner console has weaker browser credential handling
 
@@ -64,7 +64,7 @@ The first identity-control increment has now been implemented in this branch: ag
 
 ### Medium — workforce quantity overstates role depth
 
-The 250 specialist titles are distinct, but the current builder creates missions and capability tags mechanically from title words, with a shared template for permitted outputs and prohibitions. This is a useful routing taxonomy, not yet 250 deeply specified specialists with differentiated procedures, quality rubrics, context needs, and team collaboration contracts. The next workforce-quality pass should enrich role definitions from OpenCompany requirements, not copy external role prompts.
+The 500 specialist titles are distinct, but the current builder creates missions and capability tags mechanically from title words, with a shared template for permitted outputs and prohibitions. This is a useful routing taxonomy, not yet 500 deeply specified specialists with differentiated procedures, quality rubrics, context needs, and team collaboration contracts. The next workforce-quality pass should enrich role definitions from OpenCompany requirements, not copy external role prompts.
 
 ### Medium — persistent operational records are incomplete
 
@@ -72,14 +72,14 @@ The new SQLite store currently persists agent profiles, work items and audit eve
 
 ### Medium — documentation and CI can be misread
 
-- The quarantine register previously described only nine roles and a read-only API; it is stale relative to the 261-role catalogue and owner write endpoints.
+- The quarantine register previously described only nine roles and a read-only API; it is stale relative to the 511-role catalogue and owner write endpoints.
 - The README contains contradictory UnoRouter claims: an earlier section describes it as a default agent provider, while a later section says personal-test-only.
 - The Vercel validation workflow runs tests on pull requests, but its actual Vercel Build Output step runs only on manual dispatch against `main` and only when Vercel credentials are configured. A green PR workflow with that job skipped is not proof that the new app builds for Vercel.
 - The regular test workflow verifies Python tests, not production deployment or live provider inference.
 
 ## Clean-room and provenance boundary
 
-The new `opencompany_core` and `opencompany_app` code paths are separate from the legacy `ai_os` package. A static scan of all 23 new OpenCompany source files found no imports from `ai_os` and no remote Agency-Agent role-instruction URL. The only outbound network adapter in the new source is the explicitly configured OpenRouter model adapter. The new API does not import the Agency-Agent manifest or fetch its role Markdown. The legacy manifest, source registry, remote role loader, and associated legacy tests remain in the repository and must remain quarantined from the new runtime. Preserve provenance history; do not erase commits to conceal earlier source exposure.
+The new `opencompany_core` and `opencompany_app` code paths are separate from the legacy `ai_os` package. A static scan of all 23 new OpenCompany source files found no imports from `ai_os` and no remote Agency-Agent role-instruction URL. The outbound inference adapters in the new source are the explicitly configured OpenRouter and UnoRouter model adapters. The new API does not import the Agency-Agent manifest or fetch its role Markdown. The legacy manifest, source registry, remote role loader, and associated legacy tests remain in the repository and must remain quarantined from the new runtime. Preserve provenance history; do not erase commits to conceal earlier source exposure.
 
 A source-level similarity review and qualified legal review are still required before public or commercial distribution. An independent rewrite reduces risk but cannot guarantee that no claim will arise.
 
@@ -88,7 +88,7 @@ A source-level similarity review and qualified legal review are still required b
 1. Build durable manager-led assignment/delegation records and subtask creation on top of the new team-selection preview.
 3. Persist handoffs, artifacts, execution attempts, model usage and learning proposals.
 4. Add a production-grade artifact store and connect queue enqueue/claim/complete to the API and supervised worker process.
-5. Add a compliant, verified provider adapter. Keep UnoRouter disabled for company workloads pending written provider clarification; do not send customer/confidential data to consumer free endpoints.
+5. Add a compliant, verified provider adapter. Run an owner-authorized live inference test through the configured UnoRouter `:free` route using synthetic, non-sensitive input; verify current terms, billing state, privacy and data handling before expanding workload scope.
 6. Replace dashboard API-key storage with revocable HttpOnly sessions and harden API security.
 7. Re-author the specialist contracts with meaningful differentiated responsibilities and evaluation rubrics.
 8. Replace legacy deployment entrypoints only after feature parity, migration/rollback plans, backup/restore, security review and end-to-end tests.
