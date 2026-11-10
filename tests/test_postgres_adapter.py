@@ -75,6 +75,9 @@ def test_postgres_schema_initialization_and_runtime_queries(monkeypatch):
                 IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
                     CREATE ROLE authenticated NOLOGIN;
                 END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+                    CREATE ROLE service_role NOLOGIN;
+                END IF;
             END $$;""",
             prepare=False,
         )
@@ -104,17 +107,20 @@ def test_postgres_schema_initialization_and_runtime_queries(monkeypatch):
         )
         connection._connection.execute(
             """REVOKE ALL ON FUNCTION public.aios_test_event_trigger_acl()
-            FROM PUBLIC, anon, authenticated""",
+            FROM PUBLIC, anon, authenticated, service_role""",
             prepare=False,
         )
         privileges = connection.execute(
             """SELECT has_function_privilege('anon',
                        'public.aios_test_event_trigger_acl()', 'EXECUTE') AS anon_can_execute,
                       has_function_privilege('authenticated',
-                       'public.aios_test_event_trigger_acl()', 'EXECUTE') AS authenticated_can_execute"""
+                       'public.aios_test_event_trigger_acl()', 'EXECUTE') AS authenticated_can_execute,
+                      has_function_privilege('service_role',
+                       'public.aios_test_event_trigger_acl()', 'EXECUTE') AS service_role_can_execute"""
         ).fetchone()
         assert privileges["anon_can_execute"] is False
         assert privileges["authenticated_can_execute"] is False
+        assert privileges["service_role_can_execute"] is False
 
         connection._connection.execute(
             "CREATE TABLE public.event_trigger_acl_probe (id INTEGER PRIMARY KEY)",
