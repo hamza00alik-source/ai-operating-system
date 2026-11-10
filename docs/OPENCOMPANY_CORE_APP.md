@@ -19,6 +19,8 @@ Never commit the owner API key. Supply it through a private environment-variable
 
 ## Current endpoints
 
+- `GET /owner` — serves the independent mobile-friendly owner console. The owner key is entered by the owner and held in tab session storage only; private API requests remain owner-authenticated.
+
 Public, read-only endpoints:
 - `GET /health` — confirms service availability.
 - `GET /workforce/roles` — returns the original OpenCompany capability specifications.
@@ -37,7 +39,7 @@ Owner-authenticated endpoints require `X-OpenCompany-API-Key`:
 - `POST /work-items/{id}/transition` — validates and records a permitted state transition.
 - `GET /audit/verify` — checks the integrity of the local audit hash chain.
 
-The organization registry validates department-to-role assignments and publishes each department's accountabilities, manager role, decision scope, measures, and approval boundaries. The owner can bootstrap ten persistent department-manager profiles in draft state; these profiles are not active workers and cannot execute until model access, worker orchestration, and approval controls are connected. The current workforce contains ten original specialist/manager role definitions; department manager role keys are assignments, not proof that ten continuously running agents exist.
+The organization registry validates department-to-role assignments and publishes each department's accountabilities, manager role, decision scope, measures, and approval boundaries. The owner console displays department structure, manager profiles, work items, model-provider status, and media capability status. It includes an explicit action to bootstrap ten persistent department-manager profiles in draft state; these profiles are not active workers and cannot execute until model access, worker orchestration, and approval controls are connected. The current workforce contains ten original specialist/manager role definitions; department manager role keys are assignments, not proof that ten continuously running agents exist.
 
 The core library also includes a provider-neutral model gateway and a bounded specialist executor. No provider is enabled by default. OpenRouter free variants, Groq, and Cloudflare Workers AI are recorded as candidates only; account eligibility, exact model pricing, credentials, and zero-cost inference have not been verified. A provider can be called only when its configuration explicitly confirms free access or carries a separate owner-approved spending ceiling. The executor produces draft text deliverables only; it has no tools or authority to perform external actions.
 
