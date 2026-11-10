@@ -23,6 +23,7 @@ from opencompany_core.collaboration_store import HandoffRepository
 from opencompany_core.learning_store import LearningRepository
 from opencompany_core.github_evolution import GitHubEvolutionClient
 from opencompany_core.api_anything import ApiAnythingClient
+from opencompany_core.research_broker import ResearchBroker
 
 
 @dataclass(slots=True)
@@ -68,9 +69,12 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         lock=store._lock,
     )
     gateway = configured_unorouter_gateway()
+    api_anything = ApiAnythingClient.from_env()
+    research_broker = ResearchBroker(api_anything, gateway) if api_anything is not None else None
     executor = AgentExecutor(
         gateway=gateway,
         learning_context=learning.list_learning_notes,
+        research_broker=research_broker,
     )
     worker = OpenCompanyWorker(
         queue=queue,
