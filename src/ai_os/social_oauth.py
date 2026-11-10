@@ -113,19 +113,24 @@ def _config(provider: str) -> dict:
         raise OAuthError("OAuth app is not configured on the server yet. Missing: " +
                          ", ".join(spec[k] for k in missing))
     redirect = urllib.parse.urlsplit(values["redirect_env"])
-    if redirect.scheme != "https" or not redirect.hostname or redirect.query or redirect.fragment:
-        raise OAuthError("The registered OAuth callback must be an HTTPS URL without query or fragment.")
+    expected_path = "/business-integrations/social/" + provider + "/callback"
+    if (redirect.scheme != "https" or not redirect.hostname or redirect.username or redirect.password
+            or redirect.query or redirect.fragment or redirect.path.rstrip("/") != expected_path):
+        raise OAuthError("Register the exact HTTPS callback path " + expected_path + " with this provider; do not add query strings or fragments.")
     return {"client_id": values["client_id_env"], "client_secret": values["client_secret_env"],
             "redirect_uri": values["redirect_env"]}
 
 def readiness() -> list[dict]:
     result = []
     for provider, spec in PROVIDERS.items():
-        ready = all(os.getenv(spec[k], "").strip() for k in
-                    ("client_id_env", "client_secret_env", "redirect_env"))
+        try:
+            _config(provider)
+            ready, reason = True, ""
+        except OAuthError as exc:
+            ready, reason = False, str(exc)
         result.append({"provider": provider, "label": spec["label"], "app_configured": ready,
                        "status": "ready_to_authorize" if ready else "developer_app_setup_required",
-                       "read_only_scopes": spec["scopes"]})
+                       "reason": reason, "read_only_scopes": spec["scopes"]})
     return result
 
 def begin(provider: str, business_id: str) -> str:
