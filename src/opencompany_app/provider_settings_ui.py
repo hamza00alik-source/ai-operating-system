@@ -3,7 +3,7 @@
 OWNER_PROVIDER_SETTINGS_HTML = r"""
 <section class="panel" id="unorouter-settings">
   <div class="row"><h2 class="section-title" style="margin:0">UnoRouter free AI provider</h2><span id="unorouter-state" class="pill">Not configured</span></div>
-  <p class="muted">Enter your private API key here. It is sent only to this OpenCompany server, encrypted before database storage, and never displayed again. Choose a model whose ID ends with :free. No paid fallback is allowed.</p>
+  <p class="muted">Enter your private API key here. It is sent only to this OpenCompany server, encrypted before database storage, and never displayed again. Choose a model whose ID ends with :free. No paid fallback is allowed. Encryption uses the server-side OPENCOMPANY_SECRET_ENCRYPTION_KEY; if unset, it derives from the owner API key. Keep that key stable or re-enter credentials after rotating it.</p>
   <label for="unorouter-api-key">UnoRouter API key</label>
   <input id="unorouter-api-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste private API key">
   <label for="unorouter-model">Free model ID</label>
