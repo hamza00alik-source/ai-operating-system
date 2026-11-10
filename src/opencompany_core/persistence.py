@@ -141,22 +141,24 @@ class SQLiteStore:
                 ).fetchall()
         return tuple(self.get_agent(UUID(row["id"])) for row in rows)
 
-    def save_agent_with_audit(self, agent: AgentProfile, record: AuditRecord) -> str:
-        """Persist an agent profile and its audit evidence atomically."""
+    def save_agent_with_audit(self, agent: AgentProfile, record: AuditRecord) -> str | None:
+        """Insert a new agent profile and its audit evidence atomically.
+
+        Existing profiles are never overwritten by bootstrap retries.
+        """
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
-                self._connection.execute(
-                    """INSERT INTO agent_profiles
+                cursor = self._connection.execute(
+                    """INSERT OR IGNORE INTO agent_profiles
                        (id,name,department,purpose,capabilities_json,state,revision)
-                       VALUES(?,?,?,?,?,?,?)
-                       ON CONFLICT(id) DO UPDATE SET
-                         name=excluded.name, department=excluded.department,
-                         purpose=excluded.purpose, capabilities_json=excluded.capabilities_json,
-                         state=excluded.state, revision=excluded.revision""",
+                       VALUES(?,?,?,?,?,?,?)""",
                     (str(agent.id), agent.name, agent.department, agent.purpose,
                      _json(list(agent.capabilities)), agent.state.value, agent.revision),
                 )
+                if cursor.rowcount == 0:
+                    self._connection.execute("ROLLBACK")
+                    return None
                 row = self._connection.execute(
                     "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
                 ).fetchone()
