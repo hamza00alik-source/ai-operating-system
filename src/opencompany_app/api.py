@@ -175,13 +175,22 @@ def _default_runtime() -> OpenCompanyRuntime:
 
 @app.on_event("startup")
 def initialize_autonomous_runtime() -> None:
-    if (
-        os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true"
-        and os.environ.get("OPENCOMPANY_OWNER_API_KEY")
-    ):
-        runtime = _default_runtime()
-        if runtime.gateway.eligible_providers(request_budget_usd=0.0):
-            runtime.fleet.start()
+    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
+        return
+    bootstrap_enabled = os.environ.get("OPENCOMPANY_BOOTSTRAP_WORKFORCE", "false").casefold() == "true"
+    activate_enabled = os.environ.get("OPENCOMPANY_AUTO_ACTIVATE_WORKFORCE", "false").casefold() == "true"
+    worker_autostart = os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true"
+    if not (bootstrap_enabled or activate_enabled or worker_autostart):
+        return
+    runtime = _default_runtime()
+    if bootstrap_enabled:
+        bootstrap_department_managers(runtime.store)
+        bootstrap_specialist_profiles(runtime.store)
+        bootstrap_executive_orchestrator(runtime.store)
+    if activate_enabled:
+        runtime.store.activate_all_draft_agents_with_audit()
+    if worker_autostart:
+        runtime.fleet.start()
 
 
 @app.on_event("shutdown")
@@ -713,6 +722,8 @@ def enqueue_work_item(
         raise HTTPException(status_code=409, detail="Assigned agent role is not in the original workforce catalogue.") from exc
     if agent.role_key not in department.role_keys or role.team_key != agent.team_key:
         raise HTTPException(status_code=409, detail="Assigned agent role or team does not match the department catalogue.")
+    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        raise HTTPException(status_code=503, detail="No owner-configured free inference provider is available; queue admission is blocked.")
     event = AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc),
         actor_type="owner", actor_id="owner", action="work_item.queued",
