@@ -85,7 +85,7 @@ def create_workflow(template_id: str, business_id: str = "core") -> dict:
                 (step_id, workflow_id, task_id, index, department, title, status, now))
             created.append({"id": step_id, "task_id": task_id, "sequence": index,
                             "department": department, "title": title, "status": status})
-    return {"id": workflow_id, "template_id": template_id, "name": template["name"],
+    return {"id": workflow_id, "business_id": business_id, "template_id": template_id, "name": template["name"],
             "status": "active", "steps": created,
             "next_action": "Execute the first queued step from the Owner Console; subsequent steps unlock only after completion."}
 
