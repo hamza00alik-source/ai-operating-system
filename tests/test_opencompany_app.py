@@ -397,7 +397,7 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
 
     audit = owner_client.get("/audit/verify", headers=headers)
     assert audit.status_code == 200
-    assert audit.json() == {"event_count": 5, "chain_valid": True}
+    assert audit.json() == {"event_count": 6, "chain_valid": True}
 
 
 def test_owner_can_preview_manager_specialist_team_without_assigning_work(owner_client):
