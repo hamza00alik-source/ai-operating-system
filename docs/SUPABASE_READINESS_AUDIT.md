@@ -20,15 +20,15 @@ Region: `ap-southeast-2`
 
 The Supabase project is reachable from the Supabase management integration, but it is currently an empty application database. The existence of `AI_OS_DATABASE_URL` in Railway does not prove it points to this project.
 
-The app's current schema is created and incrementally upgraded by `src/ai_os/db.py` and additional feature modules. For example, `src/ai_os/workflows.py` separately creates `workflow_instances` and `workflow_steps` and adds indexes/columns. The schema inventory must therefore include module-level initializers, not only `db.py`. It is not yet represented by a complete, reviewed Supabase baseline migration. Do not point the live Railway service at this empty database until the full schema and all runtime-created tables have been inventoried, a migration baseline has been generated and reviewed, and a backup/rollback plan exists.
+The source inventory identifies 22 application tables: `tasks`, `approvals`, `discovery_scans`, `provider_catalog_entries`, `research_sources`, `provider_credentials`, `business_integration_credentials`, `agent_runs`, `agent_run_events`, `agent_run_steps`, `brain_experiences`, `brain_memories`, `owner_sessions`, `business_records`, `investor_contacts`, `code_assets`, `license_offers`, `department_messages`, `department_delegations`, `discovery_candidates`, `workflow_instances`, and `workflow_steps`. The first 20 are initialized in `src/ai_os/db.py`; the final two are initialized in `src/ai_os/workflows.py`. The source also contains backward-compatible ALTER TABLE steps and indexes which must be represented in a baseline. This is a source-code inventory, not yet a verified complete schema export or executable migration. Do not point the live Railway service at this empty database until the full schema and all runtime-created tables have been inventoried, a migration baseline has been generated and reviewed, and a backup/rollback plan exists.
 
 ## Security recommendation
 
-A separate draft migration restricts direct execution of `public.rls_auto_enable()` by `PUBLIC`, `anon`, and `authenticated`. It does not disable the `ensure_rls` event trigger. Review this migration before applying it.
+The initial idea to revoke EXECUTE from `public.rls_auto_enable()` has been withdrawn and its draft migration removed. Although the security advisor flags the SECURITY DEFINER function, it is bound to a database event trigger. Changing its execution ACL without validating PostgreSQL event-trigger invocation semantics could disrupt automatic RLS enforcement. Leave the function and event trigger unchanged until a safe, verified remediation is established.
 
 ## Actions deliberately not performed
 
-- No tables, policies, functions, triggers, or migrations were created or changed in Supabase.
+- No tables, policies, functions, triggers, or migrations were created or changed in Supabase. No production schema migration has been generated or applied.
 - No production Railway variables were changed.
 - No data was imported or migrated.
 - No production database switch or deployment was triggered.
