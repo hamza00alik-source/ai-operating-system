@@ -47,11 +47,15 @@ PROVIDERS = (
              "AI_OS_GEMINI_API_KEY", "AI_OS_GEMINI_FREE_CONFIRMED", "gemini"),
     Provider("openrouter", "OpenRouter", "AI_OS_OPENROUTER_BASE_URL", "AI_OS_OPENROUTER_MODEL",
              "AI_OS_OPENROUTER_API_KEY", "AI_OS_OPENROUTER_FREE_CONFIRMED"),
-    Provider("unorouter", "UnoRouter · primary free model gateway", "AI_OS_UNOROUTER_BASE_URL",
+    Provider("unorouter", "UnoRouter · personal testing only", "AI_OS_UNOROUTER_BASE_URL",
              "AI_OS_UNOROUTER_MODEL", "AI_OS_UNOROUTER_API_KEY",
-             "AI_OS_UNOROUTER_FREE_CONFIRMED", ),
+             "AI_OS_UNOROUTER_FREE_CONFIRMED", experimental_only=True),
     Provider("groq", "Groq", "AI_OS_GROQ_BASE_URL", "AI_OS_GROQ_MODEL",
              "AI_OS_GROQ_API_KEY", "AI_OS_GROQ_FREE_CONFIRMED"),
+    Provider("nvidia", "NVIDIA NIM", "AI_OS_NVIDIA_BASE_URL", "AI_OS_NVIDIA_MODEL",
+             "AI_OS_NVIDIA_API_KEY", "AI_OS_NVIDIA_FREE_CONFIRMED"),
+    Provider("sambanova", "SambaNova Cloud", "AI_OS_SAMBANOVA_BASE_URL", "AI_OS_SAMBANOVA_MODEL",
+             "AI_OS_SAMBANOVA_API_KEY", "AI_OS_SAMBANOVA_FREE_CONFIRMED"),
     Provider("mistral", "Mistral", "AI_OS_MISTRAL_BASE_URL", "AI_OS_MISTRAL_MODEL",
              "AI_OS_MISTRAL_API_KEY", "AI_OS_MISTRAL_FREE_CONFIRMED"),
     Provider("cloudflare", "Cloudflare Workers AI", "AI_OS_CLOUDFLARE_BASE_URL",
@@ -74,18 +78,24 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         free = saved["free_confirmed"]
     configured = bool(base and model and secret)
     uno_free_model = provider.key != "unorouter" or model.endswith(":free")
-    eligible = configured and free and uno_free_model and not provider.experimental_only
+    eligible = (
+        configured and free and uno_free_model
+        and not provider.experimental_only
+        and provider.key != "unorouter"
+    )
     return {
         "id": provider.key, "name": provider.label, "protocol": provider.protocol,
         "_secret": secret,
         "configured": configured, "free_confirmed": free, "eligible": eligible,
         "experimental_only": provider.experimental_only,
+        "personal_test_only": provider.key == "unorouter",
         "model": model if model else None,
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
-            "UnoRouter requires an owner-confirmed model ID ending in :free."
-            if provider.key == "unorouter" and not uno_free_model else
+            "UnoRouter is isolated to owner-initiated personal tests; it is not eligible "
+            "for company tasks or automatic provider fallback."
+            if provider.key == "unorouter" else
             "Set base URL, model, API secret, and explicitly confirm this endpoint "
             "is currently free. Paid or unverified endpoints are blocked."
         ),
@@ -432,7 +442,7 @@ def test_unorouter_personal(prompt: str, approve_paid_request: bool = False) -> 
     }
 
 
-def generate_with_fallback(prompt: str, preferred_provider: str = "unorouter") -> dict[str, Any]:
+def generate_with_fallback(prompt: str, preferred_provider: str = "openrouter") -> dict[str, Any]:
     """Use the preferred free-confirmed provider first, then other eligible providers.
 
     Fallback is restricted to providers explicitly configured and owner-confirmed

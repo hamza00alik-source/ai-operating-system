@@ -60,3 +60,32 @@ def test_unorouter_personal_credential_is_encrypted_and_requires_free_model(monk
     credentials.save_provider_credential("unorouter", "uno-test-secret", "paid-model", False)
     assert credentials.get_provider_credential("unorouter")["model"] == "paid-model"
     assert credentials.get_provider_credential("unorouter")["free_confirmed"] is False
+
+
+
+def test_cloudflare_credential_requires_account_specific_https_endpoint(monkeypatch):
+    from cryptography.fernet import Fernet
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    with pytest.raises(ValueError, match="Cloudflare URL"):
+        credentials.save_provider_credential(
+            "cloudflare", "cloudflare-test-token", "@cf/meta/llama", True,
+            "http://api.cloudflare.com/client/v4/accounts/12345678901234567890123456789012/ai/run",
+        )
+    with pytest.raises(ValueError, match="Cloudflare URL"):
+        credentials.save_provider_credential(
+            "cloudflare", "cloudflare-test-token", "@cf/meta/llama", True,
+            "https://evil.example/client/v4/accounts/12345678901234567890123456789012/ai/run",
+        )
+
+
+def test_cloudflare_credential_is_encrypted_and_stores_validated_account_endpoint(monkeypatch):
+    from cryptography.fernet import Fernet
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    endpoint = "https://api.cloudflare.com/client/v4/accounts/12345678901234567890123456789012/ai/run"
+    credentials.save_provider_credential(
+        "cloudflare", "cloudflare-test-token", "@cf/meta/llama", True, endpoint
+    )
+    saved = credentials.get_provider_credential("cloudflare")
+    assert saved["secret"] == "cloudflare-test-token"
+    assert saved["base_url"] == endpoint
+    assert saved["free_confirmed"] is True

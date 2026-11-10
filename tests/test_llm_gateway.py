@@ -120,15 +120,38 @@ def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
         assert "secret" not in message.lower()
 
 
-def test_unorouter_is_eligible_for_prelaunch_aios_when_free_confirmed(monkeypatch):
+def test_unorouter_is_personal_only_and_never_company_eligible(monkeypatch):
     monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
     monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
     monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "unorouter-test-secret")
     monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
-    assert status["eligible"] is True
+    assert status["eligible"] is False
+    assert status["personal_test_only"] is True
+    assert "personal tests" in status["reason"]
     assert status["model"] == "example-model:free"
     assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
+
+def test_company_fallback_never_routes_to_unorouter_even_when_preferred(monkeypatch):
+    monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
+    monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
+    monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "unorouter-test-secret")
+    monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
+    monkeypatch.setenv("AI_OS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("AI_OS_OPENROUTER_MODEL", "provider/model:free")
+    monkeypatch.setenv("AI_OS_OPENROUTER_API_KEY", "openrouter-test-secret")
+    monkeypatch.setenv("AI_OS_OPENROUTER_FREE_CONFIRMED", "true")
+    attempted = []
+
+    def fake_generate(provider_id, prompt):
+        attempted.append(provider_id)
+        return {"provider": provider_id, "response": "A sufficiently detailed test response."}
+
+    monkeypatch.setattr(llm_gateway, "generate", fake_generate)
+    result = llm_gateway.generate_with_fallback("company task", preferred_provider="unorouter")
+    assert result["provider"] == "openrouter"
+    assert attempted == ["openrouter"]
+
 
 def test_unorouter_catalog_lists_free_and_paid_and_preserves_exact_ids(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
@@ -162,7 +185,7 @@ def test_unorouter_catalog_lists_free_and_paid_and_preserves_exact_ids(monkeypat
 
 
 
-def test_unorouter_is_default_eligible_provider_when_free_confirmed(monkeypatch):
+def test_unorouter_is_not_default_or_eligible_for_company_tasks(monkeypatch):
     monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
     monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
     monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "test-secret")
@@ -170,9 +193,10 @@ def test_unorouter_is_default_eligible_provider_when_free_confirmed(monkeypatch)
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
     assert status["configured"] is True
     assert status["free_confirmed"] is True
-    assert status["eligible"] is True
-    assert status["experimental_only"] is False
-    assert llm_gateway.generate_with_fallback.__defaults__[0] == "unorouter"
+    assert status["eligible"] is False
+    assert status["experimental_only"] is True
+    assert status["personal_test_only"] is True
+    assert llm_gateway.generate_with_fallback.__defaults__[0] == "openrouter"
 
 
 def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypatch):
@@ -190,7 +214,7 @@ def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypa
     assert result["mode"] == "owner_personal_test_only"
     assert result["company_task_routing"] is False
     assert result["response"].startswith("This is a valid")
-    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is True
+    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is False
 
 def test_unorouter_personal_test_rejects_paid_model(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
@@ -209,7 +233,8 @@ def test_unorouter_env_model_must_end_in_free(monkeypatch):
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
     assert status["configured"] is True
     assert status["eligible"] is False
-    assert ":free" in status["reason"]
+    assert status["personal_test_only"] is True
+    assert "personal tests" in status["reason"]
 
 
 def test_unorouter_paid_personal_test_requires_explicit_approval(monkeypatch):
@@ -290,3 +315,45 @@ def test_unorouter_auto_selection_uses_selected_free_chat_model_without_paid_req
     assert captured["payload"]["model"] == "research-chat:free"
     assert result["model_selection"]["task_category"] == "research"
     assert result["model_selection"]["model_id"].endswith(":free")
+
+
+def test_nvidia_nim_uses_openai_compatible_gateway(monkeypatch):
+    monkeypatch.setenv("AI_OS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    monkeypatch.setenv("AI_OS_NVIDIA_MODEL", "deepseek-ai/deepseek-v4.1-flash")
+    monkeypatch.setenv("AI_OS_NVIDIA_API_KEY", "test-nvidia-secret")
+    monkeypatch.setenv("AI_OS_NVIDIA_FREE_CONFIRMED", "true")
+    captured = {}
+
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {
+            "choices": [{"message": {"content": "AIOS live connection successful"}}],
+            "usage": {"prompt_tokens": 9, "completion_tokens": 6, "total_tokens": 15},
+        }
+
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.test_provider("nvidia")
+    assert result["test_passed"] is True
+    assert result["provider"] == "nvidia"
+    assert result["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert result["usage"]["total_tokens"] == 15
+    assert captured["url"] == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer test-nvidia-secret"
+    assert captured["payload"]["model"] == "deepseek-ai/deepseek-v4.1-flash"
+
+def test_sambanova_uses_openai_compatible_gateway(monkeypatch):
+    monkeypatch.setenv("AI_OS_SAMBANOVA_BASE_URL", "https://api.sambanova.ai/v1")
+    monkeypatch.setenv("AI_OS_SAMBANOVA_MODEL", "DeepSeek-V3.1")
+    monkeypatch.setenv("AI_OS_SAMBANOVA_API_KEY", "test-sambanova-secret")
+    monkeypatch.setenv("AI_OS_SAMBANOVA_FREE_CONFIRMED", "true")
+    captured = {}
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {"choices": [{"message": {"content": "AIOS live connection successful"}}],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}}
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.test_provider("sambanova")
+    assert result["test_passed"] is True
+    assert captured["url"] == "https://api.sambanova.ai/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer test-sambanova-secret"
+    assert captured["payload"]["model"] == "DeepSeek-V3.1"

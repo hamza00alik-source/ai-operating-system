@@ -108,28 +108,13 @@ The AI Brain is a provider-independent subsystem stored in the same persistent S
 This first version uses local lexical retrieval and SQLite; it requires no embedding service, extra model call, or separate training job. It does not train a new neural network, create a foundation model, or eliminate inference compute. It reduces repeated context-building by retaining approved company knowledge, while advanced reasoning still uses the configured model gateway. The owner must review proposed lessons before they can influence future agents. Only successful completed runs are recorded as experiences; failed runs are not treated as lessons.
 
 
-## UnoRouter as the pre-launch default provider
+## UnoRouter provider boundary
 
-UnoRouter is the default provider for the personally owned, pre-launch AIOS development and internal testing environment. The owner configures the UnoRouter API key and selects a model ID ending in `:free`, then explicitly confirms that the selected route is currently free. Agent specialist, collaboration, and CEO-review stages try UnoRouter first. If unavailable, the gateway may try another provider only when it is configured and owner-confirmed as free.
+UnoRouter is supported only as an owner-initiated personal testing connector. It is not eligible for company task execution, specialist/collaborator/CEO stages, or automatic provider failover. This separation follows UnoRouter's current Terms, which state that business-customer accounts are not offered and that marked offers are unavailable to business customers.
 
-AIOS never upgrades billing, selects a paid model, or uses paid fallback. The UnoRouter credential is encrypted in the existing provider vault and never returned by status endpoints. The owner can change the preferred provider without rebuilding the agent runtime.
+The owner may still use the isolated personal-test endpoint with synthetic, non-sensitive prompts. A free model must be identified by the exact account model ID ending in `:free` and explicitly confirmed as free. Paid personal tests require a separate explicit per-request approval. Catalog discovery is read-only and does not invoke inference.
 
-The public UnoRouter catalog is informational: it does not prove account-specific access or provider-level prompt retention, training, consent, or processing location. Use synthetic, non-sensitive prompts while testing free models. Do not send customer data, secrets, credentials, or confidential material to free-model routes. The user remains responsible for following current provider and model terms.
-
-- `GET /llm/unorouter/catalog` — authenticated, read-only public catalog lookup.
-- `POST /llm/credentials/unorouter` — owner-authenticated encrypted credential storage; only `:free` model IDs are accepted.
-- `POST /llm/unorouter/personal-test` — owner-triggered direct connection test.
-- `POST /llm/run` and agent runtime — UnoRouter-first, free-confirmed routing.
-- Paid fallback is disabled; every fallback provider must also be explicitly confirmed free.
-
-## Free-provider failover
-
-Agent task stages now use a free-only provider router. UnoRouter is attempted first by default; if it hits a rate limit/quota response, an authentication/model availability error, or a connection/upstream failure, AIOS tries the next provider that is both configured and explicitly owner-confirmed as free. The route never upgrades billing, selects a paid model, or falls back to an unconfirmed endpoint. A malformed task request or a model's empty/placeholder response is not blindly retried. Provider attempts and the provider used for each agent stage are recorded in the run usage metadata and execution timeline.
-
-The owner console can store encrypted credentials for UnoRouter, Google Gemini, Groq, and Mistral in the existing SQLite credential vault. Select a model ID that is currently free on your own provider account and confirm the free-only condition before saving. The API key is encrypted at rest and never returned. The owner must obtain each provider's key and confirm its current free-tier terms; free quotas are limited and may change. OpenRouter remains available as an optional free-confirmed alternative. Cloudflare Workers AI and custom OpenAI-compatible endpoints remain configurable through private server environment variables, with the same explicit free-confirmation gate.
-
-**Important:** failover is only as resilient as the providers actually connected. If every configured free quota is exhausted or every provider is unavailable, the task fails safely and waits for owner action or quota reset. No paid fallback is attempted.
-
+Company workloads use only other configured providers that have been explicitly owner-confirmed as free. No paid fallback, automatic top-up, or billing upgrade is permitted. See [docs/PROVIDER_BOUNDARIES.md](docs/PROVIDER_BOUNDARIES.md).
 
 ## UnoRouter personal testing (isolated)
 
@@ -140,19 +125,9 @@ AIOS can store an UnoRouter consumer API key encrypted in the existing credentia
 
 AIOS reads UnoRouter's public pricing catalogue and, when a key is saved, the account-specific \`GET /v1/models\` list. The dashboard displays both free and paid models with current input/output prices where available. Model IDs are preserved exactly as returned by UnoRouter; AIOS never appends or invents a \`:free\` suffix.
 
-Only exact model IDs ending in \`:free\` can be eligible for automatic free-only agent routing, and they must be owner-confirmed as free. Paid model credentials may be saved for evaluation but remain ineligible for background agents and automatic fallback. A paid direct test requires an explicit per-request owner approval; the API rejects paid test requests without that approval. Catalogue reads are read-only and do not send prompts or run inference. No paid fallback, automatic top-up, or background paid request is enabled.
+UnoRouter model IDs are never eligible for company routing or automatic fallback, including IDs ending in `:free`. The isolated personal-test endpoint accepts a free model only when the exact ID ends in `:free` and the owner has confirmed the route is free. A paid direct test requires an explicit per-request owner approval; the API rejects paid test requests without that approval. Catalogue reads are read-only and do not send prompts or run inference. No paid fallback, automatic top-up, or background paid request is enabled.
 
 
-## UnoRouter free-model intelligence and task routing
+## UnoRouter catalogue discovery
 
-The owner saves one encrypted UnoRouter API key and confirms one free-only connection; individual models do not need to be saved one by one. Before an UnoRouter text task is sent, AIOS reads the authenticated account model list and matches it with public endpoint metadata. A five-minute in-memory cache avoids repeating catalogue discovery for every specialist/CEO stage.
-
-The task router classifies a prompt as coding, reasoning, research, creative, or general using local keyword rules, then ranks only account-callable model IDs that:
-- end in the exact `:free` suffix returned by UnoRouter;
-- are reported callable by the authenticated account model list;
-- are identified as supporting chat completions (image/audio/embedding-only models are excluded); and
-- are not explicitly marked offline.
-
-The selected model ID is used for that request and recorded in run metadata. The saved model remains a fallback preference in ranking, not a requirement to manually configure every model. If no eligible free chat model can be verified, the UnoRouter route fails closed and the normal free-confirmed provider failover may continue. Paid models are never candidates for automatic task routing.
-
-This is a metadata/name heuristic, not a benchmark or a guarantee that a model is best. It does not run background benchmark prompts or make extra inference calls. Provider rate limits, availability, and actual billing behavior remain controlled by UnoRouter. Only owner-authorized task execution sends the task prompt; catalogue discovery itself is read-only.
+AIOS can inspect the public pricing catalogue and the model list available to the saved consumer key. This is read-only discovery for owner information and isolated personal testing; it does not authorize company execution. The task-category model selector is retained only as a personal-test/research utility and is not called by the company agent runtime. Model metadata and provider terms can change; the owner must check current conditions before each personal test.
