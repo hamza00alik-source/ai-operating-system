@@ -1,8 +1,9 @@
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
-from opencompany_core.domain import AgentProfile, AgentState, TaskState, WorkItem
+from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.worker_queue import DurableWorkerQueue
@@ -153,5 +154,26 @@ def test_worker_rejects_invalid_request_budget(tmp_path, budget):
     with pytest.raises(ValueError, match="finite"):
         OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink(),
                           request_budget_usd=budget)
+    queue.close()
+    store.close()
+
+
+def test_worker_recovers_queue_ack_after_artifact_was_durably_saved(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    deliverable = AgentDeliverable(
+        id=uuid4(), work_item_id=item.id, role_key="marketplace_operations_analyst",
+        content="Already persisted draft", provider="fake", model="deterministic", cost_usd=0.0,
+    )
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+        actor_id=str(agent), action="worker.deliverable_saved", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="recovery-test",
+        details={"role_key": deliverable.role_key},
+    )
+    assert store.save_deliverable_with_audit(deliverable, event) is True
+    worker = OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink())
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert queue.counts() == {"done": 1}
+    assert len(store.list_deliverables(item.id)) == 1
     queue.close()
     store.close()
