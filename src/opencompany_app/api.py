@@ -34,6 +34,8 @@ from opencompany_core.executive_ai import ExecutivePlanningError, create_executi
 from opencompany_core.model_gateway import CostPolicyViolation, NoEligibleProvider, ProviderUnavailable
 from opencompany_core.collaboration import AgentHandoff, HandoffState, accept_handoff, decline_handoff, deliver_handoff
 from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, OutcomeGrade, ProposalState
+from opencompany_core.github_evolution import GitHubEvolutionError
+from opencompany_core.code_evolution import CodeEvolutionError, generate_code_evolution_pr
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -83,6 +85,11 @@ class WorkItemCreateInput(BaseModel):
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     max_specialists: int = Field(default=5, ge=1, le=5)
+
+
+class CodeEvolutionInput(BaseModel):
+    problem: str = Field(min_length=1, max_length=3000)
+    file_paths: list[str] = Field(min_length=1, max_length=3)
 
 
 class OutcomeEvaluationInput(BaseModel):
@@ -768,6 +775,73 @@ def preview_work_item_delegation(
     }
 
     
+@app.post("/code-evolution/proposals", dependencies=[Depends(require_owner_key)])
+def create_code_evolution_proposal(
+    payload: CodeEvolutionInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Generate source edits and open a draft PR on an isolated feature branch."""
+    if runtime.github_evolution is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Code evolution is not connected. Configure OPENCOMPANY_GITHUB_TOKEN and OPENCOMPANY_GITHUB_REPOSITORY as server-side secrets.",
+        )
+    try:
+        result = generate_code_evolution_pr(
+            payload.problem, tuple(payload.file_paths),
+            runtime.gateway, runtime.github_evolution,
+        )
+    except NoEligibleProvider as exc:
+        raise HTTPException(status_code=503, detail="No owner-configured free model provider is available for code evolution.") from exc
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        raise HTTPException(status_code=502, detail=f"Code model request failed safely: {type(exc).__name__}") from exc
+    except (CodeEvolutionError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GitHubEvolutionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    now = datetime.now(timezone.utc)
+    store.append_audit_record(AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="code_evolution.draft_pull_request_created",
+        subject_type="github_pull_request", subject_id=str(result.pull_request.number),
+        outcome="draft_pr_created", correlation_id=str(uuid4()),
+        details={
+            "url": result.pull_request.url, "branch": result.pull_request.branch,
+            "commit_sha": result.pull_request.commit_sha,
+            "changed_paths": list(result.changed_paths),
+            "provider": result.provider, "model": result.model,
+        },
+    ))
+    return {
+        "pull_request_number": result.pull_request.number,
+        "url": result.pull_request.url,
+        "branch": result.pull_request.branch,
+        "commit_sha": result.pull_request.commit_sha,
+        "changed_paths": list(result.changed_paths),
+        "provider": result.provider,
+        "model": result.model,
+        "draft": True,
+        "merged": False,
+        "deployed": False,
+        "owner_merge_review_required": True,
+    }
+
+
+@app.get("/code-evolution/pull-requests/{number}", dependencies=[Depends(require_owner_key)])
+def get_code_evolution_status(
+    number: int,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if runtime.github_evolution is None:
+        raise HTTPException(status_code=503, detail="GitHub code evolution is not configured.")
+    try:
+        status = runtime.github_evolution.get_pull_request(number)
+    except (ValueError, GitHubEvolutionError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return status
+
+
 @app.post("/work-items/{item_id}/evaluations", dependencies=[Depends(require_owner_key)])
 def create_outcome_evaluation(
     item_id: UUID,
