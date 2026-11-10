@@ -25,6 +25,7 @@ from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
+from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
@@ -64,6 +65,11 @@ class WorkItemCreateInput(BaseModel):
     objective: str = Field(min_length=1, max_length=12000)
     department: str = Field(min_length=1, max_length=80)
     depends_on: tuple[UUID, ...] = ()
+
+
+class DelegationPreviewInput(BaseModel):
+    required_capabilities: list[str] = Field(min_length=1, max_length=20)
+    max_specialists: int = Field(default=5, ge=1, le=5)
 
 
 class WorkItemTransitionInput(BaseModel):
@@ -445,6 +451,47 @@ def create_work_item(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     store.save_work_item_with_audit(item, _record(item, "work_item.created"))
     return {"item_id": str(item.id), "state": item.state.value}
+
+
+@app.post("/work-items/{item_id}/delegation-preview", dependencies=[Depends(require_owner_key)])
+def preview_work_item_delegation(
+    item_id: UUID,
+    payload: DelegationPreviewInput,
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    item = store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    try:
+        plan = plan_department_work(
+            item, payload.required_capabilities,
+            max_specialists=payload.max_specialists,
+        )
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "work_item_id": plan.work_item_id,
+        "department": plan.department,
+        "manager": {
+            "role_key": plan.manager_role_key,
+            "title": plan.manager_title,
+        },
+        "mode": plan.mode.value,
+        "selected_team_key": plan.selected_team_key,
+        "specialists": [
+            {
+                "role_key": specialist.role_key,
+                "title": specialist.title,
+                "team_key": specialist.team_key,
+                "matched_capabilities": list(specialist.matched_capabilities),
+                "permitted_outputs": list(specialist.permitted_outputs),
+            }
+            for specialist in plan.specialists
+        ],
+        "uncovered_capabilities": list(plan.uncovered_capabilities),
+        "assignment_performed": plan.assignment_performed,
+        "execution_started": plan.execution_started,
+    }
 
 
 @app.post("/work-items/{item_id}/transition", dependencies=[Depends(require_owner_key)])
