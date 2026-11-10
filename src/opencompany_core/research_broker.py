@@ -131,7 +131,10 @@ class ResearchBroker:
         )
         try:
             selection = self.gateway.complete(
-                ModelRequest(prompt=selection_prompt, request_id=str(uuid4()), max_output_tokens=700),
+                ModelRequest(
+                    prompt=selection_prompt, request_id=str(uuid4()), max_output_tokens=700,
+                    work_item_id=str(item.id), role_key=role.key,
+                ),
                 request_budget_usd=0.0, preferred_provider="unorouter",
             )
             chosen = json.loads(selection.text)
