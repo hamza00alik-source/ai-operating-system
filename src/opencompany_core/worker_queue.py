@@ -112,7 +112,7 @@ class DurableWorkerQueue:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 task = self._db.execute(
-                    "SELECT state,assigned_agent_id,department FROM work_items WHERE id=?",
+                    "SELECT state,assigned_agent_id,department,dependencies_json FROM work_items WHERE id=?",
                     (str(item.id),),
                 ).fetchone()
                 agent = self._db.execute(
@@ -129,6 +129,13 @@ class DurableWorkerQueue:
                     or agent["department"] != task["department"]
                 ):
                     raise QueueError("assignee must be an active profile in the work item's department")
+                dependencies = json.loads(task["dependencies_json"])
+                for dependency_id in dependencies:
+                    dependency = self._db.execute(
+                        "SELECT state FROM work_items WHERE id=?", (dependency_id,)
+                    ).fetchone()
+                    if dependency is None or dependency["state"] != TaskState.COMPLETED.value:
+                        raise QueueError("all prerequisite work items must be completed before queue admission")
                 child = self._db.execute(
                     "SELECT state,assigned_agent_id,role_key,team_key "
                     "FROM delegation_child_tasks WHERE id=?",
