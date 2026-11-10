@@ -83,5 +83,8 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
-    fleet = WorkerFleet(worker, store)
+    fleet = WorkerFleet(
+        worker, store,
+        idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
+    )
     return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs, learning=learning, github_evolution=github_evolution, api_anything=api_anything)
