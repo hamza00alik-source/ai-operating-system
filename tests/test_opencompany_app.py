@@ -1130,3 +1130,30 @@ def test_readiness_requires_owner_runtime_configuration(monkeypatch):
     monkeypatch.delenv("OPENCOMPANY_OWNER_API_KEY", raising=False)
     response = client.get("/ready")
     assert response.status_code == 503
+
+
+
+def test_model_usage_summary_is_owner_authenticated_and_secret_free(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    assert runtime.usage.record({
+        "request_id": "usage-test-1",
+        "work_item_id": str(uuid4()),
+        "role_key": "market_intelligence_analyst",
+        "provider": "unorouter",
+        "model": "vendor/free-model:free",
+        "input_tokens": 120,
+        "output_tokens": 45,
+        "cost_usd": 0.0,
+    }) is True
+    response = owner_client.get("/usage/model", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["request_count"] == 1
+    assert payload["total_cost_usd"] == 0.0
+    assert payload["total_input_tokens"] == 120
+    assert payload["total_output_tokens"] == 45
+    assert payload["events"][0]["provider"] == "unorouter"
+    assert "api_key" not in response.text.lower()
+    denied = owner_client.get("/usage/model")
+    assert denied.status_code == 401
