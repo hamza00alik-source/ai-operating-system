@@ -151,3 +151,14 @@ The independent OpenCompany API and worker now compose around one SQLite connect
 - `worker_main.py` is available as a foreground worker entrypoint for controlled single-host use, but the API dashboard's in-process fleet is the intended single-container deployment mode.
 
 The current `vercel.json` still points at the legacy Railway service. Do not promote this branch or change production routing until the new Railway service has been deployed and verified with a persistent volume, owner session, worker queue, provider test, backup/restore and rollback rehearsal. No production migration or replacement is implied by a passing unit-test run.
+
+
+## CEO planning, manager delegation, collaboration and learning
+
+- An explicitly ACTIVE Chief Executive Orchestrator can decompose an owner objective into up to ten draft department tasks. The plan is validated for known departments and backward-only dependencies, then all draft tasks and audit events are persisted atomically.
+- An explicitly ACTIVE department manager can use the configured free model to select exact capability identifiers from the 500-specialist catalogue. The result is validated against the catalogue and saved as a delegation proposal. Owner approval is still required before child tasks are created.
+- Each of the 500 specialist roles now has an individual operating procedure generated from its unique role title, mission and capability contract: intake requirements, task steps, deliverable contract, quality rubric, escalation triggers and tool scopes. The procedure is injected into the role's execution prompt.
+- Agent handoffs are persisted with sender/recipient identity checks, artifact provenance, state transitions and hash-linked audit events.
+- Owner review automatically records an outcome evaluation against the reviewed deliverable. The free model can turn selected evaluations into a proposed role-learning note; an owner must approve it and explicitly apply it before the note is injected into future prompts.
+- AI code evolution can generate complete file replacements for up to three allowlisted source/test/documentation files and open a DRAFT pull request on a new feature branch. The branch is tested by GitHub Actions. It cannot modify secrets, deployment workflows or production configuration, and it cannot merge or deploy.
+- Code evolution requires server-side `OPENCOMPANY_GITHUB_TOKEN` and `OPENCOMPANY_GITHUB_REPOSITORY`. The token is never returned by the API. The initial PR is draft and owner review is mandatory.
