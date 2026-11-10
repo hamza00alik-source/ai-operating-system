@@ -317,6 +317,43 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
     assert audit.json() == {"event_count": 6, "chain_valid": True}
 
 
+def test_owner_can_preview_manager_specialist_team_without_assigning_work(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Assess market demand",
+        "objective": "Prepare a sourced market-demand assessment",
+        "department": "intelligence-research",
+    })
+    assert created.status_code == 200
+    response = owner_client.post(
+        f"/work-items/{created.json()['item_id']}/delegation-preview",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert response.status_code == 200
+    plan = response.json()
+    assert plan["manager"]["role_key"] == "market_intelligence_analyst"
+    assert plan["mode"] == "specialist_team"
+    assert len(plan["specialists"]) == 5
+    assert len({item["team_key"] for item in plan["specialists"]}) == 1
+    assert plan["assignment_performed"] is False
+    assert plan["execution_started"] is False
+
+
+def test_delegation_preview_requires_owner_authentication(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Assess market demand",
+        "objective": "Prepare a sourced market-demand assessment",
+        "department": "intelligence-research",
+    }).json()
+    response = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-preview",
+        json={"required_capabilities": ["market"]},
+    )
+    assert response.status_code == 401
+
+
 def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     first = owner_client.post("/work-items", headers=headers, json={
