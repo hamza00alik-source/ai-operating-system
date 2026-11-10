@@ -97,6 +97,7 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
 def test_runtime_reloads_encrypted_unorouter_credentials_after_restart(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
     monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
     monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
     path = str(tmp_path / "persisted.sqlite3")
     first = create_runtime(path)
@@ -108,6 +109,8 @@ def test_runtime_reloads_encrypted_unorouter_credentials_after_restart(monkeypat
         assert second.gateway.eligible_providers(request_budget_usd=0) == ("unorouter",)
         assert second.github_evolution is not None
         assert second.github_evolution.repository == "hamza00alik-source/ai-operating-system"
+        assert second.fleet.status().running is False
+        assert second.start_workers_if_ready() is False
     finally:
         second.close()
 
