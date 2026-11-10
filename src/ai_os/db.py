@@ -60,6 +60,18 @@ def initialize_database() -> None:
             content TEXT NOT NULL, captured_at TEXT NOT NULL, content_type TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_research_sources_captured ON research_sources(captured_at);
+        CREATE TABLE IF NOT EXISTS model_benchmarks (
+            id TEXT PRIMARY KEY, provider TEXT NOT NULL, model TEXT,
+            outcome TEXT NOT NULL, latency_ms INTEGER,
+            input_tokens INTEGER, output_tokens INTEGER, total_tokens INTEGER,
+            usage_reported INTEGER NOT NULL DEFAULT 0,
+            cost_class TEXT NOT NULL DEFAULT 'unknown',
+            error_summary TEXT NOT NULL DEFAULT '',
+            triggered_by TEXT NOT NULL DEFAULT 'owner_authenticated',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_model_benchmarks_created ON model_benchmarks(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_model_benchmarks_provider ON model_benchmarks(provider, created_at DESC);
         CREATE TABLE IF NOT EXISTS provider_credentials (
             provider TEXT PRIMARY KEY, encrypted_secret TEXT NOT NULL,
             model TEXT NOT NULL, base_url TEXT NOT NULL,
