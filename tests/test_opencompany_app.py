@@ -1093,6 +1093,34 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     assert reviewed.status_code == 200
     assert reviewed.json()["state"] == "completed"
     assert reviewed.json()["evaluation_recorded"] is True
+
+    # The approved manager synthesis parent is now READY only after every
+    # child is owner-approved, and it receives the specialist deliverable IDs.
+    manager_parent = runtime.store.get_work_item(UUID(parent_id))
+    assert manager_parent.state == TaskState.READY
+    assert manager_parent.assigned_agent_id == UUID(manager["id"])
+    assert manager_parent.depends_on == (UUID(child_task["id"]),)
+
+    manager_queued = owner_client.post(
+        f"/work-items/{parent_id}/enqueue", headers=headers,
+    )
+    assert manager_queued.status_code == 200
+    manager_result = runtime.worker.run_once(
+        UUID(manager["id"]), "market_intelligence_analyst",
+    )
+    assert manager_result == "completed_review_required"
+    assert runtime.store.get_work_item(UUID(parent_id)).state == TaskState.REVIEW
+    manager_deliverables = owner_client.get(
+        f"/work-items/{parent_id}/deliverables", headers=headers,
+    )
+    assert manager_deliverables.status_code == 200
+    assert manager_deliverables.json()["count"] == 1
+    manager_review = owner_client.post(
+        f"/work-items/{parent_id}/review", headers=headers,
+        json={"approved": True, "rationale": "The manager synthesis incorporates the approved specialist result."},
+    )
+    assert manager_review.status_code == 200
+    assert manager_review.json()["state"] == "completed"
     assert runtime.store.verify_audit_chain() is True
 
 
