@@ -63,6 +63,10 @@ def test_free_api_catalog_sync_imports_evidence_without_enabling_providers(monke
     assert provider["status"]["live"]["state"] == "up"
     assert provider["sources"][0]["url"] == "https://example.com/docs"
     assert provider["review_state"] == "pending"
+    assert provider["evidence_freshness"]["state"] == "stale"
+    assert provider["routing_eligible"] is False
+    assert "never enable or authorize" in provider["routing_note"].lower()
+    assert listed["evidence_freshness"]["counts"]["stale"] == 1
     assert "no provider was enabled" in result["important"].lower()
 
 
@@ -160,3 +164,17 @@ def test_expired_discovery_worker_cannot_write_failure_state(monkeypatch, tmp_pa
         row = db.execute("SELECT status,lease_owner FROM discovery_scans WHERE id=?", (scan['id'],)).fetchone()
     assert row['status'] == 'running'
     assert row['lease_owner'] == 'worker-a'
+
+
+
+def test_provider_evidence_freshness_uses_verification_date_conservatively():
+    from datetime import datetime, timedelta, timezone
+    from ai_os.discovery import _evidence_freshness
+
+    recent = (datetime.now(timezone.utc) - timedelta(days=4)).date().isoformat()
+    stale = (datetime.now(timezone.utc) - timedelta(days=45)).date().isoformat()
+    assert _evidence_freshness(recent, [{"accessed": stale}])["state"] == "recent"
+    old_verification = _evidence_freshness(stale, [{"accessed": recent}])
+    assert old_verification["state"] == "stale"
+    assert "last_verified" in old_verification["basis"]
+    assert _evidence_freshness(None, [])["state"] == "unknown"
