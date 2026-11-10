@@ -256,6 +256,57 @@ class SQLiteStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
+    def activate_all_draft_agents_with_audit(self) -> int:
+        """Atomically activate all provisioned, catalogue-bound draft profiles."""
+        correlation_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                rows = self._connection.execute(
+                    """SELECT id,department,role_key,team_key,revision
+                       FROM agent_profiles WHERE state=? ORDER BY department,role_key,id""",
+                    (AgentState.DRAFT.value,),
+                ).fetchall()
+                for row in rows:
+                    if not row["department"] or not row["role_key"] or not row["team_key"]:
+                        raise ValueError("cannot activate a profile without department, role and team identity")
+                    cursor = self._connection.execute(
+                        """UPDATE agent_profiles SET state=?,revision=revision+1
+                           WHERE id=? AND state=? AND revision=?""",
+                        (AgentState.ACTIVE.value, row["id"], AgentState.DRAFT.value, row["revision"]),
+                    )
+                    if cursor.rowcount != 1:
+                        raise ValueError("draft profile changed during workforce activation")
+                    event = AuditRecord(
+                        id=uuid4(), occurred_at=now, actor_type="owner",
+                        actor_id="owner", action="agent.workforce_profile_activated",
+                        subject_type="agent_profile", subject_id=row["id"],
+                        outcome="active", correlation_id=correlation_id,
+                        details={
+                            "department": row["department"], "role_key": row["role_key"],
+                            "team_key": row["team_key"], "activation_policy": "owner-approved-runtime-config",
+                        },
+                    )
+                    previous = self._connection.execute(
+                        "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                    ).fetchone()
+                    previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                    payload = _audit_payload(event, previous_hash)
+                    self._connection.execute(
+                        """INSERT INTO audit_events
+                           (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                           VALUES(?,?,?,?,?)""",
+                        (str(event.id), event.occurred_at.isoformat(), _json(payload),
+                         previous_hash, _digest(payload)),
+                    )
+                self._connection.execute("COMMIT")
+                return len(rows)
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def get_agent(self, agent_id: UUID) -> AgentProfile | None:
         with self._lock:
             row = self._connection.execute(
