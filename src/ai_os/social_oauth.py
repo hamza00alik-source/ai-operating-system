@@ -207,6 +207,78 @@ def _request_json(url: str, data: dict | None = None, headers: dict | None = Non
     except (urllib.error.URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise OAuthError("Could not complete OAuth provider exchange (" + type(exc).__name__ + ").") from exc
 
+def verify_social_credential(provider: str, secret: str, config: dict, business_id: str) -> dict:
+    """Verify a saved social OAuth token using a provider identity GET only.
+
+    TikTok, Google/YouTube and Pinterest access tokens are refreshed when expired.
+    Rotated refresh tokens are persisted immediately in the encrypted business vault.
+    """
+    if provider not in PROVIDERS or provider == "etsy":
+        raise OAuthError("Unsupported social account test provider.")
+    try:
+        credential = json.loads(secret)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise OAuthError("Stored social token record is invalid; reconnect the account.") from exc
+    access_token = credential.get("access_token")
+    if not isinstance(access_token, str) or not access_token:
+        raise OAuthError("Stored social access token is missing; reconnect the account.")
+    expires_at = credential.get("expires_at")
+    refreshed = False
+    if expires_at and int(time.time()) >= int(expires_at):
+        refresh_token = credential.get("refresh_token")
+        refreshable = {"tiktok", "youtube", "pinterest"}
+        if provider not in refreshable or not refresh_token:
+            raise OAuthError("Social access token expired; reconnect the account.")
+        cfg = _config(provider)
+        data = {"grant_type": "refresh_token", "refresh_token": refresh_token}
+        headers = {}
+        if provider == "tiktok":
+            data.update({"client_key": cfg["client_id"], "client_secret": cfg["client_secret"]})
+        elif provider == "youtube":
+            data.update({"client_id": cfg["client_id"], "client_secret": cfg["client_secret"]})
+        else:
+            headers["Authorization"] = "Basic " + base64.b64encode((cfg["client_id"] + ":" + cfg["client_secret"]).encode()).decode()
+        token = _request_json(PROVIDERS[provider]["token"], data, headers)
+        new_access = token.get("access_token")
+        lifetime = token.get("expires_in")
+        if not isinstance(new_access, str) or not new_access or not lifetime:
+            raise OAuthError("Provider refresh response was incomplete; reconnect the account.")
+        credential.update({"access_token": new_access, "expires_at": int(time.time()) + int(lifetime),
+                           "token_type": token.get("token_type", "Bearer"),
+                           "scope": token.get("scope") or credential.get("scope")})
+        if token.get("refresh_token"):
+            credential["refresh_token"] = token["refresh_token"]
+        if token.get("refresh_expires_in"):
+            credential["refresh_expires_at"] = int(time.time()) + int(token["refresh_expires_in"])
+        access_token = new_access
+        refreshed = True
+    headers = {"Authorization": "Bearer " + access_token}
+    identity = _request_json(PROVIDERS[provider]["identity"], headers=headers)
+    if provider == "tiktok":
+        identity = identity.get("data", {}).get("user", {})
+    elif provider == "youtube":
+        items = identity.get("items") or []
+        identity = items[0] if items else {}
+    elif provider == "x":
+        identity = identity.get("data", {})
+    if not identity:
+        raise OAuthError("Provider did not return a verifiable account identity; reconnect if access was revoked.")
+    if provider == "meta":
+        account = identity.get("name") or identity.get("id")
+    elif provider == "youtube":
+        account = (identity.get("snippet") or {}).get("title") or identity.get("id")
+    else:
+        account = identity.get("display_name") or identity.get("username") or identity.get("name") or identity.get("id") or identity.get("open_id")
+    if not account:
+        raise OAuthError("Provider identity response did not include an account label.")
+    if refreshed:
+        next_config = dict(config or {})
+        next_config.update({"account": str(account)[:200], "identity": identity})
+        save_business_integration(business_id, provider, json.dumps(credential), next_config)
+    return {"provider": provider, "connected": True, "account": str(account)[:200],
+            "token_refreshed": refreshed, "capability": "read-only account identity verification",
+            "external_actions": "provider identity GET only; no publishing, messaging or account changes"}
+
 def verify_etsy_credential(secret: str, config: dict, business_id: str | None = None) -> dict:
     """Verify an Etsy shop; refresh an expired access token using its stored refresh grant."""
     try:
