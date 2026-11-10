@@ -1019,3 +1019,8 @@ def call_api_anything_read(site: str, operation: str, payload: WebsiteApiCallReq
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except website_api.WebsiteApiUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# Owner-only Supabase diagnostics; the router never exposes credentials or applies migrations.
+from ai_os.supabase_integration import router as supabase_router
+app.include_router(supabase_router)
