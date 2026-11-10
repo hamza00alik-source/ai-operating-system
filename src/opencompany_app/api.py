@@ -1006,6 +1006,7 @@ def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
     status = runtime.fleet.status()
     return {
         "running": status.running,
+        "concurrency": status.concurrency,
         "completed_cycles": status.completed_cycles,
         "idle_cycles": status.idle_cycles,
         "failed_cycles": status.failed_cycles,
