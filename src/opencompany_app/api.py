@@ -215,6 +215,14 @@ def get_runtime() -> OpenCompanyRuntime:
     return _default_runtime()
 
 
+def get_optional_runtime() -> OpenCompanyRuntime | None:
+    # Provider readiness is intentionally public and credential-free. Only
+    # load owner-persisted settings when the owner runtime is configured.
+    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
+        return None
+    return _default_runtime()
+
+
 def get_delegation_store() -> DelegationRepository:
     if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
         raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
@@ -459,10 +467,10 @@ def media_capabilities() -> dict:
 
 
 @app.get("/providers/status")
-def provider_runtime_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+def provider_runtime_status(runtime: OpenCompanyRuntime | None = Depends(get_optional_runtime)) -> dict:
     # Credentials are never returned. Saved owner settings take precedence over legacy env configuration.
     try:
-        saved_uno = runtime.secret_vault.get("unorouter")
+        saved_uno = runtime.secret_vault.get("unorouter") if runtime is not None else None
     except SecretVaultError as exc:
         raise HTTPException(status_code=503, detail="Stored UnoRouter settings cannot be decrypted; check the server encryption key.") from exc
     uno = unorouter_configuration_status({
@@ -495,7 +503,7 @@ def provider_runtime_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) 
         "partial_configuration_detected": any(
             state["partial_configuration_detected"] for state in providers.values()
         ),
-        "real_inference_verified": runtime.unorouter_tested_at is not None,
+        "real_inference_verified": runtime.unorouter_tested_at is not None if runtime is not None else False,
         "paid_fallback": False,
     }
 
