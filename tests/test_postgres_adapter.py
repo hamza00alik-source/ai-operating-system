@@ -51,7 +51,7 @@ def test_postgres_schema_initialization_and_runtime_queries(monkeypatch):
         ).fetchone()["n"]
         index_count = connection.execute(
             """SELECT COUNT(*) AS n FROM pg_indexes
-               WHERE schemaname='public' AND indexname LIKE 'idx_%'"""
+               WHERE schemaname='public' AND left(indexname, 4)='idx_'"""
         ).fetchone()["n"]
         rls_count = connection.execute(
             """SELECT COUNT(*) AS n FROM pg_class c
