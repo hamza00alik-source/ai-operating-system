@@ -106,3 +106,61 @@ def test_full_company_cycle_completes_with_isolated_handoffs_for_each_business(m
         completed_workflows.append(final["id"])
 
     assert len(set(completed_workflows)) == 3
+
+
+def test_workflow_handoff_creates_business_scoped_department_message(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'handoff-message.db'}")
+    from ai_os.department_collaboration import list_messages
+    from ai_os.workflows import create_workflow, finish_workflow_task
+    workflow=create_workflow("company-wide-operating-cycle",business_id="physical-brand")
+    first,second=workflow["steps"][:2]
+    finish_workflow_task(first["task_id"],True,"Research output: verified demand signals.")
+    inbox=list_messages("physical-brand",department="research")
+    assert len(inbox)==1
+    assert inbox[0]["sender_department"]=="executive"
+    assert inbox[0]["recipient_department"]=="research"
+    assert inbox[0]["related_task_id"]==second["task_id"]
+    assert "verified demand signals" in inbox[0]["body"]
+    assert list_messages("physical-agency",department="research")==[]
+
+
+def test_departments_can_message_and_delegate_only_within_business(monkeypatch,tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL",f"sqlite:///{tmp_path / 'department-collaboration.db'}")
+    from ai_os.department_collaboration import delegate_task,list_delegations,list_messages,mark_message_read,send_message
+    from ai_os.service import create_task
+    from ai_os.schemas import TaskCreate
+    parent=create_task(TaskCreate(title="Prepare research brief",description="Scope task",
+                                  department="research",business_id="digital-products"))
+    message=send_message("digital-products","research","product","Research findings",
+                         "Please turn the evidence into product requirements.",parent["id"])
+    assert message["status"]=="unread"
+    assert list_messages("physical-brand",department="product")==[]
+    assert mark_message_read(message["id"],"digital-products","product")["status"]=="read"
+    delegated=delegate_task("digital-products","research","product","Draft product requirements",
+                            "Use only verified findings.",parent["id"])
+    assert delegated["status"]=="queued"
+    assert delegated["from_department"]=="research" and delegated["to_department"]=="product"
+    assert len(list_delegations("digital-products",department="product"))==1
+    assert list_messages("digital-products",department="product")[0]["related_task_id"]==delegated["child_task_id"]
+    with pytest.raises(LookupError):
+        send_message("digital-products","research","product","Cross-scope","No leak.","not-a-task")
+    with pytest.raises(LookupError):
+        delegate_task("digital-products","research","finance","Wrong parent","No.",parent_task_id="not-a-task")
+
+
+def test_collaboration_api_requires_owner_for_writes_and_validates_departments(monkeypatch,tmp_path):
+    monkeypatch.setenv("AI_OS_ENV","development")
+    monkeypatch.setenv("AI_OS_API_KEY","collab-owner-key")
+    monkeypatch.setenv("AI_OS_DATABASE_URL",f"sqlite:///{tmp_path / 'collaboration-api.db'}")
+    with TestClient(api.app) as client:
+        payload={"business_id":"physical-agency","sender_department":"research",
+                 "recipient_department":"product","subject":"Evidence handoff","body":"Verified source notes."}
+        assert client.post("/company/collaboration/messages",json=payload).status_code==401
+        created=client.post("/company/collaboration/messages",json=payload,headers={"X-API-Key":"collab-owner-key"})
+        assert created.status_code==201 and created.json()["business_id"]=="physical-agency"
+        bad={**payload,"sender_department":"unknown"}
+        assert client.post("/company/collaboration/messages",json=bad,
+                           headers={"X-API-Key":"collab-owner-key"}).status_code==422
+        inbox=client.get("/company/collaboration/messages?business_id=physical-agency&department=product",
+                         headers={"X-API-Key":"collab-owner-key"})
+        assert inbox.status_code==200 and len(inbox.json())==1
