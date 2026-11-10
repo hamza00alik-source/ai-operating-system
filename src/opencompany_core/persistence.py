@@ -387,32 +387,6 @@ class SQLiteStore:
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
-                if parent_update is not None:
-                    parent_row = self._connection.execute(
-                        "SELECT state,assigned_agent_id,department FROM work_items WHERE id=?",
-                        (str(parent_update.id),),
-                    ).fetchone()
-                    if (
-                        parent_row is None
-                        or parent_row["state"] != TaskState.DRAFT.value
-                        or parent_row["assigned_agent_id"] is not None
-                        or parent_row["department"] != parent_update.department
-                        or parent_update.state != TaskState.READY
-                        or parent_update.assigned_agent_id is None
-                        or set(parent_update.depends_on) != {item.id for item in items}
-                    ):
-                        self._connection.execute("ROLLBACK")
-                        raise ValueError("manager synthesis parent must be an unassigned DRAFT task depending on every approved child")
-                    changed = self._connection.execute(
-                        """UPDATE work_items SET state=?,assigned_agent_id=?,dependencies_json=?
-                           WHERE id=? AND state=? AND assigned_agent_id IS NULL""",
-                        (parent_update.state.value, str(parent_update.assigned_agent_id),
-                         _json([str(value) for value in parent_update.depends_on]),
-                         str(parent_update.id), TaskState.DRAFT.value),
-                    )
-                    if changed.rowcount != 1:
-                        self._connection.execute("ROLLBACK")
-                        return False
                 for item in items:
                     self._connection.execute(
                         """INSERT INTO work_items
@@ -467,6 +441,32 @@ class SQLiteStore:
                 if expected_ids != {str(item.id) for item in items}:
                     self._connection.execute("ROLLBACK")
                     raise ValueError("materialized tasks do not match the proposal's draft children")
+                if parent_update is not None:
+                    parent_row = self._connection.execute(
+                        "SELECT state,assigned_agent_id,department FROM work_items WHERE id=?",
+                        (str(parent_update.id),),
+                    ).fetchone()
+                    if (
+                        parent_row is None
+                        or parent_row["state"] != TaskState.DRAFT.value
+                        or parent_row["assigned_agent_id"] is not None
+                        or parent_row["department"] != parent_update.department
+                        or parent_update.state != TaskState.READY
+                        or parent_update.assigned_agent_id is None
+                        or set(parent_update.depends_on) != {item.id for item in items}
+                    ):
+                        self._connection.execute("ROLLBACK")
+                        raise ValueError("manager synthesis parent must be an unassigned DRAFT task depending on every approved child")
+                    changed = self._connection.execute(
+                        """UPDATE work_items SET state=?,assigned_agent_id=?,dependencies_json=?
+                           WHERE id=? AND state=? AND assigned_agent_id IS NULL""",
+                        (parent_update.state.value, str(parent_update.assigned_agent_id),
+                         _json([str(value) for value in parent_update.depends_on]),
+                         str(parent_update.id), TaskState.DRAFT.value),
+                    )
+                    if changed.rowcount != 1:
+                        self._connection.execute("ROLLBACK")
+                        return False
                 for item in items:
                     self._connection.execute(
                         """INSERT INTO work_items
