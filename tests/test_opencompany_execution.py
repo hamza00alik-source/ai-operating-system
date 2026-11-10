@@ -62,3 +62,20 @@ def test_unknown_role_is_rejected_before_model_call():
     with pytest.raises(LookupError, match="unknown OpenCompany role"):
         AgentExecutor(gateway).execute("not_a_role", task())
     assert adapter.request is None
+
+
+
+def test_executor_automatically_uses_owner_configured_unorouter_free_provider(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_API_KEY", "test-secret")
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_FREE_MODEL", "qwen/model:free")
+    monkeypatch.setenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "true")
+    executor = AgentExecutor()
+    assert executor._gateway.eligible_providers() == ("unorouter",)
+
+
+def test_executor_default_gateway_stays_disabled_without_owner_configuration(monkeypatch):
+    monkeypatch.delenv("OPENCOMPANY_UNOROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCOMPANY_UNOROUTER_FREE_MODEL", raising=False)
+    monkeypatch.delenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", raising=False)
+    executor = AgentExecutor()
+    assert executor._gateway.eligible_providers() == ()
