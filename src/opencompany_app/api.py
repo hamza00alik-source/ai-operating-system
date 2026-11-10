@@ -628,6 +628,8 @@ def get_github_evolution_settings(runtime: OpenCompanyRuntime = Depends(get_runt
         "base_branch": runtime.github_evolution.base_branch if runtime.github_evolution else os.environ.get("OPENCOMPANY_GITHUB_BASE_BRANCH", "clean-room-rebuild"),
         "token_present": runtime.secret_vault.status("github_evolution")["configured"],
         "configuration_error": runtime.secret_vault_errors.get("github_evolution"),
+        "access_verified": runtime.github_evolution_tested_at is not None,
+        "verified_at": runtime.github_evolution_tested_at,
         "token": None,
         "auto_merge": False,
         "auto_deploy": False,
@@ -665,9 +667,12 @@ def test_github_evolution_access(runtime: OpenCompanyRuntime = Depends(get_runti
     if runtime.github_evolution is None:
         raise HTTPException(status_code=503, detail="GitHub code evolution is not configured.")
     try:
-        return runtime.github_evolution.verify_access()
+        result = runtime.github_evolution.verify_access()
     except GitHubEvolutionError as exc:
+        runtime.github_evolution_tested_at = None
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    runtime.github_evolution_tested_at = datetime.now(timezone.utc).isoformat()
+    return {**result, "verified_at": runtime.github_evolution_tested_at}
 
 
 @app.delete("/settings/integrations/github-evolution", dependencies=[Depends(require_owner_key)])
@@ -1165,7 +1170,10 @@ def api_anything_read_batch(
 @app.get("/code-evolution/config-status", dependencies=[Depends(require_owner_key)])
 def code_evolution_config_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     return {
-        "enabled": runtime.github_evolution is not None,
+        "configured": runtime.github_evolution is not None,
+        "enabled": runtime.github_evolution is not None and runtime.github_evolution_tested_at is not None,
+        "access_verified": runtime.github_evolution_tested_at is not None,
+        "verified_at": runtime.github_evolution_tested_at,
         "repository": runtime.github_evolution.repository if runtime.github_evolution else None,
         "base_branch": runtime.github_evolution.base_branch if runtime.github_evolution else None,
         "auto_merge": False,
@@ -1185,6 +1193,8 @@ def create_code_evolution_proposal(
             status_code=503,
             detail="Code evolution is not connected. Configure the repository on the service and save a GitHub token in the owner dashboard.",
         )
+    if runtime.github_evolution_tested_at is None:
+        raise HTTPException(status_code=409, detail="Run the read-only GitHub repository access test before creating code-evolution proposals.")
     try:
         result = generate_code_evolution_pr(
             payload.problem, tuple(payload.file_paths),
