@@ -53,7 +53,7 @@ def bootstrap_department_managers(store: SQLiteStore) -> tuple[AgentProfile, ...
 
 
 def bootstrap_specialist_profiles(store: SQLiteStore) -> tuple[AgentProfile, ...]:
-    """Create 250 specialist profiles as drafts; never activate workers."""
+    """Create all 500 specialist profiles as drafts; never activate workers."""
     workforce = default_workforce()
     created_or_existing = []
     existing_ids = {item.id for item in store.list_agents(limit=1000)}
