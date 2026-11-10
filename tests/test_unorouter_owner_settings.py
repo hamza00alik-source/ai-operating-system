@@ -106,3 +106,26 @@ def test_runtime_reloads_encrypted_unorouter_credentials_after_restart(monkeypat
         assert second.gateway.eligible_providers(request_budget_usd=0) == ("unorouter",)
     finally:
         second.close()
+
+
+def test_provider_credentials_are_not_changed_if_running_workers_cannot_stop(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
+    runtime = create_runtime(str(tmp_path / "busy-worker.sqlite3"))
+    class Running:
+        running = True
+    runtime.fleet.stop = lambda timeout_seconds=5.0: False
+    runtime.fleet.status = lambda: Running()
+    api.app.dependency_overrides[api.get_runtime] = lambda: runtime
+    client = TestClient(api.app)
+    try:
+        response = client.put(
+            "/settings/providers/unorouter",
+            headers={"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"},
+            json={"api_key": "private-unorouter-token-123456", "model": "qwen/model:free", "confirm_free": True},
+        )
+        assert response.status_code == 409
+        assert runtime.secret_vault.get("unorouter") is None
+    finally:
+        api.app.dependency_overrides.clear()
+        runtime.close()
