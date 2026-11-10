@@ -24,4 +24,4 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.vercel]
-entrypoint = "src.ai_os.api:app"
+entrypoint = "src.opencompany_app.api:app"
