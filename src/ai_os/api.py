@@ -28,7 +28,7 @@ from ai_os.department_collaboration import send_message, list_messages, mark_mes
 from ai_os.executive_supervisor import executive_status, supervise_once
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
-from ai_os import platform_integrations, social_oauth
+from ai_os import platform_integrations, social_oauth, marketplace_integrations
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -221,15 +221,18 @@ def post_business_integration(business_id: str, provider: str, payload: Business
 @app.post("/business-integrations/{business_id}/{provider}/connect", dependencies=[Depends(require_owner_key)])
 def connect_business_integration(business_id: str, provider: str, payload: BusinessIntegrationRequest):
     """Verify owner-supplied credentials with a read-only platform request before storing."""
-    if provider not in {"wordpress", "woocommerce"}:
-        raise HTTPException(status_code=422, detail="This provider does not yet have a supported direct account connection flow.")
     try:
-        verification = platform_integrations.verify_connection(provider, payload.secret, payload.config)
+        if provider == "playerauctions":
+            verification = marketplace_integrations.verify_playerauctions(payload.secret, payload.config)
+        elif provider in {"wordpress", "woocommerce"}:
+            verification = platform_integrations.verify_connection(provider, payload.secret, payload.config)
+        else:
+            raise HTTPException(status_code=422, detail="This provider does not yet have a supported direct account connection flow.")
         saved = save_business_integration(business_id, provider, payload.secret, payload.config)
         return {**saved, "verification": verification, "external_actions": "read-only verification only"}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except platform_integrations.IntegrationCheckError as exc:
+    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -277,11 +280,14 @@ def test_business_integration(business_id: str, provider: str):
         credential = get_business_integration_credential(business_id, provider)
         if credential is None:
             raise HTTPException(status_code=404, detail="No saved platform connection.")
-        verification = platform_integrations.verify_connection(provider, credential["secret"], credential["config"])
+        if provider == "playerauctions":
+            verification = marketplace_integrations.verify_playerauctions(credential["secret"], credential["config"])
+        else:
+            verification = platform_integrations.verify_connection(provider, credential["secret"], credential["config"])
         return {**verification, "external_actions": "read-only verification only"}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except platform_integrations.IntegrationCheckError as exc:
+    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
