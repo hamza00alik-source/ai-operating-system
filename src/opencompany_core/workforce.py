@@ -35,6 +35,26 @@ class RoleSpec:
     team_key: str = "general"
     playbook: RolePlaybook | None = None
 
+    @property
+    def department(self) -> str:
+        """Resolve the canonical department key from the role's team or leadership function."""
+        if "__" in self.team_key:
+            return self.team_key.split("__", 1)[0]
+        function_departments = {
+            "Executive office": "executive-office",
+            "Executive leadership": "executive-office",
+            "Research and intelligence": "intelligence-research",
+            "Product and development": "product-innovation",
+            "Technology": "engineering-ai-systems",
+            "Marketing": "marketing-audience-growth",
+            "Sales and marketplace operations": "revenue-partnerships",
+            "Customer support": "customer-operations",
+            "Finance": "finance-risk",
+            "Quality and compliance": "organizational-learning-quality",
+            "Media and creative production": "media-creative-production",
+        }
+        return function_departments.get(self.function, "executive-office")
+
     def __post_init__(self) -> None:
         for name in ("key", "title", "function", "mission"):
             value = getattr(self, name)
