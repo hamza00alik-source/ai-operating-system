@@ -1,4 +1,5 @@
-"""SQLite persistence layer."""
+"""SQLite and PostgreSQL persistence adapters."""
+import re
 import sqlite3
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from ai_os.config import get_settings
 def _database_path() -> str:
     url = get_settings().database_url
     if not url.startswith("sqlite:///"):
-        raise ValueError("This starter currently supports SQLite URLs only.")
+        raise ValueError("A SQLite URL is required for the SQLite adapter.")
     path = url.removeprefix("sqlite:///")
     if path == ":memory:":
         return path
@@ -17,10 +18,73 @@ def _database_path() -> str:
     return str(database_path)
 
 
-def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(_database_path(), check_same_thread=False)
-    connection.row_factory = sqlite3.Row
-    return connection
+def _postgres_sql(statement: str) -> str:
+    """Translate the SQLite-specific SQL used by the existing persistence layer."""
+    pragma = re.fullmatch(r"\\s*PRAGMA\\s+table_info\\((\\w+)\\)\\s*;?\\s*", statement, re.IGNORECASE)
+    if pragma:
+        table = pragma.group(1).lower()
+        return (
+            "SELECT column_name AS name FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = %s "
+            "ORDER BY ordinal_position",
+            (table,),
+        )
+    statement = re.sub(
+        r"INTEGER\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT",
+        "BIGSERIAL PRIMARY KEY",
+        statement,
+        flags=re.IGNORECASE,
+    )
+    return statement.replace("?", "%s")
+
+
+class _PostgresConnection:
+    """Expose the sqlite-style execute/executescript interface over psycopg."""
+    def __init__(self, connection):
+        self._connection = connection
+
+    def __enter__(self):
+        self._connection.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return self._connection.__exit__(exc_type, exc, traceback)
+
+    def execute(self, statement, parameters=()):
+        translated = _postgres_sql(statement)
+        if isinstance(translated, tuple):
+            statement, fixed_parameters = translated
+            parameters = fixed_parameters
+        else:
+            statement = translated
+        return self._connection.execute(statement, parameters)
+
+    def executescript(self, script):
+        for statement in script.split(";"):
+            if statement.strip():
+                self.execute(statement)
+        return self
+
+    def close(self):
+        return self._connection.close()
+
+
+def connect():
+    url = get_settings().database_url
+    if url.startswith("sqlite:///"):
+        connection = sqlite3.connect(_database_path(), check_same_thread=False)
+        connection.row_factory = sqlite3.Row
+        return connection
+    if url.startswith(("postgres://", "postgresql://")):
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError(
+                "PostgreSQL support requires psycopg[binary]. Install project dependencies."
+            ) from exc
+        return _PostgresConnection(psycopg.connect(url, row_factory=dict_row))
+    raise ValueError("AI_OS_DATABASE_URL must use sqlite:/// or postgresql://.")
 
 
 def initialize_database() -> None:
