@@ -114,6 +114,7 @@ def get_store() -> SQLiteStore:
 
 def require_owner_key(
     request: Request,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
     x_opencompany_api_key: str | None = Header(default=None),
     x_csrf_token: str | None = Header(default=None),
     opencompany_session: str | None = Cookie(default=None),
@@ -122,7 +123,6 @@ def require_owner_key(
     if not expected:
         raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
     if opencompany_session:
-        runtime = _default_runtime()
         mutating = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
         if runtime.sessions.validate(
             opencompany_session, x_csrf_token, require_csrf=mutating
@@ -149,6 +149,7 @@ def _record(item: WorkItem, action: str) -> AuditRecord:
 def create_owner_session(
     payload: OwnerLoginInput,
     response: Response,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
 ) -> dict:
     """Exchange the owner API key for a revocable HttpOnly session cookie."""
     expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
@@ -156,7 +157,7 @@ def create_owner_session(
         raise HTTPException(status_code=503, detail="Owner authentication is not configured.")
     if not hmac.compare_digest(payload.api_key, expected):
         raise HTTPException(status_code=401, detail="Owner authentication failed.")
-    token, csrf, expires = _default_runtime().sessions.create(lifetime_hours=12)
+    token, csrf, expires = runtime.sessions.create(lifetime_hours=12)
     secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
     response.set_cookie(
         "opencompany_session", token, max_age=12 * 60 * 60, httponly=True,
@@ -175,10 +176,11 @@ def owner_session_status() -> dict:
 def revoke_owner_session(
     request: Request,
     response: Response,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
     opencompany_session: str | None = Cookie(default=None),
 ) -> dict:
     if opencompany_session:
-        _default_runtime().sessions.revoke(opencompany_session)
+        runtime.sessions.revoke(opencompany_session)
     response.delete_cookie("opencompany_session", path="/", httponly=True, samesite="strict")
     response.headers["Cache-Control"] = "no-store"
     return {"authenticated": False, "revoked": bool(opencompany_session)}
