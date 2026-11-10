@@ -17,6 +17,7 @@ from .execution import AgentDeliverable, AgentExecutor
 from .persistence import SQLiteStore
 from .worker_queue import DurableWorkerQueue, QueueError, WorkerLease
 from .organization import default_organization
+from .workforce import default_workforce, specialist_role_keys
 
 
 class ArtifactSink(Protocol):
@@ -110,6 +111,14 @@ class OpenCompanyWorker:
             raise WorkerConfigurationError("work item department is not registered") from exc
         if role_key not in department.role_keys:
             raise WorkerConfigurationError("execution role is not permitted in the work item department")
+        if role_key in specialist_role_keys(item.department):
+            expected_team = default_workforce().get(role_key).team_key
+        elif role_key == "chief_executive_orchestrator":
+            expected_team = "executive"
+        else:
+            expected_team = "management"
+        if agent.team_key != expected_team:
+            raise WorkerConfigurationError("assigned agent team does not match its workforce role")
         return self.executor.execute(
             role_key, item, request_budget_usd=self.request_budget_usd,
             preferred_provider=self.preferred_provider,
