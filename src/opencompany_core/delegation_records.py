@@ -16,19 +16,28 @@ from uuid import UUID, uuid4
 
 
 class DelegationRepository:
-    def __init__(self, database: str | Path) -> None:
-        self.database = str(database)
-        if self.database != ":memory:":
-            parent = Path(self.database).expanduser().resolve().parent
-            if not parent.exists():
-                raise FileNotFoundError(f"database directory does not exist: {parent}")
-        self._lock = RLock()
-        self._db = sqlite3.connect(
-            self.database, timeout=10, check_same_thread=False, isolation_level=None
-        )
-        self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA foreign_keys = ON")
-        self._db.execute("PRAGMA busy_timeout = 10000")
+    def __init__(
+        self, database: str | Path | sqlite3.Connection, lock: RLock | None = None
+    ) -> None:
+        self._owns_connection = not isinstance(database, sqlite3.Connection)
+        if self._owns_connection:
+            self.database = str(database)
+            if self.database != ":memory:":
+                parent = Path(self.database).expanduser().resolve().parent
+                if not parent.exists():
+                    raise FileNotFoundError(f"database directory does not exist: {parent}")
+            self._lock = lock or RLock()
+            self._db = sqlite3.connect(
+                self.database, timeout=10, check_same_thread=False, isolation_level=None
+            )
+            self._db.row_factory = sqlite3.Row
+            self._db.execute("PRAGMA foreign_keys = ON")
+            self._db.execute("PRAGMA busy_timeout = 10000")
+        else:
+            self.database = "<shared-connection>"
+            self._db = database
+            self._lock = lock or RLock()
+            self._db.row_factory = sqlite3.Row
         self._db.execute("""
             CREATE TABLE IF NOT EXISTS delegation_proposals (
                 id TEXT PRIMARY KEY,
@@ -63,8 +72,9 @@ class DelegationRepository:
         """)
 
     def close(self) -> None:
-        with self._lock:
-            self._db.close()
+        if self._owns_connection:
+            with self._lock:
+                self._db.close()
 
     def create_proposal(
         self, *, parent_work_item_id: UUID, request: dict, manager_agent_id: UUID | None,
