@@ -5,11 +5,13 @@ from opencompany_core.workforce import RoleCatalog, RoleSpec, default_workforce
 
 def test_default_workforce_has_unique_original_roles():
     roles = default_workforce().all()
-    assert len(roles) == 261
-    assert len({role.key for role in roles}) == 261
+    assert len(roles) == 511
+    assert len({role.key for role in roles}) == 511
     specialists = [role for role in roles if "__" in role.key]
-    assert len(specialists) == 250
+    assert len(specialists) == 500
     assert all(role.function and role.mission and role.capabilities and role.permitted_outputs and role.prohibited_actions for role in specialists)
+    assert len({role.team_key for role in specialists}) == 100
+    assert all(sum(role.team_key == team for role in specialists) == 5 for team in {role.team_key for role in specialists})
 
 
 def test_roles_define_scope_and_safety_boundaries():
