@@ -50,6 +50,7 @@ class AgentExecutor:
         max_output_tokens: int = 1600,
         learning_context: Callable[[str], Sequence[dict]] | None = None,
         research_broker=None,
+        usage_recorder: Callable[[dict], None] | None = None,
     ) -> None:
         if not 1 <= max_output_tokens <= 16000:
             raise ValueError("max_output_tokens must be between 1 and 16000")
@@ -63,6 +64,7 @@ class AgentExecutor:
         self._max_output_tokens = max_output_tokens
         self._learning_context = learning_context
         self._research_broker = research_broker
+        self._usage_recorder = usage_recorder
 
     @staticmethod
     def _build_prompt(role: RoleSpec, item: WorkItem, learning_notes: tuple[str, ...] = (), research_context: str = "") -> str:
@@ -141,6 +143,17 @@ class AgentExecutor:
             request_budget_usd=request_budget_usd,
             preferred_provider=preferred_provider,
         )
+        if self._usage_recorder is not None:
+            self._usage_recorder({
+                "request_id": request.request_id,
+                "work_item_id": str(item.id),
+                "role_key": role.key,
+                "provider": result.provider,
+                "model": result.model,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+                "cost_usd": result.cost_usd,
+            })
         return AgentDeliverable(
             id=uuid4(), work_item_id=item.id, role_key=role.key,
             content=result.text, provider=result.provider, model=result.model,
