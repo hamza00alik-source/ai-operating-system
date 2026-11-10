@@ -19,6 +19,9 @@ from opencompany_core.lifecycle import StateTransitionError, transition_work_ite
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.planning import PlanError, WorkPlan, action_requires_owner_approval
 from opencompany_core.workforce import default_workforce
+from opencompany_core.organization import default_organization
+from opencompany_core.media_studio import video_capabilities
+from opencompany_core.provider_catalog import free_provider_candidates
 
 
 app = FastAPI(
@@ -110,8 +113,73 @@ def workforce_roles() -> dict:
     }
 
 
+@app.get("/organization/departments")
+def organization_departments() -> dict:
+    departments = default_organization().all()
+    return {
+        "catalogue": "opencompany-original",
+        "count": len(departments),
+        "departments": [
+            {
+                "key": item.key, "name": item.name, "mission": item.mission,
+                "accountabilities": list(item.accountabilities),
+                "manager_role_key": item.manager_role_key,
+                "role_keys": list(item.role_keys),
+                "decision_scope": list(item.decision_scope),
+                "success_measures": list(item.success_measures),
+                "approval_boundaries": list(item.approval_boundaries),
+            }
+            for item in departments
+        ],
+    }
+
+
+@app.get("/media/capabilities")
+def media_capabilities() -> dict:
+    items = video_capabilities()
+    return {
+        "count": len(items),
+        "capabilities": [
+            {
+                "key": item.key, "display_name": item.display_name,
+                "state": item.state.value,
+                "generation_modes": list(item.generation_modes),
+                "execution_requirements": list(item.execution_requirements),
+                "zero_budget_path": item.zero_budget_path,
+                "safety_controls": list(item.safety_controls),
+            }
+            for item in items
+        ],
+    }
+
+
+@app.get("/providers/candidates")
+def provider_candidates() -> dict:
+    items = free_provider_candidates()
+    return {
+        "gateway_enabled": False,
+        "count": len(items),
+        "candidates": [
+            {
+                "key": item.key, "display_name": item.display_name,
+                "access_mode": item.access_mode,
+                "current_free_evidence": item.current_free_evidence,
+                "limits_or_conditions": list(item.limits_or_conditions),
+                "activation_gate": item.activation_gate,
+                "configured": False,
+            }
+            for item in items
+        ],
+    }
+
+
 @app.post("/plans/preview")
 def preview_plan(payload: PlanPreviewInput) -> dict:
+    try:
+        for candidate in payload.items:
+            default_organization().get(candidate.department)
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     items = tuple(
         WorkItem(
             id=item.id, title=item.title, objective=item.objective,
@@ -175,6 +243,10 @@ def list_work_items(store: SQLiteStore = Depends(get_store)) -> dict:
 def create_work_item(
     payload: WorkItemCreateInput, store: SQLiteStore = Depends(get_store)
 ) -> dict:
+    try:
+        default_organization().get(payload.department)
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     item = WorkItem(
         id=uuid4(), title=payload.title, objective=payload.objective,
         department=payload.department, state=TaskState.DRAFT,
