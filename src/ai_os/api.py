@@ -20,13 +20,13 @@ from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
-from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.executive_supervisor import executive_status, supervise_once
 from ai_os.research_sources import capture_source, list_sources
-from ai_os import website_api
+from ai_os import website_api\nfrom ai_os import platform_integrations
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -212,6 +212,40 @@ def post_business_integration(business_id: str, provider: str, payload: Business
         return save_business_integration(business_id, provider, payload.secret, payload.config)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/business-integrations/{business_id}/{provider}/connect", dependencies=[Depends(require_owner_key)])
+def connect_business_integration(business_id: str, provider: str, payload: BusinessIntegrationRequest):
+    """Verify owner-supplied credentials with a read-only platform request before storing."""
+    if provider not in {"wordpress", "woocommerce"}:
+        raise HTTPException(status_code=422, detail="This provider does not yet have a supported direct account connection flow.")
+    try:
+        verification = platform_integrations.verify_connection(provider, payload.secret, payload.config)
+        saved = save_business_integration(business_id, provider, payload.secret, payload.config)
+        return {**saved, "verification": verification, "external_actions": "read-only verification only"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except platform_integrations.IntegrationCheckError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/business-integrations/{business_id}/{provider}/test", dependencies=[Depends(require_owner_key)])
+def test_business_integration(business_id: str, provider: str):
+    """Recheck an already saved platform credential without exposing it."""
+    try:
+        credential = get_business_integration_credential(business_id, provider)
+        if credential is None:
+            raise HTTPException(status_code=404, detail="No saved platform connection.")
+        verification = platform_integrations.verify_connection(provider, credential["secret"], credential["config"])
+        return {**verification, "external_actions": "read-only verification only"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except platform_integrations.IntegrationCheckError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
