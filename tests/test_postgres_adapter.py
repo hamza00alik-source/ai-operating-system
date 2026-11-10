@@ -28,7 +28,35 @@ def test_postgres_schema_initialization_and_runtime_queries(monkeypatch):
 
     monkeypatch.setattr(db, "get_settings", lambda: Settings(database_url=database_url))
 
-    # This runs the same final-state schema initializer used by the application.
+    # Apply the standalone baseline to a disposable PostgreSQL database first.
+    from pathlib import Path
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "supabase"
+        / "migrations"
+        / "20261110160000_aios_initial_schema.sql"
+    )
+    assert migration.is_file()
+    with db.connect() as connection:
+        connection.executescript(migration.read_text(encoding="utf-8"))
+        table_count = connection.execute(
+            """SELECT COUNT(*) AS n FROM information_schema.tables
+               WHERE table_schema='public' AND table_type='BASE TABLE'"""
+        ).fetchone()["n"]
+        index_count = connection.execute(
+            """SELECT COUNT(*) AS n FROM pg_indexes
+               WHERE schemaname='public' AND indexname LIKE 'idx_%'"""
+        ).fetchone()["n"]
+        rls_count = connection.execute(
+            """SELECT COUNT(*) AS n FROM pg_class c
+               JOIN pg_namespace n ON n.oid=c.relnamespace
+               WHERE n.nspname='public' AND c.relkind='r' AND c.relrowsecurity"""
+        ).fetchone()["n"]
+        assert table_count == 22
+        assert index_count == 23
+        assert rls_count == 22
+
+    # The runtime initializer must safely coexist with the migrated final schema.
     db.initialize_database()
 
     from ai_os.workflows import initialize_workflows
