@@ -270,7 +270,7 @@ th{background:#101b2c}
 <section id="sources" class="panel section" data-view-panel="sources"><h2>Repository intelligence · 12 sources</h2><p class="small">The Agency Agents workforce and Automaton runtime reference are separated from the ten company/platform comparison repositories. Reference status does not mean code is installed or trusted.</p><div class="scroll"><table><thead><tr><th>Repository</th><th>Role</th><th>Current state</th><th>Purpose</th><th>License</th></tr></thead><tbody id="sourceRows"><tr><td colspan="5">Loading repository inventory…</td></tr></tbody></table></div></section>
 <section id="workflows" class="panel section" data-view-panel="workflows">
 <h2>Department workflow orchestration</h2>
-<p class="small">Create a multi-department workflow. Only the first task is queued; each next department unlocks after the previous task completes. Every task run is owner-triggered and uses the existing free-only model policy.</p>
+<p class="small">Create a multi-department workflow. Starting a workflow authorizes its first internal task. Each next department is queued automatically after successful handoff. The bounded worker uses the existing free-only model policy; external actions remain approval-gated.</p>
 <div class="toolbar"><button id="refreshWorkflows" class="secondary" type="button">Refresh workflows</button><span id="workflowStatus" class="status">Loading workflow templates…</span></div>
 <div id="workflowTemplates" class="grid"></div>
 <div id="workflowInstances" class="section"></div>
@@ -531,7 +531,7 @@ $("departmentMessageForm").addEventListener("submit",async ev=>{
 $("departmentDelegationForm").addEventListener("submit",async ev=>{
  ev.preventDefault();const f=new FormData(ev.currentTarget);
  try{await api("/company/collaboration/delegations",{method:"POST",body:JSON.stringify({business_id:$("taskBusiness").value,from_department:f.get("from_department"),to_department:f.get("to_department"),title:f.get("title"),description:f.get("description")})});
-  $("delegationFormStatus").textContent="Queued task created. It will not run until an owner triggers it.";ev.currentTarget.reset();await loadCollaboration();await loadOperations();
+  $("delegationFormStatus").textContent="Delegated task queued for internal worker execution. External actions remain approval-gated.";ev.currentTarget.reset();await loadCollaboration();await loadOperations();
  }catch(e){$("delegationFormStatus").textContent=e.message}
 });
 async function loadWorkflows(){
@@ -548,7 +548,7 @@ window.startWorkflow=async(templateId)=>{
  try{
   $("workflowStatus").textContent="Creating workflow…";
   const result=await api("/company/workflows/"+encodeURIComponent(templateId)+"/start?business_id="+encodeURIComponent($("taskBusiness").value),{method:"POST"});
-  $("workflowStatus").textContent="Created "+result.name+" · "+result.steps.length+" steps. Only step 1 is queued.";
+  $("workflowStatus").textContent="Created "+result.name+" · "+result.steps.length+" steps. First department queued automatically; later steps follow successful handoffs.";
   await showWorkflow(result.id);await loadOperations();
  }catch(e){$("workflowStatus").textContent=e.message}
 };
