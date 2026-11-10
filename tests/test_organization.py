@@ -17,7 +17,7 @@ def test_every_department_manager_and_member_is_a_known_opencompany_role():
         for role_key in department.role_keys:
             roles.get(role_key)
         specialists = [key for key in department.role_keys if "__" in key]
-        assert len(specialists) == 25
+        assert len(specialists) == 50
     assert sum(len([key for key in item.role_keys if "__" in key]) for item in default_organization().all()) == 250
 
 
