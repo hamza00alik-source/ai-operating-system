@@ -6,6 +6,7 @@ the repository test suite on each pull request.
 """
 from __future__ import annotations
 
+import ast
 import base64
 import json
 import os
@@ -14,6 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from uuid import uuid4
 
 from ai_os.llm_gateway import generate_with_fallback
 
@@ -141,6 +143,11 @@ def _generated_content(objective: str, path: str, original: str) -> tuple[str, s
         raise CodeEvolutionError("Generated file exceeds the 120 KB safety limit.")
     if content == original:
         raise CodeEvolutionError("The model did not produce a code change.")
+    if path.endswith(".py"):
+        try:
+            ast.parse(content, filename=path)
+        except SyntaxError as exc:
+            raise CodeEvolutionError("Generated Python failed syntax validation: " + str(exc.msg)) from exc
     return title or "AIOS code improvement", content
 
 
@@ -167,7 +174,7 @@ def create_proposal(objective: str, target_path: str) -> dict:
     if not base_sha:
         raise CodeEvolutionError("GitHub did not return the base branch commit.")
     slug = re.sub(r"[^a-z0-9]+", "-", title.casefold()).strip("-")[:35] or "improvement"
-    branch = "aios-evolution/" + slug + "-" + str(int(time.time()))
+    branch = "aios-evolution/" + slug + "-" + str(int(time.time())) + "-" + uuid4().hex[:6]
     _request("POST", api + "/git/refs", token, {"ref": "refs/heads/" + branch, "sha": base_sha})
     _request("PUT", api + "/contents/" + encoded_path, token, {
         "message": "aios: propose " + title[:70],
