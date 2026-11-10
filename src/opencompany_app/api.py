@@ -77,6 +77,11 @@ class WorkItemTransitionInput(BaseModel):
     target_state: TaskState
 
 
+class WorkItemReviewInput(BaseModel):
+    approved: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
 @lru_cache(maxsize=1)
 def _default_store() -> SQLiteStore:
     database = os.environ.get("OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3")
@@ -633,6 +638,30 @@ def list_work_item_delegation_proposals(
     return {"count": len(proposals), "proposals": proposals}
 
 
+@app.post("/work-items/{item_id}/review", dependencies=[Depends(require_owner_key)])
+def review_work_item(
+    item_id: UUID, payload: WorkItemReviewInput,
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    from datetime import datetime, timezone
+
+    action = "work_item.review_approved" if payload.approved else "work_item.review_rejected"
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action=action, subject_type="work_item",
+        subject_id=str(item_id), outcome="recorded", correlation_id=str(uuid4()),
+        details={"approved": payload.approved, "rationale": payload.rationale},
+    )
+    try:
+        state = store.review_work_item_with_audit(
+            item_id, approved=payload.approved, rationale=payload.rationale, record=event,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if state is None:
+        raise HTTPException(status_code=409, detail="Work item is not awaiting review.")
+    return {"item_id": str(item_id), "state": state.value, "approved": payload.approved}
+
 @app.post("/work-items/{item_id}/transition", dependencies=[Depends(require_owner_key)])
 def change_work_item_state(
     item_id: UUID,
@@ -642,6 +671,8 @@ def change_work_item_state(
     item = store.get_work_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state == TaskState.REVIEW and payload.target_state == TaskState.COMPLETED:
+        raise HTTPException(status_code=409, detail="Use the owner review endpoint to approve a review-required deliverable.")
     known = {value.id: value for value in store.list_work_items(limit=1000)}
     try:
         changed = transition_work_item(item, payload.target_state, known_items=known)
