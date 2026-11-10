@@ -1,7 +1,6 @@
 """Evidence-based improvement proposals for OpenCompany.
 
-The learning layer records outcomes and recommends controlled changes. It never
-rewrites its own source code or applies operational changes autonomously.
+The learning layer records outcomes and recommends owner-approved changes. Approved role notes can guide future prompts; source changes are isolated in draft GitHub pull requests and never merged or deployed automatically.
 """
 from __future__ import annotations
 
