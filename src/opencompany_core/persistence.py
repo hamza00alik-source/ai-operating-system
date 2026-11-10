@@ -204,6 +204,45 @@ class SQLiteStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
+    def update_agent_with_audit(
+        self, agent: AgentProfile, record: AuditRecord, *, expected_revision: int
+    ) -> bool:
+        """Update an existing agent and append its audit event atomically."""
+        if agent.revision != expected_revision + 1:
+            raise ValueError("updated agent revision must increment exactly once")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = self._connection.execute(
+                    """UPDATE agent_profiles SET name=?,department=?,purpose=?,
+                       capabilities_json=?,state=?,revision=?,role_key=?,team_key=?
+                       WHERE id=? AND revision=?""",
+                    (agent.name, agent.department, agent.purpose,
+                     _json(list(agent.capabilities)), agent.state.value, agent.revision,
+                     agent.role_key, agent.team_key, str(agent.id), expected_revision),
+                )
+                if cursor.rowcount != 1:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                row = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    """INSERT INTO audit_events
+                       (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                       VALUES(?,?,?,?,?)""",
+                    (str(record.id), record.occurred_at.isoformat(), _json(payload),
+                     previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                self._connection.execute("ROLLBACK")
+                raise
+
     def get_agent(self, agent_id: UUID) -> AgentProfile | None:
         with self._lock:
             row = self._connection.execute(
