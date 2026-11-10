@@ -89,10 +89,10 @@ def test_workforce_endpoint_exposes_only_original_opencompany_roles():
     assert response.status_code == 200
     payload = response.json()
     assert payload["catalogue"] == "opencompany-original"
-    assert payload["count"] == 261
-    assert payload["specialist_count"] == 250
+    assert payload["count"] == 511
+    assert payload["specialist_count"] == 500
     assert payload["leadership_role_count"] == 11
-    assert payload["team_count"] == 50
+    assert payload["team_count"] == 100
     assert all(role["prohibited_actions"] for role in payload["roles"])
     assert all(role["team_key"] for role in payload["roles"])
 
