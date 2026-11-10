@@ -7,6 +7,14 @@ import re
 from urllib.parse import urlparse
 
 from ai_os.db import connect
+from ai_os.brain import BUSINESS_IDS
+
+
+def _scope(value: str = "core") -> str:
+    scope = (value or "core").strip()
+    if scope not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
+    return scope
 
 
 def now() -> str:
@@ -30,13 +38,14 @@ def _url(value: str, allow_empty: bool = True) -> str:
     return value
 
 
-def list_records(kind: str, limit: int = 200) -> list[dict]:
+def list_records(kind: str, limit: int = 200, business_id: str = "core") -> list[dict]:
     if kind not in {"customer", "expense", "revenue"}:
         raise ValueError("Unsupported record type.")
+    scope = _scope(business_id)
     with connect() as db:
         rows = db.execute(
-            "SELECT * FROM business_records WHERE record_type=? ORDER BY created_at DESC LIMIT ?",
-            (kind, max(1, min(limit, 500))),
+            "SELECT * FROM business_records WHERE record_type=? AND business_id=? ORDER BY created_at DESC LIMIT ?",
+            (kind, scope, max(1, min(limit, 500))),
         ).fetchall()
     return [dict(row) for row in rows]
 
@@ -44,6 +53,7 @@ def list_records(kind: str, limit: int = 200) -> list[dict]:
 def create_record(kind: str, payload: dict) -> dict:
     if kind not in {"customer", "expense", "revenue"}:
         raise ValueError("Unsupported record type.")
+    scope = _scope(payload.get("business_id", "core"))
     title = _clean(payload.get("title"), 160)
     if not title:
         raise ValueError("A title or customer name is required.")
@@ -68,7 +78,7 @@ def create_record(kind: str, payload: dict) -> dict:
         status = "payment_verified" if verified else "unverified_not_counted"
     approval_id = str(uuid4()) if kind == "expense" else None
     record = {
-        "id": str(uuid4()), "record_type": kind, "title": title,
+        "id": str(uuid4()), "business_id": scope, "record_type": kind, "title": title,
         "amount": amount, "currency": currency,
         "status": status, "verified": verified, "approval_id": approval_id,
         "contact": _clean(payload.get("contact"), 200),
@@ -78,43 +88,45 @@ def create_record(kind: str, payload: dict) -> dict:
     with connect() as db:
         db.execute(
             """INSERT INTO business_records
-            (id,record_type,title,amount,currency,status,verified,approval_id,contact,notes,created_at)
-            VALUES (:id,:record_type,:title,:amount,:currency,:status,:verified,:approval_id,:contact,:notes,:created_at)""",
+            (id,business_id,record_type,title,amount,currency,status,verified,approval_id,contact,notes,created_at)
+            VALUES (:id,:business_id,:record_type,:title,:amount,:currency,:status,:verified,:approval_id,:contact,:notes,:created_at)""",
             record,
         )
         if approval_id:
             db.execute(
-                """INSERT INTO approvals (id,task_id,action,details,status,created_at,decided_at)
-                VALUES (?,NULL,?,?,?, ?,NULL)""",
-                (approval_id, "review_business_expense",
+                """INSERT INTO approvals (id,task_id,business_id,action,details,status,created_at,decided_at)
+                VALUES (?,NULL,?,?,?,?, ?,NULL)""",
+                (approval_id, scope, "review_business_expense",
                  "Review expense " + record["id"] + ": " + title + " — " + str(amount) + " " + currency + ". No payment is initiated.",
                  "pending", record["created_at"]),
             )
     return record
 
 
-def business_summary() -> dict:
+def business_summary(business_id: str = "core") -> dict:
+    scope = _scope(business_id)
     with connect() as db:
         expenses = db.execute(
-            "SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records WHERE record_type='expense' GROUP BY currency"
+            "SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' GROUP BY currency", (scope,)
         ).fetchall()
         revenue = db.execute(
             """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
-            WHERE record_type='revenue' AND verified=1 GROUP BY currency"""
+            WHERE business_id=? AND record_type='revenue' AND verified=1 GROUP BY currency""", (scope,)
         ).fetchall()
         revenue_mtd = db.execute(
             """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
-            WHERE record_type='revenue' AND verified=1 AND substr(created_at,1,7)=?
+            WHERE business_id=? AND record_type='revenue' AND verified=1 AND substr(created_at,1,7)=?
             GROUP BY currency""",
-            (now()[:7],),
+            (scope, now()[:7]),
         ).fetchall()
         customers = db.execute(
-            "SELECT COUNT(*) n FROM business_records WHERE record_type='customer'"
+            "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='customer'", (scope,)
         ).fetchone()["n"]
         pending_expenses = db.execute(
-            "SELECT COUNT(*) n FROM business_records WHERE record_type='expense' AND status='awaiting_owner_approval'"
+            "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' AND status='awaiting_owner_approval'", (scope,)
         ).fetchone()["n"]
     return {
+        "business_id": scope,
         "customers": customers,
         "verified_revenue_by_currency": [dict(x) for x in revenue],
         "verified_revenue_mtd_by_currency": [dict(x) for x in revenue_mtd],
@@ -132,6 +144,7 @@ def list_assets(limit: int = 500) -> list[dict]:
 
 
 def create_asset(payload: dict) -> dict:
+    scope = _scope(payload.get("business_id", "core"))
     name = _clean(payload.get("name"), 180)
     if not name:
         raise ValueError("Asset name is required.")
@@ -146,7 +159,7 @@ def create_asset(payload: dict) -> dict:
         if token_estimate < 0:
             raise ValueError("Token estimate cannot be negative.")
     item = {
-        "id": str(uuid4()), "name": name, "repository_url": repo_url,
+        "id": str(uuid4()), "business_id": scope, "name": name, "repository_url": repo_url,
         "path": asset_path, "asset_type": _clean(payload.get("asset_type", "source_code"), 50),
         "ownership_status": _clean(payload.get("ownership_status", "unverified"), 50),
         "license": _clean(payload.get("license", "unknown"), 100),
@@ -230,11 +243,12 @@ def apply_expense_approval(approval_id: str, decision: str) -> None:
         )
 
 
-def list_investors(limit: int = 300) -> list[dict]:
+def list_investors(limit: int = 300, business_id: str = "core") -> list[dict]:
+    scope = _scope(business_id)
     with connect() as db:
         rows = db.execute(
-            "SELECT * FROM investor_contacts ORDER BY created_at DESC LIMIT ?",
-            (max(1, min(limit, 500)),),
+            "SELECT * FROM investor_contacts WHERE business_id=? ORDER BY created_at DESC LIMIT ?",
+            (scope, max(1, min(limit, 500)),,
         ).fetchall()
     return [dict(x) for x in rows]
 
@@ -256,8 +270,8 @@ def create_investor(payload: dict) -> dict:
     with connect() as db:
         db.execute(
             """INSERT INTO investor_contacts
-            (id,name,organization,contact,stage,notes,created_at,updated_at)
-            VALUES (:id,:name,:organization,:contact,:stage,:notes,:created_at,:updated_at)""",
+            (id,business_id,name,organization,contact,stage,notes,created_at,updated_at)
+            VALUES (:id,:business_id,:name,:organization,:contact,:stage,:notes,:created_at,:updated_at)""",
             item,
         )
     return item
