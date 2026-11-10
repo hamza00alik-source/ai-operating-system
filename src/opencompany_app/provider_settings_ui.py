@@ -18,6 +18,20 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
   <p id="unorouter-detail" class="muted" aria-live="polite">Credentials are not configured.</p>
   <p class="muted">Connection testing sends one short prompt. After a successful zero-cost test, the worker fleet starts automatically only when owner-configured autostart is enabled. Paid fallback is never used.</p>
 </section>
+<section class="panel" id="github-evolution-settings">
+  <div class="row"><h2 class="section-title" style="margin:0">GitHub code evolution</h2><span id="github-evolution-state" class="pill">Not connected</span></div>
+  <p class="muted">Save a fine-grained GitHub token here, encrypted on the server. Grant repository access with Contents: Read and write, Pull requests: Read and write, and Metadata: Read. This integration creates isolated draft pull requests only; it cannot merge or deploy.</p>
+  <label for="github-evolution-token">GitHub fine-grained token</label>
+  <input id="github-evolution-token" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste private GitHub token">
+  <label style="display:flex;gap:10px;align-items:center;margin:12px 0"><input id="github-evolution-confirm" type="checkbox"> I authorize draft pull request creation only. I retain merge and deployment approval.</label>
+  <div class="auth">
+    <button id="github-evolution-save" type="button">Save encrypted token</button>
+    <button id="github-evolution-test" type="button" disabled>Test repository access</button>
+    <button id="github-evolution-remove" type="button" disabled>Remove token</button>
+    <button id="github-evolution-refresh" type="button">Refresh status</button>
+  </div>
+  <p id="github-evolution-detail" class="muted" aria-live="polite">Code evolution is not connected.</p>
+</section>
 <section class="panel" id="model-usage">
   <div class="row"><h2 class="section-title" style="margin:0">AI usage & cost ledger</h2><button id="usage-refresh" type="button">Refresh usage</button></div>
   <div class="row">
@@ -83,6 +97,51 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
   });
   byId("connect").addEventListener("click",()=>{setTimeout(loadUnoRouterSettings,0);});
 
+
+  async function loadGitHubEvolutionSettings(){
+    try{
+      const status=await request("/settings/integrations/github-evolution");
+      byId("github-evolution-state").textContent=status.configured?"Connected · "+(status.repository||"repository"):"Not connected";
+      byId("github-evolution-detail").textContent=status.configured
+        ?"Encrypted token saved. Repository: "+status.repository+" · Base: "+status.base_branch+". Draft PR creation only; auto-merge and auto-deploy are disabled."
+        :"No owner-managed GitHub token is saved. The code-evolution PR integration remains disabled.";
+      byId("github-evolution-test").disabled=!status.configured;
+      byId("github-evolution-remove").disabled=!status.token_present;
+    }catch(error){byId("github-evolution-detail").textContent=error.message;}
+  }
+  byId("github-evolution-refresh").addEventListener("click",loadGitHubEvolutionSettings);
+  byId("github-evolution-save").addEventListener("click",async()=>{
+    const token=byId("github-evolution-token").value.trim();
+    const confirmed=byId("github-evolution-confirm").checked;
+    if(!token||!confirmed){setMessage("Enter the GitHub token and confirm draft-PR-only authority.","error");return;}
+    byId("github-evolution-save").disabled=true;
+    try{
+      await request("/settings/integrations/github-evolution",{method:"PUT",body:JSON.stringify({token,confirm_draft_pr_only:confirmed})});
+      byId("github-evolution-token").value="";byId("github-evolution-confirm").checked=false;
+      setMessage("GitHub token encrypted and saved. Test repository access before using code evolution.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("github-evolution-save").disabled=false;}
+  });
+  byId("github-evolution-test").addEventListener("click",async()=>{
+    byId("github-evolution-test").disabled=true;
+    try{
+      const result=await request("/settings/integrations/github-evolution/test",{method:"POST",body:"{}"});
+      setMessage("GitHub access verified for "+result.username+" on "+result.repository+". Push permission reported: "+String(result.push_permission_reported)+". Draft PR only.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("github-evolution-test").disabled=false;}
+  });
+  byId("github-evolution-remove").addEventListener("click",async()=>{
+    if(!window.confirm("Remove the encrypted GitHub token and disable owner-managed code evolution?")) return;
+    byId("github-evolution-remove").disabled=true;
+    try{
+      await request("/settings/integrations/github-evolution",{method:"DELETE"});
+      byId("github-evolution-token").value="";byId("github-evolution-confirm").checked=false;
+      setMessage("GitHub token removed. Draft PR creation is disabled.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");byId("github-evolution-remove").disabled=false;}
+  });
   async function loadModelUsage(){
     try{
       const usage=await request("/usage/model");
