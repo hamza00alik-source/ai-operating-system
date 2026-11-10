@@ -93,12 +93,13 @@ Set these only in the AIOS API hosting environment (never GitHub, browser JavaSc
 | Pinterest | `AI_OS_OAUTH_PINTEREST_CLIENT_ID` | `AI_OS_OAUTH_PINTEREST_CLIENT_SECRET` | `AI_OS_OAUTH_PINTEREST_REDIRECT_URI` |
 | Reddit | `AI_OS_OAUTH_REDDIT_CLIENT_ID` | `AI_OS_OAUTH_REDDIT_CLIENT_SECRET` | `AI_OS_OAUTH_REDDIT_REDIRECT_URI` |
 | X | `AI_OS_OAUTH_X_CLIENT_ID` | `AI_OS_OAUTH_X_CLIENT_SECRET` | `AI_OS_OAUTH_X_REDIRECT_URI` |
+| Etsy | `AI_OS_OAUTH_ETSY_CLIENT_ID` (API keystring) | `AI_OS_OAUTH_ETSY_SHARED_SECRET` | `AI_OS_OAUTH_ETSY_REDIRECT_URI` |
 
 Each redirect variable must be the exact HTTPS callback URL registered with that provider:
 `https://YOUR-AIOS-API-HOST/business-integrations/social/{provider}/callback`
-where provider is `meta`, `tiktok`, `youtube`, `pinterest`, `reddit`, or `x`. The public AIOS API origin must be known and registered before authorization can work. Keep `AI_OS_CREDENTIAL_ENCRYPTION_KEY` configured and backed up; losing it makes stored tokens unrecoverable.
+where provider is `meta`, `tiktok`, `youtube`, `pinterest`, `reddit`, `x`, or `etsy`. The public AIOS API origin must be known and registered before authorization can work. Keep `AI_OS_CREDENTIAL_ENCRYPTION_KEY` configured and backed up; losing it makes stored tokens unrecoverable.
 
-App registration, provider review/approval, redirect URI registration, and environment-variable entry are owner-side prerequisites. Meta, TikTok, Pinterest, Google and X may restrict scopes/features until app review or production access is approved. Reddit external Data API access has its own approval and terms process; Devvit app login is not a substitute for credentials for an external AIOS integration. The dashboard reports each app as setup-required until all three variables exist; it does not pretend an account is connected. The OAuth status endpoint is owner-authenticated. Callback state is single-use and short-lived.
+App registration, provider review/approval, redirect URI registration, and environment-variable entry are owner-side prerequisites. Meta, TikTok, Pinterest, Google, X and Etsy may restrict scopes/features until app review or production access is approved. For Etsy, select a Seller App for the owner’s own shop; the connection uses only `shops_r`. Reddit external Data API access has its own approval and terms process; Devvit app login is not a substitute for credentials for an external AIOS integration. The dashboard reports each app as setup-required until all three variables exist; it does not pretend an account is connected. The OAuth status endpoint is owner-authenticated. Callback state is single-use and short-lived.
 
 **Current limitation:** token refresh and provider-specific publishing endpoints are not yet implemented. An expired token must be re-authorized. Publishing stays out of scope until separate owner-approved action workflows and provider permission review are complete.
 
