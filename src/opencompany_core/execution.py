@@ -121,11 +121,14 @@ class AgentExecutor:
                 notes = ()
         research_context = ""
         if self._research_broker is not None:
-            outcome = self._research_broker.collect(role, item)
-            research_context = json.dumps({
-                "site": outcome.site, "operation": outcome.operation,
-                "result": outcome.result, "status": outcome.reason,
-            }, ensure_ascii=False)[:18000]
+            try:
+                outcome = self._research_broker.collect(role, item)
+                research_context = json.dumps({
+                    "site": outcome.site, "operation": outcome.operation,
+                    "result": outcome.result, "status": outcome.reason,
+                }, ensure_ascii=False)[:18000]
+            except Exception as exc:
+                research_context = json.dumps({"status": f"research connector failed safely ({type(exc).__name__})"})
         request = ModelRequest(
             prompt=self._build_prompt(role, item, notes, research_context),
             request_id=str(uuid4()),
