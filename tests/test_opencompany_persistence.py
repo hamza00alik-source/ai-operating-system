@@ -20,7 +20,8 @@ def test_agent_profile_round_trip(tmp_path):
     store = SQLiteStore(tmp_path / "opencompany.sqlite3")
     agent = AgentProfile(uuid4(), "Market Analyst", "research",
                          "Assess market evidence", ("market_research",),
-                         state=AgentState.ACTIVE)
+                         state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
+                         team_key="management")
     store.save_agent(agent)
     assert store.get_agent(agent.id) == agent
     store.close()
@@ -75,4 +76,39 @@ def test_work_item_and_audit_record_commit_together(tmp_path):
     assert store.get_work_item(item.id) == item
     assert store.audit_event_count() == 1
     assert store.verify_audit_chain()
+    store.close()
+
+
+def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "legacy-v1.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript("""
+        CREATE TABLE agent_profiles (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL,
+            purpose TEXT NOT NULL, capabilities_json TEXT NOT NULL,
+            state TEXT NOT NULL, revision INTEGER NOT NULL
+        );
+        CREATE TABLE work_items (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL, objective TEXT NOT NULL,
+            department TEXT NOT NULL, state TEXT NOT NULL, assigned_agent_id TEXT,
+            dependencies_json TEXT NOT NULL, created_at TEXT NOT NULL
+        );
+        CREATE TABLE audit_events (
+            sequence INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE,
+            occurred_at TEXT NOT NULL, payload_json TEXT NOT NULL,
+            previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL UNIQUE
+        );
+        PRAGMA user_version = 1;
+    """)
+    connection.close()
+
+    store = SQLiteStore(path)
+    columns = {row["name"] for row in store._connection.execute(
+        "PRAGMA table_info(agent_profiles)"
+    ).fetchall()}
+    version = store._connection.execute("PRAGMA user_version").fetchone()[0]
+    assert {"role_key", "team_key"} <= columns
+    assert version == 2
     store.close()
