@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from ai_os.agent_runtime import recover_interrupted_runs, run_pending_once
 from ai_os.db import initialize_database
-from ai_os.model_adapter import get_model_status
+from ai_os.llm_gateway import list_providers
 
 logger = logging.getLogger("ai_os.worker_service")
 
@@ -63,12 +63,13 @@ def run_worker_loop(
 
 
 def main() -> None:
-    status = get_model_status()
-    if not status["enabled"]:
+    providers = [item for item in list_providers() if item.get("eligible")]
+    if not providers:
         raise SystemExit(
-            "Agent worker not started: configure an approved model endpoint and "
-            "set AI_OS_MODEL_ENABLED=true. No model request was made."
+            "Agent worker not started: configure and owner-confirm at least one free model provider. "
+            "No model request was made."
         )
+    status = providers[0]
 
     try:
         interval = int(os.getenv("AI_OS_WORKER_POLL_SECONDS", "3"))
@@ -80,7 +81,7 @@ def main() -> None:
     worker_id = f"agent-worker-{uuid4()}"
     logger.info(
         "Agent worker started: %s; provider=%s; model=%s; recovered=%s",
-        worker_id, status["provider"], status["model"], recovered,
+        worker_id, status["id"], status["model"], recovered,
     )
 
     stop_event = threading.Event()
