@@ -96,11 +96,33 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     )
     api_anything = ApiAnythingClient.from_env()
     research_broker = ResearchBroker(api_anything, gateway) if api_anything is not None else None
+    def read_dependency_deliverables(item):
+        results = []
+        for dependency_id in item.depends_on:
+            deliverables = store.list_deliverables(dependency_id)
+            if not deliverables:
+                raise ValueError("completed prerequisite has no persisted deliverable")
+            results.append({
+                "work_item_id": str(dependency_id),
+                "deliverables": [
+                    {
+                        "role_key": row["role_key"],
+                        "content": row["content"][:8000],
+                        "provider": row["provider"],
+                        "model": row["model"],
+                        "cost_usd": row["cost_usd"],
+                    }
+                    for row in deliverables[:5]
+                ],
+            })
+        return results
+
     executor = AgentExecutor(
         gateway=gateway,
         learning_context=learning.list_learning_notes,
         research_broker=research_broker,
         usage_recorder=usage.record,
+        dependency_context=read_dependency_deliverables,
     )
     worker = OpenCompanyWorker(
         queue=queue,
