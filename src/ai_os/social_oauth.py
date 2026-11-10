@@ -207,6 +207,31 @@ def _request_json(url: str, data: dict | None = None, headers: dict | None = Non
     except (urllib.error.URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise OAuthError("Could not complete OAuth provider exchange (" + type(exc).__name__ + ").") from exc
 
+def verify_etsy_credential(secret: str, config: dict) -> dict:
+    """Verify an already linked Etsy shop using read-only OAuth-scoped requests."""
+    try:
+        credential = json.loads(secret)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise OAuthError("Stored Etsy token record is invalid; reconnect the shop.") from exc
+    access_token = credential.get("access_token")
+    expires_at = credential.get("expires_at")
+    api_key = (config or {}).get("etsy_api_key")
+    shared_secret = (config or {}).get("etsy_shared_secret")
+    if not access_token or not api_key or not shared_secret:
+        raise OAuthError("Stored Etsy connection is incomplete; reconnect the shop.")
+    if expires_at and int(time.time()) >= int(expires_at):
+        raise OAuthError("Etsy access token has expired. Reconnect the shop to authorize a fresh token.")
+    headers = {"Authorization": "Bearer " + access_token, "x-api-key": api_key + ":" + shared_secret}
+    identity = _request_json("https://api.etsy.com/v3/application/users/me", headers=headers)
+    shop_id = identity.get("shop_id")
+    if not shop_id:
+        raise OAuthError("Etsy did not return an owner shop for this account.")
+    shop = _request_json("https://api.etsy.com/v3/application/shops/" + str(int(shop_id)), headers=headers)
+    return {"provider": "etsy", "connected": True, "account": shop.get("shop_name") or "Etsy shop",
+            "shop_id": shop_id, "capability": "read-only Etsy shop access",
+            "external_actions": "GET only; no listings, orders or shop settings changed"}
+
+
 def complete(provider: str, state: str, code: str) -> dict:
     if provider not in PROVIDERS or not state or len(state) > 256 or not code or len(code) > 4096:
         raise ValueError("Invalid OAuth callback parameters.")
