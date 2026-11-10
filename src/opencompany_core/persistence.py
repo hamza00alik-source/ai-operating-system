@@ -317,8 +317,8 @@ class SQLiteStore:
         records: tuple[AuditRecord, ...],
     ) -> bool:
         """Atomically approve a draft proposal, materialize child tasks, and audit."""
-        if not items or len(items) != len(records):
-            raise ValueError("approved delegation requires matching child tasks and audit records")
+        if not items or not records:
+            raise ValueError("approved delegation requires child tasks and audit records")
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
