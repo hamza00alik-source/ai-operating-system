@@ -347,7 +347,8 @@ def run_pending_once() -> bool:
     claimed = _claim_next_run()
     if claimed is None:
         return False
-    run_id, task = claimed    try:
+    run_id, task = claimed
+    try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
         with connect() as db:
             prior_steps = {item["sequence_no"]: dict(item) for item in db.execute(
