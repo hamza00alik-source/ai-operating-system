@@ -22,6 +22,7 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
+from opencompany_core.provisioning import bootstrap_department_managers
 
 
 app = FastAPI(
@@ -237,6 +238,39 @@ def protected_actions() -> dict[str, list[str]]:
         "owner_approval_required": [
             action for action in actions if action_requires_owner_approval(action)
         ]
+    }
+
+
+@app.get("/agents", dependencies=[Depends(require_owner_key)])
+def list_agents(store: SQLiteStore = Depends(get_store)) -> dict:
+    agents = store.list_agents(limit=1000)
+    return {
+        "count": len(agents),
+        "agents": [
+            {
+                "id": str(item.id), "name": item.name,
+                "department": item.department, "purpose": item.purpose,
+                "capabilities": list(item.capabilities),
+                "state": item.state.value, "revision": item.revision,
+            }
+            for item in agents
+        ],
+    }
+
+
+@app.post("/agents/bootstrap", dependencies=[Depends(require_owner_key)])
+def bootstrap_agents(store: SQLiteStore = Depends(get_store)) -> dict:
+    agents = bootstrap_department_managers(store)
+    return {
+        "count": len(agents),
+        "created_profiles": len(agents),
+        "all_draft": all(item.state.value == "draft" for item in agents),
+        "agents": [
+            {"id": str(item.id), "department": item.department,
+             "role_capabilities": list(item.capabilities), "state": item.state.value}
+            for item in agents
+        ],
+        "execution_started": False,
     }
 
 
