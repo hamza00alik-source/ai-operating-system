@@ -48,7 +48,7 @@ class OpenCompanyRuntime:
 
 
 def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
-    """Build the complete API/worker composition without starting execution."""
+    """Build the API/worker composition; optionally autostart the gated worker fleet."""
     configured = database_path or os.environ.get(
         "OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3"
     )
@@ -87,4 +87,11 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         worker, store,
         idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
     )
-    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs, learning=learning, github_evolution=github_evolution, api_anything=api_anything)
+    runtime = OpenCompanyRuntime(
+        store=store, queue=queue, worker=worker, delegations=delegations,
+        sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs,
+        learning=learning, github_evolution=github_evolution, api_anything=api_anything,
+    )
+    if os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true":
+        runtime.fleet.start()
+    return runtime
