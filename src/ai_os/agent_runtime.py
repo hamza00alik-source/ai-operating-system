@@ -513,3 +513,14 @@ def worker_loop(stop_event, poll_seconds: int = 3) -> None:
             logger.exception("Agent worker recovered from an error")
             stop_event.wait(max(1, min(poll_seconds, 30)))
     logger.info("Bounded agent worker stopped")
+
+def worker_pool(stop_event, poll_seconds: int = 3, concurrency: int = 1) -> None:
+    """Run a bounded number of concurrent queue consumers in one worker replica."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    worker_count = max(1, min(int(concurrency), 4))
+    logger.info("Starting %s queue consumers in the single worker process", worker_count)
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="aios-agent") as pool:
+        futures = [pool.submit(worker_loop, stop_event, poll_seconds) for _ in range(worker_count)]
+        for future in futures:
+            future.result()
