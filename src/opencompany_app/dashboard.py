@@ -60,6 +60,15 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div id="capabilities" class="list"><p class="muted">Connect to inspect provider and media readiness.</p></div>
   </section>
   <section class="panel">
+    <h2 class="section-title">CEO objective planner</h2>
+    <p class="muted">The active Chief Executive Orchestrator can turn an owner-approved objective into draft department tasks. Draft tasks are not queued or executed until you review them.</p>
+    <label for="executive-title">Plan title</label>
+    <input id="executive-title" maxlength="240" placeholder="Example: Launch an international digital product business">
+    <label for="executive-objective">Company objective</label>
+    <textarea id="executive-objective" rows="4" maxlength="12000" placeholder="Describe the outcome, constraints, audience, and success measures."></textarea>
+    <button id="create-executive-plan" disabled>Create CEO draft plan</button>
+  </section>
+  <section class="panel">
     <div class="row"><h2 class="section-title" style="margin:0">Work queue</h2><span id="worker-status" class="pill">Workers stopped</span></div>
     <div class="auth" style="margin-top:12px"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
@@ -109,6 +118,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("worker-status").textContent=fleet.running?"Workers running":"Workers stopped";
       byId("start-workers").disabled=fleet.running;
       byId("stop-workers").disabled=!fleet.running;
+      byId("create-executive-plan").disabled=!agents.agents.some(a=>a.role_key==="chief_executive_orchestrator" && a.state==="active");
       clear("departments","No departments returned.");
       org.departments.forEach(d=>addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)"));
       clear("agents","No agent profiles yet. Provision the CEO, managers and specialists first.");
@@ -206,8 +216,20 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       csrfToken="";keyInput.value="";
       ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
-      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;setMessage("Disconnected. The server session has been revoked.");
+      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
+  });
+  byId("create-executive-plan").addEventListener("click",async()=>{
+    const title=byId("executive-title").value.trim();
+    const objective=byId("executive-objective").value.trim();
+    if(!title||!objective){setMessage("Enter a plan title and objective.","error");return;}
+    byId("create-executive-plan").disabled=true;
+    try{
+      const result=await request("/executive/plan",{method:"POST",body:JSON.stringify({title,objective,max_tasks:8})});
+      setMessage("CEO created "+result.created_count+" draft tasks. Review them in Work queue before moving any to READY.","success");
+      byId("executive-title").value="";byId("executive-objective").value="";
+      await load();
+    }catch(error){setMessage(error.message,"error");byId("create-executive-plan").disabled=false;}
   });
   byId("start-workers").addEventListener("click",async()=>{
     byId("start-workers").disabled=true;
