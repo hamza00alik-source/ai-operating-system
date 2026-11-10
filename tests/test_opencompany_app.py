@@ -950,3 +950,84 @@ def test_runtime_repositories_share_one_sqlite_connection_and_lock(owner_client)
     assert runtime.sessions._lock is lock
     assert runtime.handoffs._lock is lock
     assert runtime.learning._lock is lock
+
+
+def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    parent = owner_client.post("/work-items", headers=headers, json={
+        "title": "Assess overseas market demand",
+        "objective": "Prepare an evidence-backed internal market assessment",
+        "department": "intelligence-research",
+    }).json()
+    parent_id = parent["item_id"]
+
+    proposal_response = owner_client.post(
+        f"/work-items/{parent_id}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert proposal_response.status_code == 200
+    proposal = proposal_response.json()
+    profiles = {
+        agent["id"]: agent
+        for agent in owner_client.get("/agents", headers=headers).json()["agents"]
+    }
+    for child in proposal["children"]:
+        profile = profiles[child["assigned_agent_id"]]
+        activated = owner_client.post(
+            f"/agents/{profile['id']}/state",
+            headers=headers,
+            json={"target_state": "active", "expected_revision": profile["revision"]},
+        )
+        assert activated.status_code == 200
+
+    approved = owner_client.post(
+        f"/work-items/{parent_id}/delegation-proposals/{proposal['id']}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+    child_task = approved.json()["materialized_work_items"][0]
+    child_record = next(
+        child for child in proposal["children"]
+        if child["assigned_agent_id"] == child_task["assigned_agent_id"]
+    )
+    agent_id = UUID(child_task["assigned_agent_id"])
+    role_key = child_record["role_key"]
+
+    queued = owner_client.post(
+        f"/work-items/{child_task['id']}/enqueue", headers=headers,
+    )
+    assert queued.status_code == 200
+    assert queued.json()["state"] == "queued"
+
+    class DeterministicExecutor:
+        def execute(self, requested_role, item, **kwargs):
+            return AgentDeliverable(
+                id=uuid4(), work_item_id=item.id, role_key=requested_role,
+                content="Evidence-backed market research draft for owner review.",
+                provider="test", model="deterministic", cost_usd=0.0,
+            )
+
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.worker.executor = DeterministicExecutor()
+    result = runtime.worker.run_once(agent_id, role_key)
+    assert result == "completed_review_required"
+    assert runtime.store.get_work_item(UUID(child_task["id"])).state == TaskState.REVIEW
+    assert runtime.queue.counts().get("done") == 1
+
+    deliverables = owner_client.get(
+        f"/work-items/{child_task['id']}/deliverables", headers=headers,
+    )
+    assert deliverables.status_code == 200
+    assert deliverables.json()["count"] == 1
+    reviewed = owner_client.post(
+        f"/work-items/{child_task['id']}/review",
+        headers=headers,
+        json={"approved": True, "rationale": "The draft meets the acceptance criteria."},
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["state"] == "completed"
+    assert reviewed.json()["evaluation_recorded"] is True
+    assert runtime.store.verify_audit_chain() is True
