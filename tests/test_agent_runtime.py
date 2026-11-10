@@ -98,3 +98,43 @@ def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist
     with connect() as db:
         assert db.execute("SELECT status FROM tasks WHERE id='task-1'").fetchone()["status"] == "queued"
         assert db.execute("SELECT output FROM agent_run_steps WHERE run_id='run-1' AND sequence_no=1").fetchone()["output"] == "Saved specialist report"
+
+
+def test_atomic_worker_claim_allows_only_one_process_to_claim_a_run(monkeypatch, tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from ai_os.agent_runtime import create_run, _claim_next_run
+    from ai_os.db import connect, initialize_database
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'atomic-claim.db'}")
+    initialize_database()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO tasks(id,title,description,department,business_id,status,created_at) VALUES(?,?,?,?,?,?,?)",
+            ("claim-task", "Synthetic worker claim", "No external actions.", "research", "core", "queued", "2026-01-01T00:00:00+00:00"),
+        )
+    create_run("claim-task")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: _claim_next_run(), range(2)))
+    claimed = [item for item in results if item is not None]
+    assert len(claimed) == 1
+    assert claimed[0][0]
+    assert claimed[0][1]["id"] == "claim-task"
+    with connect() as db:
+        assert db.execute("SELECT status FROM agent_runs WHERE task_id='claim-task'").fetchone()["status"] == "running"
+        assert db.execute("SELECT status FROM tasks WHERE id='claim-task'").fetchone()["status"] == "running"
+
+
+def test_worker_loop_stops_cleanly_after_stop_signal(monkeypatch):
+    import threading
+    from ai_os import agent_runtime
+
+    stop = threading.Event()
+    calls = []
+    def idle_once():
+        calls.append(True)
+        stop.set()
+        return False
+
+    monkeypatch.setattr(agent_runtime, "run_pending_once", idle_once)
+    agent_runtime.worker_loop(stop, poll_seconds=1)
+    assert len(calls) == 1
