@@ -57,7 +57,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
       byId("unorouter-api-key").value="";
       byId("unorouter-confirm-free").checked=false;
       setMessage("UnoRouter credentials encrypted and saved. Run the connection test; workers can start only after successful free-provider verification when autostart is enabled.","success");
-      await loadUnoRouterSettings();
+      await load();
     }catch(error){setMessage(error.message,"error");}
     finally{byId("unorouter-save").disabled=false;}
   });
