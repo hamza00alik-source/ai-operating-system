@@ -44,3 +44,17 @@ def test_provider_secret_vault_revisions_and_removes_credentials(monkeypatch):
     assert vault.delete("unorouter") is True
     assert vault.get("unorouter") is None
     assert vault.delete("unorouter") is False
+
+
+def test_provider_secret_vault_encrypts_github_token_with_provider_scoped_payload(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "encryption-key-for-tests-at-least-32")
+    db = _database()
+    vault = ProviderSecretVault(db, __import__("threading").RLock())
+    token = "github-private-token-never-store-plaintext"
+    assert vault.put("github_evolution", {"token": token}) == 1
+    raw = db.execute("SELECT nonce,ciphertext FROM provider_secrets WHERE provider='github_evolution'").fetchone()
+    assert token.encode() not in bytes(raw["ciphertext"])
+    assert vault.get("github_evolution") == {"token": token}
+    assert vault.status("github_evolution")["configured"] is True
+    assert vault.delete("github_evolution") is True
+    assert vault.get("github_evolution") is None
