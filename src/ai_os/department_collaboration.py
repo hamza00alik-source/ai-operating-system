@@ -68,7 +68,7 @@ def mark_message_read(message_id: str, business_id: str, department: str) -> dic
 
 def delegate_task(business_id: str, from_department: str, to_department: str, title: str,
                   description: str, parent_task_id: str | None = None) -> dict:
-    """Create an internal queued task; execution remains explicitly owner-triggered."""
+    """Create and queue an internal task after an owner explicitly delegates it."""
     _validate_scope(business_id,from_department)
     _validate_scope(business_id,to_department)
     title,description=(title or "").strip(),(description or "").strip()
@@ -96,7 +96,10 @@ def delegate_task(business_id: str, from_department: str, to_department: str, ti
             (message_id,business_id,from_department,to_department,"Task delegated: "+title,
              description or "Please review the delegated task in the owner task queue.",task_id,now))
         row=db.execute("SELECT * FROM department_delegations WHERE id=?",(delegation_id,)).fetchone()
-    return {**dict(row),"message_id":message_id}
+    # The owner explicitly submitted this delegation, so internal task execution is authorized.
+    from ai_os.agent_runtime import create_run
+    run = create_run(task_id)
+    return {**dict(row),"message_id":message_id,"agent_run_id":run["id"],"run_status":run["status"]}
 
 def list_delegations(business_id: str, department: str | None = None, limit: int = 100) -> list[dict]:
     _validate_scope(business_id,department)
