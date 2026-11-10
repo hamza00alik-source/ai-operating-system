@@ -29,7 +29,8 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     response = client.get("/owner")
     assert response.status_code == 200
     assert "OpenCompany Owner Console" in response.text
-    assert "sessionStorage" in response.text
+    assert "sessionStorage" not in response.text
+    assert "session storage only" not in response.text
     assert "provision-executive" in response.text
     assert "provision-specialists" in response.text
     assert "Specialist roles" in response.text
