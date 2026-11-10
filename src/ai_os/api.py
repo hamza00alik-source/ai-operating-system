@@ -283,7 +283,7 @@ def test_business_integration(business_id: str, provider: str):
         if provider == "playerauctions":
             verification = marketplace_integrations.verify_playerauctions(credential["secret"], credential["config"])
         elif provider == "etsy":
-            verification = social_oauth.verify_etsy_credential(credential["secret"], credential["config"])
+            verification = social_oauth.verify_etsy_credential(credential["secret"], credential["config"], business_id)
         else:
             verification = platform_integrations.verify_connection(provider, credential["secret"], credential["config"])
         return {**verification, "external_actions": "read-only verification only"}
