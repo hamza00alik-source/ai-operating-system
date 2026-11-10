@@ -11,6 +11,7 @@ def test_bootstrap_creates_250_draft_specialists_idempotently(tmp_path):
     assert len(second) == 250
     assert len({item.id for item in first}) == 250
     assert all(item.state == AgentState.DRAFT for item in first)
+    assert all(item.role_key and item.team_key for item in first)
     departments = {}
     for item in first:
         departments[item.department] = departments.get(item.department, 0) + 1
