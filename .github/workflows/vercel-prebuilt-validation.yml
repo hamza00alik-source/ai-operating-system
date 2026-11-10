@@ -2,6 +2,8 @@ name: Vercel prebuilt build validation
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -13,7 +15,7 @@ concurrency:
 jobs:
   test:
     name: Test AIOS
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Check out reviewed source
@@ -36,7 +38,7 @@ jobs:
   vercel-prebuild:
     name: Build Vercel output (no deployment)
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
