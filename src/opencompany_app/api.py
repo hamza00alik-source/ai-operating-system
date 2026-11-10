@@ -362,7 +362,35 @@ def owner_dashboard() -> HTMLResponse:
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """Liveness probe: the ASGI process is responsive."""
     return {"status": "ok", "service": "opencompany-core", "mode": "owner-authenticated"}
+
+
+@app.get("/ready")
+def readiness(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Readiness probe: owner configuration and persistent storage are usable.
+
+    Provider readiness is intentionally not required here: the owner dashboard
+    must be reachable before the owner can configure the free provider.
+    """
+    try:
+        with runtime.store._lock:
+            connection = runtime.store._connection
+            result = connection.execute("PRAGMA quick_check").fetchone()
+            if result is None or str(result[0]).casefold() != "ok":
+                raise RuntimeError("database integrity check failed")
+            connection.execute("SELECT 1").fetchone()
+        fleet = runtime.fleet.status()
+    except Exception as exc:
+        # Keep internal database and filesystem diagnostics out of public probes.
+        raise HTTPException(status_code=503, detail="OpenCompany storage is not ready.") from exc
+    return {
+        "status": "ready",
+        "service": "opencompany-core",
+        "storage": "ok",
+        "worker_fleet_running": fleet.running,
+        "provider_required_for_readiness": False,
+    }
 
 
 @app.get("/workforce/roles")
