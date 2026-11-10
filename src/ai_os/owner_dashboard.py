@@ -338,12 +338,12 @@ th{background:#101b2c}
 </section>
 <section id="apiAnything" class="panel section" data-view-panel="discovery">
 <h2>API Anything · website-to-API bridge</h2>
-<p class="small">Optional read-only website operations. Calls go through the private Railway service, require your owner session, and are restricted to plain HTTP tier 1. Writes and browser fallbacks are not exposed.</p>
+<p class="small">Discover and run installed API Anything reads through the private Railway service. Calls require your owner session and are restricted to plain HTTP tier 1. API Anything login imports a browser session on the runtime host; it is not a hosted dashboard OAuth flow. Use the Business section for supported WordPress/WooCommerce account connections.</p>
 <div class="toolbar"><span id="apiAnythingStatus" class="status">Checking API Anything configuration…</span><button id="apiAnythingRefresh" class="secondary" type="button">Refresh connection</button><button id="apiAnythingSites" class="secondary" type="button">List installed sites</button></div>
 <div class="toolbar section"><input id="apiAnythingQuery" placeholder="Find a site or operation" style="flex:1;min-width:180px"><button id="apiAnythingFind" type="button">Find</button></div>
 <pre id="apiAnythingResults" style="max-height:260px;overflow:auto;white-space:pre-wrap;background:#091323;padding:12px;border-radius:10px">No results loaded.</pre>
 <h3>Owner-triggered read operation</h3>
-<div class="toolbar"><input id="apiAnythingSite" placeholder="site e.g. hacker-news"><input id="apiAnythingOperation" placeholder="operation e.g. search"></div>
+<div class="toolbar"><input id="apiAnythingSite" placeholder="site e.g. hacker-news"><button class="secondary" id="apiAnythingOperations" type="button">Show site operations</button><input id="apiAnythingOperation" placeholder="operation e.g. search"></div>
 <textarea id="apiAnythingArgs" rows="3" style="width:100%;margin-top:8px" placeholder='{"query":"sqlite"}'></textarea>
 <div class="toolbar section"><button id="apiAnythingCall" type="button">Run read-only operation</button><span class="small">Never use this for purchases, publishing, messages, account changes or other writes.</span></div>
 <pre id="apiAnythingOutput" style="max-height:320px;overflow:auto;white-space:pre-wrap;background:#091323;padding:12px;border-radius:10px">No operation executed.</pre>
@@ -370,10 +370,39 @@ th{background:#101b2c}
 </div>
 <div id="businessMessage" class="status" role="status"></div>
 <div class="panel section">
-<h3>Business integration vault · encrypted storage</h3>
-<p class="small">Store a platform credential against exactly one selected business. Values and configuration are encrypted at rest and never displayed again. This vault does not yet connect to the platform or authorize external actions; integrations require a separately implemented adapter.</p>
-<div class="toolbar"><select id="integrationProvider"><option value="woocommerce">WooCommerce</option><option value="shopify">Shopify</option><option value="meta">Meta</option><option value="tiktok">TikTok</option><option value="paypal">PayPal</option><option value="stripe">Stripe</option><option value="marketplace">Marketplace</option><option value="other">Other</option></select><input id="integrationSecret" type="password" autocomplete="off" placeholder="API token / secret" style="flex:1;min-width:180px"><input id="integrationConfig" placeholder='Optional config JSON, e.g. {"store_url":"https://..."}' style="flex:1;min-width:220px"><button id="saveBusinessIntegration">Save encrypted</button></div>
+<h3>Connect platform accounts · owner dashboard</h3>
+<p class="small">Connections are isolated to the selected business. WordPress uses an Application Password; WooCommerce uses a REST API consumer key and secret. AIOS verifies access with a read-only request before encrypting credentials. Create read-only API keys wherever possible. No products, orders, posts or messages are changed by connection tests.</p>
+<div class="toolbar section">
+<select id="integrationProvider"><option value="wordpress">WordPress site</option><option value="woocommerce">WooCommerce store</option></select>
+<input id="integrationSiteUrl" type="url" placeholder="https://your-domain.com" style="flex:1;min-width:200px">
+</div>
+<div class="toolbar section" id="wordpressFields"><input id="integrationUsername" autocomplete="username" placeholder="WordPress username" style="flex:1;min-width:180px"><input id="integrationSecret" type="password" autocomplete="new-password" placeholder="WordPress Application Password" style="flex:1;min-width:220px"></div>
+<div class="toolbar section" id="woocommerceFields" style="display:none"><input id="integrationConsumerKey" autocomplete="off" placeholder="WooCommerce consumer key" style="flex:1;min-width:180px"><input id="integrationSecretWoo" type="password" autocomplete="new-password" placeholder="WooCommerce consumer secret" style="flex:1;min-width:220px"></div>
+<div class="toolbar section"><button id="saveBusinessIntegration">Connect & verify account</button><span class="small">Credentials are sent only to your authenticated AIOS backend and encrypted at rest.</span></div>
 <div id="integrationMessage" class="status" role="status">No integration action taken.</div><div id="integrationRows" class="small">Loading integration status…</div>
+<div class="section" style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px">
+<strong>Social account sign-in · official OAuth</strong>
+<p class="small">Connect through each platform's official authorization page. AIOS requests read-oriented permissions only. Tokens are encrypted server-side and scoped to the selected business. No posts, videos, messages, ads or account settings are changed.</p>
+<div id="socialOAuthRows" class="grid"><div class="small">Checking social OAuth app setup…</div></div>
+<div id="socialOAuthMessage" class="status">No social account authorization started.</div>
+</div>
+<div class="section" style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px">
+<strong>Gaming marketplace account connections</strong>
+<p class="small">PlayerAuctions supports a documented seller API. Enter its API key and secret below. AIOS signs a read-only offer-list request to verify access; no listing, price, inventory or order changes occur.</p>
+<div class="toolbar section"><input id="playerAuctionsKey" autocomplete="off" placeholder="PlayerAuctions API key" style="flex:1;min-width:180px"><input id="playerAuctionsSecret" type="password" autocomplete="new-password" placeholder="PlayerAuctions API secret" style="flex:1;min-width:200px"><button id="connectPlayerAuctions" type="button">Connect & verify</button></div>
+<div id="marketplaceMessage" class="status">No marketplace connection action taken.</div>
+<h3>Other selected marketplaces · readiness</h3>
+<div class="small">Eldorado.gg — Seller API exists for verified sellers, but it has no test environment and covers live offers/orders. AIOS connector is not enabled until the exact auth contract and owner-approved action safeguards are completed.</div>
+<div class="small">G2G — OpenAPI requires platform approval; its published eligibility currently limits applications to business-account sellers in Malaysia and Indonesia. Verify seller-entity eligibility before investing in setup.</div>
+<div class="small">Z2U — No public seller API authentication specification was located. AIOS will not scrape the seller dashboard or imitate browser login.</div>
+<h3>Digital storefronts · integration readiness</h3>
+<div class="small">Etsy — owner-shop OAuth connection available above; configure the Seller App API keystring, shared secret and callback URL first.</div>
+<div class="small">Gumroad — official API and Gumroad-hosted MCP connector exist; standard API cannot create products or upload content. AIOS needs its own supported OAuth/MCP client adapter. Not connected.</div>
+<div class="small">itch.io — publishing requires the official Butler CLI; integration depends on the dedicated worker runtime and owner approval. Not connected.</div>
+<div class="small">CGTrader — OAuth API access requires an API-key request/approval. Not connected.</div>
+<div class="small">Fab — creator portal supports publisher listings, asset upload, review and publish; no public seller API contract was verified. Not connected.</div>
+</div>
+
 </div>
 <h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div><h3>Investors & partners</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Organization</th><th>Contact</th><th>Stage</th><th>Notes</th></tr></thead><tbody id="investorRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
@@ -626,6 +655,7 @@ async function loadApiAnythingStatus(){try{const s=await api("/integrations/api-
 async function apiAnythingShow(path){const out=$("apiAnythingResults");out.textContent="Loading…";try{const result=await api(path);out.textContent=JSON.stringify(result,null,2)}catch(e){out.textContent="Request failed: "+e.message}}
 $("apiAnythingRefresh").onclick=loadApiAnythingStatus;
 $("apiAnythingSites").onclick=()=>apiAnythingShow("/integrations/api-anything/sites");
+$("apiAnythingOperations").onclick=()=>{const site=$("apiAnythingSite").value.trim();if(!site){$("apiAnythingResults").textContent="Enter a site name first.";return}apiAnythingShow("/integrations/api-anything/sites/"+encodeURIComponent(site))};
 $("apiAnythingFind").onclick=()=>apiAnythingShow("/integrations/api-anything/find?q="+encodeURIComponent($("apiAnythingQuery").value));
 $("apiAnythingCall").onclick=async()=>{const out=$("apiAnythingOutput");let args;try{args=JSON.parse($("apiAnythingArgs").value||"{}");if(!args||Array.isArray(args)||typeof args!=="object")throw Error("Arguments must be a JSON object.")}catch(e){out.textContent="Invalid JSON: "+e.message;return}const site=$("apiAnythingSite").value.trim(),op=$("apiAnythingOperation").value.trim();if(!site||!op){out.textContent="Enter both a site and an operation.";return}const b=$("apiAnythingCall");b.disabled=true;out.textContent="Running owner-triggered read-only request…";try{const result=await api("/integrations/api-anything/call/"+encodeURIComponent(site)+"/"+encodeURIComponent(op),{method:"POST",body:JSON.stringify({args})});out.textContent=JSON.stringify(result,null,2)}catch(e){out.textContent="Operation failed: "+e.message}finally{b.disabled=false}};
 function showLogin(message=""){ $("loginPanel").style.display="flex"; $("loginStatus").textContent=message; $("loginKey").focus(); }
@@ -788,24 +818,75 @@ fallback.style.display="none";
  const formData=form=>Object.fromEntries(new FormData(form).entries());
  const send=async(path,body)=>api(path,{method:"POST",body:JSON.stringify(body)});
  const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
+ async function loadSocialOAuth(){
+  const root=$("socialOAuthRows");if(!root)return;
+  try{
+   const [status,connected]=await Promise.all([api("/business-integrations/social/status"),api("/business-integrations/"+encodeURIComponent($("businessScope").value))]);
+   const linked=new Set((connected.integrations||[]).map(x=>x.provider));
+   root.innerHTML=(status.providers||[]).map(p=>'<article class="metric"><strong style="font-size:16px">'+esc(p.label)+'</strong><span>'+(linked.has(p.provider)?'<span class="good">Account linked to this business</span>':p.app_configured?'<span class="warn">Ready for owner sign-in</span>':'<span class="warn">Developer app setup required</span>')+'</span><span class="small">Read-only scopes: '+esc((p.read_only_scopes||[]).join(", "))+'</span>'+(p.reason?'<span class="small">'+esc(p.reason)+'</span>':'')+'<button class="secondary" type="button" data-social-provider="'+esc(p.provider)+'" '+(!p.app_configured||linked.has(p.provider)?'disabled':'')+'>'+(linked.has(p.provider)?'Connected':p.app_configured?'Connect account':'Not configured')+'</button></article>').join("");
+  }catch(e){root.textContent="Social connection status unavailable: "+e.message}
+ }
+ $("socialOAuthRows")?.addEventListener("click",async e=>{
+  const button=e.target.closest("[data-social-provider]");if(!button)return;
+  const provider=button.dataset.socialProvider;button.disabled=true;$("socialOAuthMessage").textContent="Preparing secure "+provider+" authorization…";
+  try{const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/social/"+encodeURIComponent(provider)+"/start",{method:"POST",body:"{}"});window.location.assign(result.authorize_url)}
+  catch(err){$("socialOAuthMessage").textContent="Could not start authorization: "+err.message;button.disabled=false}
+ });
+ $("connectPlayerAuctions")?.addEventListener("click",async()=>{
+  const apiKey=$("playerAuctionsKey").value.trim(),secret=$("playerAuctionsSecret").value;
+  if(!apiKey||!secret){$("marketplaceMessage").textContent="Enter both PlayerAuctions API key and API secret.";return}
+  const button=$("connectPlayerAuctions");button.disabled=true;$("marketplaceMessage").textContent="Verifying PlayerAuctions seller API with a signed read-only offer-list request…";
+  try{
+   const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/playerauctions/connect",{method:"POST",body:JSON.stringify({secret,config:{api_key:apiKey}})});
+   $("playerAuctionsKey").value="";$("playerAuctionsSecret").value="";
+   $("marketplaceMessage").textContent="PlayerAuctions connected: "+result.verification.capability+". Sampled offers: "+result.verification.sampled_offers+". No marketplace data changed.";
+   await loadBusinessIntegrations();
+  }catch(e){$("marketplaceMessage").textContent="PlayerAuctions connection failed; credentials were not saved: "+e.message}
+  finally{button.disabled=false}
+ });
  async function loadBusinessIntegrations(){
   try{
-   const data=await api("/business-integrations/"+encodeURIComponent($("businessScope").value));
-   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></div>').join("")||"No platform credentials stored for this business.";
+   const scope=encodeURIComponent($("businessScope").value);
+   const data=await api("/business-integrations/"+scope);
+   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><span class="toolbar">'+(["wordpress","woocommerce","playerauctions","etsy","meta","tiktok","youtube","pinterest","reddit","x"].includes(x.provider)?'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="testBusinessIntegration(this.dataset.provider)">Test</button>':'')+'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></span></div>').join("")||"No platform accounts connected to this business.";
   }catch(e){$("integrationRows").textContent=e.message}
+  await loadSocialOAuth();
  }
+ window.testBusinessIntegration=async provider=>{
+  $("integrationMessage").textContent="Testing saved "+provider+" credentials with a read-only request…";
+  try{const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider)+"/test",{method:"POST"});$("integrationMessage").textContent="Connected and verified: "+provider+" · "+(result.account||result.site_url)+" · "+result.capability+"."}
+  catch(e){$("integrationMessage").textContent="Connection test failed: "+e.message}
+ };
  window.deleteBusinessIntegration=async provider=>{
   if(!confirm("Delete the stored "+provider+" credential for "+$("businessScope").value+"?"))return;
-  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider),{method:"DELETE"});$("integrationMessage").textContent="Stored credential deleted.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}
+  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider),{method:"DELETE"});$("integrationMessage").textContent="Stored credentials deleted.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}
  };
+ function updateIntegrationFields(){
+  const woo=$("integrationProvider").value==="woocommerce";
+  $("wordpressFields").style.display=woo?"none":"flex";
+  $("woocommerceFields").style.display=woo?"flex":"none";
+ }
+ $("integrationProvider").addEventListener("change",updateIntegrationFields);
  $("saveBusinessIntegration").addEventListener("click",async()=>{
-  const secret=$("integrationSecret").value;
-  if(!secret){$("integrationMessage").textContent="Enter the credential value first.";return}
-  let config={};
-  try{const raw=$("integrationConfig").value.trim();if(raw)config=JSON.parse(raw);if(!config||Array.isArray(config)||typeof config!=="object")throw new Error("Configuration must be a JSON object.")}catch(e){$("integrationMessage").textContent="Configuration JSON is invalid: "+e.message;return}
+  const provider=$("integrationProvider").value;
+  const secret=provider==="wordpress"?$("integrationSecret").value:$("integrationSecretWoo").value;
+  const config={site_url:$("integrationSiteUrl").value.trim()};
+  if(provider==="wordpress")config.username=$("integrationUsername").value.trim();
+  else config.consumer_key=$("integrationConsumerKey").value.trim();
+  if(!config.site_url||!secret||(provider==="wordpress"&&!config.username)||(provider==="woocommerce"&&!config.consumer_key)){
+   $("integrationMessage").textContent="Enter the site URL and all required account credentials.";return;
+  }
   const button=$("saveBusinessIntegration");button.disabled=true;
-  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent($("integrationProvider").value),{method:"POST",body:JSON.stringify({secret,config})});$("integrationSecret").value="";$("integrationConfig").value="";$("integrationMessage").textContent="Credential and configuration encrypted and stored. No external connection has been made.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}finally{button.disabled=false}
+  $("integrationMessage").textContent="Verifying account access. Only a read-only GET request will be sent…";
+  try{
+   const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider)+"/connect",{method:"POST",body:JSON.stringify({secret,config})});
+   $("integrationSecret").value="";$("integrationSecretWoo").value="";
+   $("integrationMessage").textContent="Account connected and verified: "+provider+" · "+(result.verification.account||result.verification.site_url)+". Credentials encrypted at rest.";
+   await loadBusinessIntegrations();
+  }catch(e){$("integrationMessage").textContent="Connection failed; credentials were not saved: "+e.message}
+  finally{button.disabled=false}
  });
+ updateIntegrationFields();
  async function loadBusiness(){
   try{
    const businessId=$("businessScope").value;const scope="?business_id="+encodeURIComponent(businessId);const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"+scope),api("/business/customers"+scope),api("/business/investors"+scope),api("/business/expenses"+scope),api("/business/revenue"+scope)]);
