@@ -39,3 +39,18 @@ def test_postgres_translates_insert_or_ignore():
         "INSERT INTO department_inbox_processing "
         "(message_id,status) VALUES(%s,%s) ON CONFLICT DO NOTHING"
     )
+
+
+def test_postgres_placeholder_translation_preserves_quoted_question_marks():
+    from ai_os.db import _replace_sqlite_placeholders
+
+    sql = "SELECT '?' AS literal, \"?\" AS identifier, value FROM items WHERE id=? -- ?"
+    assert _replace_sqlite_placeholders(sql) == (
+        "SELECT '?' AS literal, \"?\" AS identifier, value FROM items WHERE id=%s -- ?"
+    )
+
+
+def test_postgres_placeholder_translation_preserves_block_comments():
+    from ai_os.db import _replace_sqlite_placeholders
+
+    assert _replace_sqlite_placeholders("SELECT ? /* ? */") == "SELECT %s /* ? */"
