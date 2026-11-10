@@ -25,7 +25,7 @@ Next acceptance criteria:
 - Keep account-specific live tests owner-triggered and report only the minimum required diagnostics.
 - Maintain a model benchmark ledger only when the owner explicitly requests a test; do not issue background inference calls.
 
-Status: added a read-only `/llm/intelligence` endpoint that summarizes configured providers, owner free-confirmation, eligibility, and blockers without network probes or inference. Provider evidence freshness expiry and benchmark ledger remain pending.
+Status: added a read-only `/llm/intelligence` endpoint that summarizes configured providers, owner free-confirmation, eligibility, and blockers without network probes or inference. The `/discovery/provider-catalog` response now classifies evidence as recent, stale, or unknown using a conservative 30-day age threshold based on the catalog's `last_verified` date (source-access dates are fallback only). Each entry exposes its evidence age and explicitly remains ineligible for routing from the research catalog. This metadata does not override the existing gateway's separate owner-confirmation rules. Owner-triggered account/model tests and the benchmark ledger remain pending.
 
 ## 2. Notification Infrastructure
 
