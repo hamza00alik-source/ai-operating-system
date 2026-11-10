@@ -177,3 +177,23 @@ def test_worker_recovers_queue_ack_after_artifact_was_durably_saved(tmp_path):
     assert len(store.list_deliverables(item.id)) == 1
     queue.close()
     store.close()
+
+
+class AlwaysFailSink(MemorySink):
+    def save(self, deliverable):
+        raise OSError("permanent sink failure")
+
+
+def test_exhausted_queue_retries_mark_work_item_failed(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    queue.close()
+    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3", max_attempts=1)
+    queue.enqueue(item.id, agent, {"source": "test"})
+    worker = OpenCompanyWorker(queue, store, FakeExecutor(), AlwaysFailSink())
+    with pytest.raises(OSError, match="permanent sink failure"):
+        worker.run_once(agent, "marketplace_operations_analyst")
+    assert queue.counts() == {"dead": 1}
+    assert store.get_work_item(item.id).state == TaskState.FAILED
+    assert store.verify_audit_chain()
+    queue.close()
+    store.close()
