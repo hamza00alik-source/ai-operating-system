@@ -89,3 +89,35 @@ def bootstrap_specialist_profiles(store: SQLiteStore) -> tuple[AgentProfile, ...
             if saved is not None:
                 created_or_existing.append(saved)
     return tuple(created_or_existing)
+
+
+
+def bootstrap_executive_orchestrator(store: SQLiteStore) -> AgentProfile:
+    """Create the owner-subordinate CEO/orchestrator profile as a draft."""
+    workforce = default_workforce()
+    role = workforce.get("chief_executive_orchestrator")
+    agent_id = uuid5(NAMESPACE_URL, "opencompany:executive:chief-executive-orchestrator")
+    existing = store.get_agent(agent_id)
+    if existing is not None:
+        return existing
+    profile = AgentProfile(
+        id=agent_id,
+        name=role.title,
+        department="executive-office",
+        purpose=role.mission,
+        capabilities=role.capabilities,
+        state=AgentState.DRAFT,
+    )
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner",
+        action="agent.executive_profile_created",
+        subject_type="agent_profile", subject_id=str(agent_id),
+        outcome="created_draft", correlation_id=str(uuid4()),
+        details={"role_key": role.key, "state": AgentState.DRAFT.value},
+    )
+    store.save_agent_with_audit(profile, event)
+    saved = store.get_agent(agent_id)
+    if saved is None:
+        raise RuntimeError("executive orchestrator profile was not persisted")
+    return saved
