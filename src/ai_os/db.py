@@ -20,7 +20,7 @@ def _database_path() -> str:
 
 def _postgres_sql(statement: str) -> str:
     """Translate the SQLite-specific SQL used by the existing persistence layer."""
-    pragma = re.fullmatch(r"\\s*PRAGMA\\s+table_info\\((\\w+)\\)\\s*;?\\s*", statement, re.IGNORECASE)
+    pragma = re.fullmatch(r"\s*PRAGMA\s+table_info\((\w+)\)\s*;?\s*", statement, re.IGNORECASE)
     if pragma:
         table = pragma.group(1).lower()
         return (
@@ -30,7 +30,7 @@ def _postgres_sql(statement: str) -> str:
             (table,),
         )
     statement = re.sub(
-        r"INTEGER\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT",
+        r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
         "BIGSERIAL PRIMARY KEY",
         statement,
         flags=re.IGNORECASE,
