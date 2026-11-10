@@ -31,6 +31,12 @@ Set these private variables on the AIOS API service:
 
 Never put the token in GitHub, the Vercel frontend, browser JavaScript, logs, or chat.
 
+## Current Railway audit (2026-11-10)
+
+The Railway project already contains live `api-anything` and `aios-api` services. The API Anything service is configured with `node dist/cli.js serve --host 0.0.0.0 --port $PORT --no-learn --public-url http://api-anything.railway.internal:$PORT`; it has no public domain. The API Anything bearer-token variable is present on that service, and the AIOS API has both `AI_OS_API_ANYTHING_URL` and `AI_OS_API_ANYTHING_TOKEN` variables. Railway logs show successful `GET /v1/health` checks and successful AIOS calls to `/integrations/api-anything/status`.
+
+The API Anything service currently has **no attached persistent volume**. Its local site state and any future account sessions can therefore be lost on redeploy/restart. A dedicated volume would improve persistence but is not provisioned here because the owner requires a zero-budget setup and volume cost/allowance must be checked first. No public domain was added and no token values were read or changed during this audit.
+
 ## Owner dashboard capabilities
 
 The dashboard calls only the AIOS authenticated API. AIOS keeps the API Anything token server-side.
