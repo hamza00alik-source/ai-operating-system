@@ -226,7 +226,7 @@ def verify_social_credential(provider: str, secret: str, config: dict, business_
     refreshed = False
     if expires_at and int(time.time()) >= int(expires_at):
         refresh_token = credential.get("refresh_token")
-        refreshable = {"tiktok", "youtube", "pinterest"}
+        refreshable = {"tiktok", "youtube", "pinterest", "x"}
         if provider not in refreshable or not refresh_token:
             raise OAuthError("Social access token expired; reconnect the account.")
         cfg = _config(provider)
@@ -237,7 +237,10 @@ def verify_social_credential(provider: str, secret: str, config: dict, business_
         elif provider == "youtube":
             data.update({"client_id": cfg["client_id"], "client_secret": cfg["client_secret"]})
         else:
+            # Pinterest and X use HTTP Basic client authentication for refresh.
             headers["Authorization"] = "Basic " + base64.b64encode((cfg["client_id"] + ":" + cfg["client_secret"]).encode()).decode()
+            if provider == "x":
+                data["client_id"] = cfg["client_id"]
         token = _request_json(PROVIDERS[provider]["token"], data, headers)
         new_access = token.get("access_token")
         lifetime = token.get("expires_in")
