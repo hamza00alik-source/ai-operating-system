@@ -60,7 +60,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div id="capabilities" class="list"><p class="muted">Connect to inspect provider and media readiness.</p></div>
   </section>
   <section class="panel">
-    <h2 class="section-title" style="margin:0">Work queue</h2>
+    <div class="row"><h2 class="section-title" style="margin:0">Work queue</h2><span id="worker-status" class="pill">Workers stopped</span></div>
+    <div class="auth" style="margin-top:12px"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
   </section>
   <p class="muted" style="font-size:.8rem;margin:18px 4px">This console does not publish content, contact customers, spend money, deploy production, or activate agents. Protected actions remain owner-gated.</p>
@@ -95,9 +96,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
     try{
-      const [org,agents,work,provider,media,workforce]=await Promise.all([
+      const [org,agents,work,provider,media,workforce,queue,fleet]=await Promise.all([
         request("/organization/departments"),request("/agents"),request("/work-items"),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status")
       ]);
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
@@ -105,6 +106,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("work-count").textContent=work.count;
       byId("provider-state").textContent=provider.gateway_enabled?"Free model configured":"Disabled";
       byId("queue-count").textContent=queue.counts.queued||0;
+      byId("worker-status").textContent=fleet.running?"Workers running":"Workers stopped";
+      byId("start-workers").disabled=fleet.running;
+      byId("stop-workers").disabled=!fleet.running;
       clear("departments","No departments returned.");
       org.departments.forEach(d=>addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)"));
       clear("agents","No manager profiles yet. Use Provision managers to create draft profiles.");
@@ -185,8 +189,18 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       csrfToken="";keyInput.value="";
       ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
-      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;setMessage("Disconnected. The server session has been revoked.");
+      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
+  });
+  byId("start-workers").addEventListener("click",async()=>{
+    byId("start-workers").disabled=true;
+    try{await request("/workers/start",{method:"POST",body:"{}"});setMessage("Worker fleet started. It will process only owner-admitted tasks assigned to ACTIVE profiles.","success");await load();}
+    catch(error){setMessage(error.message,"error");byId("start-workers").disabled=false;}
+  });
+  byId("stop-workers").addEventListener("click",async()=>{
+    byId("stop-workers").disabled=true;
+    try{await request("/workers/stop",{method:"POST",body:"{}"});setMessage("Worker fleet stopped.","success");await load();}
+    catch(error){setMessage(error.message,"error");byId("stop-workers").disabled=false;}
   });
   byId("provision").addEventListener("click",async()=>{
     byId("provision").disabled=true;
