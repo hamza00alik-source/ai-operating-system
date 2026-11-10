@@ -308,7 +308,7 @@ th{background:#101b2c}
 <section id="research" class="panel section" data-view-panel="research">
 <h2>Research evidence library · owner-triggered capture</h2>
 <p class="small">Capture public HTTPS pages for research tasks. AIOS stores the URL, capture time and readable page text, then supplies relevant excerpts to the lead specialist. Pages are reference material, not automatically verified truth. HTTPS only; redirects, private-network targets, non-text files and pages over 1 MB are blocked.</p>
-<div class="toolbar"><input id="researchSourceUrl" type="url" placeholder="https://example.com/research-report" style="flex:1;min-width:220px"><button id="captureResearchSource">Capture source</button><button id="refreshResearchSources" class="secondary">Refresh library</button></div>
+<div class="toolbar"><select id="researchBusiness" aria-label="Research business scope"><option value="core">AIOS Core / internal</option><option value="physical-agency">Physical Products Agency</option><option value="physical-brand">Own Physical Products Brand</option><option value="digital-products">Digital Products</option></select><input id="researchSourceUrl" type="url" placeholder="https://example.com/research-report" style="flex:1;min-width:220px"><button id="captureResearchSource">Capture source</button><button id="refreshResearchSources" class="secondary">Refresh library</button></div>
 <div id="researchSourceStatus" class="status" role="status">No source capture requested.</div>
 <div id="researchSources" class="small">Loading captured sources…</div>
 </section>
@@ -347,7 +347,7 @@ th{background:#101b2c}
 
 <section id="business" class="panel section" data-view-panel="business">
 <h2>Business operations · financial ledger & customers</h2>
-<p class="small">Persistent records stored in the AIOS database. Only owner-confirmed payments count as revenue. Expenses are recorded for review; no payment is initiated by this dashboard.</p>
+<p class="small">Select one independent business environment before viewing or recording customers, revenue and expenses. Only owner-confirmed payments count as revenue; no payment is initiated here.</p><div class="toolbar section"><label for="businessScope">Business records scope</label><select id="businessScope"><option value="core">AIOS Core / internal</option><option value="physical-agency">Physical Products Agency</option><option value="physical-brand">Own Physical Products Brand</option><option value="digital-products">Digital Products</option></select><span class="small">Records and reports below are isolated to this selection.</span></div>
 <div id="businessSummary" class="grid"><div class="metric"><strong>—</strong><span>Customers</span></div><div class="metric"><strong>—</strong><span>Verified revenue records</span></div><div class="metric"><strong>—</strong><span>Expenses awaiting approval</span></div></div>
 <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
 <div class="panel"><h3>Add customer</h3><form id="customerForm"><input name="title" required maxlength="160" placeholder="Customer / company name" style="width:100%;margin:6px 0"><input name="contact" maxlength="200" placeholder="Email or contact (optional)" style="width:100%;margin:6px 0"><textarea name="notes" maxlength="2000" placeholder="Notes" style="width:100%;margin:6px 0"></textarea><button type="submit">Save customer</button></form></div><div class="panel"><h3>Add investor / partner</h3><form id="investorForm"><input name="name" required maxlength="180" placeholder="Investor / partner name" style="width:100%;margin:6px 0"><input name="organization" maxlength="180" placeholder="Organization" style="width:100%;margin:6px 0"><input name="contact" maxlength="200" placeholder="Contact details" style="width:100%;margin:6px 0"><select name="stage" style="width:100%;margin:6px 0"><option value="prospect">Prospect</option><option value="contacted">Contacted</option><option value="interested">Interested</option><option value="due_diligence">Due diligence</option><option value="committed">Committed (record only)</option><option value="declined">Declined</option></select><textarea name="notes" maxlength="2000" placeholder="Notes / discussion history" style="width:100%;margin:6px 0"></textarea><button type="submit">Save investor</button></form></div>
@@ -528,19 +528,19 @@ $("taskForm").addEventListener("submit",async e=>{e.preventDefault();const title
 $("loadAgents").onclick=loadAgents;$("agentSearch").addEventListener("input",()=>{clearTimeout(window.agentSearchTimer);window.agentSearchTimer=setTimeout(loadAgents,250)});$("departmentFilter").onchange=loadAgents;$("loadOperations").onclick=loadOperations;
 async function loadResearchSources(){
  try{
-  const rows=await api("/research/sources");
+  const rows=await api("/research/sources?business_id="+encodeURIComponent($("researchBusiness").value));
   $("researchSources").innerHTML=rows.length?rows.map(s=>'<article class="card" style="margin:9px 0;padding:12px"><strong>'+esc(s.title||"Untitled source")+'</strong><div class="small"><a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.url)+'</a></div><div class="small">Captured '+esc(date(s.captured_at))+' · '+esc(s.characters)+' characters</div></article>').join(""):'No captured sources yet. Add a public HTTPS page above.';
  }catch(e){$("researchSources").textContent=e.message}
 }
 async function captureResearchSource(){
  const field=$("researchSourceUrl");const url=field.value.normalize("NFC").replace(/[\\u200B-\\u200F\\u2060\\uFEFF]/g,"").trim();field.value=url;if(!url){$("researchSourceStatus").textContent="Enter a public HTTPS URL.";return}
  const b=$("captureResearchSource");b.disabled=true;$("researchSourceStatus").textContent="Fetching and extracting page text…";
- try{const result=await api("/research/sources",{method:"POST",body:JSON.stringify({url})});$("researchSourceUrl").value="";const redirectNote=result.redirected?" WARNING: The submitted URL redirected ("+result.redirect_count+" hop(s)). Final page: "+result.url+". Check that this is the intended evidence before relying on it.":"Source URL matched the submitted destination.";const partialNote=result.truncated?" PARTIAL: only the first 1 MB was inspected.":"";$("researchSourceStatus").textContent="Captured: "+(result.title||result.url)+" · "+result.characters+" characters. "+redirectNote+partialNote+" Capture success does not mean the content is relevant.";await loadResearchSources()}
+ try{const result=await api("/research/sources",{method:"POST",body:JSON.stringify({url,business_id:$("researchBusiness").value})});$("researchSourceUrl").value="";const redirectNote=result.redirected?" WARNING: The submitted URL redirected ("+result.redirect_count+" hop(s)). Final page: "+result.url+". Check that this is the intended evidence before relying on it.":"Source URL matched the submitted destination.";const partialNote=result.truncated?" PARTIAL: only the first 1 MB was inspected.":"";$("researchSourceStatus").textContent="Captured: "+(result.title||result.url)+" · "+result.characters+" characters. "+redirectNote+partialNote+" Capture success does not mean the content is relevant.";await loadResearchSources()}
  catch(e){$("researchSourceStatus").textContent=e.message}
  finally{b.disabled=false}
 }
 $("captureResearchSource").onclick=captureResearchSource;
-$("refreshResearchSources").onclick=loadResearchSources;
+$("refreshResearchSources").onclick=loadResearchSources;$("researchBusiness").addEventListener("change",loadResearchSources);$("businessScope").addEventListener("change",loadBusiness);
 
 async function loadBrain(){
  try{
@@ -739,7 +739,7 @@ fallback.style.display="none";
  const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
  async function loadBusiness(){
   try{
-   const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"),api("/business/customers"),api("/business/investors"),api("/business/expenses"),api("/business/revenue")]);
+   const businessId=$("businessScope").value;const scope="?business_id="+encodeURIComponent(businessId);const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"+scope),api("/business/customers"+scope),api("/business/investors"+scope),api("/business/expenses"+scope),api("/business/revenue"+scope)]);
    const verified=revenue.filter(x=>x.verified);
    const mtd=(summary.verified_revenue_mtd_by_currency||[]).map(x=>money(x.total,x.currency)).join(" / ")||"0.00";
    $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+esc(mtd)+'</strong><span>Verified revenue · MTD</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div>';
@@ -749,9 +749,9 @@ fallback.style.display="none";
    $("ledgerRows").innerHTML=rows.map(x=>'<tr><td>'+esc(x.record_type)+'</td><td>'+esc(x.title)+'</td><td>'+money(x.amount,x.currency)+'</td><td>'+esc(x.status)+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="5">No ledger entries yet.</td></tr>';
   }catch(e){$("businessMessage").textContent=e.message}
  }
- $("investorForm").addEventListener("submit",async e=>{e.preventDefault();try{await send("/business/investors",formData(e.currentTarget));e.currentTarget.reset();$("businessMessage").textContent="Investor record saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
+ $("investorForm").addEventListener("submit",async e=>{e.preventDefault();try{await send("/business/investors",{...formData(e.currentTarget),business_id:$("businessScope").value});e.currentTarget.reset();$("businessMessage").textContent="Investor record saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
  ["customer","revenue","expense"].forEach(kind=>{
-  const form=$(kind+"Form");form.addEventListener("submit",async e=>{e.preventDefault();const data=formData(form);if(kind==="revenue")data.verified_payment=form.elements.verified_payment.checked;try{await send("/business/"+(kind==="customer"?"customers":(kind==="expense"?"expenses":"revenue")),data);form.reset();$("businessMessage").textContent=kind==="expense"?"Expense recorded for owner approval.":kind==="revenue"?"Revenue record saved; only verified receipts count.":"Customer saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
+  const form=$(kind+"Form");form.addEventListener("submit",async e=>{e.preventDefault();const data={...formData(form),business_id:$("businessScope").value};if(kind==="revenue")data.verified_payment=form.elements.verified_payment.checked;try{await send("/business/"+(kind==="customer"?"customers":(kind==="expense"?"expenses":"revenue")),data);form.reset();$("businessMessage").textContent=kind==="expense"?"Expense recorded for owner approval.":kind==="revenue"?"Revenue record saved; only verified receipts count.":"Customer saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
  });
  async function loadAssets(){
   try{
