@@ -25,6 +25,9 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert response.status_code == 200
     assert "OpenCompany Owner Console" in response.text
     assert "sessionStorage" in response.text
+    assert "provision-executive" in response.text
+    assert "provision-specialists" in response.text
+    assert "Specialist roles" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
@@ -48,6 +51,7 @@ def test_workforce_endpoint_exposes_only_original_opencompany_roles():
     assert payload["leadership_role_count"] == 11
     assert payload["team_count"] == 50
     assert all(role["prohibited_actions"] for role in payload["roles"])
+    assert all(role["team_key"] for role in payload["roles"])
 
 
 
