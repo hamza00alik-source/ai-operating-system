@@ -79,6 +79,18 @@ class OpenCompanyRuntime:
             return False
         return bool(self.fleet.start())
 
+    def configure_github_evolution(self, token: str | None) -> None:
+        if token is None:
+            self.github_evolution = None
+            return
+        repository = os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY", "").strip()
+        base_branch = os.environ.get("OPENCOMPANY_GITHUB_BASE_BRANCH", "clean-room-rebuild").strip()
+        if not repository:
+            raise ValueError("OPENCOMPANY_GITHUB_REPOSITORY must be configured before saving a GitHub token")
+        self.github_evolution = GitHubEvolutionClient(
+            token, repository, base_branch=base_branch,
+        )
+
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
         self.fleet.stop(timeout_seconds=5.0)
@@ -101,7 +113,15 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     learning = LearningRepository(store._connection, store._lock)
     secret_vault = ProviderSecretVault(store._connection, store._lock)
     usage = ModelUsageRepository(store._connection, store._lock)
-    github_evolution = GitHubEvolutionClient.from_env()
+    stored_github = secret_vault.get("github_evolution")
+    if stored_github is not None and os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY", "").strip():
+        github_evolution = GitHubEvolutionClient(
+            stored_github["token"],
+            os.environ["OPENCOMPANY_GITHUB_REPOSITORY"].strip(),
+            base_branch=os.environ.get("OPENCOMPANY_GITHUB_BASE_BRANCH", "clean-room-rebuild"),
+        )
+    else:
+        github_evolution = GitHubEvolutionClient.from_env()
     queue = DurableWorkerQueue(
         store._connection,
         max_attempts=int(os.environ.get("OPENCOMPANY_WORKER_MAX_ATTEMPTS", "3")),
