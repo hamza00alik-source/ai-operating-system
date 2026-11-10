@@ -11,11 +11,11 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
