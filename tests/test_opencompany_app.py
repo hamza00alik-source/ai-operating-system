@@ -43,7 +43,10 @@ def test_workforce_endpoint_exposes_only_original_opencompany_roles():
     assert response.status_code == 200
     payload = response.json()
     assert payload["catalogue"] == "opencompany-original"
-    assert payload["count"] == 10
+    assert payload["count"] == 260
+    assert payload["specialist_count"] == 250
+    assert payload["manager_role_count"] == 10
+    assert payload["team_count"] == 50
     assert all(role["prohibited_actions"] for role in payload["roles"])
 
 
@@ -172,6 +175,24 @@ def test_owner_can_bootstrap_ten_draft_department_managers(owner_client):
     listed = owner_client.get("/agents", headers=headers)
     assert listed.status_code == 200
     assert listed.json()["count"] == 10
+    assert all(item["state"] == "draft" for item in listed.json()["agents"])
+
+
+def test_owner_can_bootstrap_250_specialist_profiles_as_drafts(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    first = owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["count"] == 250
+    assert first.json()["all_draft"] is True
+    assert first.json()["execution_started"] is False
+
+    second = owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    assert second.status_code == 200
+    assert second.json()["count"] == 250
+
+    listed = owner_client.get("/agents", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 250
     assert all(item["state"] == "draft" for item in listed.json()["agents"])
 
 
