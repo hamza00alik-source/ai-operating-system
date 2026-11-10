@@ -27,6 +27,7 @@ class DelegationRepository:
             self.database, timeout=10, check_same_thread=False, isolation_level=None
         )
         self._db.row_factory = sqlite3.Row
+        self._db.execute("PRAGMA foreign_keys = ON")
         self._db.execute("PRAGMA busy_timeout = 10000")
         self._db.execute("""
             CREATE TABLE IF NOT EXISTS delegation_proposals (
