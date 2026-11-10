@@ -42,8 +42,15 @@ Cross-department work is represented by work items and explicit dependencies. A 
 
 ## Current implementation boundary
 
-The registry and read-only API are implemented in opencompany_core.organization and GET /organization/departments. The role catalogue is exposed by GET /workforce/roles. POST /workforce/route-preview ranks specialist candidates within a department using requested capability tags; it is a preview only and does not assign work or execute agents. Manager and specialist profile provisioning are owner-authenticated and create draft profiles only. This does not instantiate always-running agents. Durable specialist assignment, team-level execution, live collaboration, and worker activation remain separate implementation stages.
+The registry and read-only API are implemented in opencompany_core.organization and GET /organization/departments. The role catalogue is exposed by GET /workforce/roles. POST /workforce/route-preview ranks specialist candidates within a department using requested capability tags. POST /work-items/{id}/delegation-preview asks the department manager contract to choose direct manager handling, one coherent five-person specialist team, or owner review when required capabilities are uncovered. Both are previews only: they do not assign work, activate profiles, enqueue tasks, or execute agents. Manager and specialist profile provisioning are owner-authenticated and create draft profiles only. This does not instantiate always-running agents. Durable specialist assignment, team-level execution, live collaboration, and worker activation remain separate implementation stages.
 
 ## Provenance
 
 Authored from OpenCompany's stated business model and operating requirements. It does not read or import the repository's quarantined legacy data/company_departments.json or Agency-Agent materials.
+
+
+## Manager-led delegation preview
+
+The first orchestration increment is implemented in `opencompany_core.manager_orchestration`. A department manager handles a task directly when its declared capabilities cover the request. Otherwise it selects one coherent specialist team (up to five members) based on capability coverage. If no specialist matches, or the selected team cannot cover the requested capabilities, the plan escalates for owner review.
+
+The owner-authenticated `POST /work-items/{id}/delegation-preview` endpoint returns the manager, selected team, specialist role keys, matched capabilities, uncovered capabilities, and explicit false values for assignment/execution. This is a deterministic planning preview, not an LLM-driven manager and not an active delegation runtime. Durable assignments, subtask creation, queueing, specialist execution, and review handoffs remain pending.
