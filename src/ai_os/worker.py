@@ -14,7 +14,7 @@ import os
 import signal
 import threading
 
-from ai_os.agent_runtime import recover_interrupted_runs, worker_loop
+from ai_os.agent_runtime import recover_interrupted_runs, worker_pool
 from ai_os.db import initialize_database
 
 
@@ -24,10 +24,11 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     poll_seconds = max(1, min(int(os.getenv("AI_OS_WORKER_POLL_SECONDS", "3")), 30))
+    concurrency = max(1, min(int(os.getenv("AI_OS_WORKER_CONCURRENCY", "2")), 4))
     initialize_database()
     recovered = recover_interrupted_runs()
     logging.getLogger("ai_os.worker").info(
-        "Dedicated worker initialized; recovered %s interrupted run(s).", recovered
+        "Dedicated worker initialized with %s queue consumer(s); recovered %s interrupted run(s).", concurrency, recovered
     )
     stop_event = threading.Event()
 
@@ -37,7 +38,7 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
-    worker_loop(stop_event, poll_seconds=poll_seconds)
+    worker_pool(stop_event, poll_seconds=poll_seconds, concurrency=concurrency)
 
 
 if __name__ == "__main__":
