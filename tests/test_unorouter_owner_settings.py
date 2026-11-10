@@ -250,3 +250,41 @@ def test_startup_recovers_from_encryption_key_rotation_and_allows_secret_replace
     finally:
         api.app.dependency_overrides.clear()
         runtime.close()
+
+
+def test_code_evolution_requires_read_only_github_access_verification(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
+    monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
+    runtime = create_runtime(str(tmp_path / "github-verify-gate.sqlite3"))
+    api.app.dependency_overrides[api.get_runtime] = lambda: runtime
+    client = TestClient(api.app)
+    headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
+    try:
+        saved = client.put(
+            "/settings/integrations/github-evolution", headers=headers,
+            json={"token": "github-fine-grained-token-private-value-123456",
+                  "confirm_draft_pr_only": True},
+        )
+        assert saved.status_code == 200
+        runtime.github_evolution.verify_access = lambda: {
+            "authenticated": True, "username": "test-owner",
+            "repository_access": True, "repository": "hamza00alik-source/ai-operating-system",
+            "base_branch": "clean-room-rebuild", "push_permission_reported": True,
+            "verification_mode": "read_only", "auto_merge": False, "auto_deploy": False,
+        }
+        blocked = client.post(
+            "/code-evolution/proposals", headers=headers,
+            json={"problem": "Improve safe request validation", "file_paths": ["src/opencompany_core/model_gateway.py"]},
+        )
+        assert blocked.status_code == 409
+        verified = client.post("/settings/integrations/github-evolution/test", headers=headers, json={})
+        assert verified.status_code == 200
+        status = client.get("/code-evolution/config-status", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["configured"] is True
+        assert status.json()["access_verified"] is True
+        assert status.json()["enabled"] is True
+    finally:
+        api.app.dependency_overrides.clear()
+        runtime.close()
