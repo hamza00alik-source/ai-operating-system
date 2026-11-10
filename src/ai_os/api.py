@@ -4,6 +4,7 @@ import logging
 import threading
 import unicodedata
 import json
+import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
@@ -22,7 +23,7 @@ from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
-from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
+from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory, run_learning_cycle
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.executive_supervisor import executive_status, supervise_once
@@ -61,8 +62,18 @@ _agent_thread: threading.Thread | None = None
 
 def _agent_worker_loop() -> None:
     logger.info("Bounded agent execution worker started.")
+    next_learning_cycle = 0.0
     while not _agent_stop.is_set():
         try:
+            if time.monotonic() >= next_learning_cycle:
+                for business_id in sorted(BUSINESS_IDS):
+                    try:
+                        result = run_learning_cycle(business_id)
+                        if not result.get("already_ran"):
+                            logger.info("Autonomous brain cycle completed for %s: %s proposals", business_id, result.get("proposals_created", 0))
+                    except Exception:
+                        logger.exception("Autonomous brain cycle failed for %s", business_id)
+                next_learning_cycle = time.monotonic() + 21600
             if not run_agent_pending_once():
                 _agent_stop.wait(3)
         except Exception:
@@ -530,6 +541,16 @@ def get_brain_status(business_id: str = "core"):
     if business_id not in BUSINESS_IDS:
         raise HTTPException(status_code=422, detail="Unknown business environment.")
     return brain_status(business_id)
+
+
+@app.post("/brain/learn", dependencies=[Depends(require_owner_key)])
+def post_brain_learning_cycle(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    try:
+        return run_learning_cycle(business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/brain/memories", dependencies=[Depends(require_api_key)])
