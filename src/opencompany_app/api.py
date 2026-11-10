@@ -484,6 +484,7 @@ def preview_work_item_delegation(
                 "title": specialist.title,
                 "team_key": specialist.team_key,
                 "matched_capabilities": list(specialist.matched_capabilities),
+                "supporting_member": specialist.supporting_member,
                 "permitted_outputs": list(specialist.permitted_outputs),
             }
             for specialist in plan.specialists
