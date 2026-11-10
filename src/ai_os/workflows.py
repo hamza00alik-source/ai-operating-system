@@ -107,9 +107,13 @@ def create_workflow(template_id: str, business_id: str = "core") -> dict:
                 (step_id, workflow_id, task_id, index, department, title, status, now))
             created.append({"id": step_id, "task_id": task_id, "sequence": index,
                             "department": department, "title": title, "status": status})
+    # Starting a workflow is an owner-authorized request for internal work. Queue only
+    # its first step; later steps are queued automatically after successful handoff.
+    from ai_os.agent_runtime import create_run
+    create_run(created[0]["task_id"])
     return {"id": workflow_id, "business_id": business_id, "template_id": template_id, "name": template["name"],
             "status": "active", "steps": created,
-            "next_action": "Execute the first queued step from the Owner Console; subsequent steps unlock only after completion."}
+            "next_action": "The first department is queued automatically; each next department is queued after successful completion."}
 
 def get_workflow(workflow_id: str) -> dict | None:
     initialize_workflows()
@@ -150,6 +154,10 @@ def finish_workflow_task(task_id: str, success: bool, output: str = "") -> None:
     if success:
         from ai_os.department_collaboration import record_workflow_handoff_message
         record_workflow_handoff_message(task_id, output)
+        if following:
+            # Queue the next department only after its predecessor completed successfully.
+            from ai_os.agent_runtime import create_run
+            create_run(following["task_id"])
 
 
 def list_workflows(limit: int = 50, business_id: str = "core") -> list[dict]:
