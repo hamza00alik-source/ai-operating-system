@@ -18,6 +18,17 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
   <p id="unorouter-detail" class="muted" aria-live="polite">Credentials are not configured.</p>
   <p class="muted">Connection testing sends one short test prompt only when you press the test button. It does not create tasks, start workers, or use paid models.</p>
 </section>
+<section class="panel" id="model-usage">
+  <div class="row"><h2 class="section-title" style="margin:0">AI usage & cost ledger</h2><button id="usage-refresh" type="button">Refresh usage</button></div>
+  <div class="row">
+    <div><strong id="usage-requests">0</strong><p class="muted">Successful requests</p></div>
+    <div><strong id="usage-cost">0.000000</strong><p class="muted">Reported USD cost</p></div>
+    <div><strong id="usage-tokens">0 / 0</strong><p class="muted">Input / output tokens</p></div>
+  </div>
+  <p id="usage-detail" class="muted" aria-live="polite">Usage events are recorded after successful specialist inference.</p>
+  <div id="usage-events"></div>
+  <p class="muted">Provider-reported usage is operational accounting, not an independent invoice. API keys, prompts and completion text are not stored here.</p>
+</section>
 """
 
 OWNER_PROVIDER_SETTINGS_JS = r"""
@@ -70,4 +81,25 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
     }catch(error){setMessage(error.message,"error");byId("unorouter-remove").disabled=false;}
   });
   byId("connect").addEventListener("click",()=>{setTimeout(loadUnoRouterSettings,0);});
+
+  async function loadModelUsage(){
+    try{
+      const usage=await request("/usage/model");
+      byId("usage-requests").textContent=String(usage.request_count);
+      byId("usage-cost").textContent=Number(usage.total_cost_usd).toFixed(6);
+      byId("usage-tokens").textContent=String(usage.total_input_tokens)+" / "+String(usage.total_output_tokens);
+      const target=byId("usage-events");
+      target.replaceChildren();
+      for(const event of usage.events.slice(0,8)){
+        const row=document.createElement("div");row.className="row";
+        const label=document.createElement("span");
+        label.textContent=event.role_key+" · "+event.provider+"/"+event.model;
+        const amount=document.createElement("span");
+        amount.textContent=Number(event.cost_usd).toFixed(6)+" USD · "+String(event.input_tokens??"—")+"/"+String(event.output_tokens??"—")+" tokens";
+        row.append(label,amount);target.append(row);
+      }
+      byId("usage-detail").textContent=usage.events.length?"Latest "+usage.events.length+" successful inference events shown.":"No successful inference events recorded yet.";
+    }catch(error){byId("usage-detail").textContent="Usage ledger unavailable: "+error.message;}
+  }
+  byId("usage-refresh").addEventListener("click",loadModelUsage);
 """
