@@ -24,6 +24,7 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
+from opencompany_core.unorouter_adapter import unorouter_configuration_status
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
 from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_core.delegation_records import DelegationRepository
@@ -242,17 +243,36 @@ def media_capabilities() -> dict:
 
 @app.get("/providers/status")
 def provider_runtime_status() -> dict:
-    api_key = os.environ.get("OPENCOMPANY_OPENROUTER_API_KEY", "").strip()
-    model = os.environ.get("OPENCOMPANY_OPENROUTER_FREE_MODEL", "").strip()
-    confirmation = os.environ.get("OPENCOMPANY_CONFIRM_OPENROUTER_FREE", "").strip().lower()
-    configured = bool(api_key and model.endswith(":free") and confirmation == "true")
-    partial = bool(api_key or model or confirmation) and not configured
+    # Credentials are never returned. UnoRouter is a first-class company provider;
+    # OpenRouter remains an optional independent provider.
+    uno = unorouter_configuration_status()
+    openrouter_key = os.environ.get("OPENCOMPANY_OPENROUTER_API_KEY", "").strip()
+    openrouter_model = os.environ.get("OPENCOMPANY_OPENROUTER_FREE_MODEL", "").strip()
+    openrouter_confirm = os.environ.get("OPENCOMPANY_CONFIRM_OPENROUTER_FREE", "").strip().lower()
+    openrouter_configured = bool(
+        openrouter_key and openrouter_model.endswith(":free") and openrouter_confirm == "true"
+    )
+    openrouter_partial = bool(openrouter_key or openrouter_model or openrouter_confirm) and not openrouter_configured
+    providers = {
+        "unorouter": uno,
+        "openrouter": {
+            "configured": openrouter_configured,
+            "model": openrouter_model if openrouter_configured else None,
+            "billing_mode": "free_confirmed" if openrouter_configured else "disabled",
+            "partial_configuration_detected": openrouter_partial,
+            "automatic_paid_fallback": False,
+        },
+    }
+    active = next((name for name, state in providers.items() if state["configured"]), None)
     return {
-        "gateway_enabled": configured,
-        "provider": "openrouter" if configured else None,
-        "model": model if configured else None,
-        "billing_mode": "free_confirmed" if configured else "disabled",
-        "partial_configuration_detected": partial,
+        "gateway_enabled": active is not None,
+        "provider": active,
+        "model": providers[active]["model"] if active else None,
+        "billing_mode": "free_confirmed" if active else "disabled",
+        "providers": providers,
+        "partial_configuration_detected": any(
+            state["partial_configuration_detected"] for state in providers.values()
+        ),
         "real_inference_verified": False,
         "paid_fallback": False,
     }
