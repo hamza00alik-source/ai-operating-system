@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
+from .specialist_roles import DEPARTMENT_LABELS, SPECIALIST_TITLES
+
 
 @dataclass(frozen=True, slots=True)
 class RoleSpec:
@@ -63,6 +65,39 @@ class RoleCatalog:
                 scored.append((overlap, role.key, role))
         scored.sort(key=lambda item: (-item[0], item[1]))
         return tuple(item[2] for item in scored)
+
+
+def _specialist_roles() -> tuple[RoleSpec, ...]:
+    """Build 250 explicit, department-scoped specialist contracts."""
+    roles = []
+    for department_key, titles in SPECIALIST_TITLES.items():
+        department_label = DEPARTMENT_LABELS[department_key]
+        if len(titles) != 25:
+            raise RuntimeError(f"{department_key} must define exactly 25 specialist roles")
+        for title in titles:
+            slug = "_".join(part for part in "".join(ch.lower() if ch.isalnum() else " " for ch in title).split())
+            key = f"{department_key.replace('-', '_')}__{slug}"
+            focus = slug.replace("_", " ")
+            roles.append(RoleSpec(
+                key=key,
+                title=title,
+                function=department_label,
+                mission=f"Deliver the {focus} capability for {department_label}; produce evidence-backed work, coordinate handoffs, and document assumptions and limitations.",
+                capabilities=(department_key.replace("-", "_"), *tuple(slug.split("_")), "specialist_execution", "evidence_synthesis", "quality_review"),
+                permitted_outputs=(f"{slug}_brief", f"{slug}_analysis", f"{slug}_work_product", "handoff_summary"),
+                prohibited_actions=("bypassing_owner_approval", "inventing_evidence_or_results", "using_unapproved_paid_services", "taking_external_actions_outside_assigned_scope"),
+            ))
+    if len(roles) != 250:
+        raise RuntimeError("OpenCompany specialist catalogue must contain exactly 250 roles")
+    return tuple(roles)
+
+
+def specialist_role_keys(department_key: str) -> tuple[str, ...]:
+    """Return deterministic specialist role keys assigned to a department."""
+    if department_key not in SPECIALIST_TITLES:
+        raise LookupError(f"unknown OpenCompany specialist department: {department_key}")
+    prefix = department_key.replace("-", "_") + "__"
+    return tuple(role.key for role in _specialist_roles() if role.key.startswith(prefix))
 
 
 OPENCOMPANY_ROLES = RoleCatalog((
@@ -156,7 +191,7 @@ OPENCOMPANY_ROLES = RoleCatalog((
         permitted_outputs=("video_script", "storyboard", "shot_list", "draft_media_asset", "production_report"),
         prohibited_actions=("publishing_without_approval", "using_paid_compute_without_approval", "ignoring_asset_licences"),
     ),
-))
+) + _specialist_roles())
 
 
 def default_workforce() -> RoleCatalog:
