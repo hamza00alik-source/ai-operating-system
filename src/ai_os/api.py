@@ -30,6 +30,25 @@ from ai_os import business_ops
 from pydantic import BaseModel, Field
 
 
+class DepartmentMessageRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    sender_department: str = Field(min_length=1, max_length=64)
+    recipient_department: str = Field(min_length=1, max_length=64)
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=12000)
+    related_task_id: str | None = None
+
+
+class DepartmentDelegationRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    from_department: str = Field(min_length=1, max_length=64)
+    to_department: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=12000)
+    parent_task_id: str | None = None
+
+
+
 logger = logging.getLogger("ai_os.api")
 _discovery_stop = threading.Event()
 _discovery_thread: threading.Thread | None = None
@@ -522,24 +541,6 @@ def get_workflow_detail(workflow_id: str):
         raise HTTPException(status_code=404, detail="Workflow not found")
     return result
 
-
-
-class DepartmentMessageRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
-    sender_department: str = Field(min_length=1, max_length=64)
-    recipient_department: str = Field(min_length=1, max_length=64)
-    subject: str = Field(min_length=1, max_length=200)
-    body: str = Field(min_length=1, max_length=12000)
-    related_task_id: str | None = None
-
-
-class DepartmentDelegationRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
-    from_department: str = Field(min_length=1, max_length=64)
-    to_department: str = Field(min_length=1, max_length=64)
-    title: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=12000)
-    parent_task_id: str | None = None
 
 
 class BusinessRecordRequest(BaseModel):
