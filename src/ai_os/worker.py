@@ -17,6 +17,7 @@ import threading
 from ai_os.agent_runtime import recover_interrupted_runs, worker_pool
 from ai_os.db import initialize_database
 from ai_os.inbox_supervisor import inbox_supervisor_loop
+from ai_os.executive_supervisor import executive_supervisor_loop
 
 
 def main() -> None:
@@ -46,11 +47,19 @@ def main() -> None:
         daemon=True,
     )
     inbox_thread.start()
+    executive_thread = threading.Thread(
+        target=executive_supervisor_loop,
+        args=(stop_event, max(15, poll_seconds)),
+        name="aios-executive-supervisor",
+        daemon=True,
+    )
+    executive_thread.start()
     try:
         worker_pool(stop_event, poll_seconds=poll_seconds, concurrency=concurrency)
     finally:
         stop_event.set()
         inbox_thread.join(timeout=10)
+        executive_thread.join(timeout=10)
 
 
 if __name__ == "__main__":
