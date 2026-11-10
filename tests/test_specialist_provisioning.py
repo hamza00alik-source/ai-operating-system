@@ -3,12 +3,12 @@ from opencompany_core.persistence import SQLiteStore
 from opencompany_core.provisioning import bootstrap_specialist_profiles
 
 
-def test_bootstrap_creates_250_draft_specialists_idempotently(tmp_path):
+def test_bootstrap_creates_500_draft_specialists_idempotently(tmp_path):
     store = SQLiteStore(tmp_path / "specialists.sqlite3")
     first = bootstrap_specialist_profiles(store)
     second = bootstrap_specialist_profiles(store)
-    assert len(first) == 250
-    assert len(second) == 250
+    assert len(first) == 500
+    assert len(second) == 500
     assert len({item.id for item in first}) == 250
     assert all(item.state == AgentState.DRAFT for item in first)
     assert all(item.role_key and item.team_key for item in first)
