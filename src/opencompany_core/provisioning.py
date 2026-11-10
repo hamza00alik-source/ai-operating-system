@@ -7,7 +7,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 from .domain import AgentProfile, AgentState, AuditRecord
 from .organization import default_organization
 from .persistence import SQLiteStore
-from .workforce import default_workforce
+from .workforce import default_workforce, specialist_role_keys
 
 
 def bootstrap_department_managers(store: SQLiteStore) -> tuple[AgentProfile, ...]:
@@ -48,4 +48,44 @@ def bootstrap_department_managers(store: SQLiteStore) -> tuple[AgentProfile, ...
         saved = store.get_agent(agent_id)
         if saved is not None:
             created_or_existing.append(saved)
+    return tuple(created_or_existing)
+
+
+
+def bootstrap_specialist_profiles(store: SQLiteStore) -> tuple[AgentProfile, ...]:
+    """Create 250 specialist profiles as drafts; never activate workers."""
+    workforce = default_workforce()
+    created_or_existing = []
+    existing_ids = {item.id for item in store.list_agents(limit=1000)}
+    for department in default_organization().all():
+        for role_key in specialist_role_keys(department.key):
+            role = workforce.get(role_key)
+            agent_id = uuid5(NAMESPACE_URL, f"opencompany:specialist:{department.key}:{role.key}")
+            if agent_id not in existing_ids:
+                profile = AgentProfile(
+                    id=agent_id,
+                    name=role.title,
+                    department=department.key,
+                    purpose=role.mission,
+                    capabilities=role.capabilities,
+                    state=AgentState.DRAFT,
+                )
+                now = datetime.now(timezone.utc)
+                event = AuditRecord(
+                    id=uuid4(), occurred_at=now,
+                    actor_type="owner", actor_id="owner",
+                    action="agent.specialist_profile_created",
+                    subject_type="agent_profile", subject_id=str(agent_id),
+                    outcome="created_draft", correlation_id=str(uuid4()),
+                    details={
+                        "department": department.key,
+                        "role_key": role.key,
+                        "state": AgentState.DRAFT.value,
+                    },
+                )
+                store.save_agent_with_audit(profile, event)
+                existing_ids.add(agent_id)
+            saved = store.get_agent(agent_id)
+            if saved is not None:
+                created_or_existing.append(saved)
     return tuple(created_or_existing)
