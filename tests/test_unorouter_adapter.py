@@ -29,6 +29,7 @@ def test_unorouter_is_available_to_company_gateway_when_owner_confirms_free_mode
     gateway = ModelGateway.configure((configured,))
     assert gateway.eligible_providers() == ("unorouter",)
     assert adapter is not None
+    assert unorouter_adapter.configured_unorouter_gateway().eligible_providers() == ("unorouter",)
 
 
 @pytest.mark.parametrize(
@@ -104,10 +105,6 @@ def test_unorouter_gateway_rejects_provider_reported_cost(monkeypatch):
             }).encode()
 
     monkeypatch.setattr(unorouter_adapter, "urlopen", lambda *a, **k: FakeResponse())
-    configured = (
-        unorouter_adapter.configured_unorouter_provider()
-        if False else None
-    )
     adapter = unorouter_adapter.UnoRouterAdapter("secret")
     from opencompany_core.model_gateway import ProviderPolicy, CostPolicyViolation
     gateway = ModelGateway.configure(((ProviderPolicy(
