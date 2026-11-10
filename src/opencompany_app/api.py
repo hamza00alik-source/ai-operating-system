@@ -36,6 +36,7 @@ from opencompany_core.collaboration import AgentHandoff, HandoffState, accept_ha
 from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, OutcomeGrade, ProposalState
 from opencompany_core.github_evolution import GitHubEvolutionError
 from opencompany_core.code_evolution import CodeEvolutionError, generate_code_evolution_pr
+from opencompany_core.api_anything import ApiAnythingError
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -85,6 +86,17 @@ class WorkItemCreateInput(BaseModel):
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     max_specialists: int = Field(default=5, ge=1, le=5)
+
+
+class ApiAnythingCallInput(BaseModel):
+    site: str = Field(min_length=1, max_length=80)
+    operation: str = Field(min_length=1, max_length=100)
+    args: dict = Field(default_factory=dict)
+    max_age_ms: int = Field(default=0, ge=0, le=86400000)
+
+
+class ApiAnythingBatchInput(BaseModel):
+    calls: list[dict] = Field(min_length=1, max_length=20)
 
 
 class CodeEvolutionInput(BaseModel):
@@ -779,6 +791,80 @@ def preview_work_item_delegation(
     }
 
     
+@app.get("/integrations/api-anything/status", dependencies=[Depends(require_owner_key)])
+def api_anything_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if runtime.api_anything is None:
+        return {"enabled": False, "mode": "read-only", "max_tier": 1, "writes_enabled": False}
+    try:
+        health = runtime.api_anything.health()
+        return {
+            "enabled": True, "mode": "read-only", "max_tier": 1,
+            "writes_enabled": False, "health": health,
+        }
+    except ApiAnythingError as exc:
+        return {"enabled": True, "mode": "read-only", "writes_enabled": False, "healthy": False, "error": str(exc)}
+
+
+@app.get("/integrations/api-anything/sites", dependencies=[Depends(require_owner_key)])
+def api_anything_sites(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if runtime.api_anything is None:
+        raise HTTPException(status_code=503, detail="API Anything integration is not configured.")
+    try:
+        return runtime.api_anything.list_sites()
+    except ApiAnythingError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/integrations/api-anything/find", dependencies=[Depends(require_owner_key)])
+def api_anything_find(q: str, runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if runtime.api_anything is None:
+        raise HTTPException(status_code=503, detail="API Anything integration is not configured.")
+    try:
+        return runtime.api_anything.find_sites(q)
+    except (ApiAnythingError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/integrations/api-anything/sites/{site}/operations", dependencies=[Depends(require_owner_key)])
+def api_anything_operations(site: str, runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if runtime.api_anything is None:
+        raise HTTPException(status_code=503, detail="API Anything integration is not configured.")
+    try:
+        return runtime.api_anything.list_operations(site)
+    except (ApiAnythingError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/integrations/api-anything/call", dependencies=[Depends(require_owner_key)])
+def api_anything_read_call(
+    payload: ApiAnythingCallInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if runtime.api_anything is None:
+        raise HTTPException(status_code=503, detail="API Anything integration is not configured.")
+    try:
+        result = runtime.api_anything.call_read(
+            payload.site, payload.operation, payload.args, max_age_ms=payload.max_age_ms
+        )
+    except (ApiAnythingError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"mode": "read-only", "max_tier": 1, "result": result}
+
+
+@app.post("/integrations/api-anything/batch", dependencies=[Depends(require_owner_key)])
+def api_anything_read_batch(
+    payload: ApiAnythingBatchInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if runtime.api_anything is None:
+        raise HTTPException(status_code=503, detail="API Anything integration is not configured.")
+    try:
+        result = runtime.api_anything.call_batch(payload.calls)
+    except (ApiAnythingError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"mode": "read-only", "max_tier": 1, "result": result}
+
+
 @app.get("/code-evolution/config-status", dependencies=[Depends(require_owner_key)])
 def code_evolution_config_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     return {
