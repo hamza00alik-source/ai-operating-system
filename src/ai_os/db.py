@@ -18,7 +18,7 @@ def _database_path() -> str:
     return str(database_path)
 
 
-def _postgres_sql(statement: str) -> str:
+def _postgres_sql(statement: str) -> str | tuple[str, tuple[str, ...]]:
     """Translate the SQLite-specific SQL used by the existing persistence layer."""
     pragma = re.fullmatch(r"\s*PRAGMA\s+table_info\((\w+)\)\s*;?\s*", statement, re.IGNORECASE)
     if pragma:
