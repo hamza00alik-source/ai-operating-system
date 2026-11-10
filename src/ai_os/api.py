@@ -20,7 +20,7 @@ from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
-from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
@@ -172,6 +172,43 @@ class ProviderCredentialRequest(BaseModel):
 class ProviderModelRequest(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     confirm_free_only: bool
+
+
+class BusinessIntegrationRequest(BaseModel):
+    secret: str = Field(min_length=8, max_length=4096)
+    config: dict = Field(default_factory=dict)
+
+
+@app.get("/business-integrations/{business_id}", dependencies=[Depends(require_owner_key)])
+def get_business_integrations(business_id: str):
+    if business_id not in {"physical-agency", "physical-brand", "digital-products"}:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    try:
+        return {"business_id": business_id, "integrations": business_integration_statuses(business_id),
+                "security": "Encrypted at rest; secret values are never returned by this API."}
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/business-integrations/{business_id}/{provider}", dependencies=[Depends(require_owner_key)])
+def post_business_integration(business_id: str, provider: str, payload: BusinessIntegrationRequest):
+    try:
+        return save_business_integration(business_id, provider, payload.secret, payload.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/business-integrations/{business_id}/{provider}", dependencies=[Depends(require_owner_key)])
+def delete_business_integration_route(business_id: str, provider: str):
+    try:
+        deleted = delete_business_integration(business_id, provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Business integration credential not found.")
+    return {"business_id": business_id, "provider": provider, "deleted": True}
 
 
 @app.get("/llm/credentials", dependencies=[Depends(require_owner_key)])
