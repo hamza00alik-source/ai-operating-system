@@ -4,6 +4,13 @@ A modular, human-supervised foundation for running an AI-powered company.
 
 > Early development: this is a supervised operating-system foundation, not a fully autonomous company. The GitHub discovery worker is implemented as an initial capability; general-purpose AI agent execution, ecommerce, and social integrations are not yet production-connected.
 
+## Independent OpenCompany rebuild status
+
+The `clean-room-rebuild` branch and draft PR #105 contain a separate, independently authored OpenCompany core. It is not merged or deployed. The current `main` application, Docker entrypoint, Vercel routing, and Railway service still select the legacy `ai_os` application. See [the repository comparison audit](docs/REPOSITORY_COMPARISON_AUDIT_2026-11-10.md) for the capability comparison and release blockers.
+
+The clean-room branch currently has ten original departments, 250 specialist role contracts, ten department-manager roles, and one owner-subordinate executive orchestrator. These are role definitions and draft profiles, not 261 continuously running agents. Manager delegation is currently a deterministic preview; assignment persistence, queue wiring, live model execution, durable artifacts, and always-on operation remain under development.
+
+
 ## Principles
 - Human approval before external or consequential actions.
 - No spending, publishing, customer commitments, or production changes without explicit approval.
@@ -75,7 +82,7 @@ Secrets are not stored in SQLite, returned by status endpoints, or meant to be p
 
 The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner or MCP execution runtime.
 
-## Agency workforce catalog and owner console
+## Legacy Agency-Agent catalogue (quarantined from the independent rebuild)
 
 The Owner Console includes a catalog of 283 specialist definitions across 18 departments from the MIT-licensed \`hamza00alik-source/agency-agents\` repository, plus a 12-repository source inventory including the separate Automaton runtime reference and ten company/platform comparison repositories. These are source catalogs and architecture references, not 283 running processes. Each specialist prompt is inspectable from its source link. The current general-purpose agent execution runtime is still under development.
 
