@@ -150,6 +150,12 @@ def test_departments_can_message_and_delegate_only_within_business(monkeypatch,t
     delegated=delegate_task("digital-products","research","product","Draft product requirements",
                             "Use only verified findings.",parent["id"])
     assert delegated["status"]=="queued"
+    assert delegated["run_status"]=="queued"
+    from ai_os.db import connect
+    with connect() as db:
+        delegated_run=db.execute("SELECT status FROM agent_runs WHERE task_id=?",
+                                 (delegated["child_task_id"],)).fetchone()
+    assert delegated_run["status"]=="queued"
     assert delegated["from_department"]=="research" and delegated["to_department"]=="product"
     assert len(list_delegations("digital-products",department="product"))==1
     assert list_messages("digital-products",department="product")[0]["related_task_id"]==delegated["child_task_id"]
