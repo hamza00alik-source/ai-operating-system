@@ -53,6 +53,31 @@ def test_health_reports_owner_authenticated_mode():
     assert response.json()["mode"] == "owner-authenticated"
 
 
+def test_provider_status_exposes_unorouter_as_company_provider_without_secret(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_API_KEY", "never-return-this-secret")
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_FREE_MODEL", "sample/chat-model:free")
+    monkeypatch.setenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "true")
+    response = client.get("/providers/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gateway_enabled"] is True
+    assert payload["provider"] == "unorouter"
+    assert payload["providers"]["unorouter"]["configured"] is True
+    assert payload["providers"]["unorouter"]["model"] == "sample/chat-model:free"
+    assert payload["paid_fallback"] is False
+    assert "never-return-this-secret" not in response.text
+
+
+def test_provider_status_keeps_unorouter_disabled_without_owner_confirmation(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_API_KEY", "test-secret")
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_FREE_MODEL", "sample/chat-model:free")
+    monkeypatch.delenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", raising=False)
+    response = client.get("/providers/status")
+    assert response.status_code == 200
+    assert response.json()["gateway_enabled"] is False
+    assert response.json()["providers"]["unorouter"]["partial_configuration_detected"] is True
+
+
 def test_workforce_endpoint_exposes_only_original_opencompany_roles():
     response = client.get("/workforce/roles")
     assert response.status_code == 200
