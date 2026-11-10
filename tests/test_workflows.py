@@ -129,6 +129,8 @@ def test_departments_can_message_and_delegate_only_within_business(monkeypatch,t
     from ai_os.department_collaboration import delegate_task,list_delegations,list_messages,mark_message_read,send_message
     from ai_os.service import create_task
     from ai_os.schemas import TaskCreate
+    from ai_os.db import initialize_database
+    initialize_database()
     parent=create_task(TaskCreate(title="Prepare research brief",description="Scope task",
                                   department="research",business_id="digital-products"))
     message=send_message("digital-products","research","product","Research findings",
