@@ -5,8 +5,8 @@ from opencompany_core.workforce import RoleCatalog, RoleSpec, default_workforce
 
 def test_default_workforce_has_unique_original_roles():
     roles = default_workforce().all()
-    assert len(roles) == 260
-    assert len({role.key for role in roles}) == 260
+    assert len(roles) == 261
+    assert len({role.key for role in roles}) == 261
     specialists = [role for role in roles if "__" in role.key]
     assert len(specialists) == 250
     assert all(role.function and role.mission and role.capabilities and role.permitted_outputs and role.prohibited_actions for role in specialists)
