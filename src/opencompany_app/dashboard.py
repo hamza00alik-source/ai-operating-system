@@ -50,7 +50,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   <section class="panel">
     <div class="row">
       <div><h2 class="section-title" style="margin:0">Company agent profiles</h2><p class="muted">CEO, managers and specialists are created as drafts; provisioning does not start workers.</p></div>
-      <div class="auth"><button id="provision-executive" disabled>Provision CEO</button><button id="provision" disabled>Provision managers</button><button id="provision-specialists" disabled>Provision 250 specialists</button></div>
+      <div class="auth"><button id="provision-executive" disabled>Provision CEO</button><button id="provision" disabled>Provision managers</button><button id="provision-specialists" disabled>Provision 500 specialists</button></div>
     </div>
     <div id="agents" class="list"><p class="muted">Connect to view manager profiles.</p></div>
   </section>
