@@ -73,10 +73,14 @@ class RoleSpec:
 
 def _build_role_playbook(role: RoleSpec) -> RolePlaybook:
     """Derive a concrete SOP from this role's unique mission and capability contract."""
+    generic_capabilities = {
+        "specialist_execution", "evidence_synthesis", "quality_review",
+        role.key.split("__", 1)[0],
+    }
     specific = tuple(
         capability.replace("_", " ")
         for capability in role.capabilities
-        if capability not in {"specialist_execution", "evidence_synthesis", "quality_review"}
+        if capability not in generic_capabilities
     )
     focus = specific or (role.function.casefold(),)
     steps = (
