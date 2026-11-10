@@ -457,3 +457,18 @@ def test_delegation_approval_rejects_inactive_specialist_profiles(owner_client):
     assert response.status_code == 409
     assert "explicitly active" in response.json()["detail"]
     assert owner_client.get(f"/work-items/{created['item_id']}/delegation-proposals", headers=headers).json()["proposals"][0]["status"] == "draft"
+
+
+def test_deliverables_endpoint_requires_owner_and_returns_persisted_records(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare review draft",
+        "objective": "Create a draft that remains private until owner review",
+        "department": "intelligence-research",
+    }).json()
+    item_id = created["item_id"]
+    response = owner_client.get(f"/work-items/{item_id}/deliverables", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"count": 0, "deliverables": []}
+    unauthorized = owner_client.get(f"/work-items/{item_id}/deliverables")
+    assert unauthorized.status_code == 401
