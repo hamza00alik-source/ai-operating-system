@@ -30,6 +30,7 @@ def initialize_database() -> None:
             id TEXT PRIMARY KEY, title TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
             department TEXT NOT NULL DEFAULT 'general',
+            business_id TEXT NOT NULL DEFAULT 'core',
             status TEXT NOT NULL DEFAULT 'queued', created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS approvals (
@@ -107,13 +108,13 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run_id ON agent_run_steps(run_id, sequence_no);
         CREATE TABLE IF NOT EXISTS brain_experiences (
-            id TEXT PRIMARY KEY, run_id TEXT, task_id TEXT, department TEXT NOT NULL DEFAULT 'general',
-            task_title TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL
+            id TEXT PRIMARY KEY, run_id TEXT, task_id TEXT, business_id TEXT NOT NULL DEFAULT 'core',
+            department TEXT NOT NULL DEFAULT 'general', task_title TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_brain_experiences_department ON brain_experiences(department, created_at);
         CREATE TABLE IF NOT EXISTS brain_memories (
-            id TEXT PRIMARY KEY, category TEXT NOT NULL DEFAULT 'lesson',
-            department TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL,
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core',
+            category TEXT NOT NULL DEFAULT 'lesson', department TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL,
             content TEXT NOT NULL, source_run_id TEXT, status TEXT NOT NULL DEFAULT 'proposed',
             confidence REAL NOT NULL DEFAULT 0.5, created_at TEXT NOT NULL,
             reviewed_at TEXT, review_note TEXT NOT NULL DEFAULT ''
@@ -200,6 +201,13 @@ def initialize_database() -> None:
         business_columns = {row["name"] for row in connection.execute("PRAGMA table_info(business_records)")}
         if "approval_id" not in business_columns:
             connection.execute("ALTER TABLE business_records ADD COLUMN approval_id TEXT")
+        # Existing tasks and memories remain in core; never copy legacy knowledge into business brains.
+        for table_name in ("tasks", "brain_experiences", "brain_memories"):
+            table_columns = {row["name"] for row in connection.execute("PRAGMA table_info(" + table_name + ")")}
+            if "business_id" not in table_columns:
+                connection.execute("ALTER TABLE " + table_name + " ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_brain_memories_business_status ON brain_memories(business_id, status, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_brain_experiences_business ON brain_experiences(business_id, created_at)")
         provider_columns = {row["name"] for row in connection.execute("PRAGMA table_info(provider_catalog_entries)")}
         if "sources_json" not in provider_columns:
             connection.execute("ALTER TABLE provider_catalog_entries ADD COLUMN sources_json TEXT NOT NULL DEFAULT '[]'")
