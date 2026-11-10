@@ -1005,7 +1005,7 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     proposal_response = owner_client.post(
         f"/work-items/{parent_id}/delegation-proposals",
         headers=headers,
-        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 1},
     )
     assert proposal_response.status_code == 200
     proposal = proposal_response.json()
