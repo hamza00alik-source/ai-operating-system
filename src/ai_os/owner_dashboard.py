@@ -488,7 +488,7 @@ async function loadWorkflows(){
  try{
   const data=await api("/company/workflows");
   $("workflowTemplates").innerHTML=(data.templates||[]).map(t=>'<div class="metric"><strong style="font-size:17px">'+esc(t.name)+'</strong><span>'+esc(t.description)+'</span><p class="small">'+esc(t.step_count)+' department steps · '+esc((t.departments||[]).join(" → "))+'</p><button data-id="'+esc(t.id)+'" onclick="startWorkflow(this.dataset.id)">Create workflow</button></div>').join("");
-  const instances=await api("/company/workflows/instances");
+  const instances=await api("/company/workflows/instances?business_id="+encodeURIComponent($("taskBusiness").value));
   $("workflowInstances").innerHTML=instances.length?'<h3>Saved workflows</h3>'+instances.map(w=>'<div class="toolbar" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:9px 0"><span><strong>'+esc(w.name)+'</strong> <span class="pill">'+esc(w.status)+'</span><span class="small"> · '+esc(w.steps.filter(s=>s.status==="completed").length)+'/'+esc(w.steps.length)+' steps complete</span></span><button class="secondary" data-id="'+esc(w.id)+'" onclick="showWorkflow(this.dataset.id)">Open</button></div>').join(""):'<p class="small">No workflows started yet.</p>';
   $("workflowStatus").textContent="Workflow templates loaded. Creating a workflow queues only its first step.";
  }catch(e){$("workflowStatus").textContent=e.message}
@@ -496,7 +496,7 @@ async function loadWorkflows(){
 window.startWorkflow=async(templateId)=>{
  try{
   $("workflowStatus").textContent="Creating workflow…";
-  const result=await api("/company/workflows/"+encodeURIComponent(templateId)+"/start",{method:"POST"});
+  const result=await api("/company/workflows/"+encodeURIComponent(templateId)+"/start?business_id="+encodeURIComponent($("taskBusiness").value),{method:"POST"});
   $("workflowStatus").textContent="Created "+result.name+" · "+result.steps.length+" steps. Only step 1 is queued.";
   await showWorkflow(result.id);await loadOperations();
  }catch(e){$("workflowStatus").textContent=e.message}
