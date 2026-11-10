@@ -5,7 +5,7 @@ from opencompany_core.workforce import RoleCatalog, RoleSpec, default_workforce
 
 def test_default_workforce_has_unique_original_roles():
     roles = default_workforce().all()
-    assert len(roles) == 9
+    assert len(roles) == 10
     assert len({role.key for role in roles}) == 9
 
 
