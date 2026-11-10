@@ -809,6 +809,30 @@ def create_work_item(
     return {"item_id": str(item.id), "state": item.state.value}
 
 
+def _auto_queue_approved_work_enabled() -> bool:
+    return os.environ.get("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK", "false").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _free_provider_ready(runtime: OpenCompanyRuntime) -> bool:
+    return bool(runtime.gateway.eligible_providers(request_budget_usd=0.0))
+
+
+def _auto_queue_task(runtime: OpenCompanyRuntime, task: WorkItem, agent, *, action: str) -> None:
+    from datetime import datetime, timezone
+
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="system", actor_id="opencompany-auto-queue",
+        action=action, subject_type="work_item", subject_id=str(task.id),
+        outcome="recorded", correlation_id=str(uuid4()),
+        details={"agent_id": str(agent.id), "role_key": agent.role_key,
+                 "team_key": agent.team_key, "request_budget_usd": 0.0},
+    )
+    runtime.queue.enqueue_authorized(
+        task, agent.id, {"role_key": agent.role_key, "team_key": agent.team_key}, event,
+    )
+
+
 @app.post("/work-items/{item_id}/enqueue", dependencies=[Depends(require_owner_key)])
 def enqueue_work_item(
     item_id: UUID,
@@ -1699,6 +1723,7 @@ def create_work_item_delegation_proposal(
 @app.post("/work-items/{item_id}/delegation-proposals/{proposal_id}/approve", dependencies=[Depends(require_owner_key)])
 def approve_work_item_delegation_proposal(
     item_id: UUID, proposal_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
     store: SQLiteStore = Depends(get_store),
     delegations: DelegationRepository = Depends(get_delegation_store),
 ) -> dict:
@@ -1781,8 +1806,33 @@ def approve_work_item_delegation_proposal(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not saved:
         raise HTTPException(status_code=409, detail="Proposal was approved or changed concurrently.")
+    auto_queue = {
+        "enabled": _auto_queue_approved_work_enabled(),
+        "provider_ready": False,
+        "queued_work_item_ids": [],
+        "errors": [],
+    }
+    if auto_queue["enabled"]:
+        try:
+            auto_queue["provider_ready"] = _free_provider_ready(runtime)
+            if auto_queue["provider_ready"]:
+                for task in tasks:
+                    agent = profiles[str(task.assigned_agent_id)]
+                    try:
+                        _auto_queue_task(
+                            runtime, task, agent,
+                            action="work_item.auto_queued_after_delegation_approval",
+                        )
+                        auto_queue["queued_work_item_ids"].append(str(task.id))
+                    except (QueueError, ValueError) as exc:
+                        auto_queue["errors"].append({
+                            "work_item_id": str(task.id), "error_type": type(exc).__name__,
+                        })
+        except Exception as exc:
+            auto_queue["errors"].append({"error_type": type(exc).__name__})
     return {
         "proposal_id": str(proposal_id), "status": "approved",
+        "auto_queue": auto_queue,
         "materialized_work_items": [
             {"id": str(task.id), "assigned_agent_id": str(task.assigned_agent_id),
              "state": task.state.value} for task in tasks
@@ -1860,10 +1910,52 @@ def review_work_item(
         evaluation_id = str(evaluation.id)
     except Exception as exc:
         evaluation_error = type(exc).__name__
+    auto_queue = {
+        "enabled": _auto_queue_approved_work_enabled(),
+        "provider_ready": False,
+        "queued_work_item_ids": [],
+        "errors": [],
+    }
+    if payload.approved and auto_queue["enabled"]:
+        try:
+            auto_queue["provider_ready"] = _free_provider_ready(runtime)
+            if auto_queue["provider_ready"]:
+                completed_ids = {item.id for item in store.list_work_items(limit=1000)
+                                 if item.state == TaskState.COMPLETED}
+                for candidate in store.list_work_items(limit=1000):
+                    if (
+                        candidate.state != TaskState.READY
+                        or item_id not in candidate.depends_on
+                        or candidate.assigned_agent_id is None
+                        or not set(candidate.depends_on).issubset(completed_ids)
+                    ):
+                        continue
+                    approved_proposals = runtime.delegations.list_for_parent(candidate.id)
+                    if not any(value["status"] == "approved" for value in approved_proposals):
+                        continue
+                    agent = store.get_agent(candidate.assigned_agent_id)
+                    if agent is None or agent.state != AgentState.ACTIVE:
+                        auto_queue["errors"].append({
+                            "work_item_id": str(candidate.id), "error_type": "InactiveManager",
+                        })
+                        continue
+                    try:
+                        _auto_queue_task(
+                            runtime, candidate, agent,
+                            action="work_item.manager_synthesis_auto_queued",
+                        )
+                        auto_queue["queued_work_item_ids"].append(str(candidate.id))
+                    except (QueueError, ValueError) as exc:
+                        auto_queue["errors"].append({
+                            "work_item_id": str(candidate.id), "error_type": type(exc).__name__,
+                        })
+        except Exception as exc:
+            auto_queue["errors"].append({"error_type": type(exc).__name__})
     return {
         "item_id": str(item_id), "state": state.value, "approved": payload.approved,
         "evaluation_id": evaluation_id, "evaluation_recorded": evaluation_id is not None,
         "evaluation_error": evaluation_error,
+        "auto_queue": auto_queue,
     }
 
 @app.post("/work-items/{item_id}/transition", dependencies=[Depends(require_owner_key)])
