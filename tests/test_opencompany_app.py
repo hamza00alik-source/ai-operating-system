@@ -308,21 +308,21 @@ def test_owner_can_bootstrap_one_draft_executive_orchestrator(owner_client):
     assert second.json()["agent"]["id"] == first.json()["agent"]["id"]
 
 
-def test_owner_can_bootstrap_250_specialist_profiles_as_drafts(owner_client):
+def test_owner_can_bootstrap_500_specialist_profiles_as_drafts(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     first = owner_client.post("/agents/bootstrap-specialists", headers=headers)
     assert first.status_code == 200
-    assert first.json()["count"] == 250
+    assert first.json()["count"] == 500
     assert first.json()["all_draft"] is True
     assert first.json()["execution_started"] is False
 
     second = owner_client.post("/agents/bootstrap-specialists", headers=headers)
     assert second.status_code == 200
-    assert second.json()["count"] == 250
+    assert second.json()["count"] == 500
 
     listed = owner_client.get("/agents", headers=headers)
     assert listed.status_code == 200
-    assert listed.json()["count"] == 250
+    assert listed.json()["count"] == 500
     assert all(item["state"] == "draft" for item in listed.json()["agents"])
 
 
