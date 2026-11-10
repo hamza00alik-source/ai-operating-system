@@ -125,9 +125,39 @@ def test_etsy_saved_connection_retest_is_read_only(oauth_env, monkeypatch):
     assert all(call[2]["x-api-key"] == "etsy-key:etsy-shared-secret" for call in calls)
 
 
-def test_etsy_retest_rejects_expired_access_token(oauth_env):
+def test_etsy_retest_refreshes_expired_access_token_and_persists_rotation(oauth_env, monkeypatch):
+    import time
+    credential = json.dumps({"access_token": "12345.old-token", "refresh_token": "12345.refresh",
+                             "expires_at": int(time.time()) - 1, "scope": "shops_r"})
+    calls, saved = [], {}
+    def fake_request(endpoint, data=None, headers=None):
+        calls.append((endpoint, data, headers))
+        if endpoint == social_oauth.PROVIDERS["etsy"]["token"]:
+            assert data == {"grant_type": "refresh_token", "client_id": "etsy-key",
+                            "refresh_token": "12345.refresh"}
+            return {"access_token": "12345.new-token", "refresh_token": "12345.rotated",
+                    "expires_in": 3600, "token_type": "Bearer", "scope": "shops_r"}
+        if endpoint.endswith("/users/me"):
+            assert headers["Authorization"] == "Bearer 12345.new-token"
+            return {"user_id": 12345, "shop_id": 67890}
+        return {"shop_id": 67890, "shop_name": "My Digital Shop"}
+    monkeypatch.setattr(social_oauth, "_request_json", fake_request)
+    monkeypatch.setattr(social_oauth, "save_business_integration",
+        lambda business_id, provider, secret, config: saved.update(
+            business_id=business_id, provider=provider, secret=json.loads(secret), config=config))
+    result = social_oauth.verify_etsy_credential(credential, {
+        "etsy_api_key": "etsy-key", "etsy_shared_secret": "etsy-shared-secret"}, "digital-products")
+    assert result["connected"] is True
+    assert result["token_refreshed"] is True
+    assert saved["business_id"] == "digital-products"
+    assert saved["secret"]["access_token"] == "12345.new-token"
+    assert saved["secret"]["refresh_token"] == "12345.rotated"
+    assert saved["config"]["etsy_api_key"] == "etsy-key"
+
+
+def test_etsy_retest_expired_without_refresh_token_requires_reauthorization(oauth_env):
     import time
     credential = json.dumps({"access_token": "12345.token", "expires_at": int(time.time()) - 1})
-    with pytest.raises(social_oauth.OAuthError, match="expired"):
+    with pytest.raises(social_oauth.OAuthError, match="no refresh token"):
         social_oauth.verify_etsy_credential(credential, {
             "etsy_api_key": "etsy-key", "etsy_shared_secret": "etsy-shared-secret"})
