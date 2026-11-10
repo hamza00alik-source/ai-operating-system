@@ -55,3 +55,46 @@ def test_tasks_are_assigned_to_one_business_environment(monkeypatch, tmp_path):
         assert agency_status.status_code == brand_status.status_code == 200
         assert agency_status.json()["business_id"] == "physical-agency"
         assert brand_status.json()["business_id"] == "physical-brand"
+
+
+
+def test_finance_and_customer_records_are_business_scoped(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "business-records.db"))
+    initialize_database()
+    from ai_os import business_ops
+
+    business_ops.create_record("customer", {"title": "Agency buyer", "business_id": "physical-agency"})
+    business_ops.create_record("customer", {"title": "Own brand customer", "business_id": "physical-brand"})
+    business_ops.create_record("revenue", {"title": "Agency order", "amount": 100, "verified_payment": True, "business_id": "physical-agency"})
+    expense = business_ops.create_record("expense", {"title": "Agency packaging", "amount": 20, "business_id": "physical-agency"})
+    business_ops.create_record("revenue", {"title": "Brand order", "amount": 300, "verified_payment": True, "business_id": "physical-brand"})
+
+    assert [x["title"] for x in business_ops.list_records("customer", business_id="physical-agency")] == ["Agency buyer"]
+    assert [x["title"] for x in business_ops.list_records("customer", business_id="physical-brand")] == ["Own brand customer"]
+    assert business_ops.business_summary("physical-agency")["customers"] == 1
+    assert business_ops.business_summary("physical-brand")["customers"] == 1
+    assert business_ops.business_summary("physical-agency")["verified_revenue_by_currency"][0]["total"] == 100
+    assert business_ops.business_summary("physical-brand")["verified_revenue_by_currency"][0]["total"] == 300
+    assert expense["business_id"] == "physical-agency"
+    with connect() as db:
+        approval = db.execute("SELECT business_id FROM approvals WHERE id=?", (expense["approval_id"],)).fetchone()
+    assert approval["business_id"] == "physical-agency"
+
+
+def test_research_sources_are_retrieved_only_within_their_business(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "business-research.db"))
+    initialize_database()
+    from ai_os.research_sources import list_sources, research_context
+    from datetime import datetime, timezone
+
+    with connect() as db:
+        db.execute("INSERT INTO research_sources (id,business_id,url,title,content,captured_at,content_type) VALUES (?,?,?,?,?,?,?)",
+                   ("agency-source", "physical-agency", "https://example.com/agency", "Pink salt wholesale buyers", "Agency wholesale buyer research evidence.", datetime.now(timezone.utc).isoformat(), "text/plain"))
+        db.execute("INSERT INTO research_sources (id,business_id,url,title,content,captured_at,content_type) VALUES (?,?,?,?,?,?,?)",
+                   ("brand-source", "physical-brand", "https://example.com/brand", "Pink salt consumer brand", "Own brand consumer research evidence.", datetime.now(timezone.utc).isoformat(), "text/plain"))
+
+    assert [x["id"] for x in list_sources(business_id="physical-agency")] == ["agency-source"]
+    assert [x["id"] for x in list_sources(business_id="physical-brand")] == ["brand-source"]
+    assert "agency-source" not in research_context("wholesale buyers", business_id="physical-brand")
+    assert "agency-source" not in research_context("wholesale buyers", business_id="digital-products")
+    assert "agency-source" in research_context("wholesale buyers", business_id="physical-agency")
