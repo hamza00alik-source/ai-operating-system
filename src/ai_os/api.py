@@ -652,7 +652,8 @@ def execute_task(task_id: str):
 
 
 @app.post("/agent-runs/{run_id}/retry", status_code=202, dependencies=[Depends(require_api_key)])
-def retry_agent_run(run_id: str):
+def retry_agent_run(run_id: str, business_id: str):
+    _require_run_business_scope(run_id, business_id)
     try:
         return retry_run(run_id)
     except LookupError as exc:
@@ -669,18 +670,34 @@ def get_agent_runs(task_id: str | None = None, business_id: str = "core"):
 
 
 @app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
-def get_agent_run(run_id: str):
+def _require_run_business_scope(run_id: str, business_id: str) -> dict:
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    with connect() as db:
+        row = db.execute(
+            """SELECT r.id FROM agent_runs r
+            JOIN tasks t ON t.id=r.task_id
+            WHERE r.id=? AND t.business_id=?""",
+            (run_id, business_id),
+        ).fetchone()
+    if row is None:
+        # Do not disclose whether a run exists in another business environment.
+        raise HTTPException(status_code=404, detail="Agent run not found in this business environment.")
     result = get_run(run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
     return result
 
 
+@app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
+def get_agent_run(run_id: str, business_id: str):
+    return _require_run_business_scope(run_id, business_id)
+
+
 @app.get("/agent-runs/{run_id}/events", dependencies=[Depends(require_api_key)])
-def get_agent_run_events(run_id: str):
-    """Return the persisted execution timeline for an owner-visible run."""
-    if get_run(run_id) is None:
-        raise HTTPException(status_code=404, detail="Agent run not found")
+def get_agent_run_events(run_id: str, business_id: str):
+    """Return the persisted execution timeline only within its selected business."""
+    _require_run_business_scope(run_id, business_id)
     with connect() as db:
         rows = db.execute(
             "SELECT id, stage, message, created_at FROM agent_run_events WHERE run_id=? ORDER BY id ASC",
@@ -689,10 +706,9 @@ def get_agent_run_events(run_id: str):
     return [dict(row) for row in rows]
 
 @app.get("/agent-runs/{run_id}/steps", dependencies=[Depends(require_api_key)])
-def get_agent_run_steps(run_id: str):
-    """Return each collaborating agent's persisted contribution."""
-    if get_run(run_id) is None:
-        raise HTTPException(status_code=404, detail="Agent run not found")
+def get_agent_run_steps(run_id: str, business_id: str):
+    """Return agent contributions only within the selected business."""
+    _require_run_business_scope(run_id, business_id)
     with connect() as db:
         rows = db.execute(
             """SELECT sequence_no, role, agent_id, agent_name, status,
