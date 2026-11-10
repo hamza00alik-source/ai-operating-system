@@ -64,3 +64,15 @@ def test_invalid_list_limit_is_rejected(tmp_path):
     except ValueError as exc:
         assert "limit" in str(exc)
     store.close()
+
+
+def test_work_item_and_audit_record_commit_together(tmp_path):
+    store = SQLiteStore(tmp_path / "opencompany.sqlite3")
+    item = WorkItem(uuid4(), "Review product brief", "Verify product requirements",
+                    "quality", state=TaskState.REVIEW)
+    event = audit_record("work_item.review")
+    store.save_work_item_with_audit(item, event)
+    assert store.get_work_item(item.id) == item
+    assert store.audit_event_count() == 1
+    assert store.verify_audit_chain()
+    store.close()
