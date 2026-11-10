@@ -144,3 +144,23 @@ def test_unorouter_status_never_exposes_api_key(monkeypatch):
     assert status["configured"] is True
     assert status["model"] == "model:free"
     assert "must-not-leak" not in repr(status)
+
+
+
+def test_unorouter_rejects_responses_without_explicit_cost(monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self, limit):
+            return json.dumps({
+                "model": "model:free",
+                "choices": [{"message": {"content": "No cost field"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }).encode()
+
+    monkeypatch.setattr(unorouter_adapter, "urlopen", lambda *a, **k: FakeResponse())
+    adapter = unorouter_adapter.UnoRouterAdapter("secret")
+    with pytest.raises(ProviderUnavailable, match="invalid chat-completion response"):
+        adapter.generate(ModelRequest("test", "req-no-cost"), model="model:free")
