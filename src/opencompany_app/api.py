@@ -780,6 +780,17 @@ def preview_work_item_delegation(
     }
 
     
+@app.get("/code-evolution/config-status", dependencies=[Depends(require_owner_key)])
+def code_evolution_config_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    return {
+        "enabled": runtime.github_evolution is not None,
+        "repository": runtime.github_evolution.repository if runtime.github_evolution else None,
+        "base_branch": runtime.github_evolution.base_branch if runtime.github_evolution else None,
+        "auto_merge": False,
+        "auto_deploy": False,
+    }
+
+
 @app.post("/code-evolution/proposals", dependencies=[Depends(require_owner_key)])
 def create_code_evolution_proposal(
     payload: CodeEvolutionInput,
