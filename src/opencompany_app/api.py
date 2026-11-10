@@ -179,7 +179,8 @@ def initialize_autonomous_runtime() -> None:
         os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true"
         and os.environ.get("OPENCOMPANY_OWNER_API_KEY")
     ):
-        _default_runtime()
+        runtime = _default_runtime()
+        runtime.fleet.start()
 
 
 @app.on_event("shutdown")
