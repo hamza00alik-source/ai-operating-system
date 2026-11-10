@@ -51,7 +51,10 @@ def generate_code_evolution_pr(
         f"Selected source files: {json.dumps(source_files, ensure_ascii=False)}"
     )
     result = gateway.complete(
-        ModelRequest(prompt=prompt, request_id=str(uuid4()), max_output_tokens=12000),
+        ModelRequest(
+            prompt=prompt, request_id=str(uuid4()), max_output_tokens=12000,
+            work_item_id="code-evolution", role_key="code_evolution_engineer",
+        ),
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
