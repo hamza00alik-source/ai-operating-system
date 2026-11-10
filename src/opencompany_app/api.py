@@ -543,6 +543,8 @@ def test_unorouter_connection(runtime: OpenCompanyRuntime = Depends(get_runtime)
         raise HTTPException(status_code=503, detail="No confirmed-free UnoRouter model is configured and available.") from exc
     except (ProviderUnavailable, CostPolicyViolation) as exc:
         raise HTTPException(status_code=502, detail=f"UnoRouter test failed safely: {type(exc).__name__}. No paid fallback was attempted.") from exc
+    if result.text.strip() != "OPENCOMPANY_UNOROUTER_OK":
+        raise HTTPException(status_code=502, detail="UnoRouter returned an unexpected test response; connection was not marked verified.")
     runtime.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
     return {"success": True, "provider": result.provider, "model": result.model, "cost_usd": result.cost_usd,
             "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
