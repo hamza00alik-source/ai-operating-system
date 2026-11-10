@@ -43,10 +43,12 @@ def recommend_department_plan(
         for role in (manager, *roles)
         for capability in role.capabilities
     })
+    manager_steps = "\n".join(manager.playbook.workflow_steps)
     prompt = (
         "OPENCOMPANY DEPARTMENT MANAGER PLANNING REQUEST\n"
         f"Manager role: {manager.title}\n"
         f"Department mission: {department.mission}\n"
+        f"Manager operating procedure:\n{manager_steps}\n"
         f"Work item title: {item.title}\n"
         f"Work item objective: {item.objective}\n"
         "Select the smallest useful set of exact capability identifiers from the allowed catalogue. "
