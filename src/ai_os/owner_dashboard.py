@@ -274,6 +274,20 @@ th{background:#101b2c}
 <div class="toolbar"><button id="refreshWorkflows" class="secondary" type="button">Refresh workflows</button><span id="workflowStatus" class="status">Loading workflow templates…</span></div>
 <div id="workflowTemplates" class="grid"></div>
 <div id="workflowInstances" class="section"></div>
+<h3>Interdepartmental inbox & delegation</h3>
+<p class="small">Internal messages remain inside the selected business. Workflow handoffs arrive automatically. Owner-created delegated tasks stay queued until explicitly run.</p>
+<div class="toolbar"><label>Inbox department <select id="collaborationDepartment"><option value="executive">Executive</option><option value="research">Research</option><option value="product">Product</option><option value="design">Design</option><option value="engineering">Engineering</option><option value="legal-compliance">Legal & Compliance</option><option value="quality-assurance">Quality Assurance</option><option value="marketing">Marketing</option><option value="sales-marketplace">Sales & Marketplace</option><option value="customer-support">Customer Support</option><option value="finance">Finance</option><option value="people-workforce">People & Workforce</option></select></label><button id="refreshCollaboration" class="secondary" type="button">Refresh inbox</button></div>
+<div id="collaborationInbox" class="section small">Loading department inbox…</div>
+<div class="grid section">
+<form id="departmentMessageForm" class="metric"><strong>Send internal message</strong>
+<select name="sender_department" required><option value="executive">From: Executive</option><option value="research">From: Research</option><option value="product">From: Product</option><option value="design">From: Design</option><option value="engineering">From: Engineering</option><option value="legal-compliance">From: Legal & Compliance</option><option value="quality-assurance">From: Quality Assurance</option><option value="marketing">From: Marketing</option><option value="sales-marketplace">From: Sales & Marketplace</option><option value="customer-support">From: Customer Support</option><option value="finance">From: Finance</option><option value="people-workforce">From: People & Workforce</option></select>
+<select name="recipient_department" required><option value="research">To: Research</option><option value="executive">To: Executive</option><option value="product">To: Product</option><option value="design">To: Design</option><option value="engineering">To: Engineering</option><option value="legal-compliance">To: Legal & Compliance</option><option value="quality-assurance">To: Quality Assurance</option><option value="marketing">To: Marketing</option><option value="sales-marketplace">To: Sales & Marketplace</option><option value="customer-support">To: Customer Support</option><option value="finance">To: Finance</option><option value="people-workforce">To: People & Workforce</option></select>
+<input name="subject" required maxlength="200" placeholder="Message subject"><textarea name="body" required maxlength="12000" placeholder="Internal handoff, request or findings"></textarea><button type="submit">Send internal message</button><span id="messageFormStatus" class="small"></span></form>
+<form id="departmentDelegationForm" class="metric"><strong>Delegate department task</strong>
+<select name="from_department" required><option value="executive">From: Executive</option><option value="research">From: Research</option><option value="product">From: Product</option><option value="design">From: Design</option><option value="engineering">From: Engineering</option><option value="legal-compliance">From: Legal & Compliance</option><option value="quality-assurance">From: Quality Assurance</option><option value="marketing">From: Marketing</option><option value="sales-marketplace">From: Sales & Marketplace</option><option value="customer-support">From: Customer Support</option><option value="finance">From: Finance</option><option value="people-workforce">From: People & Workforce</option></select>
+<select name="to_department" required><option value="research">To: Research</option><option value="executive">To: Executive</option><option value="product">To: Product</option><option value="design">To: Design</option><option value="engineering">To: Engineering</option><option value="legal-compliance">To: Legal & Compliance</option><option value="quality-assurance">To: Quality Assurance</option><option value="marketing">To: Marketing</option><option value="sales-marketplace">To: Sales & Marketplace</option><option value="customer-support">To: Customer Support</option><option value="finance">To: Finance</option><option value="people-workforce">To: People & Workforce</option></select>
+<input name="title" required maxlength="200" placeholder="Delegated task title"><textarea name="description" maxlength="12000" placeholder="Task instructions and expected result"></textarea><button type="submit">Create queued task</button><span id="delegationFormStatus" class="small"></span></form></div>
+<div id="collaborationDelegations" class="section small">Loading task delegations…</div>
 </section>
 <section id="tasks" class="panel section" data-view-panel="tasks"><h2>Tasks & owner approvals</h2><form id="taskForm" class="toolbar"><input id="taskTitle" required maxlength="200" placeholder="New company task" style="flex:1;min-width:180px"><select id="taskBusiness"><option value="core">AIOS Core / internal</option><option value="physical-agency">Physical Products Agency</option><option value="physical-brand">Own Physical Products Brand</option><option value="digital-products">Digital Products</option></select><select id="taskDepartment"><option value="general">General / unassigned</option><option value="executive">Executive & Strategy</option><option value="research">Research & Intelligence</option><option value="product">Product & R&amp;D</option><option value="design">Design & 3D Production</option><option value="engineering">Engineering & Technology</option><option value="marketing">Marketing & Growth</option><option value="sales-marketplace">Sales & Marketplace Operations</option><option value="customer-support">Customer Support</option><option value="finance">Finance & Accounting</option><option value="legal-compliance">Legal & Compliance</option><option value="quality-assurance">Quality Assurance</option><option value="people-workforce">People & AI Workforce</option></select><button type="submit">Create task</button></form><div class="toolbar section"><button id="loadOperations" class="secondary">Refresh operations</button><span class="small">Owner approval remains mandatory for consequential actions.</span></div><div id="taskApprovalPanel" class="small">No operational data loaded.</div><div id="agentRunOutput" class="section" aria-live="polite"></div></section>
 <section id="discovery" class="panel" data-view-panel="discovery">
@@ -463,7 +477,7 @@ window.reviewCandidate=async(url,decision)=>{const label=decision==="approved-fo
 async function loadCompanyDepartments(){
  try{
   const data=await api("/company/departments");
-  $("companyDepartmentCards").innerHTML=data.departments.map(d=>'<article class="metric"><strong style="font-size:17px">'+esc(d.name)+'</strong><span>'+esc(d.owner_role)+'</span><div class="small" style="margin-top:8px">'+esc(d.specialist_count)+' mapped catalogue roles · '+(d.roles_available?'roles available on demand':'no mapped roles')+'</div><div class="small" style="margin-top:6px">Workflow: not yet implemented</div><div class="small" style="margin-top:6px">'+esc(d.responsibilities.slice(0,2).join(' · '))+'</div></article>').join("");
+  $("companyDepartmentCards").innerHTML=data.departments.map(d=>'<article class="metric"><strong style="font-size:17px">'+esc(d.name)+'</strong><span>'+esc(d.owner_role)+'</span><div class="small" style="margin-top:8px">'+esc(d.specialist_count)+' mapped catalogue roles · '+(d.roles_available?'roles available on demand':'no mapped roles')+'</div><div class="small" style="margin-top:6px">Sequential workflow + inbox handoffs</div><div class="small" style="margin-top:6px">'+esc(d.responsibilities.slice(0,2).join(' · '))+'</div></article>').join("");
  }catch(e){$("companyDepartmentCards").innerHTML='<div class="metric">'+esc(e.message)+'</div>'}
 }
 
@@ -490,6 +504,36 @@ async function loadSources(){
   $("sourceRows").innerHTML=data.sources.map(s=>'<tr><td><a href="https://github.com/'+esc(s.repository)+'" target="_blank" rel="noopener">'+esc(s.repository)+'</a></td><td>'+esc(s.role)+'</td><td><span class="pill '+(s.status==="catalogued"?"good":"warn")+'">'+esc(s.status)+'</span></td><td>'+esc(s.purpose)+'</td><td>'+esc(s.license)+'</td></tr>').join("");
  }catch(e){$("sourceRows").innerHTML='<tr><td colspan="5">'+esc(e.message)+'</td></tr>'}
 }
+async function loadCollaboration(){
+ try{
+  const businessId=$("taskBusiness").value,department=$("collaborationDepartment").value;
+  const [messages,delegations]=await Promise.all([
+   api("/company/collaboration/messages?business_id="+encodeURIComponent(businessId)+"&department="+encodeURIComponent(department)),
+   api("/company/collaboration/delegations?business_id="+encodeURIComponent(businessId))
+  ]);
+  $("collaborationInbox").innerHTML=messages.length?'<div class="scroll"><table><thead><tr><th>Subject</th><th>From</th><th>To</th><th>Status</th><th>Received</th><th>Action</th></tr></thead><tbody>'+messages.map(m=>'<tr><td><strong>'+esc(m.subject)+'</strong><div class="small">'+esc(m.body)+'</div></td><td>'+esc(m.sender_department)+'</td><td>'+esc(m.recipient_department)+'</td><td>'+esc(m.status)+'</td><td>'+esc(date(m.created_at))+'</td><td>'+(m.recipient_department===department&&m.status==="unread"?'<button class="secondary" data-id="'+esc(m.id)+'" onclick="readDepartmentMessage(this.dataset.id)">Mark read</button>':'—')+'</td></tr>').join("")+'</tbody></table></div>':'<p>No messages for this department in the selected business.</p>';
+  $("collaborationDelegations").innerHTML=delegations.length?'<h4>Department task delegations</h4><div class="scroll"><table><thead><tr><th>Task</th><th>From</th><th>To</th><th>Status</th><th>Task ID</th></tr></thead><tbody>'+delegations.map(x=>'<tr><td>'+esc(x.title)+'</td><td>'+esc(x.from_department)+'</td><td>'+esc(x.to_department)+'</td><td>'+esc(x.status)+'</td><td>'+esc(x.child_task_id)+'</td></tr>').join("")+'</tbody></table></div>':'<p>No department delegations in this business.</p>';
+ }catch(e){$("collaborationInbox").textContent=e.message;$("collaborationDelegations").textContent=e.message}
+}
+window.readDepartmentMessage=async(id)=>{
+ try{const businessId=$("taskBusiness").value,department=$("collaborationDepartment").value;
+  await api("/company/collaboration/messages/"+encodeURIComponent(id)+"/read?business_id="+encodeURIComponent(businessId)+"&department="+encodeURIComponent(department),{method:"POST"});await loadCollaboration();
+ }catch(e){$("collaborationInbox").textContent=e.message}
+};
+$("refreshCollaboration").addEventListener("click",loadCollaboration);
+$("collaborationDepartment").addEventListener("change",loadCollaboration);
+$("departmentMessageForm").addEventListener("submit",async ev=>{
+ ev.preventDefault();const f=new FormData(ev.currentTarget);
+ try{await api("/company/collaboration/messages",{method:"POST",body:JSON.stringify({business_id:$("taskBusiness").value,sender_department:f.get("sender_department"),recipient_department:f.get("recipient_department"),subject:f.get("subject"),body:f.get("body")})});
+  $("messageFormStatus").textContent="Message saved to the internal inbox.";ev.currentTarget.reset();await loadCollaboration();
+ }catch(e){$("messageFormStatus").textContent=e.message}
+});
+$("departmentDelegationForm").addEventListener("submit",async ev=>{
+ ev.preventDefault();const f=new FormData(ev.currentTarget);
+ try{await api("/company/collaboration/delegations",{method:"POST",body:JSON.stringify({business_id:$("taskBusiness").value,from_department:f.get("from_department"),to_department:f.get("to_department"),title:f.get("title"),description:f.get("description")})});
+  $("delegationFormStatus").textContent="Queued task created. It will not run until an owner triggers it.";ev.currentTarget.reset();await loadCollaboration();await loadOperations();
+ }catch(e){$("delegationFormStatus").textContent=e.message}
+});
 async function loadWorkflows(){
  try{
   const data=await api("/company/workflows");
@@ -497,6 +541,7 @@ async function loadWorkflows(){
   const instances=await api("/company/workflows/instances?business_id="+encodeURIComponent($("taskBusiness").value));
   $("workflowInstances").innerHTML=instances.length?'<h3>Saved workflows</h3>'+instances.map(w=>'<div class="toolbar" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:9px 0"><span><strong>'+esc(w.name)+'</strong> <span class="pill">'+esc(w.status)+'</span><span class="small"> · '+esc(w.steps.filter(s=>s.status==="completed").length)+'/'+esc(w.steps.length)+' steps complete</span></span><button class="secondary" data-id="'+esc(w.id)+'" onclick="showWorkflow(this.dataset.id)">Open</button></div>').join(""):'<p class="small">No workflows started yet.</p>';
   $("workflowStatus").textContent="Workflow templates loaded. Creating a workflow queues only its first step.";
+  await loadCollaboration();
  }catch(e){$("workflowStatus").textContent=e.message}
 }
 window.startWorkflow=async(templateId)=>{

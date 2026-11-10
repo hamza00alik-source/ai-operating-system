@@ -43,7 +43,7 @@ def test_company_department_registry_exposes_twelve_departments():
     ids = {item["id"] for item in payload["departments"]}
     assert {"executive", "research", "design", "customer-support", "legal-compliance",
             "quality-assurance", "people-workforce"} <= ids
-    assert all(item["workflow_status"] == "catalogue-only" for item in payload["departments"])
+    assert all(item["workflow_status"] == "sequential-workflow-with-persisted-inbox-handoffs" for item in payload["departments"])
 
 
 def test_workforce_manifest_has_full_agency_roster():

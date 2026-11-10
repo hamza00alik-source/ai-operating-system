@@ -23,10 +23,30 @@ from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recov
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
+from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
 from ai_os import business_ops
 from pydantic import BaseModel, Field
+
+
+class DepartmentMessageRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    sender_department: str = Field(min_length=1, max_length=64)
+    recipient_department: str = Field(min_length=1, max_length=64)
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=12000)
+    related_task_id: str | None = None
+
+
+class DepartmentDelegationRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    from_department: str = Field(min_length=1, max_length=64)
+    to_department: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=12000)
+    parent_task_id: str | None = None
+
 
 
 logger = logging.getLogger("ai_os.api")
@@ -318,7 +338,7 @@ def get_company_departments():
             "specialist_count": specialist_count,
             "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
             "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
-            "workflow_status": "catalogue-only",
+            "workflow_status": "sequential-workflow-with-persisted-inbox-handoffs",
         })
     return {
         "department_count": len(departments),
@@ -449,6 +469,45 @@ def post_brain_memory_review(memory_id: str, payload: BrainMemoryReview):
         raise HTTPException(status_code=404, detail="Proposed memory not found or already reviewed.")
     return result
 
+
+
+@app.get("/company/collaboration/messages", dependencies=[Depends(require_api_key)])
+def get_department_messages(business_id: str = "core", department: str | None = None,
+                            status: str | None = None, limit: int = 100):
+    try: return list_messages(business_id,department,status,limit)
+    except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
+
+
+@app.post("/company/collaboration/messages", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_department_message(payload: DepartmentMessageRequest):
+    try:
+        return send_message(payload.business_id,payload.sender_department,payload.recipient_department,
+                            payload.subject,payload.body,payload.related_task_id)
+    except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
+    except LookupError as exc: raise HTTPException(status_code=404,detail=str(exc)) from exc
+
+
+@app.post("/company/collaboration/messages/{message_id}/read", dependencies=[Depends(require_owner_key)])
+def post_department_message_read(message_id: str, business_id: str, department: str):
+    try: result=mark_message_read(message_id,business_id,department)
+    except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
+    if result is None: raise HTTPException(status_code=404,detail="Message not found in this department inbox.")
+    return result
+
+
+@app.get("/company/collaboration/delegations", dependencies=[Depends(require_api_key)])
+def get_department_delegations(business_id: str = "core", department: str | None = None, limit: int = 100):
+    try: return list_delegations(business_id,department,limit)
+    except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
+
+
+@app.post("/company/collaboration/delegations", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_department_delegation(payload: DepartmentDelegationRequest):
+    try:
+        return delegate_task(payload.business_id,payload.from_department,payload.to_department,
+                             payload.title,payload.description,payload.parent_task_id)
+    except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
+    except LookupError as exc: raise HTTPException(status_code=404,detail=str(exc)) from exc
 
 
 @app.get("/company/workflows", dependencies=[Depends(require_api_key)])

@@ -24,7 +24,7 @@ A feature is complete only when tested and its operating limits are documented.
 - [x] Initial department workflow templates with persisted workflow instances and ordered task dependencies
 - [x] Owner-triggered workflow creation; first step queued and downstream steps blocked by default
 - [x] Dependency-gated task execution and automatic next-step handoff after successful completion
-- [ ] Workflow-level artifact aggregation, cancellation, parallel branches, and specialist-specific deliverable schemas
+- [ ] Workflow-level artifact aggregation, cancellation, parallel branches, and specialist-specific deliverable schemas\n- [x] Business-scoped internal department inbox and message persistence\n- [x] Sequential workflow handoffs create recipient-department inbox messages\n- [x] Owner-supervised department task delegation with queued child tasks\n- [ ] Autonomous inbox polling and parallel department execution
 - [ ] Task dependencies and assignment
 - [x] Static specialist registry sourced from Agency Agents
 - [ ] Live agent runtime and worker registry
