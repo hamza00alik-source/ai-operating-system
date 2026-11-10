@@ -669,7 +669,6 @@ def get_agent_runs(task_id: str | None = None, business_id: str = "core"):
     return list_runs(task_id, business_id)
 
 
-@app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
 def _require_run_business_scope(run_id: str, business_id: str) -> dict:
     if business_id not in BUSINESS_IDS:
         raise HTTPException(status_code=422, detail="Unknown business environment.")
@@ -690,12 +689,12 @@ def _require_run_business_scope(run_id: str, business_id: str) -> dict:
 
 
 @app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
-def get_agent_run(run_id: str, business_id: str):
+def get_agent_run(run_id: str, business_id: str = "core"):
     return _require_run_business_scope(run_id, business_id)
 
 
 @app.get("/agent-runs/{run_id}/events", dependencies=[Depends(require_api_key)])
-def get_agent_run_events(run_id: str, business_id: str):
+def get_agent_run_events(run_id: str, business_id: str = "core"):
     """Return the persisted execution timeline only within its selected business."""
     _require_run_business_scope(run_id, business_id)
     with connect() as db:
@@ -706,7 +705,7 @@ def get_agent_run_events(run_id: str, business_id: str):
     return [dict(row) for row in rows]
 
 @app.get("/agent-runs/{run_id}/steps", dependencies=[Depends(require_api_key)])
-def get_agent_run_steps(run_id: str, business_id: str):
+def get_agent_run_steps(run_id: str, business_id: str = "core"):
     """Return agent contributions only within the selected business."""
     _require_run_business_scope(run_id, business_id)
     with connect() as db:
