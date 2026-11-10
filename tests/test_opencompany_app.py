@@ -493,6 +493,13 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
         )
         assert activated.status_code == 200
 
+    manager = next(agent for agent in agents.values() if agent["role_key"] == "market_intelligence_analyst")
+    manager_active = owner_client.post(
+        f"/agents/{manager['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": manager["revision"]},
+    )
+    assert manager_active.status_code == 200
+
     approved = owner_client.post(
         f"/work-items/{item_id}/delegation-proposals/{proposal['id']}/approve",
         headers=headers,
@@ -606,6 +613,12 @@ def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
             json={"target_state": "active", "expected_revision": agent["revision"]},
         )
         assert active.status_code == 200
+    manager = next(agent for agent in agents.values() if agent["role_key"] == "market_intelligence_analyst")
+    manager_active = owner_client.post(
+        f"/agents/{manager['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": manager["revision"]},
+    )
+    assert manager_active.status_code == 200
     approved = owner_client.post(
         f"/work-items/{item_id}/delegation-proposals/{proposal['id']}/approve",
         headers=headers,
@@ -1008,6 +1021,12 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
             json={"target_state": "active", "expected_revision": profile["revision"]},
         )
         assert activated.status_code == 200
+    manager = next(agent for agent in profiles.values() if agent["role_key"] == "market_intelligence_analyst")
+    manager_active = owner_client.post(
+        f"/agents/{manager['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": manager["revision"]},
+    )
+    assert manager_active.status_code == 200
 
     approved = owner_client.post(
         f"/work-items/{parent_id}/delegation-proposals/{proposal['id']}/approve",
