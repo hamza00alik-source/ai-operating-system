@@ -29,6 +29,8 @@ from opencompany_core.provisioning import bootstrap_department_managers, bootstr
 from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.worker_queue import QueueError
+from opencompany_core.manager_ai import ManagerPlanningError, recommend_department_plan
+from opencompany_core.model_gateway import CostPolicyViolation, NoEligibleProvider, ProviderUnavailable
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -77,6 +79,10 @@ class WorkItemCreateInput(BaseModel):
 
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
+    max_specialists: int = Field(default=5, ge=1, le=5)
+
+
+class ManagerProposalInput(BaseModel):
     max_specialists: int = Field(default=5, ge=1, le=5)
 
 
@@ -701,6 +707,97 @@ def preview_work_item_delegation(
     }
 
     
+@app.post("/work-items/{item_id}/manager-proposal", dependencies=[Depends(require_owner_key)])
+def create_ai_manager_proposal(
+    item_id: UUID,
+    payload: ManagerProposalInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+    delegations: DelegationRepository = Depends(get_delegation_store),
+) -> dict:
+    """Ask the active department manager to propose a team; owner approval remains mandatory."""
+    item = store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    manager_role = default_organization().get(item.department).manager_role_key
+    manager = next(
+        (agent for agent in store.list_agents(limit=1000)
+         if agent.role_key == manager_role and agent.department == item.department),
+        None,
+    )
+    if manager is None or manager.state != AgentState.ACTIVE:
+        raise HTTPException(status_code=409, detail="The department manager profile must be provisioned and explicitly ACTIVE.")
+    try:
+        recommendation = recommend_department_plan(
+            item, runtime.gateway, max_specialists=payload.max_specialists
+        )
+    except NoEligibleProvider as exc:
+        raise HTTPException(status_code=503, detail="No owner-configured free model provider is available for manager planning.") from exc
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        raise HTTPException(status_code=502, detail=f"Manager model request failed safely: {type(exc).__name__}") from exc
+    except ManagerPlanningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    plan = recommendation.plan
+    profiles = store.list_agents(limit=1000)
+    children = []
+    if plan.mode.value == "manager_direct":
+        children.append({
+            "assigned_agent_id": str(manager.id), "role_key": plan.manager_role_key,
+            "team_key": "management", "title": f"{plan.manager_title}: {item.title}",
+            "objective": f"Handle parent work item {item.id}. Objective: {item.objective} Produce an internal draft for owner review.",
+        })
+    elif plan.mode.value == "specialist_team":
+        for specialist in plan.specialists:
+            profile = next(
+                (agent for agent in profiles
+                 if agent.role_key == specialist.role_key and agent.team_key == specialist.team_key
+                 and agent.department == item.department),
+                None,
+            )
+            if profile is None:
+                raise HTTPException(status_code=409, detail=f"Specialist profile is not provisioned: {specialist.role_key}")
+            children.append({
+                "assigned_agent_id": str(profile.id), "role_key": specialist.role_key,
+                "team_key": specialist.team_key, "title": f"{specialist.title}: {item.title}",
+                "objective": (
+                    f"Support parent work item {item.id}. Parent objective: {item.objective} "
+                    f"Manager rationale: {recommendation.rationale} "
+                    f"Required capabilities: {', '.join(recommendation.required_capabilities)}. "
+                    "Produce an internal draft for manager review only."
+                ),
+            })
+    proposal = delegations.create_proposal(
+        parent_work_item_id=item.id,
+        request={
+            "required_capabilities": list(recommendation.required_capabilities),
+            "max_specialists": payload.max_specialists,
+            "manager_rationale": recommendation.rationale,
+            "planner_provider": recommendation.provider,
+            "planner_model": recommendation.model,
+        },
+        manager_agent_id=manager.id,
+        mode=plan.mode.value,
+        team_key=plan.selected_team_key,
+        children=children,
+    )
+    return {
+        "proposal": proposal,
+        "manager": {"agent_id": str(manager.id), "role_key": manager_role, "state": manager.state.value},
+        "manager_ai": {
+            "provider": recommendation.provider, "model": recommendation.model,
+            "rationale": recommendation.rationale,
+        },
+        "required_capabilities": list(recommendation.required_capabilities),
+        "mode": plan.mode.value,
+        "selected_team_key": plan.selected_team_key,
+        "uncovered_capabilities": list(plan.uncovered_capabilities),
+        "owner_approval_required": True,
+        "assignment_performed": False,
+        "queue_entries_created": False,
+        "execution_started": False,
+    }
+
+
 @app.post("/work-items/{item_id}/delegation-proposals", dependencies=[Depends(require_owner_key)])
 def create_work_item_delegation_proposal(
     item_id: UUID,
