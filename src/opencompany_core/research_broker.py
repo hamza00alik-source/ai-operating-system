@@ -74,7 +74,12 @@ def _contains_sensitive_args(value) -> bool:
     if isinstance(value, list):
         return any(_contains_sensitive_args(child) for child in value)
     if isinstance(value, str):
-        return bool(re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", value, re.I))
+        return bool(
+            re.search(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", value, re.I)
+            or re.search(r"(?<!\d)(?:\+?\d[\d .()-]{8,}\d)(?!\d)", value)
+            or re.search(r"\b(?:bearer|authorization|api[_-]?key|secret|password)\b", value, re.I)
+            or re.search(r"\b[A-Za-z0-9_-]{32,}\b", value)
+        )
     return False
 
 
