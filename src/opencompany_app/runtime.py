@@ -14,6 +14,7 @@ from opencompany_core.execution import AgentExecutor
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.worker_queue import DurableWorkerQueue
 from opencompany_core.worker_runner import OpenCompanyWorker
+from opencompany_core.delegation_records import DelegationRepository
 
 
 @dataclass(slots=True)
@@ -21,9 +22,11 @@ class OpenCompanyRuntime:
     store: SQLiteStore
     queue: DurableWorkerQueue
     worker: OpenCompanyWorker
+    delegations: DelegationRepository
 
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
+        self.delegations.close()
         self.store.close()
 
 
@@ -36,6 +39,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
     store = SQLiteStore(path)
+    delegations = DelegationRepository(path)
     queue = DurableWorkerQueue(
         store._connection,
         max_attempts=int(os.environ.get("OPENCOMPANY_WORKER_MAX_ATTEMPTS", "3")),
@@ -51,4 +55,4 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
-    return OpenCompanyRuntime(store=store, queue=queue, worker=worker)
+    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations)
