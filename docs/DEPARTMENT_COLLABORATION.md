@@ -11,7 +11,7 @@ AIOS provides a persisted, business-scoped internal collaboration inbox and task
 ## Task delegation
 - An owner can record a department-to-department delegation.
 - Delegation creates a queued task for the receiving department and an unread inbox message.
-- The task is not executed automatically. An owner must explicitly trigger its existing task execution endpoint.
+- Creating a delegation is an explicit owner action and now queues an internal agent run automatically. The dedicated worker processes it when running.
 - A supplied parent task must belong to the sender department and the same business.
 
 ## API
@@ -22,4 +22,4 @@ AIOS provides a persisted, business-scoped internal collaboration inbox and task
 - POST /company/collaboration/delegations
 
 ## Limits
-This is durable internal messaging and delegation, not autonomous agent-to-agent chat or independent always-on department agents. The runtime does not continuously poll every department inbox. The shared worker executes bounded tasks; task execution remains owner-triggered. No external account, marketplace, social, email, publishing, payment, or customer system is connected by this change.
+This is durable internal messaging and supervised task delegation, not unrestricted agent-to-agent chat. The worker polls the shared run queue and automatically executes only tasks explicitly authorized by an owner-started workflow or owner-created delegation. It does not independently invent work by reading every inbox. No external account, marketplace, social, email, publishing, payment, or customer system is connected by this change.
