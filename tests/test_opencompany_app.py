@@ -10,6 +10,7 @@ from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy
+from opencompany_core.github_evolution import GitHubPullRequest
 
 
 client = TestClient(app)
@@ -851,3 +852,51 @@ def test_review_outcome_generates_owner_approved_learning_note(owner_client):
     assert notes["count"] == 1
     assert "publication dates" in notes["notes"][0]["note"]
     assert runtime.store.verify_audit_chain()
+
+
+class _CodeEvolutionFakeClient:
+    repository = "owner/repo"
+    base_branch = "clean-room-rebuild"
+    def read_files(self, paths):
+        return {path: "# existing source\\n" for path in paths}
+    def create_pull_request(self, *, title, summary, files):
+        return GitHubPullRequest(88, "https://github.com/owner/repo/pull/88", "feat/opencompany-evolution-test", "commit88", title)
+
+
+class _CodeEvolutionFakeAdapter:
+    def generate(self, request, *, model):
+        return ModelResult(
+            text='{"title":"Improve source reliability","summary":"Add a bounded validation improvement.","files":[{"path":"src/opencompany_core/sample.py","content":"VALUE = 2\\n"}]}',
+            provider="unorouter", model=model, cost_usd=0.0,
+        )
+
+
+def test_owner_can_generate_isolated_code_evolution_draft_pr(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.github_evolution = _CodeEvolutionFakeClient()
+    runtime.gateway = ModelGateway.configure(((
+        ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
+        _CodeEvolutionFakeAdapter(),
+    ),))
+    response = owner_client.post("/code-evolution/proposals", headers=headers, json={
+        "problem": "Improve a source module with a small, tested reliability change.",
+        "file_paths": ["src/opencompany_core/sample.py"],
+    })
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pull_request_number"] == 88
+    assert payload["draft"] is True
+    assert payload["merged"] is False
+    assert payload["deployed"] is False
+    assert payload["owner_merge_review_required"] is True
+    assert runtime.store.verify_audit_chain()
+
+
+def test_code_evolution_config_status_does_not_expose_credentials(owner_client):
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.github_evolution = _CodeEvolutionFakeClient()
+    response = owner_client.get("/code-evolution/config-status", headers={"X-OpenCompany-API-Key": "test-owner-key"})
+    assert response.status_code == 200
+    assert response.json()["enabled"] is True
+    assert "token" not in response.text.lower()
