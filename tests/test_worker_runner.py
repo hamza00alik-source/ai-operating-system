@@ -39,7 +39,7 @@ class FailOnceSink(MemorySink):
         super().save(deliverable)
 
 
-def setup(tmp_path, *, agent_state=AgentState.ACTIVE):
+def setup(tmp_path, *, agent_state=AgentState.ACTIVE, agent_team_key="management"):
     agent_id = uuid4()
     item = WorkItem(
         id=uuid4(), title="Test task", objective="Produce a draft",
@@ -52,7 +52,7 @@ def setup(tmp_path, *, agent_state=AgentState.ACTIVE):
         id=agent_id, name="Marketplace Operations Manager",
         department="revenue-partnerships", purpose="Coordinate marketplace work",
         capabilities=("marketplace_research",), state=agent_state,
-        role_key="marketplace_operations_analyst", team_key="management",
+        role_key="marketplace_operations_analyst", team_key=agent_team_key,
     ))
     queue = DurableWorkerQueue(tmp_path / "queue.sqlite3")
     queue.enqueue(item.id, agent_id, {"source": "test"})
@@ -97,6 +97,16 @@ def test_worker_rejects_role_not_bound_to_agent_profile(tmp_path):
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink())
     with pytest.raises(WorkerConfigurationError, match="role does not match"):
         worker.run_once(agent, "risk_and_quality_reviewer")
+    assert queue.counts() == {"queued": 1}
+    queue.close()
+    store.close()
+
+
+def test_worker_rejects_profile_with_wrong_team_identity(tmp_path):
+    agent, item, store, queue = setup(tmp_path, agent_team_key="finance-risk__team_1")
+    worker = OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink())
+    with pytest.raises(WorkerConfigurationError, match="team does not match"):
+        worker.run_once(agent, "marketplace_operations_analyst")
     assert queue.counts() == {"queued": 1}
     queue.close()
     store.close()
