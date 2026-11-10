@@ -156,12 +156,9 @@ class GitHubEvolutionClient:
             "## OpenCompany AI-generated code proposal\n\n"
             f"{summary}\n\n"
             "### Verification\n"
-            "- GitHub Actions must pass before this change is considered.
-"
-            "- Human owner review is required before merging into the rebuild branch.
-"
-            "- This PR does not merge, deploy, change production, or modify secrets.
-"
+            "- GitHub Actions must pass before this change is considered.\n"
+            "- Human owner review is required before merging into the rebuild branch.\n"
+            "- This PR does not merge, deploy, change production, or modify secrets.\n"
         )
         pr = self._request("POST", "/pulls", {
             "title": title, "head": branch, "base": self.base_branch, "body": body,
