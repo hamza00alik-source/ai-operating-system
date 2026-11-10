@@ -6,9 +6,12 @@
 queue lease, reloads the work item from the authoritative store, verifies the
 assigned agent, active profile state, persisted role identity, matching department and team,
 and `in_progress` state, and invokes the existing cost-gated
-specialist executor. The result must be written through an injected durable
-`ArtifactSink`; the worker fails closed if no sink is configured. It records
-an audit event and completes the lease only after the sink confirms persistence.
+specialist executor. The result is first written through the injected `ArtifactSink`, then stored
+in the core SQLite database with an atomic `IN_PROGRESS` → `REVIEW` transition
+and audit event. The core store retains the full draft content, provider/model
+provenance, cost, role and review-required flag. The owner API exposes these
+records through `GET /work-items/{id}/deliverables`. The sink remains mandatory
+as a secondary durable artifact destination.
 
 All generated deliverables are review-required drafts. The worker has no
 shell, browser, publishing, payment, customer-messaging, credential, or
@@ -33,7 +36,12 @@ enabled by this commit.
 
 Execution or artifact persistence failures mark the lease failed (retrying
 until the queue's attempt limit), append a failure audit event, and propagate
-the exception for process-level logging/alerting. Error details stored in the
+the exception for process-level logging/alerting. Once the queue dead-letters
+a task, the core store atomically moves its still-in-progress work item to
+`FAILED` with audit evidence. If a process crashes after the core draft and
+`REVIEW` transition commit but before queue acknowledgement, a later worker
+recognizes the already-saved role deliverable and acknowledges the lease
+without invoking the model again. Error details stored in the
 queue/audit contain exception types, not potentially sensitive exception text.
 
 
