@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from time import monotonic
 from urllib.parse import urlsplit
+import os
 
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,7 +37,7 @@ def _database_target() -> tuple[str, str] | None:
 
 def status() -> dict:
     target = _database_target()
-    project_url = ( __import__("os").getenv("SUPABASE_URL") or "" ).strip()
+    project_url = (os.getenv("SUPABASE_URL") or "").strip()
     project_url_configured = project_url.startswith("https://") and "supabase" in project_url.lower()
     return {
         "integration": "supabase",
