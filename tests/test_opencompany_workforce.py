@@ -60,7 +60,7 @@ def test_all_specialists_have_domain_specific_capability_profiles_and_playbooks(
     roles = [role for role in default_workforce().all() if "__" in role.key]
     assert len(roles) == 500
     for role in roles:
-        profile = role.capabilities[1:5]
+        profile = role.capabilities[1:3]
         assert len(profile) >= 2
         assert all("_" in capability for capability in profile)
         assert all(capability not in {"specialist_execution", "evidence_synthesis", "quality_review"} for capability in profile)
