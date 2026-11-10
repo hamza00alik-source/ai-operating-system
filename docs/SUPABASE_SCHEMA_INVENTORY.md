@@ -46,7 +46,7 @@ Column types below reflect the source DDL. `TEXT` JSON fields are deliberately r
 | `workflow_instances` | id TEXT*; business_id TEXT* DEFAULT 'core'; template_id TEXT*; name TEXT*; status TEXT* DEFAULT 'active'; created_at TEXT* | PK(id) |
 | `workflow_steps` | id TEXT*; workflow_id TEXT*; task_id TEXT*; sequence_no INTEGER*; department TEXT*; title TEXT*; status TEXT* DEFAULT 'blocked'; output TEXT* DEFAULT ''; dependencies_json TEXT* DEFAULT '[]'; created_at TEXT* | PK(id); UNIQUE(workflow_id, sequence_no); UNIQUE(task_id); FK(workflow_id) → workflow_instances(id); FK(task_id) → tasks(id) |
 
-## Index inventory (22)
+## Index inventory (23)
 
 The following named indexes are created by application initialization:
 
@@ -76,7 +76,6 @@ The following named indexes are created by application initialization:
 | idx_workflow_steps_workflow | workflow_steps | workflow_id, sequence_no |
 | idx_workflow_instances_scope | workflow_instances | business_id, created_at |
 
-**Correction:** the inventory contains 23 named indexes, not 22. Index count includes both base initialization and later compatibility/index additions.
 
 ## Backward-compatible schema upgrades in source
 
