@@ -229,3 +229,15 @@ def get_business_integration_credential(business_id: str, provider: str) -> dict
         raise CredentialVaultUnavailable("Business integration credential cannot be decrypted.") from exc
     import json
     return {"business_id": scope, "provider": provider_id, "secret": secret, "config": json.loads(row["config_json"])}
+
+
+def delete_business_integration(business_id: str, provider: str) -> bool:
+    from ai_os.brain import BUSINESS_IDS
+    scope = (business_id or "").strip()
+    provider_id = (provider or "").strip().lower()
+    if scope not in BUSINESS_IDS or scope == "core" or provider_id not in BUSINESS_INTEGRATION_PROVIDERS:
+        raise ValueError("Unknown business integration scope or provider.")
+    with connect() as db:
+        cur = db.execute("DELETE FROM business_integration_credentials WHERE business_id=? AND provider=?",
+                         (scope, provider_id))
+    return bool(cur.rowcount)
