@@ -30,5 +30,5 @@ def test_reject_invalid_or_external_decisions(response):
         _parse_decision(response)
 
 def test_parse_fenced_json_decision():
-    response = chr(96) * 3 + 'json\\n{"action":"no_action","reason":"FYI"}\\n' + chr(96) * 3
+    response = chr(96) * 3 + "json" + chr(10) + '{"action":"no_action","reason":"FYI"}' + chr(10) + chr(96) * 3
     assert _parse_decision(response)["action"] == "no_action"
