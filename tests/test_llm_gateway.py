@@ -120,13 +120,14 @@ def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
         assert "secret" not in message.lower()
 
 
-def test_unorouter_is_eligible_for_prelaunch_aios_when_free_confirmed(monkeypatch):
+def test_unorouter_is_not_eligible_for_company_routing_when_free_confirmed(monkeypatch):
     monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
     monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
     monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "unorouter-test-secret")
     monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
-    assert status["eligible"] is True
+    assert status["eligible"] is False
+    assert "personal tests" in status["reason"]
     assert status["model"] == "example-model:free"
     assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
 
@@ -162,7 +163,7 @@ def test_unorouter_catalog_lists_free_and_paid_and_preserves_exact_ids(monkeypat
 
 
 
-def test_unorouter_is_default_eligible_provider_when_free_confirmed(monkeypatch):
+def test_unorouter_is_excluded_from_default_company_provider_routing(monkeypatch):
     monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
     monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
     monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "test-secret")
@@ -170,8 +171,9 @@ def test_unorouter_is_default_eligible_provider_when_free_confirmed(monkeypatch)
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
     assert status["configured"] is True
     assert status["free_confirmed"] is True
-    assert status["eligible"] is True
+    assert status["eligible"] is False
     assert status["experimental_only"] is False
+    assert "personal tests" in status["reason"]
     assert llm_gateway.generate_with_fallback.__defaults__[0] == "unorouter"
 
 
@@ -190,7 +192,7 @@ def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypa
     assert result["mode"] == "owner_personal_test_only"
     assert result["company_task_routing"] is False
     assert result["response"].startswith("This is a valid")
-    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is True
+    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is False
 
 def test_unorouter_personal_test_rejects_paid_model(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
@@ -209,7 +211,7 @@ def test_unorouter_env_model_must_end_in_free(monkeypatch):
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
     assert status["configured"] is True
     assert status["eligible"] is False
-    assert ":free" in status["reason"]
+    assert "personal tests" in status["reason"]
 
 
 def test_unorouter_paid_personal_test_requires_explicit_approval(monkeypatch):
@@ -267,26 +269,10 @@ def test_unorouter_task_router_selects_free_chat_model_for_coding(monkeypatch):
     assert selected["benchmark_status"].startswith("not benchmarked")
 
 
-def test_unorouter_auto_selection_uses_selected_free_chat_model_without_paid_requests(monkeypatch):
-    provider = next(p for p in llm_gateway.PROVIDERS if p.key == "unorouter")
-    monkeypatch.setattr(llm_gateway, "_resolve", lambda provider_id: (
-        provider, {"base_url": "https://api.unorouter.com/v1",
-                   "_secret": "uno-test-secret", "model": "default:free"}
-    ))
-    selection = {
-        "task_category": "research", "model_id": "research-chat:free",
-        "strategy": "account-accessible free chat models; metadata/name heuristic",
-        "candidate_count": 3, "benchmark_status": "not benchmarked; no extra inference calls made",
-    }
-    monkeypatch.setattr(llm_gateway, "select_unorouter_model", lambda prompt: selection)
-    captured = {}
-    def fake_post(url, payload, headers, timeout=35):
-        captured.update(url=url, payload=payload, headers=headers)
-        return {"model": "research-chat:free",
-                "choices": [{"message": {"content": "This is a sufficiently detailed response from the selected free chat model."}}],
-                "usage": {"prompt_tokens": 8, "completion_tokens": 12}}
-    monkeypatch.setattr(llm_gateway, "_post", fake_post)
-    result = llm_gateway.generate("unorouter", "Research current market evidence")
-    assert captured["payload"]["model"] == "research-chat:free"
-    assert result["model_selection"]["task_category"] == "research"
-    assert result["model_selection"]["model_id"].endswith(":free")
+def test_unorouter_company_generate_is_blocked_even_when_consumer_key_is_configured(monkeypatch):
+    monkeypatch.setenv("AI_OS_UNOROUTER_BASE_URL", "https://api.unorouter.com/v1")
+    monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
+    monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "test-secret")
+    monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
+    with pytest.raises(PermissionError, match="personal tests"):
+        llm_gateway.generate("unorouter", "Draft an internal company report")
