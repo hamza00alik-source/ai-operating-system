@@ -319,19 +319,25 @@ def _finish_step(run_id: str, sequence_no: int, output: str) -> None:
 
 
 def run_pending_once() -> bool:
+    # Claim a queued run with one atomic SQLite UPDATE. This prevents the API
+    # fallback worker and a dedicated worker process from executing the same run.
     with connect() as db:
         row = db.execute(
-            "SELECT * FROM agent_runs WHERE status='queued' ORDER BY created_at LIMIT 1"
+            """UPDATE agent_runs
+               SET status='running', started_at=?
+               WHERE id = (
+                   SELECT id FROM agent_runs
+                   WHERE status='queued'
+                   ORDER BY created_at, id
+                   LIMIT 1
+               )
+               AND status='queued'
+               RETURNING *""",
+            (_now(),),
         ).fetchone()
         if row is None:
             return False
         run_id, task_id = row["id"], row["task_id"]
-        changed = db.execute(
-            "UPDATE agent_runs SET status='running',started_at=? WHERE id=? AND status='queued'",
-            (_now(), run_id),
-        ).rowcount
-        if not changed:
-            return True
         db.execute("UPDATE tasks SET status='running' WHERE id=?", (task_id,))
         task_row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
     try:
