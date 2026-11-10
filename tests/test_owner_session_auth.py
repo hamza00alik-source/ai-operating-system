@@ -66,3 +66,16 @@ def test_owner_dashboard_office_uses_live_twelve_department_data():
     assert "on-demand" in html
     assert "Drag to rotate" in html or "Drag to rotate" in html
 
+
+
+def test_owner_dashboard_has_real_wordpress_and_woocommerce_connect_controls():
+    response = TestClient(app).get("/owner")
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="integrationSiteUrl"' in html
+    assert 'id="integrationUsername"' in html
+    assert 'id="integrationConsumerKey"' in html
+    assert 'Connect & verify account' in html
+    assert '/connect' in html
+    assert 'wordpress' in html
+    assert 'woocommerce' in html
