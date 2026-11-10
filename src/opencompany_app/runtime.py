@@ -48,7 +48,7 @@ class OpenCompanyRuntime:
 
 
 def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
-    """Build the API/worker composition; optionally autostart the gated worker fleet."""
+    """Build the API/worker composition without starting background workers."""
     configured = database_path or os.environ.get(
         "OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3"
     )
@@ -92,6 +92,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs,
         learning=learning, github_evolution=github_evolution, api_anything=api_anything,
     )
-    if os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true":
-        runtime.fleet.start()
+    # Worker lifecycle belongs to the API lifespan, which verifies the
+    # free-provider gate before starting. Tests and other callers can safely
+    # construct a runtime without launching background threads.
     return runtime
