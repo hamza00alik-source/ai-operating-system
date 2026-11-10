@@ -345,12 +345,12 @@ def run_pending_once() -> bool:
             specialist = next((item for item in manifest.get("agents", []) if item.get("id") == saved_specialist.get("agent_id")), specialist)
         _record_event(run_id, "specialist_selected", "Assigned specialist: " + specialist["name"] + " (" + specialist.get("department", "general") + ").")
         instructions = _load_specialist(specialist)
-        memories = retrieve_memories(task["title"] + " " + task.get("description", ""), task.get("department", "general"))
+        memories = retrieve_memories(task["title"] + " " + task.get("description", ""), task.get("department", "general"), business_id=task.get("business_id", "core"))
         memory_context = "\n".join(
             f"- [{item['category']}] {item['title']}: {item['content'][:900]}"
             for item in memories
         ) or "No owner-approved relevant memories exist yet."
-        _record_event(run_id, "brain_memory_retrieved", f"Company brain supplied {len(memories)} approved relevant memories.")
+        _record_event(run_id, "brain_memory_retrieved", f"Business brain supplied {len(memories)} approved relevant memories for {task.get('business_id', 'core')}.")
         evidence_context = research_context(task["title"] + " " + task.get("description", ""))
         evidence_count = evidence_context.count("Source URL: ")
         _record_event(run_id, "research_evidence_retrieved", f"Research evidence layer supplied {evidence_count} captured source(s) relevant to this task.")
@@ -460,7 +460,8 @@ def run_pending_once() -> bool:
         from ai_os.workflows import finish_workflow_task
         finish_workflow_task(task_id, True)
         experience_id = record_experience(
-            run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"]
+            run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"],
+            business_id=task.get("business_id", "core"),
         )
         _record_event(run_id, "brain_experience_saved", "Completed outcome saved to persistent company experience memory; a lesson awaits owner review.")
         logger.info("Agent run %s completed for task %s; brain experience %s stored", run_id, task_id, experience_id)
