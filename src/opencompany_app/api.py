@@ -180,7 +180,8 @@ def initialize_autonomous_runtime() -> None:
         and os.environ.get("OPENCOMPANY_OWNER_API_KEY")
     ):
         runtime = _default_runtime()
-        runtime.fleet.start()
+        if runtime.gateway.eligible_providers(request_budget_usd=0.0):
+            runtime.fleet.start()
 
 
 @app.on_event("shutdown")
@@ -763,6 +764,8 @@ def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
 
 @app.post("/workers/start", dependencies=[Depends(require_owner_key)])
 def start_worker_fleet(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        raise HTTPException(status_code=503, detail="No owner-configured free inference provider is available; worker start is blocked.")
     started = runtime.fleet.start()
     return {"running": runtime.fleet.status().running, "started_now": started}
 
@@ -784,6 +787,8 @@ def run_agent_once(
         raise HTTPException(status_code=404, detail="Agent profile not found.")
     if agent.state != AgentState.ACTIVE or not agent.role_key:
         raise HTTPException(status_code=409, detail="Agent must be explicitly ACTIVE with a role.")
+    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        raise HTTPException(status_code=503, detail="No owner-configured free inference provider is available; worker execution is blocked.")
     try:
         result = runtime.worker.run_once(agent.id, agent.role_key)
     except Exception as exc:
