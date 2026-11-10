@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hmac
 import os
+from dataclasses import replace
 from functools import lru_cache
 from uuid import UUID, uuid4
 
@@ -15,7 +16,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from opencompany_core.domain import AuditRecord, TaskState, WorkItem
+from opencompany_core.domain import AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.lifecycle import StateTransitionError, transition_work_item
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.planning import PlanError, WorkPlan, action_requires_owner_approval
@@ -51,6 +52,11 @@ class WorkforceRoutePreviewInput(BaseModel):
     department: str = Field(min_length=1, max_length=80)
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     limit: int = Field(default=5, ge=1, le=10)
+
+
+class AgentStateChangeInput(BaseModel):
+    target_state: AgentState
+    expected_revision: int = Field(ge=1)
 
 
 class WorkItemCreateInput(BaseModel):
@@ -306,11 +312,56 @@ def list_agents(store: SQLiteStore = Depends(get_store)) -> dict:
             {
                 "id": str(item.id), "name": item.name,
                 "department": item.department, "purpose": item.purpose,
-                "capabilities": list(item.capabilities),
+                "capabilities": list(item.capabilities), "role_key": item.role_key,
+                "team_key": item.team_key,
                 "state": item.state.value, "revision": item.revision,
             }
             for item in agents
         ],
+    }
+
+
+@app.post("/agents/{agent_id}/state", dependencies=[Depends(require_owner_key)])
+def change_agent_state(
+    agent_id: UUID,
+    payload: AgentStateChangeInput,
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    agent = store.get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent profile not found.")
+    if agent.revision != payload.expected_revision:
+        raise HTTPException(status_code=409, detail="Agent profile revision is stale.")
+    allowed = {
+        AgentState.DRAFT: {AgentState.ACTIVE, AgentState.RETIRED},
+        AgentState.ACTIVE: {AgentState.PAUSED, AgentState.RETIRED},
+        AgentState.PAUSED: {AgentState.ACTIVE, AgentState.RETIRED},
+        AgentState.RETIRED: set(),
+    }
+    if payload.target_state not in allowed[agent.state]:
+        raise HTTPException(status_code=409, detail="Requested agent state transition is not allowed.")
+    if payload.target_state == AgentState.ACTIVE and not (agent.role_key and agent.team_key):
+        raise HTTPException(status_code=409, detail="Agent must have a verified role and team before activation.")
+    changed = replace(agent, state=payload.target_state, revision=agent.revision + 1)
+    from datetime import datetime, timezone
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner", action="agent.state_changed",
+        subject_type="agent_profile", subject_id=str(agent.id),
+        outcome="recorded", correlation_id=str(uuid4()),
+        details={
+            "from": agent.state.value, "to": changed.state.value,
+            "role_key": agent.role_key, "team_key": agent.team_key,
+            "revision": changed.revision,
+        },
+    )
+    if not store.update_agent_with_audit(
+        changed, event, expected_revision=payload.expected_revision
+    ):
+        raise HTTPException(status_code=409, detail="Agent profile changed concurrently; reload and retry.")
+    return {
+        "agent_id": str(changed.id), "state": changed.state.value,
+        "revision": changed.revision, "worker_started": False,
     }
 
 
