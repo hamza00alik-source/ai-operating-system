@@ -151,6 +151,30 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         const badge=document.createElement("span");badge.className="pill";badge.textContent=w.state;row.append(badge);
         card.append(row);
         const detail=document.createElement("p");detail.textContent=w.department+" · "+w.objective;card.append(detail);
+        if((w.state==="draft" || w.state==="ready") && !w.assigned_agent_id){
+          const managerButton=document.createElement("button");managerButton.textContent="Ask department manager";
+          managerButton.addEventListener("click",async()=>{
+            managerButton.disabled=true;
+            try{
+              const result=await request("/work-items/"+w.id+"/manager-proposal",{method:"POST",body:JSON.stringify({max_specialists:5})});
+              const proposal=result.proposal;
+              const note=document.createElement("p");note.textContent="Manager recommendation ("+result.manager_ai.provider+"): "+result.manager_ai.rationale;card.append(note);
+              const roster=document.createElement("p");roster.textContent="Recommended team: "+(proposal.children||[]).map(child=>child.role_key).join(", ");card.append(roster);
+              if(proposal.children && proposal.children.length){
+                const approveTeam=document.createElement("button");approveTeam.textContent="Approve team and create assigned drafts";
+                approveTeam.addEventListener("click",async()=>{
+                  approveTeam.disabled=true;
+                  try{await request("/work-items/"+w.id+"/delegation-proposals/"+proposal.id+"/approve",{method:"POST",body:"{}"});setMessage("Owner approved manager proposal. Assigned child tasks are READY but not queued.","success");await load();}
+                  catch(error){setMessage(error.message,"error");approveTeam.disabled=false;}
+                });
+                card.append(approveTeam);
+              }else{
+                const warning=document.createElement("p");warning.textContent="Manager recommends owner review; no team was assigned.";card.append(warning);
+              }
+            }catch(error){setMessage(error.message,"error");managerButton.disabled=false;}
+          });
+          card.append(managerButton);
+        }
         if(w.state==="review"){
           const actions=document.createElement("div");actions.className="auth";
           const view=document.createElement("button");view.textContent="View draft";
