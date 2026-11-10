@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
-from .specialist_roles import DEPARTMENT_LABELS, SPECIALIST_TITLES
+from .specialist_roles import DEPARTMENT_LABELS, EXTRA_SPECIALIST_TITLES, SPECIALIST_TITLES
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,12 +78,13 @@ class RoleCatalog:
 
 
 def _specialist_roles() -> tuple[RoleSpec, ...]:
-    """Build 250 explicit, department-scoped specialist contracts."""
+    """Build 500 department-scoped specialist contracts across ten teams each."""
     roles = []
-    for department_key, titles in SPECIALIST_TITLES.items():
+    for department_key, original_titles in SPECIALIST_TITLES.items():
         department_label = DEPARTMENT_LABELS[department_key]
-        if len(titles) != 25:
-            raise RuntimeError(f"{department_key} must define exactly 25 specialist roles")
+        titles = (*original_titles, *EXTRA_SPECIALIST_TITLES[department_key])
+        if len(original_titles) != 25 or len(EXTRA_SPECIALIST_TITLES[department_key]) != 25:
+            raise RuntimeError(f"{department_key} must define two waves of 25 specialist roles")
         for index, title in enumerate(titles):
             slug = "_".join(part for part in "".join(ch.lower() if ch.isalnum() else " " for ch in title).split())
             key = f"{department_key.replace('-', '_')}__{slug}"
@@ -98,8 +99,8 @@ def _specialist_roles() -> tuple[RoleSpec, ...]:
                 permitted_outputs=(f"{slug}_brief", f"{slug}_analysis", f"{slug}_work_product", "handoff_summary"),
                 prohibited_actions=("bypassing_owner_approval", "inventing_evidence_or_results", "using_unapproved_paid_services", "taking_external_actions_outside_assigned_scope"),
             ))
-    if len(roles) != 250:
-        raise RuntimeError("OpenCompany specialist catalogue must contain exactly 250 roles")
+    if len(roles) != 500:
+        raise RuntimeError("OpenCompany specialist catalogue must contain exactly 500 roles")
     return tuple(roles)
 
 
