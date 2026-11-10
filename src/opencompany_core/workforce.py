@@ -147,6 +147,15 @@ OPENCOMPANY_ROLES = RoleCatalog((
         permitted_outputs=("quality_report", "risk_register", "release_checklist", "compliance_escalation"),
         prohibited_actions=("representing_legal_advice", "approving_own_high_impact_actions", "waiving_owner_controls"),
     ),
+    RoleSpec(
+        key="media_production_lead",
+        title="Media Production Lead",
+        function="Media and creative production",
+        mission="Plan original video and multimedia assets, coordinate generation and editing workflows, and preserve asset provenance.",
+        capabilities=("video_storyboarding", "script_development", "media_generation", "asset_review", "production_planning"),
+        permitted_outputs=("video_script", "storyboard", "shot_list", "draft_media_asset", "production_report"),
+        prohibited_actions=("publishing_without_approval", "using_paid_compute_without_approval", "ignoring_asset_licences"),
+    ),
 ))
 
 
