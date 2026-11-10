@@ -22,15 +22,17 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] CEO-led agent orchestration beyond discovery
 - [ ] Load specialist instruction files into bounded execution contexts
 - [x] Initial department workflow templates with persisted workflow instances and ordered task dependencies
-- [x] Owner-triggered workflow creation; first step queued and downstream steps blocked by default
-- [x] Dependency-gated task execution and automatic next-step handoff after successful completion
-- [ ] Workflow-level artifact aggregation, cancellation, parallel branches, and specialist-specific deliverable schemas\n- [x] Business-scoped internal department inbox and message persistence\n- [x] Sequential workflow handoffs create recipient-department inbox messages\n- [x] Owner-supervised department task delegation with queued child tasks\n- [ ] Autonomous inbox polling and parallel department execution
+- [x] Owner-authorized workflow creation; first step automatically enters the agent queue and downstream steps remain blocked by default
+- [x] Dependency-gated execution; successful handoffs automatically queue the next department
+- [ ] Workflow-level artifact aggregation, cancellation, parallel branches, and specialist-specific deliverable schemas\n- [x] Business-scoped internal department inbox and message persistence\n- [x] Sequential workflow handoffs create recipient-department inbox messages\n- [x] Owner-supervised department task delegation with automatic child-run queueing\n- [x] Bounded parallel worker consumers (1–4 threads in one replica) and automatic execution of owner-authorized workflow/delegation tasks
+- [ ] Autonomous inbox interpretation and independent task creation
 - [ ] Task dependencies and assignment
 - [x] Static specialist registry sourced from Agency Agents
 - [ ] Live agent runtime and worker registry
 - [ ] Retry policy, timeouts, execution logs
 - [x] In-service discovery polling worker (single service)
-- [ ] Durable agent worker queue, scheduler, leases, and retries
+- [x] Durable agent worker queue with atomic claims and bounded in-process concurrency
+- [ ] Shared server database, worker leases/heartbeats, multi-replica scheduling, and crash-safe retries
 
 ## Phase 3 — Memory and learning
 - [x] Business-scoped task assignment for physical agency, own physical brand, and digital products
