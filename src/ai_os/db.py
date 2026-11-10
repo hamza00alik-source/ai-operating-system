@@ -24,10 +24,24 @@ def _postgres_sql(statement: str) -> str | tuple[str, tuple[str, ...]]:
     if pragma:
         table = pragma.group(1).lower()
         return (
-            "SELECT column_name AS name FROM information_schema.columns "
-            "WHERE table_schema = current_schema() AND table_name = %s "
-            "ORDER BY ordinal_position",
-            (table,),
+            'SELECT (c.ordinal_position - 1) AS cid, c.column_name AS name, '
+            'upper(c.data_type) AS type, '
+            "CASE WHEN c.is_nullable = 'NO' THEN 1 ELSE 0 END AS \"notnull\", "
+            'c.column_default AS dflt_value, '
+            'CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END AS pk '
+            'FROM information_schema.columns AS c '
+            'LEFT JOIN ('
+            'SELECT kcu.column_name FROM information_schema.table_constraints AS tc '
+            'JOIN information_schema.key_column_usage AS kcu '
+            'ON tc.constraint_name = kcu.constraint_name '
+            'AND tc.table_schema = kcu.table_schema '
+            'AND tc.table_name = kcu.table_name '
+            "WHERE tc.constraint_type = 'PRIMARY KEY' "
+            'AND tc.table_schema = current_schema() AND tc.table_name = %s'
+            ') AS pk ON pk.column_name = c.column_name '
+            'WHERE c.table_schema = current_schema() AND c.table_name = %s '
+            'ORDER BY c.ordinal_position',
+            (table, table),
         )
     statement = re.sub(
         r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
