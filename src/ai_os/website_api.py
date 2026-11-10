@@ -116,3 +116,9 @@ def call_read(site: str, operation: str, args: dict, fields: list[str] | None = 
         body["view"] = {"fields": fields}
     # Deliberately call only the read endpoint. Never expose /v1/write or allowTier 2/3.
     return _request("POST", f"/v1/call/{urllib.parse.quote(site, safe='')}/{urllib.parse.quote(operation, safe='')}", body)
+
+
+def list_operations(site: str) -> dict:
+    if not _NAME_RE.fullmatch(site):
+        raise ValueError("Site name may contain only letters, numbers, dot, underscore and hyphen.")
+    return _request("GET", f"/v1/sites/{urllib.parse.quote(site, safe='')}")
