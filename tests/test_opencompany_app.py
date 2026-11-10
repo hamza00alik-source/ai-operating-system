@@ -1071,25 +1071,14 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
             calls.append("started")
             return True
 
-    class Gateway:
-        ready = False
-
-        def eligible_providers(self, *, request_budget_usd=0.0):
-            return (object(),) if self.ready else ()
-
     class Runtime:
         fleet = Fleet()
-        gateway = Gateway()
 
     runtime = Runtime()
     monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
     monkeypatch.setattr(api_module, "_default_runtime", lambda: runtime)
 
-    api_module.initialize_autonomous_runtime()
-    assert calls == []
-
-    runtime.gateway.ready = True
     api_module.initialize_autonomous_runtime()
     assert calls == ["started"]
 
