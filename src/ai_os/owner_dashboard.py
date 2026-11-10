@@ -796,22 +796,46 @@ fallback.style.display="none";
  const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
  async function loadBusinessIntegrations(){
   try{
-   const data=await api("/business-integrations/"+encodeURIComponent($("businessScope").value));
-   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></div>').join("")||"No platform credentials stored for this business.";
+   const scope=encodeURIComponent($("businessScope").value);
+   const data=await api("/business-integrations/"+scope);
+   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><span class="toolbar"><button class="secondary" data-provider="'+esc(x.provider)+'" onclick="testBusinessIntegration(this.dataset.provider)">Test</button><button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></span></div>').join("")||"No platform accounts connected to this business.";
   }catch(e){$("integrationRows").textContent=e.message}
  }
+ window.testBusinessIntegration=async provider=>{
+  $("integrationMessage").textContent="Testing saved "+provider+" credentials with a read-only request…";
+  try{const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider)+"/test",{method:"POST"});$("integrationMessage").textContent="Connected and verified: "+provider+" · "+(result.account||result.site_url)+" · "+result.capability+"."}
+  catch(e){$("integrationMessage").textContent="Connection test failed: "+e.message}
+ };
  window.deleteBusinessIntegration=async provider=>{
   if(!confirm("Delete the stored "+provider+" credential for "+$("businessScope").value+"?"))return;
-  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider),{method:"DELETE"});$("integrationMessage").textContent="Stored credential deleted.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}
+  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider),{method:"DELETE"});$("integrationMessage").textContent="Stored credentials deleted.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}
  };
+ function updateIntegrationFields(){
+  const woo=$("integrationProvider").value==="woocommerce";
+  $("wordpressFields").style.display=woo?"none":"flex";
+  $("woocommerceFields").style.display=woo?"flex":"none";
+ }
+ $("integrationProvider").addEventListener("change",updateIntegrationFields);
  $("saveBusinessIntegration").addEventListener("click",async()=>{
-  const secret=$("integrationSecret").value;
-  if(!secret){$("integrationMessage").textContent="Enter the credential value first.";return}
-  let config={};
-  try{const raw=$("integrationConfig").value.trim();if(raw)config=JSON.parse(raw);if(!config||Array.isArray(config)||typeof config!=="object")throw new Error("Configuration must be a JSON object.")}catch(e){$("integrationMessage").textContent="Configuration JSON is invalid: "+e.message;return}
+  const provider=$("integrationProvider").value;
+  const secret=provider==="wordpress"?$("integrationSecret").value:$("integrationSecretWoo").value;
+  const config={site_url:$("integrationSiteUrl").value.trim()};
+  if(provider==="wordpress")config.username=$("integrationUsername").value.trim();
+  else config.consumer_key=$("integrationConsumerKey").value.trim();
+  if(!config.site_url||!secret||(provider==="wordpress"&&!config.username)||(provider==="woocommerce"&&!config.consumer_key)){
+   $("integrationMessage").textContent="Enter the site URL and all required account credentials.";return;
+  }
   const button=$("saveBusinessIntegration");button.disabled=true;
-  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent($("integrationProvider").value),{method:"POST",body:JSON.stringify({secret,config})});$("integrationSecret").value="";$("integrationConfig").value="";$("integrationMessage").textContent="Credential and configuration encrypted and stored. No external connection has been made.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}finally{button.disabled=false}
+  $("integrationMessage").textContent="Verifying account access. Only a read-only GET request will be sent…";
+  try{
+   const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider)+"/connect",{method:"POST",body:JSON.stringify({secret,config})});
+   $("integrationSecret").value="";$("integrationSecretWoo").value="";
+   $("integrationMessage").textContent="Account connected and verified: "+provider+" · "+(result.verification.account||result.verification.site_url)+". Credentials encrypted at rest.";
+   await loadBusinessIntegrations();
+  }catch(e){$("integrationMessage").textContent="Connection failed; credentials were not saved: "+e.message}
+  finally{button.disabled=false}
  });
+ updateIntegrationFields();
  async function loadBusiness(){
   try{
    const businessId=$("businessScope").value;const scope="?business_id="+encodeURIComponent(businessId);const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"+scope),api("/business/customers"+scope),api("/business/investors"+scope),api("/business/expenses"+scope),api("/business/revenue"+scope)]);
