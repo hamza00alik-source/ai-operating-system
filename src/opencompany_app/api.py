@@ -1,8 +1,7 @@
 """Standalone OpenCompany API, independent of legacy AIOS modules.
 
-The service exposes a public read-only health check. All company records and
-write operations require an owner API key. No endpoint invokes a model or
-performs an external business action.
+The service exposes a public read-only health check. Company records and
+write operations require owner authentication. Model calls are cost-gated to explicitly configured free providers; external business actions remain outside the runtime's authority.
 """
 from __future__ import annotations
 
