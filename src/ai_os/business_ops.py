@@ -144,7 +144,6 @@ def list_assets(limit: int = 500) -> list[dict]:
 
 
 def create_asset(payload: dict) -> dict:
-    scope = _scope(payload.get("business_id", "core"))
     name = _clean(payload.get("name"), 180)
     if not name:
         raise ValueError("Asset name is required.")
@@ -159,7 +158,7 @@ def create_asset(payload: dict) -> dict:
         if token_estimate < 0:
             raise ValueError("Token estimate cannot be negative.")
     item = {
-        "id": str(uuid4()), "business_id": scope, "name": name, "repository_url": repo_url,
+        "id": str(uuid4()), "name": name, "repository_url": repo_url,
         "path": asset_path, "asset_type": _clean(payload.get("asset_type", "source_code"), 50),
         "ownership_status": _clean(payload.get("ownership_status", "unverified"), 50),
         "license": _clean(payload.get("license", "unknown"), 100),
