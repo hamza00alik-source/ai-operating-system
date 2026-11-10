@@ -134,6 +134,7 @@ def begin(provider: str, business_id: str) -> str:
     spec = PROVIDERS.get(provider)
     if not spec:
         raise ValueError("Unsupported social provider.")
+    _fernet()  # fail before sending the owner to consent if token encryption is unavailable
     cfg = _config(provider)
     state = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64) if provider == "x" else None
