@@ -610,13 +610,19 @@ def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
     assert approved.status_code == 200
     child = approved.json()["materialized_work_items"][0]
     child_id, agent_id = child["id"], child["assigned_agent_id"]
+    runtime = app.dependency_overrides[get_runtime]()
+
+    class ReadyFreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),)
+
+    runtime.gateway = ReadyFreeGateway()
     queued = owner_client.post(f"/work-items/{child_id}/enqueue", headers=headers)
     assert queued.status_code == 200
     assert queued.json()["state"] == "queued"
     assert queued.json()["worker_started"] is False
     assert owner_client.get("/workers/queue", headers=headers).json()["counts"]["queued"] == 1
 
-    runtime = app.dependency_overrides[get_runtime]()
     lease = runtime.queue.claim(UUID(agent_id))
     assert lease is not None and str(lease.work_item_id) == child_id
     assert runtime.store.get_work_item(UUID(child_id)).state == TaskState.IN_PROGRESS
