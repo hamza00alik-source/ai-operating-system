@@ -38,10 +38,12 @@ def create_executive_plan(
         for item in departments
     ]
     ceo = default_workforce().get("chief_executive_orchestrator")
+    ceo_steps = "\n".join(ceo.playbook.workflow_steps)
     prompt = (
         "OPENCOMPANY CHIEF EXECUTIVE WORK-PLANNING REQUEST\n"
         f"Executive role: {ceo.title}\n"
         f"Role mission: {ceo.mission}\n"
+        f"CEO operating procedure:\n{ceo_steps}\n"
         f"Owner objective title: {title}\n"
         f"Owner objective: {objective}\n"
         f"Create between 1 and {max_tasks} practical department work items. "
