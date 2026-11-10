@@ -18,11 +18,11 @@ Region: `ap-southeast-2`
 
 ## Schema inventory and migration validation
 
-The detailed source-derived schema, including columns, defaults, primary keys, foreign keys, unique/check constraints, 23 named indexes, and compatibility ALTER TABLE steps, is documented in [SUPABASE_SCHEMA_INVENTORY.md](SUPABASE_SCHEMA_INVENTORY.md). The source inventory identifies 22 application tables: `tasks`, `approvals`, `discovery_scans`, `provider_catalog_entries`, `research_sources`, `provider_credentials`, `business_integration_credentials`, `agent_runs`, `agent_run_events`, `agent_run_steps`, `brain_experiences`, `brain_memories`, `owner_sessions`, `business_records`, `investor_contacts`, `code_assets`, `license_offers`, `department_messages`, `department_delegations`, `discovery_candidates`, `workflow_instances`, and `workflow_steps`.
+The detailed source-derived schema, including columns, defaults, primary keys, foreign keys, unique/check constraints, 23 named indexes, and compatibility ALTER TABLE steps, is documented in [SUPABASE_SCHEMA_INVENTORY.md](SUPABASE_SCHEMA_INVENTORY.md). The inventory identifies 22 application tables: `tasks`, `approvals`, `discovery_scans`, `provider_catalog_entries`, `research_sources`, `provider_credentials`, `business_integration_credentials`, `agent_runs`, `agent_run_events`, `agent_run_steps`, `brain_experiences`, `brain_memories`, `owner_sessions`, `business_records`, `investor_contacts`, `code_assets`, `license_offers`, `department_messages`, `department_delegations`, `discovery_candidates`, `workflow_instances`, and `workflow_steps`.
 
 The standalone baseline is `supabase/migrations/20261110160000_aios_initial_schema.sql`. It creates the 22 source-derived tables and 23 indexes and explicitly enables RLS on all 22 tables. It is intended for an empty/new AIOS database and has not been applied to the connected Supabase project.
 
-**CI validation passed:** GitHub Actions run [#42781234481](https://github.com/hamza00alik-source/ai-operating-system/actions/runs/42781234481), commit `2d3cb610ab608eb406b9b35f185f4e0514d0bfb6), completed successfully on 2026-11-10. Both the full application test job and the isolated PostgreSQL 16 integration job passed. The PostgreSQL test applied the baseline to a disposable CI database, verified exactly 22 public tables, 23 named indexes, RLS enabled on all 22 tables, then exercised application initializer compatibility, table metadata inspection, named-parameter task insertion/selection, and discovery scan creation.
+**CI validation passed:** GitHub Actions run [#42781234481](https://github.com/hamza00alik-source/ai-operating-system/actions/runs/42781234481), commit `2d3cb610ab608eb406b9b35f185f4e0514d0bfb6`, completed successfully on 2026-11-10. Both the full application test job and the isolated PostgreSQL 16 integration job passed. The PostgreSQL test applied the baseline to a disposable CI database, verified exactly 22 public tables, 23 named indexes, RLS enabled on all 22 tables, then exercised application initializer compatibility, table metadata inspection, named-parameter task insertion/selection, and discovery scan creation.
 
 This is evidence that the baseline runs in the CI PostgreSQL 16 environment. It is not a live Supabase migration test, does not validate Supabase-specific event-trigger behavior in vanilla PostgreSQL, and does not prove Railway connectivity.
 
@@ -32,7 +32,7 @@ The runtime SQL scan found SQLite named placeholders in task, business-record, a
 
 The Supabase project is reachable from the Supabase management integration, but it is currently an empty application database. The existence of `AI_OS_DATABASE_URL` in Railway does not prove it points to this project.
 
-Do not point the live Railway service at this empty database until the full schema and all runtime-created tables have been inventoried, a migration baseline has been reviewed, a backup/rollback plan exists, and the live connection has been safely tested. The source-derived baseline is now CI-validated but still needs a Supabase-specific validation and owner approval before application.
+The source-derived baseline is now CI-validated. The next safe steps are Supabase-specific validation and a read-only Railway-to-Supabase connection test. Do not apply the migration or switch the live Railway database until the baseline is reviewed, a verified backup/rollback plan exists, and the owner separately approves the production change.
 
 ## Security recommendation
 
