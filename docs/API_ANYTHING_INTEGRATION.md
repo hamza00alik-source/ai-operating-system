@@ -102,6 +102,23 @@ App registration, provider review/approval, redirect URI registration, and envir
 
 **Current limitation:** token refresh and provider-specific publishing endpoints are not yet implemented. An expired token must be re-authorized. Publishing stays out of scope until separate owner-approved action workflows and provider permission review are complete.
 
-## Marketplace account integrations
+## Marketplace and digital storefront integrations
 
-Marketplace connectors remain unimplemented. The exact marketplace account list has not been confirmed, and providers differ in API access, seller eligibility, OAuth, API keys, and listing/order capabilities. Eldorado.gg was previously mentioned, but that alone is not enough to safely invent an integration contract. Do not paste marketplace passwords into AIOS or use browser-cookie imports as a substitute for official authorization. Add a marketplace only after its exact API/auth documentation and seller account eligibility have been verified.
+### Gaming marketplaces selected for AIOS
+
+- **PlayerAuctions — read-only seller connection implemented.** The owner dashboard accepts the seller API key and secret. AIOS signs a GET request to the documented offer-list endpoint using HMAC-SHA256 and verifies the API response before saving credentials in the encrypted business vault. Only one offer page is sampled. No offer, price, inventory, image, order, delivery or cancellation endpoint is called. The API supports offer-management writes, so future write methods must remain behind explicit owner approval and a preview/diff. The published API has seller-level hourly quotas and a 5-second same-product creation cooldown; AIOS does not consume write quotas during connection checks.
+- **Eldorado.gg — official Seller API exists, connector not enabled yet.** Verified sellers can generate Client ID/Client secret credentials. The API issues 15-minute access tokens and supports offer and order management. The provider states there is no test environment and API requests affect live offers/orders. The precise token request contract and read-only identity/offer endpoints must be verified from the full official API spec before implementation; do not guess. AIOS must keep all write methods disabled until a specific owner approval flow exists.
+- **G2G — conditional eligibility blocker.** G2G OpenAPI access requires platform approval. Its published requirements currently say only business-account sellers located in Malaysia and Indonesia may apply. A Pakistan-based seller should not enter credentials or invest in this integration unless the actual seller entity meets G2G's current eligibility and receives approval.
+- **Z2U — no public seller API contract verified.** No public official seller API authentication/specification was found in the research pass. The platform's own seller dashboard remains the official route until Z2U provides a documented seller API. Do not scrape or replay browser sessions.
+
+### Digital storefronts selected for AIOS
+
+- **Etsy — official Open API v3 supports seller apps and OAuth 2.0.** A seller app is scoped to the owner's own shop; a broader multi-seller product requires a different access path and review. It requires an API key/shared secret plus OAuth tokens and narrowly scoped permissions. Not connected yet.
+- **Gumroad — official API/MCP capabilities exist, but standard API product creation/file uploads are not available in the documented API.** The current official assistant connector supports read operations and product draft/edit/publish actions subject to granted scopes; this must be integrated through its official OAuth/MCP surface, not guessed API endpoints. Not connected yet.
+- **itch.io — uploads use the official Butler CLI.** This is a worker/runtime integration rather than a browser OAuth login. It requires a persistent, securely configured worker and an owner-approved publish action; no upload has been triggered.
+- **CGTrader — API access requires an application/request for an API key; the site documents OAuth 2.0 and inbound seller workflows for drafts, bulk model uploads and updates.** Access is not automatic. Not connected yet.
+- **Fab — publisher workflow is documented through the creator portal, including listing creation, asset upload, review and publication.** No public seller API specification was identified in this research pass. Publishing remains a manual/owner-approved provider workflow; do not infer an API or automate browser sessions.
+
+### Owner approval boundary
+
+All marketplace account connection tests are read-only. Listing creation, editing, publishing, price/inventory changes, order delivery/cancellation, buyer messages, refunds and payout/financial actions remain unavailable unless a provider-specific method is implemented and the owner approves that specific external action. Marketplace terms, seller eligibility, account verification and fees must be reviewed before activation. The zero-budget requirement rules out paid API plans, seller-level upgrades, paid middleware and metered services without explicit owner approval.
