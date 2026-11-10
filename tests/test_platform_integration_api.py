@@ -20,6 +20,7 @@ def owner_client(monkeypatch, tmp_path):
     with TestClient(app, base_url="https://testserver") as client:
         login = client.post("/auth/session", json={"api_key": "owner-connection-test-key"})
         assert login.status_code == 200
+        client.headers.update({"X-API-Key": "owner-connection-test-key"})
         yield client
 
 
