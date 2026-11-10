@@ -69,6 +69,14 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <button id="create-executive-plan" disabled>Create CEO draft plan</button>
   </section>
   <section class="panel">
+    <div class="row"><h2 class="section-title">External research connector</h2><span id="api-anything-status" class="pill">Not configured</span></div>
+    <p class="muted">API Anything is connected in read-only tier-one mode. This console can discover public operations and call them without browser automation or write permissions.</p>
+    <label for="research-query">Search available research operations</label>
+    <input id="research-query" maxlength="300" placeholder="Example: market demand, competitor reviews, software trends">
+    <button id="search-research" disabled>Search research connector</button>
+    <pre id="research-results" class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere">No research results loaded.</pre>
+  </section>
+  <section class="panel">
     <h2 class="section-title">AI code evolution</h2>
     <p class="muted">Ask the free model to propose edits to up to three selected source, test, or documentation files. OpenCompany writes only an isolated feature branch and a DRAFT GitHub pull request; it never merges or deploys the change.</p>
     <label for="code-problem">Problem to solve</label>
@@ -120,9 +128,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
     try{
-      const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution]=await Promise.all([
+      const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution,apiAnything]=await Promise.all([
         request("/organization/departments"),request("/agents"),request("/work-items"),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals"),request("/code-evolution/config-status")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
@@ -134,6 +142,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("start-workers").disabled=fleet.running;
       byId("stop-workers").disabled=!fleet.running;
       byId("create-executive-plan").disabled=!agents.agents.some(a=>a.role_key==="chief_executive_orchestrator" && a.state==="active");
+      byId("api-anything-status").textContent=apiAnything.enabled?(apiAnything.healthy===false?"Connector error":"Read-only connected"):"Not configured";
+      byId("search-research").disabled=!apiAnything.enabled || apiAnything.healthy===false;
       byId("create-code-pr").disabled=!codeEvolution.enabled;
       byId("code-pr-result").textContent=codeEvolution.enabled?"Connected to "+codeEvolution.repository+" · branch "+codeEvolution.base_branch:"GitHub code-evolution credentials are not configured on the server.";
       clear("learning-proposals","No learning proposals yet.");
@@ -276,8 +286,19 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       csrfToken="";keyInput.value="";
       ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
-      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;setMessage("Disconnected. The server session has been revoked.");
+      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
+  });
+  byId("search-research").addEventListener("click",async()=>{
+    const query=byId("research-query").value.trim();
+    if(!query){setMessage("Enter a research query.","error");return;}
+    byId("search-research").disabled=true;
+    try{
+      const result=await request("/integrations/api-anything/find?q="+encodeURIComponent(query));
+      byId("research-results").textContent=JSON.stringify(result,null,2);
+      setMessage("Research operations discovered. No external write actions were performed.","success");
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("search-research").disabled=false;}
   });
   byId("create-code-pr").addEventListener("click",async()=>{
     const problem=byId("code-problem").value.trim();
