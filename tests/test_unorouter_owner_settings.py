@@ -137,3 +137,67 @@ def test_provider_dashboard_explains_verified_worker_autostart():
     assert response.status_code == 200
     assert "worker fleet starts automatically only when owner-configured autostart is enabled" in response.text
     assert "Worker fleet started automatically." in response.text
+
+
+def test_owner_can_manage_encrypted_github_evolution_token_without_echo(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
+    monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
+    monkeypatch.setenv("OPENCOMPANY_GITHUB_BASE_BRANCH", "clean-room-rebuild")
+    runtime = create_runtime(str(tmp_path / "github-owner.sqlite3"))
+    api.app.dependency_overrides[api.get_runtime] = lambda: runtime
+    client = TestClient(api.app)
+    headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
+    try:
+        denied = client.get("/settings/integrations/github-evolution")
+        assert denied.status_code == 401
+        saved = client.put(
+            "/settings/integrations/github-evolution", headers=headers,
+            json={"token": "github-fine-grained-token-private-value-123456",
+                  "confirm_draft_pr_only": True},
+        )
+        assert saved.status_code == 200
+        assert "github-fine-grained-token-private-value-123456" not in saved.text
+        status = client.get("/settings/integrations/github-evolution", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["configured"] is True
+        assert status.json()["token_present"] is True
+        assert status.json()["auto_merge"] is False
+        assert status.json()["auto_deploy"] is False
+        assert "github-fine-grained-token-private-value-123456" not in status.text
+        runtime.github_evolution.verify_access = lambda: {
+            "authenticated": True, "username": "test-owner",
+            "repository_access": True, "repository": "hamza00alik-source/ai-operating-system",
+            "base_branch": "clean-room-rebuild", "push_permission_reported": True,
+            "verification_mode": "read_only", "auto_merge": False, "auto_deploy": False,
+        }
+        tested = client.post("/settings/integrations/github-evolution/test", headers=headers, json={})
+        assert tested.status_code == 200
+        assert tested.json()["verification_mode"] == "read_only"
+        removed = client.delete("/settings/integrations/github-evolution", headers=headers)
+        assert removed.status_code == 200
+        assert removed.json()["configured"] is False
+    finally:
+        api.app.dependency_overrides.clear()
+        runtime.close()
+
+
+def test_github_evolution_token_requires_explicit_draft_only_confirmation(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
+    monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
+    runtime = create_runtime(str(tmp_path / "github-confirm.sqlite3"))
+    api.app.dependency_overrides[api.get_runtime] = lambda: runtime
+    client = TestClient(api.app)
+    try:
+        response = client.put(
+            "/settings/integrations/github-evolution",
+            headers={"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"},
+            json={"token": "github-fine-grained-token-private-value-123456",
+                  "confirm_draft_pr_only": False},
+        )
+        assert response.status_code == 422
+        assert runtime.secret_vault.get("github_evolution") is None
+    finally:
+        api.app.dependency_overrides.clear()
+        runtime.close()
