@@ -386,7 +386,17 @@ th{background:#101b2c}
 <div id="socialOAuthRows" class="grid"><div class="small">Checking social OAuth app setup…</div></div>
 <div id="socialOAuthMessage" class="status">No social account authorization started.</div>
 </div>
-<p class="small">Marketplace account adapters are a separate implementation track. The exact marketplace list and each provider's API access requirements must be confirmed; no marketplace login is simulated or marked connected.</p>
+<div class="section" style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px">
+<strong>Gaming marketplace account connections</strong>
+<p class="small">PlayerAuctions supports a documented seller API. Enter its API key and secret below. AIOS signs a read-only offer-list request to verify access; no listing, price, inventory or order changes occur.</p>
+<div class="toolbar section"><input id="playerAuctionsKey" autocomplete="off" placeholder="PlayerAuctions API key" style="flex:1;min-width:180px"><input id="playerAuctionsSecret" type="password" autocomplete="new-password" placeholder="PlayerAuctions API secret" style="flex:1;min-width:200px"><button id="connectPlayerAuctions" type="button">Connect & verify</button></div>
+<div id="marketplaceMessage" class="status">No marketplace connection action taken.</div>
+<h3>Other selected marketplaces · readiness</h3>
+<div class="small">Eldorado.gg — Seller API exists for verified sellers, but it has no test environment and covers live offers/orders. AIOS connector is not enabled until the exact auth contract and owner-approved action safeguards are completed.</div>
+<div class="small">G2G — OpenAPI requires platform approval; its published eligibility currently limits applications to business-account sellers in Malaysia and Indonesia. Verify seller-entity eligibility before investing in setup.</div>
+<div class="small">Z2U — No public seller API authentication specification was located. AIOS will not scrape the seller dashboard or imitate browser login.</div>
+</div>
+
 </div>
 <h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div><h3>Investors & partners</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Organization</th><th>Contact</th><th>Stage</th><th>Notes</th></tr></thead><tbody id="investorRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
@@ -816,11 +826,23 @@ fallback.style.display="none";
   try{const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/social/"+encodeURIComponent(provider)+"/start",{method:"POST",body:"{}"});window.location.assign(result.authorize_url)}
   catch(err){$("socialOAuthMessage").textContent="Could not start authorization: "+err.message;button.disabled=false}
  });
+ $("connectPlayerAuctions")?.addEventListener("click",async()=>{
+  const apiKey=$("playerAuctionsKey").value.trim(),secret=$("playerAuctionsSecret").value;
+  if(!apiKey||!secret){$("marketplaceMessage").textContent="Enter both PlayerAuctions API key and API secret.";return}
+  const button=$("connectPlayerAuctions");button.disabled=true;$("marketplaceMessage").textContent="Verifying PlayerAuctions seller API with a signed read-only offer-list request…";
+  try{
+   const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/playerauctions/connect",{method:"POST",body:JSON.stringify({secret,config:{api_key:apiKey}})});
+   $("playerAuctionsKey").value="";$("playerAuctionsSecret").value="";
+   $("marketplaceMessage").textContent="PlayerAuctions connected: "+result.verification.capability+". Sampled offers: "+result.verification.sampled_offers+". No marketplace data changed.";
+   await loadBusinessIntegrations();
+  }catch(e){$("marketplaceMessage").textContent="PlayerAuctions connection failed; credentials were not saved: "+e.message}
+  finally{button.disabled=false}
+ });
  async function loadBusinessIntegrations(){
   try{
    const scope=encodeURIComponent($("businessScope").value);
    const data=await api("/business-integrations/"+scope);
-   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><span class="toolbar">'+(["wordpress","woocommerce"].includes(x.provider)?'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="testBusinessIntegration(this.dataset.provider)">Test</button>':'')+'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></span></div>').join("")||"No platform accounts connected to this business.";
+   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><span class="toolbar">'+(["wordpress","woocommerce","playerauctions"].includes(x.provider)?'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="testBusinessIntegration(this.dataset.provider)">Test</button>':'')+'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></span></div>').join("")||"No platform accounts connected to this business.";
   }catch(e){$("integrationRows").textContent=e.message}
   await loadSocialOAuth();
  }
