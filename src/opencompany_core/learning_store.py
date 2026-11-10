@@ -226,6 +226,52 @@ class LearningRepository:
                 raise
         return note_id
 
+    def apply_proposal_as_note(
+        self, proposal_id: UUID, *, owner_id: str, record: AuditRecord
+    ) -> str:
+        """Apply an approved role-learning proposal as a durable prompt note atomically."""
+        note_id = str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                proposal = self._db.execute(
+                    "SELECT * FROM improvement_proposals WHERE id=?", (str(proposal_id),)
+                ).fetchone()
+                if proposal is None or proposal["state"] != ProposalState.APPROVED.value:
+                    raise ValueError("only owner-approved improvement proposals can become learning notes")
+                role_key = proposal["target"]
+                evidence_ids = json.loads(proposal["based_on_evaluations_json"])
+                for evaluation_id in evidence_ids:
+                    if self._db.execute(
+                        "SELECT 1 FROM outcome_evaluations WHERE id=?", (evaluation_id,)
+                    ).fetchone() is None:
+                        raise ValueError("approved proposal references an unavailable evaluation")
+                evidence_refs = [f"evaluation:{value}" for value in evidence_ids]
+                self._db.execute(
+                    """INSERT INTO approved_learning_notes
+                       (id,role_key,note,evidence_refs_json,created_at,owner_id,state)
+                       VALUES(?,?,?,?,?,?,'approved')""",
+                    (note_id, role_key, proposal["change_summary"],
+                     _json(evidence_refs), now, owner_id),
+                )
+                cursor = self._db.execute(
+                    """UPDATE improvement_proposals SET state=?,owner_decision=?
+                       WHERE id=? AND state=?""",
+                    (ProposalState.IMPLEMENTED.value,
+                     f"{proposal['owner_decision']} | applied as approved role-learning note",
+                     str(proposal_id), ProposalState.APPROVED.value),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("proposal state changed while applying learning note")
+                self._audit(record, self._db)
+                self._db.execute("COMMIT")
+                return note_id
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
+
     def list_learning_notes(self, role_key: str, *, limit: int = 20) -> list[dict]:
         with self._lock:
             rows = self._db.execute(
