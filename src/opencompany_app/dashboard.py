@@ -34,7 +34,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       <button id="connect">Connect</button>
       <button id="disconnect" type="button">Disconnect</button>
     </div>
-    <p id="message" class="muted" aria-live="polite">Enter the owner API key to load private company records. The key is held in memory only and cleared when you disconnect or reload.</p>
+    <p id="message" class="muted" aria-live="polite">Enter the owner API key to establish a revocable HttpOnly session. The key is exchanged once and is not retained by this page.</p>
   </section>
   <section class="grid" aria-label="Company overview">
     <div class="metric"><span class="muted">Departments</span><strong id="department-count">—</strong></div>
@@ -69,7 +69,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   const byId = (id) => document.getElementById(id);
   const keyInput = byId("owner-key");
   const message = byId("message");
-  let ownerKey = "";
+  let csrfToken = "";
   const setMessage = (value, kind="muted") => { message.textContent=value; message.className=kind; };
   const clear = (id, label) => { byId(id).replaceChildren(); const p=document.createElement("p"); p.className="muted"; p.textContent=label; byId(id).append(p); };
   const addCard = (container, title, description, state) => {
@@ -83,9 +83,10 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   };
   const request = async (path, options={}) => {
     const headers = new Headers(options.headers || {});
-    if(ownerKey) headers.set("X-OpenCompany-API-Key", ownerKey);
+    const method=(options.method || "GET").toUpperCase();
+    if(method!=="GET" && method!=="HEAD" && csrfToken) headers.set("X-CSRF-Token",csrfToken);
     if(options.body) headers.set("Content-Type","application/json");
-    const response=await fetch(path,{...options,headers,cache:"no-store"});
+    const response=await fetch(path,{...options,headers,credentials:"same-origin",cache:"no-store"});
     if(!response.ok) throw new Error(response.status===401?"Owner key rejected.":response.status===503?"Owner authentication is not configured on the server.":"Request failed ("+response.status+").");
     return response.json();
   };
@@ -155,16 +156,25 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       setMessage("Connected. Private records loaded. No agents were activated and no external actions were performed.","success");
     }catch(error){setMessage(error.message,"error");}
   }
-  byId("connect").addEventListener("click",()=>{
-    ownerKey=keyInput.value.trim();
-    if(!ownerKey){setMessage("Enter the owner API key first.","error");return;}
-    load();
+  byId("connect").addEventListener("click",async()=>{
+    const apiKey=keyInput.value.trim();
+    if(!apiKey){setMessage("Enter the owner API key first.","error");return;}
+    byId("connect").disabled=true;
+    try{
+      const response=await fetch("/auth/session",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",cache:"no-store",body:JSON.stringify({api_key:apiKey})});
+      if(!response.ok) throw new Error(response.status===401?"Owner key rejected.":"Could not establish owner session.");
+      const session=await response.json();csrfToken=session.csrf_token;keyInput.value="";await load();
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("connect").disabled=false;}
   });
-  byId("disconnect").addEventListener("click",()=>{
-    ownerKey="";keyInput.value="";
-    ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
-    ["department-count","agent-count","specialist-count","work-count","provider-state"].forEach(id=>byId(id).textContent="—");
-    byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;setMessage("Disconnected. The key was cleared from this tab.");
+  byId("disconnect").addEventListener("click",async()=>{
+    try{if(csrfToken) await fetch("/auth/logout",{method:"POST",headers:{"X-CSRF-Token":csrfToken},credentials:"same-origin",cache:"no-store"});}
+    finally{
+      csrfToken="";keyInput.value="";
+      ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
+      ["department-count","agent-count","specialist-count","work-count","provider-state"].forEach(id=>byId(id).textContent="—");
+      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;setMessage("Disconnected. The server session has been revoked.");
+    }
   });
   byId("provision").addEventListener("click",async()=>{
     byId("provision").disabled=true;
