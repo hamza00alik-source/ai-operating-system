@@ -529,16 +529,20 @@ def create_work_item_delegation_proposal(
     if manager is None:
         raise HTTPException(status_code=409, detail="Provision department manager profiles before creating a delegation proposal.")
     children = []
-    if plan.mode.value == "specialist_team":
+    if plan.mode.value == "manager_direct":
+        children.append({
+            "assigned_agent_id": str(manager.id), "role_key": plan.manager_role_key,
+            "team_key": "management", "title": f"{plan.manager_title}: {item.title}",
+            "objective": f"Handle parent work item {item.id}. Objective: {item.objective} Produce an internal draft for owner review.",
+        })
+    elif plan.mode.value == "specialist_team":
         for specialist in plan.specialists:
             profile = next((agent for agent in profiles if agent.role_key == specialist.role_key and agent.team_key == specialist.team_key and agent.department == item.department), None)
             if profile is None:
                 raise HTTPException(status_code=409, detail=f"Specialist profile is not provisioned: {specialist.role_key}")
             children.append({
-                "assigned_agent_id": str(profile.id),
-                "role_key": specialist.role_key,
-                "team_key": specialist.team_key,
-                "title": f"{specialist.title}: {item.title}",
+                "assigned_agent_id": str(profile.id), "role_key": specialist.role_key,
+                "team_key": specialist.team_key, "title": f"{specialist.title}: {item.title}",
                 "objective": f"Support parent work item {item.id}. Parent objective: {item.objective} Required capabilities: {', '.join(payload.required_capabilities)}. Produce an internal draft for manager review only.",
             })
     return delegations.create_proposal(
@@ -549,6 +553,72 @@ def create_work_item_delegation_proposal(
         team_key=plan.selected_team_key,
         children=children,
     )
+
+
+@app.post("/work-items/{item_id}/delegation-proposals/{proposal_id}/approve", dependencies=[Depends(require_owner_key)])
+def approve_work_item_delegation_proposal(
+    item_id: UUID, proposal_id: UUID,
+    store: SQLiteStore = Depends(get_store),
+    delegations: DelegationRepository = Depends(get_delegation_store),
+) -> dict:
+    """Owner approval materializes child tasks as READY; it never queues them."""
+    from datetime import datetime, timezone
+
+    parent = store.get_work_item(item_id)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Parent work item not found.")
+    proposal = delegations.get_proposal(proposal_id)
+    if proposal is None or proposal["parent_work_item_id"] != str(item_id):
+        raise HTTPException(status_code=404, detail="Delegation proposal not found for this parent.")
+    if proposal["status"] != "draft":
+        raise HTTPException(status_code=409, detail="Delegation proposal is no longer awaiting approval.")
+    if proposal["mode"] == "owner_review" or not proposal["children"]:
+        raise HTTPException(status_code=409, detail="Unresolved capabilities prevent approval.")
+    profiles = {str(agent.id): agent for agent in store.list_agents(limit=1000)}
+    tasks, events = [], []
+    for child in proposal["children"]:
+        agent = profiles.get(child["assigned_agent_id"])
+        if agent is None or agent.state != AgentState.ACTIVE:
+            raise HTTPException(status_code=409, detail=f"Assigned profile must exist and be explicitly active: {child['role_key']}")
+        if (agent.role_key != child["role_key"] or agent.team_key != child["team_key"]
+                or agent.department != parent.department):
+            raise HTTPException(status_code=409, detail=f"Assigned profile identity changed: {child['role_key']}")
+        task = WorkItem(
+            id=UUID(child["id"]), title=child["title"], objective=child["objective"],
+            department=parent.department, state=TaskState.READY, assigned_agent_id=agent.id,
+        )
+        tasks.append(task)
+        events.append(AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner", action="delegation.child_task_materialized",
+            subject_type="work_item", subject_id=str(task.id), outcome="recorded",
+            correlation_id=str(proposal_id),
+            details={"parent_work_item_id": str(item_id), "agent_id": str(agent.id),
+                     "role_key": agent.role_key, "team_key": agent.team_key,
+                     "state": TaskState.READY.value},
+        ))
+    events.append(AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner", action="delegation.proposal_approved",
+        subject_type="delegation_proposal", subject_id=str(proposal_id),
+        outcome="recorded", correlation_id=str(proposal_id),
+        details={"parent_work_item_id": str(item_id), "child_count": len(tasks),
+                 "queue_entries_created": False},
+    ))
+    try:
+        saved = store.approve_delegation_proposal(proposal_id, tuple(tasks), tuple(events))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not saved:
+        raise HTTPException(status_code=409, detail="Proposal was approved or changed concurrently.")
+    return {
+        "proposal_id": str(proposal_id), "status": "approved",
+        "materialized_work_items": [
+            {"id": str(task.id), "assigned_agent_id": str(task.assigned_agent_id),
+             "state": task.state.value} for task in tasks
+        ],
+        "queue_entries_created": False, "execution_started": False,
+    }
 
 
 @app.get("/work-items/{item_id}/delegation-proposals", dependencies=[Depends(require_owner_key)])
