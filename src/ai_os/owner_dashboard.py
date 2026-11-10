@@ -370,9 +370,15 @@ th{background:#101b2c}
 </div>
 <div id="businessMessage" class="status" role="status"></div>
 <div class="panel section">
-<h3>Business integration vault · encrypted storage</h3>
-<p class="small">Store a platform credential against exactly one selected business. Values and configuration are encrypted at rest and never displayed again. This vault does not yet connect to the platform or authorize external actions; integrations require a separately implemented adapter.</p>
-<div class="toolbar"><select id="integrationProvider"><option value="woocommerce">WooCommerce</option><option value="shopify">Shopify</option><option value="meta">Meta</option><option value="tiktok">TikTok</option><option value="paypal">PayPal</option><option value="stripe">Stripe</option><option value="marketplace">Marketplace</option><option value="other">Other</option></select><input id="integrationSecret" type="password" autocomplete="off" placeholder="API token / secret" style="flex:1;min-width:180px"><input id="integrationConfig" placeholder='Optional config JSON, e.g. {"store_url":"https://..."}' style="flex:1;min-width:220px"><button id="saveBusinessIntegration">Save encrypted</button></div>
+<h3>Connect platform accounts · owner dashboard</h3>
+<p class="small">Connections are isolated to the selected business. WordPress uses an Application Password; WooCommerce uses a REST API consumer key and secret. AIOS verifies access with a read-only request before encrypting credentials. Create read-only API keys wherever possible. No products, orders, posts or messages are changed by connection tests.</p>
+<div class="toolbar section">
+<select id="integrationProvider"><option value="wordpress">WordPress site</option><option value="woocommerce">WooCommerce store</option></select>
+<input id="integrationSiteUrl" type="url" placeholder="https://your-domain.com" style="flex:1;min-width:200px">
+</div>
+<div class="toolbar section" id="wordpressFields"><input id="integrationUsername" autocomplete="username" placeholder="WordPress username" style="flex:1;min-width:180px"><input id="integrationSecret" type="password" autocomplete="new-password" placeholder="WordPress Application Password" style="flex:1;min-width:220px"></div>
+<div class="toolbar section" id="woocommerceFields" style="display:none"><input id="integrationConsumerKey" autocomplete="off" placeholder="WooCommerce consumer key" style="flex:1;min-width:180px"><input id="integrationSecretWoo" type="password" autocomplete="new-password" placeholder="WooCommerce consumer secret" style="flex:1;min-width:220px"></div>
+<div class="toolbar section"><button id="saveBusinessIntegration">Connect & verify account</button><span class="small">Credentials are sent only to your authenticated AIOS backend and encrypted at rest.</span></div>
 <div id="integrationMessage" class="status" role="status">No integration action taken.</div><div id="integrationRows" class="small">Loading integration status…</div>
 </div>
 <h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div><h3>Investors & partners</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Organization</th><th>Contact</th><th>Stage</th><th>Notes</th></tr></thead><tbody id="investorRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
