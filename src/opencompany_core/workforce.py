@@ -56,6 +56,13 @@ class RoleCatalog:
     def all(self) -> tuple[RoleSpec, ...]:
         return tuple(self._roles[key] for key in sorted(self._roles))
 
+    def match_in_department(
+        self, department_key: str, required_capabilities: Iterable[str]
+    ) -> tuple[RoleSpec, ...]:
+        """Rank only specialist roles belonging to the requested department."""
+        allowed = frozenset(specialist_role_keys(department_key))
+        return tuple(role for role in self.match(required_capabilities) if role.key in allowed)
+
     def match(self, required_capabilities: Iterable[str]) -> tuple[RoleSpec, ...]:
         requested = frozenset(value.strip().casefold() for value in required_capabilities if value.strip())
         if not requested:
