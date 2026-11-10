@@ -31,6 +31,8 @@ Owner-authenticated endpoints require `X-OpenCompany-API-Key`:
 - `POST /work-items/{id}/transition` — validates and records a permitted state transition.
 - `GET /audit/verify` — checks the integrity of the local audit hash chain.
 
+The core library also includes a provider-neutral model gateway and a bounded specialist executor. No provider is enabled by default. A provider can be called only when its configuration explicitly confirms free access or carries a separate owner-approved spending ceiling. The executor produces draft text deliverables only; it has no tools or authority to perform external actions.
+
 Work-item changes and their audit records are committed together in a database transaction. The audit chain is tamper-evident; it is not a substitute for access control, backups, or independent log retention.
 
 ## Deliberate limitations
@@ -46,6 +48,7 @@ Do not point production deployment at this application yet. Before production us
 - Rate limiting, HTTPS enforcement, secret rotation, and security review.
 - Durable storage backups, restore drills, retention, and audit export.
 - Worker lifecycle, concurrency control, leases, retries, and recovery.
+- A separately reviewed and explicitly configured model adapter; no OpenAI or other live provider is enabled by default.
 - Tool permission boundaries and per-action approval enforcement.
 - Integration testing, migration/rollback plans, and operational monitoring.
 - Provenance and licence audit of the remaining legacy repository.
