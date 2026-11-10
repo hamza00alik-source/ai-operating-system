@@ -99,7 +99,7 @@ A source-level similarity review and qualified legal review are still required b
 - Latest tested code commit: `de35ed9e99c829586feea4b2070c36b21e2e3f7f`.
 - GitHub Actions: **225 passed, 1 warning**.
 - The tested changes include schema v2 role/team identity, owner-controlled audited agent state transitions, worker active/role/department/team validation, the manager delegation preview, and the UnoRouter company-routing exclusion.
-- A later documentation-only commit is on the branch; its test run was still in progress at the time this audit note was updated.
+- The latest PR head `1395c4594cfd20b35eeddeb327dc7735598d201b` adds documentation updates and also passed **225 tests, 1 warning**.
 - PR #105 remains draft, unmerged and mergeable. The PR currently changes 59 files; it is 146 commits ahead and 2 commits behind the latest `main`.
 - The Vercel workflow's PR job runs tests only. Its Vercel Build Output job is skipped on pull requests, so there is no Vercel build/deployment verification.
 
