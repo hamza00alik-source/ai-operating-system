@@ -54,3 +54,34 @@ def test_postgres_placeholder_translation_preserves_block_comments():
     from ai_os.db import _replace_sqlite_placeholders
 
     assert _replace_sqlite_placeholders("SELECT ? /* ? */") == "SELECT %s /* ? */"
+
+
+def test_live_postgres_adapter_when_test_database_is_configured(monkeypatch):
+    import os
+    import uuid
+    import pytest
+    from ai_os.db import connect
+
+    database_url = os.getenv("AI_OS_TEST_POSTGRES_URL")
+    if not database_url:
+        pytest.skip("Set AI_OS_TEST_POSTGRES_URL to run live PostgreSQL adapter checks.")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", database_url)
+    table = "aios_adapter_test_" + uuid.uuid4().hex
+    with connect() as db:
+        db.execute(
+            f"CREATE TEMP TABLE {table} "
+            "(message_id TEXT PRIMARY KEY, status TEXT NOT NULL)"
+        )
+        first = db.execute(
+            f"INSERT OR IGNORE INTO {table}(message_id,status) VALUES(?,?)",
+            ("same-message", "processing"),
+        )
+        second = db.execute(
+            f"INSERT OR IGNORE INTO {table}(message_id,status) VALUES(?,?)",
+            ("same-message", "processing"),
+        )
+        assert first.rowcount == 1
+        assert second.rowcount == 0
+        metadata = list(db.execute(f"PRAGMA table_info({table})"))
+        assert {column["name"] for column in metadata} == {"message_id", "status"}
+        assert next(column for column in metadata if column["name"] == "message_id")["pk"] == 1
