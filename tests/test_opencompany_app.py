@@ -46,6 +46,35 @@ def test_original_department_endpoint_exposes_ten_department_contracts():
     assert all(item["approval_boundaries"] for item in payload["departments"])
 
 
+def test_provider_status_never_exposes_secrets_and_defaults_disabled(monkeypatch):
+    for name in (
+        "OPENCOMPANY_OPENROUTER_API_KEY",
+        "OPENCOMPANY_OPENROUTER_FREE_MODEL",
+        "OPENCOMPANY_CONFIRM_OPENROUTER_FREE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    response = client.get("/providers/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gateway_enabled"] is False
+    assert payload["billing_mode"] == "disabled"
+    assert payload["paid_fallback"] is False
+    assert payload["real_inference_verified"] is False
+
+
+def test_provider_status_requires_explicit_free_confirmation(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_OPENROUTER_API_KEY", "do-not-return-this")
+    monkeypatch.setenv("OPENCOMPANY_OPENROUTER_FREE_MODEL", "vendor/model:free")
+    monkeypatch.delenv("OPENCOMPANY_CONFIRM_OPENROUTER_FREE", raising=False)
+    response = client.get("/providers/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gateway_enabled"] is False
+    assert payload["partial_configuration_detected"] is True
+    assert "do-not-return-this" not in response.text
+
+
+
 def test_video_and_provider_endpoints_are_explicitly_not_active():
     video = client.get("/media/capabilities")
     assert video.status_code == 200
