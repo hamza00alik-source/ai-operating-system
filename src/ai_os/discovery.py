@@ -191,6 +191,33 @@ def sync_free_api_catalog() -> dict:
     }
 
 
+def _evidence_freshness(last_verified: str | None, sources: list[dict] | None = None, *, max_age_days: int = 30) -> dict:
+    """Classify evidence age without treating catalog claims as provider verification."""
+    candidates = []
+    for value in [last_verified, *[
+        source.get("accessed") for source in (sources or []) if isinstance(source, dict)
+    ]]:
+        if not value:
+            continue
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            candidates.append(parsed.astimezone(timezone.utc))
+        except (TypeError, ValueError):
+            continue
+    if not candidates:
+        return {"state": "unknown", "age_days": None, "max_age_days": max_age_days,
+                "basis": "no usable verification or source-access date"}
+    # Use the newest dated evidence while preserving whether the catalog's own
+    # last_verified field was present; a recent source access is not a live test.
+    newest = max(candidates)
+    age_days = max(0, (datetime.now(timezone.utc).date() - newest.date()).days)
+    state = "stale" if age_days > max_age_days else "recent"
+    return {"state": state, "age_days": age_days, "max_age_days": max_age_days,
+            "basis": "catalog last_verified/source accessed date; not a live provider test"}
+
+
 def list_free_api_catalog(category: str | None = None) -> dict:
     with connect() as db:
         query = "SELECT * FROM provider_catalog_entries WHERE source_id=?"
@@ -205,10 +232,18 @@ def list_free_api_catalog(category: str | None = None) -> dict:
         item = dict(row)
         for field in ("free_tier_json", "policy_json", "probe_json", "status_json", "sources_json"):
             item[field.removesuffix("_json")] = json.loads(item.pop(field) or "{}")
+        item["evidence_freshness"] = _evidence_freshness(item.get("last_verified"), item.get("sources"))
+        item["routing_eligible"] = False
+        item["routing_note"] = "Research catalog entries never enable or authorize provider routing."
         providers.append(item)
+    freshness_counts = {
+        state: sum(1 for item in providers if item["evidence_freshness"]["state"] == state)
+        for state in ("recent", "stale", "unknown")
+    }
     return {
         "source": FREE_API_CATALOG_SOURCE,
         "provider_count": len(providers),
+        "evidence_freshness": {"max_age_days": 30, "counts": freshness_counts},
         "providers": providers,
         "secondary_sources": SECONDARY_CATALOG_ASSESSMENTS,
         "safety": "Unverified listings are research leads only; owner approval and a live provider test are required before credentials can be enabled.",
