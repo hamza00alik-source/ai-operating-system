@@ -465,6 +465,8 @@ def get_workflow_templates():
 @app.post("/company/workflows/{template_id}/start", status_code=201, dependencies=[Depends(require_owner_key)])
 def post_start_workflow(template_id: str, business_id: str = "core"):
     """Create a persisted workflow; only its first task is queued."""
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
         return create_workflow(template_id, business_id)
     except LookupError as exc:
