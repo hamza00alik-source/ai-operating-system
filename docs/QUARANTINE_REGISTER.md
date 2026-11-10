@@ -21,21 +21,24 @@
 The new standalone package is `src/opencompany_core/` and the new read-only application is `src/opencompany_app/`. They do not import the legacy `ai_os` package and do not load the quarantined manifest.
 
 Current independently authored capabilities:
-- Domain contracts for agents, work items, attempts, artifacts, approvals, and audit records.
-- Dependency graph validation and work-readiness preview.
-- Exact-target owner approval checks for consequential actions.
-- Nine OpenCompany workforce capability specifications.
-- Structured agent handoff lifecycle.
-- A standalone read-only FastAPI surface for health, workforce inspection, and plan preview.
+- Ten original OpenCompany departments and 261 role contracts: 250 specialist titles, ten department-manager roles and one executive orchestrator.
+- Domain contracts, dependency-aware planning, guarded task transitions and protected-action policy checks.
+- Owner-authenticated APIs for agent draft provisioning, profile state changes, work-item creation/transitions and audit-chain verification.
+- Agent profiles now persist explicit role/team identity; worker execution checks active state, assigned identity, role and department.
+- Structured handoff and learning proposal contracts, plus a bounded queue, worker runner and foreground supervisor.
+- A separate owner console and API; this is not read-only, but it does not yet invoke models or perform external business actions.
+- The 250 specialist entries are currently generated from distinct titles with templated missions/capabilities; they are not yet 250 deeply differentiated specialist playbooks.
 
 ## Release blockers
 
-1. Remove the legacy runtime's external specialist-file retrieval from any deployable entrypoint.
-2. Replace imported workforce endpoints and data dependencies.
-3. Audit every remaining tracked file and test for provenance.
-4. Review all external dependencies and produce a software bill of materials.
-5. Update deployment configuration only after the independent app has equivalent required owner controls and tests.
-6. Obtain a qualified legal review before commercial distribution.
+1. Keep the legacy runtime's external specialist-file retrieval and imported catalogue out of any clean-room deployable entrypoint.
+2. Finish manager-led task assignment, queue integration, durable artifacts and persisted collaboration/learning.
+3. Replace the new dashboard's raw sessionStorage API key with revocable HttpOnly owner sessions.
+4. Complete the source/provenance review across every remaining tracked file and test; retain the manifest only as quarantined evidence if needed.
+5. Review direct and transitive dependencies and produce a software bill of materials.
+6. Resolve UnoRouter business-use eligibility in writing before any company workload uses it; keep consumer personal tests isolated.
+7. Update deployment configuration only after the independent app has equivalent required owner controls, secure authentication, persistence, backup/restore and end-to-end tests.
+8. Obtain a qualified legal review before commercial distribution.
 
 ## Operational boundary
 
