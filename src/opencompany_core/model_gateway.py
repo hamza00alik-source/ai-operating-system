@@ -166,12 +166,6 @@ class ModelGateway:
                 continue
             if result.provider != item.policy.name or result.model != item.policy.model:
                 raise CostPolicyViolation("adapter response identity does not match selected provider")
-            if item.policy.billing_mode == BillingMode.FREE_CONFIRMED and result.cost_usd != 0:
-                raise CostPolicyViolation("provider reported a charge under a zero-cost policy")
-            if result.cost_usd > request_budget_usd:
-                raise CostPolicyViolation("provider-reported cost exceeds the request budget")
-            if result.cost_usd > item.policy.max_cost_per_request_usd:
-                raise CostPolicyViolation("provider-reported cost exceeds its configured ceiling")
             if self._usage_recorder is not None:
                 try:
                     self._usage_recorder({
@@ -186,5 +180,11 @@ class ModelGateway:
                     })
                 except Exception as exc:
                     raise CostPolicyViolation("model result could not be durably recorded; execution is blocked") from exc
+            if item.policy.billing_mode == BillingMode.FREE_CONFIRMED and result.cost_usd != 0:
+                raise CostPolicyViolation("provider reported a charge under a zero-cost policy")
+            if result.cost_usd > request_budget_usd:
+                raise CostPolicyViolation("provider-reported cost exceeds the request budget")
+            if result.cost_usd > item.policy.max_cost_per_request_usd:
+                raise CostPolicyViolation("provider-reported cost exceeds its configured ceiling")
             return result
         raise NoEligibleProvider("All eligible providers were unavailable: " + "; ".join(failures))
