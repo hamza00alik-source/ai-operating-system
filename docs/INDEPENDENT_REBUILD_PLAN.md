@@ -101,3 +101,28 @@ The rebuild is ready for a separate release review only when:
 - The software bill of materials and licence notices are complete.
 - Existing user data and production behaviour have a tested migration/compatibility plan.
 - The owner has reviewed and separately approved any merge or deployment.
+
+
+## Independently designed organization and owner control plane
+
+The clean-room implementation now defines ten OpenCompany departments in a new department contract. This design was derived from OpenCompany's business objectives and does not import the quarantined legacy department file.
+
+Each department declares a mission, accountabilities, manager role, member role assignments, decision scope, success measures, and approval boundaries. The workforce currently contains ten original role specifications. An owner-authenticated, idempotent bootstrap operation can create ten persistent manager profiles in draft state; this does not activate agents.
+
+A responsive owner console is served at /owner. It displays departments, manager profiles, work items, provider readiness, and media capability state. Its bootstrap control creates draft profiles only.
+
+## Zero-budget model and media capability
+
+A fixed-model OpenRouter adapter is implemented for explicit model IDs ending in :free. It uses persistent quota reservations capped at 50 requests per UTC day and 20 per rolling minute, and has no paid fallback. Activation requires a key, a model ID, and explicit free-tier confirmation. No live credentials are stored in the repository and no real inference has yet been verified.
+
+Groq and Cloudflare Workers AI remain candidate providers pending account-specific zero-cost verification. No paid usage or automatic fallback is permitted.
+
+LongCat-Video is registered under Media & Creative Production as researched_not_connected. It is not installed or active. Compute availability, model weights, dependencies, licence and a zero-cost execution path must be verified before activation.
+
+## New acceptance criteria
+
+- Department and role catalogues contain only independently authored OpenCompany definitions.
+- Department-manager bootstrap is owner-authenticated, idempotent, auditable, and creates draft profiles only.
+- The owner console does not store the owner key beyond tab session storage and does not expose private data without authentication.
+- Free model configuration is fixed to a verified free model ID and fails closed on missing confirmation, quota exhaustion, provider errors, or model substitution.
+- Video generation remains disabled until compute, licensing, storage and zero-cost execution are verified.
