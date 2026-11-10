@@ -34,7 +34,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       <button id="connect">Connect</button>
       <button id="disconnect" type="button">Disconnect</button>
     </div>
-    <p id="message" class="muted" aria-live="polite">Enter the owner API key to load private company records. The key is kept in this tab's session storage only.</p>
+    <p id="message" class="muted" aria-live="polite">Enter the owner API key to load private company records. The key is held in memory only and cleared when you disconnect or reload.</p>
   </section>
   <section class="grid" aria-label="Company overview">
     <div class="metric"><span class="muted">Departments</span><strong id="department-count">—</strong></div>
@@ -120,11 +120,10 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   byId("connect").addEventListener("click",()=>{
     ownerKey=keyInput.value.trim();
     if(!ownerKey){setMessage("Enter the owner API key first.","error");return;}
-    sessionStorage.setItem("opencompany-owner-key",ownerKey);
     load();
   });
   byId("disconnect").addEventListener("click",()=>{
-    ownerKey="";keyInput.value="";sessionStorage.removeItem("opencompany-owner-key");
+    ownerKey="";keyInput.value="";
     ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
     ["department-count","agent-count","specialist-count","work-count","provider-state"].forEach(id=>byId(id).textContent="—");
     byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;setMessage("Disconnected. The key was cleared from this tab.");
@@ -144,8 +143,6 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{const result=await request("/agents/bootstrap-specialists",{method:"POST",body:"{}"});setMessage(result.count+" specialist profiles saved as drafts. No workers were started.","success");await load();}
     catch(error){setMessage(error.message,"error");byId("provision-specialists").disabled=false;}
   });
-  const saved=sessionStorage.getItem("opencompany-owner-key");
-  if(saved){ownerKey=saved;keyInput.value=saved;load();}
 })();
 </script>
 </body>
