@@ -395,6 +395,12 @@ th{background:#101b2c}
 <div class="small">Eldorado.gg — Seller API exists for verified sellers, but it has no test environment and covers live offers/orders. AIOS connector is not enabled until the exact auth contract and owner-approved action safeguards are completed.</div>
 <div class="small">G2G — OpenAPI requires platform approval; its published eligibility currently limits applications to business-account sellers in Malaysia and Indonesia. Verify seller-entity eligibility before investing in setup.</div>
 <div class="small">Z2U — No public seller API authentication specification was located. AIOS will not scrape the seller dashboard or imitate browser login.</div>
+<h3>Digital storefronts · integration readiness</h3>
+<div class="small">Etsy — official seller API and OAuth available; app key/shared secret and shop authorization required. Not connected.</div>
+<div class="small">Gumroad — official API and Gumroad-hosted MCP connector exist; standard API cannot create products or upload content. AIOS needs its own supported OAuth/MCP client adapter. Not connected.</div>
+<div class="small">itch.io — publishing requires the official Butler CLI; integration depends on the dedicated worker runtime and owner approval. Not connected.</div>
+<div class="small">CGTrader — OAuth API access requires an API-key request/approval. Not connected.</div>
+<div class="small">Fab — creator portal supports publisher listings, asset upload, review and publish; no public seller API contract was verified. Not connected.</div>
 </div>
 
 </div>
