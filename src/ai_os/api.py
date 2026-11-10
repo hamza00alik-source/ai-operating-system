@@ -943,6 +943,16 @@ def get_api_anything_sites():
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@app.get("/integrations/api-anything/sites/{site}", dependencies=[Depends(require_owner_key)])
+def get_api_anything_site_operations(site: str):
+    try:
+        return website_api.list_operations(site)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except website_api.WebsiteApiUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.get("/integrations/api-anything/find", dependencies=[Depends(require_owner_key)])
 def find_api_anything_sites(q: str = Query(min_length=1, max_length=300)):
     try:
