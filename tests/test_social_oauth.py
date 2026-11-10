@@ -12,7 +12,7 @@ def oauth_env(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "oauth.db"))
     monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
     for provider, prefix in {
-        "meta": "META", "tiktok": "TIKTOK", "youtube": "GOOGLE",
+        "meta": "META", "tiktok": "TIKTOK", "youtube": "GOOGLE", "etsy": "ETSY",
         "pinterest": "PINTEREST", "reddit": "REDDIT", "x": "X",
     }.items():
         client_id_name = "CLIENT_KEY" if provider == "tiktok" else "CLIENT_ID"
@@ -72,3 +72,34 @@ def test_x_pkce_verifier_is_encrypted_in_state_table(oauth_env):
     assert row["verifier_encrypted"] is not None
     assert "verifier" not in row["verifier_encrypted"]
     assert social_oauth._fernet().decrypt(row["verifier_encrypted"].encode()).decode()
+
+
+def test_etsy_pkce_authorization_and_verified_shop_link(oauth_env, monkeypatch):
+    from urllib.parse import urlsplit, parse_qs
+    url = social_oauth.begin("etsy", "digital-products")
+    params = parse_qs(urlsplit(url).query)
+    assert url.startswith("https://www.etsy.com/oauth/connect?")
+    assert params["scope"] == ["shops_r"]
+    assert params["code_challenge_method"] == ["S256"]
+    state = params["state"][0]
+    def fake_request(endpoint, data=None, headers=None):
+        if endpoint == social_oauth.PROVIDERS["etsy"]["token"]:
+            assert data["grant_type"] == "authorization_code"
+            assert data["client_id"] == "client-id-etsy"
+            assert data["code_verifier"]
+            return {"access_token": "12345.etsy-access-token", "refresh_token": "etsy-refresh", "expires_in": 3600}
+        if endpoint.endswith("/users/me"):
+            assert headers["x-api-key"] == "client-id-etsy:client-secret-etsy"
+            return {"user_id": 12345, "shop_id": 67890}
+        return {"shop_id": 67890, "shop_name": "My Digital Shop"}
+    saved = {}
+    monkeypatch.setattr(social_oauth, "_request_json", fake_request)
+    monkeypatch.setattr(social_oauth, "save_business_integration",
+        lambda business_id, provider, secret, config: saved.update(
+            business_id=business_id, provider=provider, secret=json.loads(secret), config=config))
+    result = social_oauth.complete("etsy", state, "etsy-one-time-code")
+    assert result["connected"] is True
+    assert result["account"] == "My Digital Shop"
+    assert saved["provider"] == "etsy"
+    assert saved["config"]["etsy_api_key"] == "client-id-etsy"
+    assert saved["secret"]["access_token"] == "12345.etsy-access-token"
