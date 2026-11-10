@@ -20,7 +20,7 @@ Region: `ap-southeast-2`
 
 The Supabase project is reachable from the Supabase management integration, but it is currently an empty application database. The existence of `AI_OS_DATABASE_URL` in Railway does not prove it points to this project.
 
-The app's current schema is created and incrementally upgraded by `src/ai_os/db.py` and additional feature modules. It is not yet represented by a complete, reviewed Supabase baseline migration. Do not point the live Railway service at this empty database until the full schema and all runtime-created tables have been inventoried, a migration baseline has been generated and reviewed, and a backup/rollback plan exists.
+The app's current schema is created and incrementally upgraded by `src/ai_os/db.py` and additional feature modules. For example, `src/ai_os/workflows.py` separately creates `workflow_instances` and `workflow_steps` and adds indexes/columns. The schema inventory must therefore include module-level initializers, not only `db.py`. It is not yet represented by a complete, reviewed Supabase baseline migration. Do not point the live Railway service at this empty database until the full schema and all runtime-created tables have been inventoried, a migration baseline has been generated and reviewed, and a backup/rollback plan exists.
 
 ## Security recommendation
 
