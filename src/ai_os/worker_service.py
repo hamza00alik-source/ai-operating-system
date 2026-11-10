@@ -1,20 +1,30 @@
-"""Supervised durable agent worker process.
+"""Supervised single-consumer worker entry point.
 
-The queue owns per-job retries and stale-lease recovery. This module adds a
-process-level supervisor so transient scheduler/database errors do not terminate
-the worker. A service manager should still restart the process after host failure.
+The production worker documented in docs/WORKER.md uses ai_os.worker. This
+module remains a supported serial alternative with process-level backoff.
+Workflow DAG readiness is released transactionally by finish_workflow_task;
+there is no separate schedule_ready_steps stage.
 """
+from __future__ import annotations
+
 import logging
 import os
+import signal
+import threading
 import time
-from uuid import uuid4
 from collections.abc import Callable
+from uuid import uuid4
 
-from ai_os.agent_runtime import schedule_ready_steps
+from ai_os.agent_runtime import recover_interrupted_runs, run_pending_once
+from ai_os.db import initialize_database
 from ai_os.model_adapter import get_model_status
-from ai_os.worker import run_once
 
 logger = logging.getLogger("ai_os.worker_service")
+
+
+def _run_once(*, worker_id: str) -> dict:
+    """Adapt the queue's boolean result to the supervisor's result contract."""
+    return {"processed": bool(run_pending_once()), "worker_id": worker_id}
 
 
 def run_worker_loop(
@@ -23,8 +33,8 @@ def run_worker_loop(
     poll_seconds: int,
     stop_requested: Callable[[], bool],
     sleep: Callable[[float], None] = time.sleep,
-    schedule: Callable[[], dict] = schedule_ready_steps,
-    run: Callable[..., dict] = run_once,
+    schedule: Callable[[], dict] | None = None,
+    run: Callable[..., dict] = _run_once,
     on_error: Callable[[Exception, int], None] | None = None,
 ) -> None:
     """Run until stopped; exponentially back off after process-level failures."""
@@ -32,7 +42,7 @@ def run_worker_loop(
     failure_count = 0
     while not stop_requested():
         try:
-            scheduled = schedule()
+            scheduled = schedule() if schedule is not None else {"scheduled": 0}
             result = run(worker_id=worker_id)
             failure_count = 0
             if result.get("processed") or scheduled.get("scheduled"):
@@ -59,21 +69,34 @@ def main() -> None:
             "Agent worker not started: configure an approved model endpoint and "
             "set AI_OS_MODEL_ENABLED=true. No model request was made."
         )
+
     try:
         interval = int(os.getenv("AI_OS_WORKER_POLL_SECONDS", "3"))
     except ValueError:
         interval = 3
     interval = max(1, min(interval, 60))
+    initialize_database()
+    recovered = recover_interrupted_runs()
     worker_id = f"agent-worker-{uuid4()}"
     logger.info(
-        "Agent worker started: %s; provider=%s; model=%s",
-        worker_id, status["provider"], status["model"],
+        "Agent worker started: %s; provider=%s; model=%s; recovered=%s",
+        worker_id, status["provider"], status["model"], recovered,
     )
+
+    stop_event = threading.Event()
+
+    def request_stop(signum, _frame) -> None:
+        logger.info("Received signal %s; stopping after the current task.", signum)
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
     run_worker_loop(
         worker_id=worker_id,
         poll_seconds=interval,
-        stop_requested=lambda: False,
+        stop_requested=stop_event.is_set,
     )
+    logger.info("Agent worker stopped cleanly.")
 
 
 if __name__ == "__main__":
@@ -81,7 +104,4 @@ if __name__ == "__main__":
         level=os.getenv("AI_OS_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    try:
-        main()
-    except KeyboardInterrupt:
-        logger.info("Agent worker stopped cleanly.")
+    main()
