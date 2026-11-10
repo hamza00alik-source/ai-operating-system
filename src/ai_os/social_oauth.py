@@ -19,7 +19,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from ai_os.db import connect
-from ai_os.credentials import save_business_integration, _fernet
+from ai_os.credentials import save_business_integration, _fernet, CredentialVaultUnavailable
 
 class OAuthError(RuntimeError):
     pass
@@ -127,7 +127,7 @@ def readiness() -> list[dict]:
             _config(provider)
             _fernet()
             ready, reason = True, ""
-        except OAuthError as exc:
+        except (OAuthError, CredentialVaultUnavailable) as exc:
             ready, reason = False, str(exc)
         result.append({"provider": provider, "label": spec["label"], "app_configured": ready,
                        "status": "ready_to_authorize" if ready else "developer_app_setup_required",
