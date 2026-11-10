@@ -19,5 +19,5 @@ def test_bootstrap_creates_500_draft_specialists_idempotently(tmp_path):
     assert set(departments.values()) == {50}
     assert store.audit_event_count() == 500
     assert store.verify_audit_chain()
-    assert len(store.list_agents(limit=1000)) == 250
+    assert len(store.list_agents(limit=1000)) == 500
     store.close()
