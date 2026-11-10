@@ -34,7 +34,7 @@ def initialize_database() -> None:
             status TEXT NOT NULL DEFAULT 'queued', created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS approvals (
-            id TEXT PRIMARY KEY, task_id TEXT, action TEXT NOT NULL,
+            id TEXT PRIMARY KEY, task_id TEXT, business_id TEXT NOT NULL DEFAULT 'core', action TEXT NOT NULL,
             details TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT NOT NULL, decided_at TEXT,
             FOREIGN KEY(task_id) REFERENCES tasks(id)
@@ -57,7 +57,7 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_provider_catalog_category ON provider_catalog_entries(category, name);
         CREATE TABLE IF NOT EXISTS research_sources (
-            id TEXT PRIMARY KEY, url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '',
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '',
             content TEXT NOT NULL, captured_at TEXT NOT NULL, content_type TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_research_sources_captured ON research_sources(captured_at);
@@ -127,7 +127,7 @@ def initialize_database() -> None:
             last_seen_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS business_records (
-            id TEXT PRIMARY KEY, record_type TEXT NOT NULL CHECK(record_type IN ('customer','expense','revenue')),
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', record_type TEXT NOT NULL CHECK(record_type IN ('customer','expense','revenue')),
             title TEXT NOT NULL, amount REAL, currency TEXT NOT NULL DEFAULT 'USD',
             status TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0,
             approval_id TEXT, contact TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
@@ -135,7 +135,7 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_business_records_type_created ON business_records(record_type, created_at);
         CREATE TABLE IF NOT EXISTS investor_contacts (
-            id TEXT PRIMARY KEY, name TEXT NOT NULL, organization TEXT NOT NULL DEFAULT '',
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', name TEXT NOT NULL, organization TEXT NOT NULL DEFAULT '',
             contact TEXT NOT NULL DEFAULT '', stage TEXT NOT NULL DEFAULT 'prospect',
             notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         );
@@ -198,6 +198,15 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_notes TEXT NOT NULL DEFAULT ''")
         if "review_updated_at" not in columns:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_updated_at TEXT")
+        # Add explicit business ownership to operational records. Legacy rows remain in core.
+        for table_name in ("approvals", "business_records", "investor_contacts", "research_sources"):
+            scoped_columns = {row["name"] for row in connection.execute("PRAGMA table_info(" + table_name + ")")}
+            if "business_id" not in scoped_columns:
+                connection.execute("ALTER TABLE " + table_name + " ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_business_records_scope ON business_records(business_id, record_type, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_investor_contacts_scope ON investor_contacts(business_id, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_research_sources_scope ON research_sources(business_id, captured_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_approvals_scope ON approvals(business_id, status, created_at)")
         business_columns = {row["name"] for row in connection.execute("PRAGMA table_info(business_records)")}
         if "approval_id" not in business_columns:
             connection.execute("ALTER TABLE business_records ADD COLUMN approval_id TEXT")
