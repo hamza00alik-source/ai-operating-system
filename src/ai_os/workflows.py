@@ -137,7 +137,7 @@ def finish_workflow_task(task_id: str, success: bool, output: str = "") -> None:
     now = datetime.now(timezone.utc).isoformat()
     with connect() as db:
         step = db.execute("SELECT * FROM workflow_steps WHERE task_id=?", (task_id,)).fetchone()
-        if not step:
+        if not step or step["status"] == "completed":
             return
         if not success:
             db.execute("UPDATE workflow_steps SET status='failed' WHERE task_id=?", (task_id,))
