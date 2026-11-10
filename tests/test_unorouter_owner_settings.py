@@ -97,13 +97,17 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
 def test_runtime_reloads_encrypted_unorouter_credentials_after_restart(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
     monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
+    monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
     path = str(tmp_path / "persisted.sqlite3")
     first = create_runtime(path)
     first.secret_vault.put("unorouter", {"api_key":"private-unorouter-token-123456","model":"qwen/model:free"})
+    first.secret_vault.put("github_evolution", {"token":"github-fine-grained-token-private-value-123456"})
     first.close()
     second = create_runtime(path)
     try:
         assert second.gateway.eligible_providers(request_budget_usd=0) == ("unorouter",)
+        assert second.github_evolution is not None
+        assert second.github_evolution.repository == "hamza00alik-source/ai-operating-system"
     finally:
         second.close()
 
