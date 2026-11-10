@@ -495,7 +495,7 @@ def provider_runtime_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) 
         "partial_configuration_detected": any(
             state["partial_configuration_detected"] for state in providers.values()
         ),
-        "real_inference_verified": False,
+        "real_inference_verified": runtime.unorouter_tested_at is not None,
         "paid_fallback": False,
     }
 
