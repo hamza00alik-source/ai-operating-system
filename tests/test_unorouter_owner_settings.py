@@ -129,3 +129,11 @@ def test_provider_credentials_are_not_changed_if_running_workers_cannot_stop(mon
     finally:
         api.app.dependency_overrides.clear()
         runtime.close()
+
+
+
+def test_provider_dashboard_explains_verified_worker_autostart():
+    response = TestClient(api.app).get("/owner")
+    assert response.status_code == 200
+    assert "worker fleet starts automatically only when owner-configured autostart is enabled" in response.text
+    assert "Worker fleet started automatically." in response.text
