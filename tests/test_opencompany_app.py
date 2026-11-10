@@ -9,6 +9,7 @@ from opencompany_core.persistence import SQLiteStore
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
+from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy
 
 
 client = TestClient(app)
@@ -640,3 +641,67 @@ def test_owner_can_start_and_stop_worker_fleet_explicitly(owner_client):
     assert started.status_code == 200 and started.json()["running"] is True
     stopped = owner_client.post("/workers/stop", headers=headers, json={})
     assert stopped.status_code == 200 and stopped.json()["running"] is False
+
+
+class _ManagerPlannerFakeAdapter:
+    def generate(self, request, *, model):
+        return ModelResult(
+            text='{"required_capabilities":["market","researcher"],"rationale":"The work requires market evidence and research synthesis, so one coherent intelligence team is appropriate."}',
+            provider="unorouter", model=model, cost_usd=0.0,
+        )
+
+
+def test_active_department_manager_can_create_ai_proposal_without_execution(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway.configure(((
+        ProviderPolicy(
+            name="unorouter", model="test/free-model:free",
+            billing_mode=BillingMode.FREE_CONFIRMED, max_cost_per_request_usd=0.0,
+        ),
+        _ManagerPlannerFakeAdapter(),
+    ),))
+    agents = owner_client.get("/agents", headers=headers).json()["agents"]
+    manager = next(a for a in agents if a["role_key"] == "market_intelligence_analyst")
+    activated = owner_client.post(
+        f"/agents/{manager['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": manager["revision"]},
+    )
+    assert activated.status_code == 200
+    item = owner_client.post("/work-items", headers=headers, json={
+        "title": "Assess international buyer demand",
+        "objective": "Create a sourced analysis of demand and competitor positioning",
+        "department": "intelligence-research",
+    }).json()
+    response = owner_client.post(
+        f"/work-items/{item['item_id']}/manager-proposal", headers=headers,
+        json={"max_specialists": 5},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["manager_ai"]["provider"] == "unorouter"
+    assert payload["required_capabilities"] == ["market", "researcher"]
+    assert payload["mode"] == "specialist_team"
+    assert len(payload["proposal"]["children"]) == 5
+    assert payload["owner_approval_required"] is True
+    assert payload["assignment_performed"] is False
+    assert payload["queue_entries_created"] is False
+    assert payload["execution_started"] is False
+    assert owner_client.get("/workers/queue", headers=headers).json()["total"] == 0
+
+
+def test_ai_manager_proposal_requires_active_manager(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research customer demand", "objective": "Assess market needs",
+        "department": "intelligence-research",
+    }).json()
+    response = owner_client.post(
+        f"/work-items/{created['item_id']}/manager-proposal", headers=headers,
+        json={"max_specialists": 5},
+    )
+    assert response.status_code == 409
+    assert "explicitly ACTIVE" in response.json()["detail"]
