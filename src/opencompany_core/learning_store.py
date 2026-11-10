@@ -5,7 +5,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from threading import RLock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from .domain import AuditRecord, TaskState
 from .learning import ImprovementProposal, OutcomeEvaluation, ProposalState
@@ -198,7 +198,7 @@ class LearningRepository:
     ) -> str:
         if not role_key.strip() or not note.strip() or not evidence_refs:
             raise ValueError("learning notes require role, content and evidence")
-        note_id = str(UUID(bytes=__import__("secrets").token_bytes(16), version=4))
+        note_id = str(uuid4())
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
