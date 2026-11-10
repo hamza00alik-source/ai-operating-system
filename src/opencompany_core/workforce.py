@@ -96,12 +96,15 @@ def _specialist_roles() -> tuple[RoleSpec, ...]:
     return tuple(roles)
 
 
+SPECIALIST_ROLE_SPECS = _specialist_roles()
+
+
 def specialist_role_keys(department_key: str) -> tuple[str, ...]:
     """Return deterministic specialist role keys assigned to a department."""
     if department_key not in SPECIALIST_TITLES:
         raise LookupError(f"unknown OpenCompany specialist department: {department_key}")
     prefix = department_key.replace("-", "_") + "__"
-    return tuple(role.key for role in _specialist_roles() if role.key.startswith(prefix))
+    return tuple(role.key for role in SPECIALIST_ROLE_SPECS if role.key.startswith(prefix))
 
 
 OPENCOMPANY_ROLES = RoleCatalog((
@@ -195,7 +198,7 @@ OPENCOMPANY_ROLES = RoleCatalog((
         permitted_outputs=("video_script", "storyboard", "shot_list", "draft_media_asset", "production_report"),
         prohibited_actions=("publishing_without_approval", "using_paid_compute_without_approval", "ignoring_asset_licences"),
     ),
-) + _specialist_roles())
+) + SPECIALIST_ROLE_SPECS)
 
 
 def default_workforce() -> RoleCatalog:
