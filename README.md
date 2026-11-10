@@ -133,3 +133,21 @@ Company task stages may use only providers that are configured and explicitly ow
 - The new API/worker composition and manager-led multi-agent execution are still incomplete; enabling the adapter alone does not make the company runtime fully operational.
 
 
+
+
+## Runtime and owner-controlled execution
+
+The independent OpenCompany API and worker now compose around one SQLite connection and transaction boundary. The API does not start workers at import or process startup.
+
+- Run the API container with `python main.py`; its ASGI target is `opencompany_app.api:app`.
+- The owner dashboard exchanges the owner bootstrap key for a revocable 12-hour HttpOnly session. Write requests require a CSRF token held in page memory. Sessions are stored as token hashes and can be revoked at logout.
+- The owner must explicitly activate agent profiles, approve manager delegation proposals, and admit each READY assigned task to the durable worker queue.
+- Queue admission verifies the active assignee, department, approved delegation state, and completed prerequisites; it atomically changes READY to QUEUED and appends audit evidence.
+- Worker claims use the same SQLite connection, atomically change QUEUED to IN_PROGRESS, and append audit evidence. Specialist execution writes review-required deliverables; the owner dashboard is the review gate.
+- The owner can explicitly start or stop the in-process worker fleet from the dashboard. The fleet processes only queued work assigned to ACTIVE profiles. It has no publishing, customer messaging, purchasing, or financial-action tools.
+- The worker fleet is in-process by design for a single persistent Railway container and a single mounted SQLite volume. Do not run a separate worker service against the same SQLite file on another host or volume.
+- Set `OPENCOMPANY_DATABASE_PATH=/data/opencompany_core.sqlite3` and mount a persistent Railway volume at `/data`. Keep the owner key, UnoRouter key, and other secrets in the host's secret-variable manager.
+- Set `OPENCOMPANY_COOKIE_SECURE=true` behind HTTPS. The UnoRouter provider requires `OPENCOMPANY_UNOROUTER_API_KEY`, `OPENCOMPANY_UNOROUTER_FREE_MODEL` ending in `:free`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true`. No paid fallback is enabled.
+- `worker_main.py` is available as a foreground worker entrypoint for controlled single-host use, but the API dashboard's in-process fleet is the intended single-container deployment mode.
+
+The current `vercel.json` still points at the legacy Railway service. Do not promote this branch or change production routing until the new Railway service has been deployed and verified with a persistent volume, owner session, worker queue, provider test, backup/restore and rollback rehearsal. No production migration or replacement is implied by a passing unit-test run.
