@@ -98,6 +98,34 @@ class GitHubEvolutionClient:
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
             raise GitHubEvolutionError(f"GitHub API request failed safely ({type(exc).__name__})") from exc
 
+
+
+    def verify_access(self) -> dict:
+        """Verify token identity and repository visibility using read-only API calls."""
+        user = self._request("GET", "/user")
+        repository = self._request("GET", "")
+        login = user.get("login")
+        full_name = repository.get("full_name")
+        if not isinstance(login, str) or not login.strip():
+            raise GitHubEvolutionError("GitHub did not return an authenticated user identity")
+        if not isinstance(full_name, str) or full_name.casefold() != self.repository.casefold():
+            raise GitHubEvolutionError("GitHub token cannot read the configured repository")
+        permissions = repository.get("permissions")
+        push_reported = permissions.get("push") if isinstance(permissions, dict) else None
+        if push_reported is False:
+            raise GitHubEvolutionError("GitHub token can read the repository but lacks reported push permission")
+        return {
+            "authenticated": True,
+            "username": login,
+            "repository_access": True,
+            "repository": full_name,
+            "base_branch": self.base_branch,
+            "push_permission_reported": push_reported,
+            "verification_mode": "read_only",
+            "auto_merge": False,
+            "auto_deploy": False,
+        }
+
     def read_files(self, paths: tuple[str, ...]) -> dict[str, str]:
         if not 1 <= len(paths) <= 3 or len(set(paths)) != len(paths):
             raise ValueError("select one to three unique source files")
