@@ -1856,6 +1856,12 @@ def list_work_item_deliverables(
     return {"count": len(artifacts), "deliverables": artifacts}
 
 
+@app.get("/usage/model", dependencies=[Depends(require_owner_key)])
+def model_usage_summary(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Owner-only, durable inference usage and cost accounting."""
+    return runtime.usage.summary(limit=100)
+
+
 @app.get("/audit/verify", dependencies=[Depends(require_owner_key)])
 def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
     return {
