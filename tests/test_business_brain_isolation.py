@@ -133,3 +133,20 @@ def test_investor_contacts_are_business_scoped(monkeypatch, tmp_path):
     business_ops.create_investor({"name": "Brand investor", "business_id": "physical-brand"})
     assert [x["name"] for x in business_ops.list_investors(business_id="physical-agency")] == ["Agency investor"]
     assert [x["name"] for x in business_ops.list_investors(business_id="physical-brand")] == ["Brand investor"]
+
+
+def test_workflows_and_generated_tasks_are_business_scoped(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "business-workflows.db"))
+    initialize_database()
+    from ai_os.workflows import create_workflow, list_workflows
+
+    agency = create_workflow("technology-evaluation", business_id="physical-agency")
+    brand = create_workflow("technology-evaluation", business_id="physical-brand")
+    assert agency["business_id"] == "physical-agency"
+    assert brand["business_id"] == "physical-brand"
+    assert len(list_workflows(business_id="physical-agency")) == 1
+    assert len(list_workflows(business_id="physical-brand")) == 1
+    assert list_workflows(business_id="digital-products") == []
+    with connect() as db:
+        task_scopes = {row["business_id"] for row in db.execute("SELECT business_id FROM tasks WHERE id IN (SELECT task_id FROM workflow_steps WHERE workflow_id IN (?,?))", (agency["id"], brand["id"])).fetchall()}
+    assert task_scopes == {"physical-agency", "physical-brand"}
