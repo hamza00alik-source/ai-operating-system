@@ -41,6 +41,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div class="metric"><span class="muted">Agent profiles</span><strong id="agent-count">—</strong></div>
     <div class="metric"><span class="muted">Specialist roles</span><strong id="specialist-count">—</strong></div>
     <div class="metric"><span class="muted">Work items</span><strong id="work-count">—</strong></div>
+    <div class="metric"><span class="muted">Queued tasks</span><strong id="queue-count">—</strong></div>
     <div class="metric"><span class="muted">Model gateway</span><strong id="provider-state" style="font-size:1.05rem">—</strong></div>
   </section>
   <section class="panel">
@@ -96,13 +97,14 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{
       const [org,agents,work,provider,media,workforce]=await Promise.all([
         request("/organization/departments"),request("/agents"),request("/work-items"),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue")
       ]);
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
       byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
       byId("work-count").textContent=work.count;
       byId("provider-state").textContent=provider.gateway_enabled?"Free model configured":"Disabled";
+      byId("queue-count").textContent=queue.counts.queued||0;
       clear("departments","No departments returned.");
       org.departments.forEach(d=>addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)"));
       clear("agents","No manager profiles yet. Use Provision managers to create draft profiles.");
@@ -148,6 +150,16 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
           });
           actions.append(view);card.append(actions);
         }
+        if(w.state==="ready" && w.assigned_agent_id){
+          const queueButton=document.createElement("button");queueButton.textContent="Admit to worker queue";
+          queueButton.addEventListener("click",async()=>{queueButton.disabled=true;try{await request("/work-items/"+w.id+"/enqueue",{method:"POST",body:"{}"});setMessage("Task admitted to the durable queue. No worker was started by this action.","success");await load();}catch(error){setMessage(error.message,"error");queueButton.disabled=false;}});
+          card.append(queueButton);
+        }
+        if(w.state==="queued" && w.assigned_agent_id){
+          const runButton=document.createElement("button");runButton.textContent="Run one worker cycle";
+          runButton.addEventListener("click",async()=>{runButton.disabled=true;try{const result=await request("/workers/"+w.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});setMessage("Worker cycle result: "+result.result,"success");await load();}catch(error){setMessage(error.message,"error");runButton.disabled=false;}});
+          card.append(runButton);
+        }
         byId("work-items").append(card);
       });
       byId("provision").disabled=false;
@@ -172,7 +184,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     finally{
       csrfToken="";keyInput.value="";
       ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
-      ["department-count","agent-count","specialist-count","work-count","provider-state"].forEach(id=>byId(id).textContent="—");
+      ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
       byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
   });
