@@ -736,6 +736,7 @@ def enqueue_work_item(
 @app.get("/workers/queue", dependencies=[Depends(require_owner_key)])
 def worker_queue_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     counts = runtime.queue.counts()
+    status = runtime.fleet.status()
     return {
         "counts": counts,
         "total": sum(counts.values()),
