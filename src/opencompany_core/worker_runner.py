@@ -6,13 +6,14 @@ and remain review-required; a missing sink fails closed.
 """
 from __future__ import annotations
 
+import math
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Protocol
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid5, uuid4
 
 from .domain import AuditRecord, TaskState
 from .execution import AgentDeliverable, AgentExecutor
-from .model_gateway import ModelGateway
 from .persistence import SQLiteStore
 from .worker_queue import DurableWorkerQueue, QueueError, WorkerLease
 
@@ -41,8 +42,8 @@ class OpenCompanyWorker:
     ) -> None:
         if artifact_sink is None:
             raise WorkerConfigurationError("a durable artifact sink is required")
-        if request_budget_usd < 0:
-            raise ValueError("request budget cannot be negative")
+        if not math.isfinite(request_budget_usd) or request_budget_usd < 0:
+            raise ValueError("request budget must be a finite, non-negative amount")
         self.queue = queue
         self.store = store
         self.executor = executor
@@ -56,6 +57,14 @@ class OpenCompanyWorker:
             return "idle"
         try:
             deliverable = self._execute_lease(lease, role_key)
+            # A retry of the same work/role must address the same artifact key.
+            # This lets a durable sink safely deduplicate after a crash between
+            # saving the artifact and acknowledging the queue lease.
+            stable_id = uuid5(
+                NAMESPACE_URL,
+                f"opencompany:deliverable:{lease.work_item_id}:{role_key}",
+            )
+            deliverable = replace(deliverable, id=stable_id)
             self.artifact_sink.save(deliverable)
             self.store.append_audit_record(self._audit(
                 lease, "worker.deliverable_saved",
