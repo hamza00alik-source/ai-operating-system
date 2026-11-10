@@ -421,6 +421,27 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def fail_work_item_with_audit(self, work_item_id: UUID, record: AuditRecord) -> bool:
+        """Move an in-progress task to failed only after its queue exhausts retries."""
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = self._connection.execute("UPDATE work_items SET state=? WHERE id=? AND state=?", (TaskState.FAILED.value, str(work_item_id), TaskState.IN_PROGRESS.value))
+                if cursor.rowcount != 1:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                row = self._connection.execute("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute("INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)", (str(record.id), record.occurred_at.isoformat(), _json(payload), previous_hash, event_hash))
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def list_deliverables(self, work_item_id: UUID) -> tuple[dict[str, Any], ...]:
         with self._lock:
             rows = self._connection.execute("SELECT * FROM deliverables WHERE work_item_id=? ORDER BY created_at,id", (str(work_item_id),)).fetchall()
