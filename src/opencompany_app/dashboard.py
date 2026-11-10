@@ -69,6 +69,21 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <button id="create-executive-plan" disabled>Create CEO draft plan</button>
   </section>
   <section class="panel">
+    <h2 class="section-title">AI code evolution</h2>
+    <p class="muted">Ask the free model to propose edits to up to three selected source, test, or documentation files. OpenCompany writes only an isolated feature branch and a DRAFT GitHub pull request; it never merges or deploys the change.</p>
+    <label for="code-problem">Problem to solve</label>
+    <textarea id="code-problem" rows="3" maxlength="3000" placeholder="Describe a specific bug, reliability gap, or improvement supported by evidence."></textarea>
+    <label for="code-paths">File paths (comma-separated; source, tests, or docs only)</label>
+    <input id="code-paths" placeholder="src/opencompany_core/example.py, tests/test_example.py">
+    <button id="create-code-pr" disabled>Generate isolated code PR</button>
+    <div id="code-pr-result" class="muted" aria-live="polite"></div>
+  </section>
+  <section class="panel">
+    <h2 class="section-title">Learning and improvement proposals</h2>
+    <p class="muted">Owner-reviewed evaluations can produce AI improvement proposals. Approved role notes are injected into future specialist prompts; proposals are not applied before owner approval.</p>
+    <div id="learning-proposals" class="stack"><p class="muted">No proposals loaded.</p></div>
+  </section>
+  <section class="panel">
     <div class="row"><h2 class="section-title" style="margin:0">Work queue</h2><span id="worker-status" class="pill">Workers stopped</span></div>
     <div class="auth" style="margin-top:12px"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
@@ -105,9 +120,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
     try{
-      const [org,agents,work,provider,media,workforce,queue,fleet]=await Promise.all([
+      const [org,agents,work,provider,media,workforce,queue,fleet,learning]=await Promise.all([
         request("/organization/departments"),request("/agents"),request("/work-items"),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals")
       ]);
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
@@ -119,6 +134,26 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("start-workers").disabled=fleet.running;
       byId("stop-workers").disabled=!fleet.running;
       byId("create-executive-plan").disabled=!agents.agents.some(a=>a.role_key==="chief_executive_orchestrator" && a.state==="active");
+      byId("create-code-pr").disabled=false;
+      clear("learning-proposals","No learning proposals yet.");
+      learning.proposals.forEach(proposal=>{
+        const card=document.createElement("article");card.className="item";
+        const title=document.createElement("h3");title.textContent=proposal.target+" · "+proposal.state;card.append(title);
+        const summary=document.createElement("p");summary.textContent=proposal.change_summary;card.append(summary);
+        const rationale=document.createElement("p");rationale.textContent=proposal.rationale;card.append(rationale);
+        if(proposal.state==="proposed"){
+          const approve=document.createElement("button");approve.textContent="Approve learning proposal";
+          approve.addEventListener("click",async()=>{approve.disabled=true;try{await request("/learning/proposals/"+proposal.id+"/decision",{method:"POST",body:JSON.stringify({approved:true,rationale:"Approved by owner for role-level learning."})});await load();}catch(error){setMessage(error.message,"error");approve.disabled=false;}});
+          const reject=document.createElement("button");reject.textContent="Reject";
+          reject.addEventListener("click",async()=>{reject.disabled=true;try{await request("/learning/proposals/"+proposal.id+"/decision",{method:"POST",body:JSON.stringify({approved:false,rationale:"Not approved for role-level learning."})});await load();}catch(error){setMessage(error.message,"error");reject.disabled=false;}});
+          card.append(approve,reject);
+        }else if(proposal.state==="approved"){
+          const apply=document.createElement("button");apply.textContent="Apply approved role note";
+          apply.addEventListener("click",async()=>{apply.disabled=true;try{await request("/learning/proposals/"+proposal.id+"/apply-note",{method:"POST",body:"{}"});setMessage("Approved learning note is now available to future "+proposal.target+" tasks.","success");await load();}catch(error){setMessage(error.message,"error");apply.disabled=false;}});
+          card.append(apply);
+        }
+        byId("learning-proposals").append(card);
+      });
       clear("departments","No departments returned.");
       org.departments.forEach(d=>addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)"));
       clear("agents","No agent profiles yet. Provision the CEO, managers and specialists first.");
@@ -240,8 +275,22 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       csrfToken="";keyInput.value="";
       ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
-      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;setMessage("Disconnected. The server session has been revoked.");
+      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
+  });
+  byId("create-code-pr").addEventListener("click",async()=>{
+    const problem=byId("code-problem").value.trim();
+    const filePaths=byId("code-paths").value.split(",").map(value=>value.trim()).filter(Boolean);
+    if(!problem||!filePaths.length){setMessage("Describe the problem and select one to three files.","error");return;}
+    byId("create-code-pr").disabled=true;
+    try{
+      const result=await request("/code-evolution/proposals",{method:"POST",body:JSON.stringify({problem,file_paths:filePaths})});
+      const link=document.createElement("a");link.href=result.url;link.textContent="Open draft pull request #"+result.pull_request_number;link.target="_blank";link.rel="noopener noreferrer";
+      const output=byId("code-pr-result");output.replaceChildren(link);
+      setMessage("AI code proposal committed to an isolated branch. GitHub Actions and owner review are required; nothing was merged or deployed.","success");
+      byId("code-problem").value="";
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("create-code-pr").disabled=false;}
   });
   byId("create-executive-plan").addEventListener("click",async()=>{
     const title=byId("executive-title").value.trim();
