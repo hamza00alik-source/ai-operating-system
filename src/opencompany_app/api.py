@@ -219,6 +219,14 @@ def workforce_roles() -> dict:
                 "mission": role.mission, "capabilities": list(role.capabilities),
                 "permitted_outputs": list(role.permitted_outputs),
                 "prohibited_actions": list(role.prohibited_actions),
+                "playbook": {
+                    "intake_requirements": list(role.playbook.intake_requirements),
+                    "workflow_steps": list(role.playbook.workflow_steps),
+                    "deliverable_contract": list(role.playbook.deliverable_contract),
+                    "quality_rubric": list(role.playbook.quality_rubric),
+                    "escalation_triggers": list(role.playbook.escalation_triggers),
+                    "tool_scopes": list(role.playbook.tool_scopes),
+                },
             }
             for role in roles
         ],
