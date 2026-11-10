@@ -19,12 +19,6 @@ Existing capability reused:
 - llm_gateway.py performs guarded provider routing and free-confirmed failover.
 - credentials.py encrypts owner-supplied provider credentials.
 
-Next acceptance criteria:
-- Store evidence age and primary-source references for each provider/model.
-- Mark expired evidence as stale; never silently convert a stale free-tier claim into an eligible route.
-- Keep account-specific live tests owner-triggered and report only the minimum required diagnostics.
-- Maintain a model benchmark ledger only when the owner explicitly requests a test; do not issue background inference calls.
-
 Status: added a read-only `/llm/intelligence` endpoint that summarizes configured providers, owner free-confirmation, eligibility, and blockers without network probes or inference. The `/discovery/provider-catalog` response now classifies evidence as recent, stale, or unknown using a conservative 30-day age threshold based on the catalog's `last_verified` date (source-access dates are fallback only). Each entry exposes its evidence age and explicitly remains ineligible for routing from the research catalog. This metadata does not override the existing gateway's separate owner-confirmation rules. An owner-only `/llm/benchmarks/run` endpoint now runs a fixed connection probe only after explicit free-only confirmation and only through the existing eligible gateway. Outcomes, latency, available token counts, and bounded error summaries are stored in SQLite; prompts and model responses are not persisted. `/llm/benchmarks` is a read-only owner-only history endpoint. No benchmark runs automatically; paid providers are rejected.
 
 ## 2. Notification Infrastructure
@@ -45,11 +39,9 @@ Status: SQLite notification queue and optional Apprise adapter implemented on th
 
 Existing runtime already persists task runs, events, steps, partial outputs, and retry state. Its API lifespan runs worker loops in-process. The standalone worker_service previously imported ai_os.worker and ai_os.model_adapter, which are absent from the current main-branch package. This branch repairs that entry point to call the existing discovery and agent queue functions and adds bounded retry backoff plus graceful SIGINT/SIGTERM shutdown.
 
-Important remaining limitation:
-- The current run_pending_once queue claims are not a distributed lease protocol. Run one worker process against one persistent SQLite database; do not scale to multiple replicas until atomic claims, lease renewal, stale-claim recovery, and retry limits are implemented and tested.
-- A host restart may leave a run marked running; the current startup recovery marks interrupted runs failed for explicit owner retry. It does not silently replay model requests.
+Important limitation: the implemented leases provide single-host SQLite coordination only. They are not a distributed multi-host lease or fencing protocol. Keep one worker process against one persistent SQLite database. A host restart or expired lease marks interrupted work failed for explicit owner retry; uncertain model requests are not replayed automatically.
 
-Status: standalone worker import/runtime path repaired with bounded process-level backoff and graceful shutdown. Agent runs and discovery scans now use atomic SQLite claims, worker-owned expiring leases, heartbeat renewal, ownership checks before committing results, and expiry-aware recovery. Expired/interrupted work is marked failed for explicit owner review; uncertain model/API work is never automatically replayed. Stale workers cannot renew expired leases or write final failure/completion state after ownership is lost. Coordination remains single-host SQLite only; this is not a distributed multi-host lease/fencing system.
+Status: standalone worker import/runtime path repaired with bounded process-level backoff and graceful shutdown. Agent runs and discovery scans use atomic SQLite claims, worker-owned expiring leases, heartbeat renewal, ownership checks before committing results, and expiry-aware recovery. Expired/interrupted work is marked failed for explicit owner review; uncertain model/API work is never automatically replayed. Stale workers cannot renew expired leases or write final failure/completion state after ownership is lost. Coordination remains single-host SQLite only; this is not a distributed multi-host lease/fencing system.
 
 ## 4. AI Video Production Research — LongCat-Video
 
@@ -78,3 +70,8 @@ Status: research track only; no frontend migration or dependency added.
 ## Acceptance gates
 
 A capability is not "complete" until its tests pass on the feature branch, limitations are documented, and the owner reviews the resulting pull request. A successful CI run proves code tests only; it does not prove live provider access, host persistence, or production deployment.
+
+
+## Review status (2026-11-10)
+
+The feature branch test workflow and Vercel validation workflow test suite passed for the benchmark-ledger commit. The Vercel output-build step was skipped; no deployment occurred. The feature branch is five commits behind `main` and has diverged, so a fresh comparison and conflict review against the current base is required before merge. Keep this pull request in draft until that integration review is complete. CI success is not production deployment evidence.
