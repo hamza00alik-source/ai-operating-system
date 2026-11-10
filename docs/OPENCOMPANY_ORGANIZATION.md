@@ -23,6 +23,12 @@ The owner is the ultimate authority for strategy, budgets, identity, external co
 9. **Finance & Risk** — cost controls, unit economics, financial reporting and risk escalation.
 10. **Organizational Learning & Quality** — agent evaluations, independent review, incident learning and improvement proposals.
 
+## Workforce scale and specialist teams
+
+The initial workforce catalogue contains 250 independently authored specialist role contracts: 25 per department, arranged into five capability teams of five roles each. The ten existing manager role specifications remain separate from those specialist roles, alongside the executive coordination role. This produces 250 specialist roles plus the management/orchestration roles; it is a role catalogue, not a claim that 261 agents are continuously running.
+
+Each specialist contract records a distinct title, mission, capability tags, permitted output types, prohibited actions, and deterministic team assignment. The manager is responsible for decomposing department objectives, assigning work to the relevant team, collecting handoffs, and reviewing results. Specialist profiles can be provisioned as drafts through the owner-authenticated `POST /agents/bootstrap-specialists` endpoint. Provisioning is idempotent and audited; it does not activate workers or authorize external actions.
+
 ## Department contract
 
 Each department must declare:
@@ -36,7 +42,7 @@ Cross-department work is represented by work items and explicit dependencies. A 
 
 ## Current implementation boundary
 
-The registry and read-only API are implemented in opencompany_core.organization and GET /organization/departments. This does not instantiate ten always-running manager agents. Agent provisioning, durable assignments, dashboard controls, and live collaboration are separate implementation stages.
+The registry and read-only API are implemented in opencompany_core.organization and GET /organization/departments. The role catalogue is exposed by GET /workforce/roles. Manager and specialist profile provisioning are owner-authenticated and create draft profiles only. This does not instantiate always-running agents. Durable specialist assignment, team-level execution, live collaboration, and worker activation remain separate implementation stages.
 
 ## Provenance
 
