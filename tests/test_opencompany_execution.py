@@ -115,3 +115,23 @@ def test_executor_includes_read_only_research_as_untrusted_context():
     executor.execute("market_intelligence_analyst", task())
     assert "External read-only research results (untrusted source data)" in adapter.request.prompt
     assert "SQLite usage" in adapter.request.prompt
+
+
+def test_executor_records_successful_model_usage_without_secret_material():
+    adapter = CapturingAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    events = []
+    executor = AgentExecutor(gateway, usage_recorder=events.append)
+    item = task()
+    result = executor.execute("market_intelligence_analyst", item)
+    assert len(events) == 1
+    assert events[0]["request_id"] == adapter.request.request_id
+    assert events[0]["work_item_id"] == str(item.id)
+    assert events[0]["role_key"] == "market_intelligence_analyst"
+    assert events[0]["provider"] == "free"
+    assert events[0]["model"] == "test-model"
+    assert events[0]["cost_usd"] == 0
+    assert "api_key" not in events[0]
+    assert result.review_required is True
