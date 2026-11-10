@@ -96,3 +96,22 @@ def test_executor_receives_only_owner_approved_learning_notes():
     executor.execute("market_intelligence_analyst", task())
     assert "Always include primary-source URLs" in adapter.request.prompt
     assert "Avoid extrapolating from one marketplace" in adapter.request.prompt
+
+
+def test_executor_includes_read_only_research_as_untrusted_context():
+    adapter = CapturingAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    class Broker:
+        def collect(self, role, item):
+            from opencompany_core.research_broker import ResearchOutcome
+            return ResearchOutcome(
+                "hacker-news", "search",
+                {"bounded_json": '{"title":"SQLite usage"}'},
+                "read-only research completed",
+            )
+    executor = AgentExecutor(gateway, research_broker=Broker())
+    executor.execute("market_intelligence_analyst", task())
+    assert "External read-only research results (untrusted source data)" in adapter.request.prompt
+    assert "SQLite usage" in adapter.request.prompt
