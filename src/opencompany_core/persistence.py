@@ -389,6 +389,43 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def save_deliverable_with_audit(self, deliverable: Any, record: AuditRecord) -> bool:
+        """Persist a draft, move its task to review, and audit atomically."""
+        if not deliverable.review_required:
+            raise ValueError("worker deliverables must require review")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                item = self._connection.execute("SELECT state FROM work_items WHERE id=?", (str(deliverable.work_item_id),)).fetchone()
+                if item is None or item["state"] != TaskState.IN_PROGRESS.value:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                values = (str(deliverable.work_item_id), deliverable.role_key, deliverable.content, deliverable.provider, deliverable.model, float(deliverable.cost_usd), deliverable.created_at.isoformat(), 1)
+                existing = self._connection.execute("SELECT * FROM deliverables WHERE id=?", (str(deliverable.id),)).fetchone()
+                if existing is not None:
+                    old = (existing["work_item_id"], existing["role_key"], existing["content"], existing["provider"], existing["model"], float(existing["cost_usd"]), existing["created_at"], int(existing["review_required"]))
+                    if old != values:
+                        raise ValueError("deliverable ID already exists with different content")
+                else:
+                    self._connection.execute("INSERT INTO deliverables (id,work_item_id,role_key,content,provider,model,cost_usd,created_at,review_required) VALUES(?,?,?,?,?,?,?,?,?)", (str(deliverable.id), *values))
+                self._connection.execute("UPDATE work_items SET state=? WHERE id=? AND state=?", (TaskState.REVIEW.value, str(deliverable.work_item_id), TaskState.IN_PROGRESS.value))
+                row = self._connection.execute("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute("INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)", (str(record.id), record.occurred_at.isoformat(), _json(payload), previous_hash, event_hash))
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
+    def list_deliverables(self, work_item_id: UUID) -> tuple[dict[str, Any], ...]:
+        with self._lock:
+            rows = self._connection.execute("SELECT * FROM deliverables WHERE work_item_id=? ORDER BY created_at,id", (str(work_item_id),)).fetchall()
+        return tuple({"id": row["id"], "work_item_id": row["work_item_id"], "role_key": row["role_key"], "content": row["content"], "provider": row["provider"], "model": row["model"], "cost_usd": float(row["cost_usd"]), "created_at": row["created_at"], "review_required": bool(row["review_required"])} for row in rows)
+
     def get_work_item(self, item_id: UUID) -> WorkItem | None:
         with self._lock:
             row = self._connection.execute(
