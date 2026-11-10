@@ -348,7 +348,7 @@ def renew_scan_lease(scan_id: str, worker_id: str, lease_seconds: int = 180) -> 
     expires = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + duration, timezone.utc).isoformat()
     with connect() as db:
         _ensure_scan_lease_columns(db)
-        changed = db.execute("UPDATE discovery_scans SET lease_expires_at=? WHERE id=? AND status='running' AND lease_owner=?", (expires, scan_id, worker_id)).rowcount
+        changed = db.execute("UPDATE discovery_scans SET lease_expires_at=? WHERE id=? AND status='running' AND lease_owner=? AND lease_expires_at>?", (expires, scan_id, worker_id, now())).rowcount
     return changed == 1
 
 
