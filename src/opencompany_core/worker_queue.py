@@ -1,8 +1,8 @@
 """Durable, bounded worker queue for OpenCompany.
 
-The queue leases already-authorized internal work only. It does not invoke
-models, tools, shell commands, external integrations, or production actions.
-Expired leases can be reclaimed; attempts are bounded to prevent retry loops.
+Owner-approved internal work is admitted atomically with its task-state change
+and audit event. In composed mode, queue claims also move QUEUED tasks to
+IN_PROGRESS on the same SQLite connection used by the core store.
 """
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
 from uuid import UUID, uuid4
+
+from .domain import AgentState, AuditRecord, TaskState, WorkItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,17 +34,25 @@ class QueueError(RuntimeError):
 class DurableWorkerQueue:
     """SQLite-backed queue with atomic claims and token-checked completion."""
 
-    def __init__(self, database: str | Path, *, max_attempts: int = 3,
-                 lease_seconds: int = 300) -> None:
+    def __init__(
+        self,
+        database: str | Path | sqlite3.Connection,
+        *,
+        max_attempts: int = 3,
+        lease_seconds: int = 300,
+        lock: RLock | None = None,
+    ) -> None:
         if not 1 <= max_attempts <= 10:
             raise ValueError("max_attempts must be between 1 and 10")
         if not 10 <= lease_seconds <= 3600:
             raise ValueError("lease_seconds must be between 10 and 3600")
         self.max_attempts = max_attempts
         self.lease_seconds = lease_seconds
-        self._lock = RLock()
-        self._db = sqlite3.connect(str(database), timeout=10,
-                                   check_same_thread=False, isolation_level=None)
+        self._lock = lock or RLock()
+        self._owns_connection = not isinstance(database, sqlite3.Connection)
+        self._db = database if isinstance(database, sqlite3.Connection) else sqlite3.connect(
+            str(database), timeout=10, check_same_thread=False, isolation_level=None
+        )
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA busy_timeout=10000")
         self._db.execute("""
@@ -65,10 +75,97 @@ class DurableWorkerQueue:
         )
 
     def close(self) -> None:
+        if self._owns_connection:
+            with self._lock:
+                self._db.close()
+
+    @staticmethod
+    def _append_audit(record: AuditRecord, connection: sqlite3.Connection) -> None:
+        from .persistence import _ZERO_HASH, _audit_payload, _digest, _json
+
+        row = connection.execute(
+            "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+        ).fetchone()
+        previous = row["event_hash"] if row else _ZERO_HASH
+        payload = _audit_payload(record, previous)
+        connection.execute(
+            """INSERT INTO audit_events
+               (event_id,occurred_at,payload_json,previous_hash,event_hash)
+               VALUES(?,?,?,?,?)""",
+            (str(record.id), record.occurred_at.isoformat(), _json(payload),
+             previous, _digest(payload)),
+        )
+
+    def enqueue_authorized(
+        self, item: WorkItem, agent_id: UUID, payload: dict, record: AuditRecord
+    ) -> None:
+        """Atomically queue a READY task, validate its active assignee, and audit admission."""
+        if item.state != TaskState.READY or item.assigned_agent_id != agent_id:
+            raise QueueError("only READY work explicitly assigned to this agent can be queued")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be a JSON object")
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        if len(encoded) > 24000:
+            raise ValueError("payload exceeds 24000 characters")
+        now = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            self._db.close()
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                task = self._db.execute(
+                    "SELECT state,assigned_agent_id,department FROM work_items WHERE id=?",
+                    (str(item.id),),
+                ).fetchone()
+                agent = self._db.execute(
+                    "SELECT state,department,role_key,team_key FROM agent_profiles WHERE id=?",
+                    (str(agent_id),),
+                ).fetchone()
+                if (
+                    task is None or task["state"] != TaskState.READY.value
+                    or task["assigned_agent_id"] != str(agent_id)
+                ):
+                    raise QueueError("work item changed or is not READY for this assignee")
+                if (
+                    agent is None or agent["state"] != AgentState.ACTIVE.value
+                    or agent["department"] != task["department"]
+                ):
+                    raise QueueError("assignee must be an active profile in the work item's department")
+                child = self._db.execute(
+                    "SELECT state,assigned_agent_id,role_key,team_key "
+                    "FROM delegation_child_tasks WHERE id=?",
+                    (str(item.id),),
+                ).fetchone()
+                if child is not None:
+                    if (
+                        child["state"] != "approved"
+                        or child["assigned_agent_id"] != str(agent_id)
+                        or child["role_key"] != agent["role_key"]
+                        or child["team_key"] != agent["team_key"]
+                    ):
+                        raise QueueError("delegated task is not approved or its assignee identity changed")
+                    self._db.execute(
+                        "UPDATE delegation_child_tasks SET state='queued' "
+                        "WHERE id=? AND state='approved'",
+                        (str(item.id),),
+                    )
+                self._db.execute(
+                    """INSERT INTO worker_queue
+                       (work_item_id,agent_id,payload_json,state,created_at,updated_at)
+                       VALUES(?,?,?,'queued',?,?)""",
+                    (str(item.id), str(agent_id), encoded, now, now),
+                )
+                self._db.execute(
+                    "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                    (TaskState.QUEUED.value, str(item.id), TaskState.READY.value),
+                )
+                self._append_audit(record, self._db)
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
 
     def enqueue(self, work_item_id: UUID, agent_id: UUID, payload: dict) -> None:
+        """Low-level queue insert retained for isolated queue tests and maintenance."""
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -94,7 +191,6 @@ class DurableWorkerQueue:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                # Reclaim expired leases, or mark them dead once retries are exhausted.
                 self._db.execute(
                     """UPDATE worker_queue SET
                        state=CASE WHEN attempts>=? THEN 'dead' ELSE 'queued' END,
@@ -112,6 +208,29 @@ class DurableWorkerQueue:
                 if row is None:
                     self._db.execute("COMMIT")
                     return None
+                if not self._owns_connection:
+                    task = self._db.execute(
+                        "SELECT state,assigned_agent_id FROM work_items WHERE id=?",
+                        (row["work_item_id"],),
+                    ).fetchone()
+                    if (
+                        task is None or task["assigned_agent_id"] != str(agent_id)
+                        or task["state"] not in {TaskState.QUEUED.value, TaskState.IN_PROGRESS.value}
+                    ):
+                        raise QueueError("queued work item is missing, reassigned, or in an invalid state")
+                    if task["state"] == TaskState.QUEUED.value:
+                        self._db.execute(
+                            "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                            (TaskState.IN_PROGRESS.value, row["work_item_id"], TaskState.QUEUED.value),
+                        )
+                        event = AuditRecord(
+                            id=uuid4(), occurred_at=instant, actor_type="worker",
+                            actor_id=str(agent_id), action="worker.task_claimed",
+                            subject_type="work_item", subject_id=row["work_item_id"],
+                            outcome="recorded", correlation_id=str(uuid4()),
+                            details={"attempt": int(row["attempts"]) + 1},
+                        )
+                        self._append_audit(event, self._db)
                 token = uuid4()
                 attempt = int(row["attempts"]) + 1
                 self._db.execute(
@@ -126,7 +245,8 @@ class DurableWorkerQueue:
                     payload=json.loads(row["payload_json"]),
                 )
             except Exception:
-                self._db.execute("ROLLBACK")
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
                 raise
 
     def complete(self, lease: WorkerLease) -> None:
