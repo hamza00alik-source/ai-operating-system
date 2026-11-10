@@ -62,6 +62,11 @@ class AgentExecutor:
         capabilities = ", ".join(role.capabilities)
         outputs = ", ".join(role.permitted_outputs)
         restrictions = ", ".join(role.prohibited_actions)
+        playbook = role.playbook
+        intake = "\\n".join(f"- {value}" for value in playbook.intake_requirements)
+        workflow = "\\n".join(f"{index + 1}. {value}" for index, value in enumerate(playbook.workflow_steps))
+        rubric = "\\n".join(f"- {value}" for value in playbook.quality_rubric)
+        escalation = "\\n".join(f"- {value}" for value in playbook.escalation_triggers)
         return (
             "OPENCOMPANY SPECIALIST WORK REQUEST\n"
             f"Role: {role.title}\n"
