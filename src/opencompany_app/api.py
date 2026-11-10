@@ -189,7 +189,7 @@ def initialize_autonomous_runtime() -> None:
         bootstrap_executive_orchestrator(runtime.store)
     if activate_enabled:
         runtime.store.activate_all_draft_agents_with_audit()
-    if worker_autostart:
+    if worker_autostart and runtime.gateway.eligible_providers(request_budget_usd=0.0):
         runtime.fleet.start()
 
 
