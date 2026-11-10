@@ -312,6 +312,70 @@ class SQLiteStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
+    def approve_delegation_proposal(
+        self, proposal_id: UUID, items: tuple[WorkItem, ...],
+        records: tuple[AuditRecord, ...],
+    ) -> bool:
+        """Atomically approve a draft proposal, materialize child tasks, and audit."""
+        if not items or len(items) != len(records):
+            raise ValueError("approved delegation requires matching child tasks and audit records")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                proposal = self._connection.execute(
+                    "SELECT status FROM delegation_proposals WHERE id=?",
+                    (str(proposal_id),),
+                ).fetchone()
+                if proposal is None or proposal["status"] != "draft":
+                    self._connection.execute("ROLLBACK")
+                    return False
+                expected_ids = {
+                    row["id"] for row in self._connection.execute(
+                        "SELECT id FROM delegation_child_tasks WHERE proposal_id=? AND state='draft'",
+                        (str(proposal_id),),
+                    ).fetchall()
+                }
+                if expected_ids != {str(item.id) for item in items}:
+                    self._connection.execute("ROLLBACK")
+                    raise ValueError("materialized tasks do not match the proposal's draft children")
+                for item in items:
+                    self._connection.execute(
+                        """INSERT INTO work_items
+                           (id,title,objective,department,state,assigned_agent_id,dependencies_json,created_at)
+                           VALUES(?,?,?,?,?,?,?,?)""",
+                        (str(item.id), item.title, item.objective, item.department, item.state.value,
+                         str(item.assigned_agent_id) if item.assigned_agent_id else None,
+                         _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
+                    )
+                for record in records:
+                    row = self._connection.execute(
+                        "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                    ).fetchone()
+                    previous_hash = row["event_hash"] if row else _ZERO_HASH
+                    payload = _audit_payload(record, previous_hash)
+                    event_hash = _digest(payload)
+                    self._connection.execute(
+                        """INSERT INTO audit_events
+                           (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                           VALUES(?,?,?,?,?)""",
+                        (str(record.id), record.occurred_at.isoformat(), _json(payload),
+                         previous_hash, event_hash),
+                    )
+                self._connection.execute(
+                    "UPDATE delegation_child_tasks SET state='approved' WHERE proposal_id=? AND state='draft'",
+                    (str(proposal_id),),
+                )
+                self._connection.execute(
+                    "UPDATE delegation_proposals SET status='approved' WHERE id=? AND status='draft'",
+                    (str(proposal_id),),
+                )
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def get_work_item(self, item_id: UUID) -> WorkItem | None:
         with self._lock:
             row = self._connection.execute(
