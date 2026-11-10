@@ -30,6 +30,7 @@ from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.worker_queue import QueueError
 from opencompany_core.manager_ai import ManagerPlanningError, recommend_department_plan
+from opencompany_core.executive_ai import ExecutivePlanningError, create_executive_plan
 from opencompany_core.model_gateway import CostPolicyViolation, NoEligibleProvider, ProviderUnavailable
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
@@ -80,6 +81,12 @@ class WorkItemCreateInput(BaseModel):
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     max_specialists: int = Field(default=5, ge=1, le=5)
+
+
+class ExecutivePlanInput(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    objective: str = Field(min_length=1, max_length=12000)
+    max_tasks: int = Field(default=8, ge=1, le=10)
 
 
 class ManagerProposalInput(BaseModel):
@@ -707,6 +714,65 @@ def preview_work_item_delegation(
     }
 
     
+@app.post("/executive/plan", dependencies=[Depends(require_owner_key)])
+def create_executive_work_plan(
+    payload: ExecutivePlanInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Ask the active CEO orchestrator to decompose an owner objective into draft tasks."""
+    ceo = next(
+        (agent for agent in store.list_agents(limit=1000)
+         if agent.role_key == "chief_executive_orchestrator"),
+        None,
+    )
+    if ceo is None or ceo.state != AgentState.ACTIVE:
+        raise HTTPException(status_code=409, detail="The Chief Executive Orchestrator must be provisioned and explicitly ACTIVE.")
+    try:
+        plan = create_executive_plan(
+            payload.title, payload.objective, runtime.gateway, max_tasks=payload.max_tasks
+        )
+    except NoEligibleProvider as exc:
+        raise HTTPException(status_code=503, detail="No owner-configured free model provider is available for CEO planning.") from exc
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        raise HTTPException(status_code=502, detail=f"CEO model request failed safely: {type(exc).__name__}") from exc
+    except ExecutivePlanningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    records = tuple(
+        AuditRecord(
+            id=uuid4(), occurred_at=now, actor_type="agent", actor_id=str(ceo.id),
+            action="executive.draft_work_item_created", subject_type="work_item",
+            subject_id=str(item.id), outcome="drafted", correlation_id=correlation_id,
+            details={"provider": plan.provider, "model": plan.model, "plan_title": payload.title},
+        )
+        for item in plan.work_items
+    )
+    try:
+        store.save_work_items_with_audit(plan.work_items, records)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=f"Could not persist the complete executive plan: {type(exc).__name__}") from exc
+    return {
+        "plan_title": payload.title,
+        "rationale": plan.rationale,
+        "provider": plan.provider,
+        "model": plan.model,
+        "created_count": len(plan.work_items),
+        "items": [
+            {
+                "id": str(item.id), "title": item.title, "objective": item.objective,
+                "department": item.department, "state": item.state.value,
+                "depends_on": [str(value) for value in item.depends_on],
+            }
+            for item in plan.work_items
+        ],
+        "owner_review_required": True,
+        "queue_entries_created": False,
+        "execution_started": False,
+    }
+
+
 @app.post("/work-items/{item_id}/manager-proposal", dependencies=[Depends(require_owner_key)])
 def create_ai_manager_proposal(
     item_id: UUID,
