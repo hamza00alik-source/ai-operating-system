@@ -38,7 +38,13 @@ def test_postgres_schema_initialization_and_runtime_queries(monkeypatch):
     )
     assert migration.is_file()
     with db.connect() as connection:
-        # Execute the migration as one PostgreSQL script. The adapter's\n        # executescript method is intentionally SQLite-compatible and splits\n        # statements; SQL comments spanning split boundaries belong to the\n        # migration runner, not the runtime adapter.\n        connection._connection.execute(\n            migration.read_text(encoding="utf-8"), prepare=False\n        )
+        # Execute the migration as one PostgreSQL script. The adapter's
+        # executescript method is intentionally SQLite-compatible and splits
+        # statements; SQL comments spanning split boundaries belong to the
+        # migration runner, not the runtime adapter.
+        connection._connection.execute(
+            migration.read_text(encoding="utf-8"), prepare=False
+        )
         table_count = connection.execute(
             """SELECT COUNT(*) AS n FROM information_schema.tables
                WHERE table_schema='public' AND table_type='BASE TABLE'"""
