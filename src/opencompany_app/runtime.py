@@ -61,7 +61,6 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     handoffs = HandoffRepository(store._connection, store._lock)
     learning = LearningRepository(store._connection, store._lock)
     github_evolution = GitHubEvolutionClient.from_env()
-    api_anything = ApiAnythingClient.from_env()
     queue = DurableWorkerQueue(
         store._connection,
         max_attempts=int(os.environ.get("OPENCOMPANY_WORKER_MAX_ATTEMPTS", "3")),
