@@ -124,6 +124,14 @@ def configured_unorouter_provider() -> tuple[ProviderPolicy, UnoRouterAdapter] |
     return policy, UnoRouterAdapter(api_key)
 
 
+def configured_unorouter_gateway():
+    """Build a gateway for all company roles using the owner-enabled UnoRouter route."""
+    from .model_gateway import ModelGateway
+
+    configured = configured_unorouter_provider()
+    return ModelGateway.configure((configured,)) if configured is not None else ModelGateway()
+
+
 def unorouter_configuration_status() -> dict[str, object]:
     api_key = os.environ.get("OPENCOMPANY_UNOROUTER_API_KEY", "").strip()
     model = os.environ.get("OPENCOMPANY_UNOROUTER_FREE_MODEL", "").strip()
