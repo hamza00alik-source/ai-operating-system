@@ -1092,3 +1092,12 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
     runtime.gateway.ready = True
     api_module.initialize_autonomous_runtime()
     assert calls == ["started"]
+
+
+def test_runtime_factory_never_starts_background_workers(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
+    runtime = create_runtime(str(tmp_path / "runtime-factory.sqlite3"))
+    try:
+        assert runtime.fleet.status().running is False
+    finally:
+        runtime.close()
