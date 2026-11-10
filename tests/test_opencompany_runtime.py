@@ -18,6 +18,9 @@ def test_api_startup_bootstraps_and_activates_all_roles_when_owner_configured(tm
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
     monkeypatch.setenv("OPENCOMPANY_BOOTSTRAP_WORKFORCE", "true")
     monkeypatch.setenv("OPENCOMPANY_AUTO_ACTIVATE_WORKFORCE", "true")
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_API_KEY", "test-unorouter-key")
+    monkeypatch.setenv("OPENCOMPANY_UNOROUTER_FREE_MODEL", "test/free-model:free")
+    monkeypatch.setenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "true")
     monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
     _default_runtime.cache_clear()
     with TestClient(app):
