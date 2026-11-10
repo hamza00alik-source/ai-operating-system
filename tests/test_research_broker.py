@@ -5,6 +5,7 @@ from opencompany_core.domain import WorkItem
 from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy
 from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.workforce import default_workforce
+from opencompany_core.organization import default_organization
 
 
 class SelectionAdapter:
