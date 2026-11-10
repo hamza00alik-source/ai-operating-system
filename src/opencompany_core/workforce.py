@@ -5,10 +5,22 @@ They contain no copied specialist prompts or imported role catalogue.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable, Mapping
 
 from .specialist_roles import DEPARTMENT_LABELS, EXTRA_SPECIALIST_TITLES, SPECIALIST_TITLES
+
+
+@dataclass(frozen=True, slots=True)
+class RolePlaybook:
+    """Role-specific operating procedure and acceptance contract."""
+
+    intake_requirements: tuple[str, ...]
+    workflow_steps: tuple[str, ...]
+    deliverable_contract: tuple[str, ...]
+    quality_rubric: tuple[str, ...]
+    escalation_triggers: tuple[str, ...]
+    tool_scopes: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +33,7 @@ class RoleSpec:
     permitted_outputs: tuple[str, ...]
     prohibited_actions: tuple[str, ...]
     team_key: str = "general"
+    playbook: RolePlaybook | None = None
 
     def __post_init__(self) -> None:
         for name in ("key", "title", "function", "mission"):
@@ -37,11 +50,68 @@ class RoleSpec:
             raise ValueError("each role must declare prohibited actions")
 
 
+def _build_role_playbook(role: RoleSpec) -> RolePlaybook:
+    """Derive a concrete SOP from this role's unique mission and capability contract."""
+    specific = tuple(
+        capability.replace("_", " ")
+        for capability in role.capabilities
+        if capability not in {"specialist_execution", "evidence_synthesis", "quality_review"}
+    )
+    focus = specific or (role.function.casefold(),)
+    steps = (
+        f"Frame the assignment for {role.title}: restate the requested outcome, audience, constraints, and decision the work should support.",
+        f"Establish the evidence and inputs required for {focus[0]}; distinguish supplied facts from assumptions.",
+        *(f"Perform the {capability} workstream and record method, source or input, result, and uncertainty." for capability in focus[:4]),
+        f"Cross-check the {role.title} result against the department mission and adjacent-team dependencies.",
+        f"Produce only the permitted {', '.join(role.permitted_outputs)} and include a concise handoff for the department manager.",
+    )
+    rubric = (
+        f"Scope fit: the output solves the assigned {role.title} objective without expanding authority.",
+        f"Domain correctness: conclusions are consistent with {role.function} responsibilities and declared capabilities.",
+        "Evidence quality: material claims have traceable sources or are clearly labelled as assumptions.",
+        "Completeness: every required output and acceptance condition is addressed.",
+        "Reproducibility: methods, calculations, decisions, and unresolved uncertainties are documented.",
+        "Safety: prohibited actions are not attempted and owner approval boundaries are preserved.",
+    )
+    escalations = (
+        "Escalate when required inputs are missing, contradictory, stale, or unverifiable.",
+        "Escalate when requested work exceeds the role's declared capabilities or permitted outputs.",
+        "Escalate any request to publish, contact customers, purchase, pay, make commitments, or alter production.",
+        "Escalate suspected privacy, security, licensing, legal, or financial-control risks.",
+        "Escalate unresolved cross-department dependencies rather than inventing a decision.",
+    )
+    return RolePlaybook(
+        intake_requirements=(
+            "Work-item title, objective, department, dependencies, and acceptance expectation.",
+            f"Inputs relevant to {role.title}: {', '.join(focus)}.",
+            "Source provenance, freshness, permitted data scope, and any owner-provided constraints.",
+        ),
+        workflow_steps=steps,
+        deliverable_contract=(
+            f"Role: {role.key} ({role.title})",
+            f"Allowed deliverable types: {', '.join(role.permitted_outputs)}",
+            "Include executive summary, method, evidence, assumptions, findings, limitations, and recommended next step where relevant.",
+            "Return artifact references and a manager handoff; do not claim unperformed external actions.",
+        ),
+        quality_rubric=rubric,
+        escalation_triggers=escalations,
+        tool_scopes=(
+            "Read assigned work item and explicitly attached internal artifacts only.",
+            "Use read-only public research connectors only when separately configured and permitted.",
+            "Write draft artifacts and structured handoffs inside the OpenCompany workspace.",
+            "No shell, production database, credential, publishing, customer messaging, purchase, or payment authority.",
+        ),
+    )
+
+
 class RoleCatalog:
     """Immutable lookup and capability matching for the original workforce."""
 
     def __init__(self, roles: Iterable[RoleSpec]) -> None:
-        items = tuple(roles)
+        items = tuple(
+            role if role.playbook is not None else replace(role, playbook=_build_role_playbook(role))
+            for role in roles
+        )
         indexed = {role.key: role for role in items}
         if len(indexed) != len(items):
             raise ValueError("role keys must be unique")
