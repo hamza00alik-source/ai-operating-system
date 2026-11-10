@@ -62,6 +62,69 @@ def test_postgres_schema_initialization_and_runtime_queries(monkeypatch):
         assert index_count == 23
         assert rls_count == 22
 
+        # Verify PostgreSQL's trigger execution semantics before proposing an
+        # ACL hardening change to Supabase's SECURITY DEFINER event-trigger
+        # function. Revoking direct RPC execution after trigger creation must
+        # not stop the already-registered event trigger from firing.
+        connection._connection.execute(
+            """DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                    CREATE ROLE anon NOLOGIN;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                    CREATE ROLE authenticated NOLOGIN;
+                END IF;
+            END $$;""",
+            prepare=False,
+        )
+        connection._connection.execute(
+            "CREATE TABLE public.event_trigger_acl_log (message TEXT NOT NULL)",
+            prepare=False,
+        )
+        connection._connection.execute(
+            """CREATE FUNCTION public.aios_test_event_trigger_acl()
+            RETURNS event_trigger
+            LANGUAGE plpgsql
+            SECURITY DEFINER
+            SET search_path = pg_catalog
+            AS $$
+            BEGIN
+                INSERT INTO public.event_trigger_acl_log(message) VALUES ('fired');
+            END;
+            $$;""",
+            prepare=False,
+        )
+        connection._connection.execute(
+            """CREATE EVENT TRIGGER aios_test_event_trigger_acl
+            ON ddl_command_end
+            WHEN TAG IN ('CREATE TABLE')
+            EXECUTE FUNCTION public.aios_test_event_trigger_acl()""",
+            prepare=False,
+        )
+        connection._connection.execute(
+            """REVOKE ALL ON FUNCTION public.aios_test_event_trigger_acl()
+            FROM PUBLIC, anon, authenticated""",
+            prepare=False,
+        )
+        privileges = connection.execute(
+            """SELECT has_function_privilege('anon',
+                       'public.aios_test_event_trigger_acl()', 'EXECUTE') AS anon_can_execute,
+                      has_function_privilege('authenticated',
+                       'public.aios_test_event_trigger_acl()', 'EXECUTE') AS authenticated_can_execute"""
+        ).fetchone()
+        assert privileges["anon_can_execute"] is False
+        assert privileges["authenticated_can_execute"] is False
+
+        connection._connection.execute(
+            "CREATE TABLE public.event_trigger_acl_probe (id INTEGER PRIMARY KEY)",
+            prepare=False,
+        )
+        fired = connection.execute(
+            "SELECT COUNT(*) AS n FROM public.event_trigger_acl_log WHERE message='fired'"
+        ).fetchone()["n"]
+        assert fired == 1
+
     # The runtime initializer must safely coexist with the migrated final schema.
     db.initialize_database()
 
