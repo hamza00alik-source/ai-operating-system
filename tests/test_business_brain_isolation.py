@@ -118,8 +118,9 @@ def test_business_integration_credentials_are_encrypted_and_isolated(monkeypatch
     assert credential["secret"] == "secret-agency-token"
     assert get_business_integration_credential("physical-brand", "woocommerce") is None
     with connect() as db:
-        stored = db.execute("SELECT encrypted_secret FROM business_integration_credentials WHERE business_id=?", ("physical-agency",)).fetchone()["encrypted_secret"]
-    assert "secret-agency-token" not in stored
+        stored = db.execute("SELECT encrypted_secret,config_json FROM business_integration_credentials WHERE business_id=?", ("physical-agency",)).fetchone()
+    assert "secret-agency-token" not in stored["encrypted_secret"]
+    assert "agency.example" not in stored["config_json"]
     assert delete_business_integration("physical-agency", "woocommerce") is True
     assert get_business_integration_credential("physical-agency", "woocommerce") is None
 
