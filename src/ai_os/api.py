@@ -150,6 +150,7 @@ class ModelRunRequest(BaseModel):
 
 class ResearchSourceRequest(BaseModel):
     url: str = Field(min_length=12, max_length=2048)
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
 
 
 class BrainMemoryReview(BaseModel):
@@ -352,8 +353,10 @@ def get_company_overview():
 
 
 @app.get("/research/sources", dependencies=[Depends(require_api_key)])
-def get_research_sources():
-    return list_sources()
+def get_research_sources(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_sources(business_id=business_id)
 
 
 @app.post("/research/sources", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -367,7 +370,7 @@ def post_research_source(payload: ResearchSourceRequest):
             ch for ch in submitted_url
             if unicodedata.category(ch) not in {"Cf", "Cc", "Cs", "Zl", "Zp"}
         ).strip()
-        return capture_source(submitted_url)
+        return capture_source(submitted_url, payload.business_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except UnicodeError as exc:
@@ -446,6 +449,7 @@ def get_workflow_detail(workflow_id: str):
 
 
 class BusinessRecordRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
     title: str = Field(min_length=1, max_length=160)
     amount: float | None = Field(default=None, ge=0, le=1000000000)
     currency: str = Field(default="USD", min_length=3, max_length=3)
@@ -455,6 +459,7 @@ class BusinessRecordRequest(BaseModel):
 
 
 class InvestorRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
     name: str = Field(min_length=1, max_length=180)
     organization: str = Field(default="", max_length=180)
     contact: str = Field(default="", max_length=200)
@@ -482,13 +487,17 @@ class LicenseOfferRequest(BaseModel):
 
 
 @app.get("/business/summary", dependencies=[Depends(require_api_key)])
-def get_business_summary():
-    return business_ops.business_summary()
+def get_business_summary(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.business_summary(business_id)
 
 
 @app.get("/business/customers", dependencies=[Depends(require_api_key)])
-def get_business_customers():
-    return business_ops.list_records("customer")
+def get_business_customers(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_records("customer", business_id=business_id)
 
 
 @app.post("/business/customers", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -500,8 +509,10 @@ def post_business_customer(payload: BusinessRecordRequest):
 
 
 @app.get("/business/expenses", dependencies=[Depends(require_api_key)])
-def get_business_expenses():
-    return business_ops.list_records("expense")
+def get_business_expenses(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_records("expense", business_id=business_id)
 
 
 @app.post("/business/expenses", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -513,8 +524,10 @@ def post_business_expense(payload: BusinessRecordRequest):
 
 
 @app.get("/business/revenue", dependencies=[Depends(require_api_key)])
-def get_business_revenue():
-    return business_ops.list_records("revenue")
+def get_business_revenue(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_records("revenue", business_id=business_id)
 
 
 @app.post("/business/revenue", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -526,8 +539,10 @@ def post_business_revenue(payload: BusinessRecordRequest):
 
 
 @app.get("/business/investors", dependencies=[Depends(require_api_key)])
-def get_business_investors():
-    return business_ops.list_investors()
+def get_business_investors(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_investors(business_id=business_id)
 
 
 @app.post("/business/investors", status_code=201, dependencies=[Depends(require_owner_key)])
