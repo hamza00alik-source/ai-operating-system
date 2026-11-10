@@ -45,6 +45,7 @@ class OpenCompanyRuntime:
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
+    github_evolution_tested_at: str | None = None
 
     def stop_workers_for_provider_change(self) -> None:
         """Stop inference before changing provider credentials or routing."""
@@ -85,6 +86,7 @@ class OpenCompanyRuntime:
     def configure_github_evolution(self, token: str | None) -> None:
         if token is None:
             self.github_evolution = None
+            self.github_evolution_tested_at = None
             self.secret_vault_errors.pop("github_evolution", None)
             return
         repository = os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY", "").strip()
@@ -94,6 +96,7 @@ class OpenCompanyRuntime:
         self.github_evolution = GitHubEvolutionClient(
             token, repository, base_branch=base_branch,
         )
+        self.github_evolution_tested_at = None
         self.secret_vault_errors.pop("github_evolution", None)
 
     def close(self) -> None:
