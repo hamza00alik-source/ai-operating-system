@@ -24,7 +24,7 @@ def owner_client(tmp_path, monkeypatch):
     app.dependency_overrides[get_runtime] = lambda: runtime
     app.dependency_overrides[get_store] = lambda: store
     app.dependency_overrides[get_delegation_store] = lambda: delegations
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="https://testserver") as test_client:
         yield test_client
     app.dependency_overrides.clear()
     runtime.close()
