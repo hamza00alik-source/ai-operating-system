@@ -62,7 +62,7 @@ def initialize_workflows() -> None:
         CREATE TABLE IF NOT EXISTS workflow_steps (
             id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, task_id TEXT NOT NULL,
             sequence_no INTEGER NOT NULL, department TEXT NOT NULL, title TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'blocked', created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'blocked', output TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
             UNIQUE(workflow_id, sequence_no), UNIQUE(task_id),
             FOREIGN KEY(workflow_id) REFERENCES workflow_instances(id),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
@@ -73,6 +73,9 @@ def initialize_workflows() -> None:
         if "business_id" not in columns:
             db.execute("ALTER TABLE workflow_instances ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'")
         db.execute("CREATE INDEX IF NOT EXISTS idx_workflow_instances_scope ON workflow_instances(business_id, created_at)")
+        step_columns = {row["name"] for row in db.execute("PRAGMA table_info(workflow_steps)")}
+        if "output" not in step_columns:
+            db.execute("ALTER TABLE workflow_steps ADD COLUMN output TEXT NOT NULL DEFAULT ''")
 
 def list_templates() -> dict:
     return {"templates": [{"id": key, "name": value["name"], "description": value["description"],
@@ -125,7 +128,7 @@ def task_is_runnable(task_id: str) -> bool:
             return True
         return step["status"] == "queued"
 
-def finish_workflow_task(task_id: str, success: bool) -> None:
+def finish_workflow_task(task_id: str, success: bool, output: str = "") -> None:
     initialize_workflows()
     now = datetime.now(timezone.utc).isoformat()
     with connect() as db:
@@ -136,12 +139,12 @@ def finish_workflow_task(task_id: str, success: bool) -> None:
             db.execute("UPDATE workflow_steps SET status='failed' WHERE task_id=?", (task_id,))
             db.execute("UPDATE workflow_instances SET status='blocked' WHERE id=?", (step["workflow_id"],))
             return
-        db.execute("UPDATE workflow_steps SET status='completed' WHERE task_id=?", (task_id,))
+        db.execute("UPDATE workflow_steps SET status='completed', output=? WHERE task_id=?", (output[:12000], task_id))
         following = db.execute("""SELECT * FROM workflow_steps WHERE workflow_id=? AND sequence_no=?
             AND status='blocked'""", (step["workflow_id"], step["sequence_no"] + 1)).fetchone()
         if following:
             db.execute("UPDATE workflow_steps SET status='queued' WHERE id=?", (following["id"],))
-            db.execute("UPDATE tasks SET status='queued' WHERE id=?", (following["task_id"],))
+            db.execute("UPDATE tasks SET status='queued', description=description || ? WHERE id=?", ("\n\nPREVIOUS DEPARTMENT HANDOFF (same business/workflow; verify claims):\n" + output[:12000], following["task_id"]))
         else:
             db.execute("UPDATE workflow_instances SET status='completed' WHERE id=?", (step["workflow_id"],))
 
