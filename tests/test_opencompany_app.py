@@ -778,3 +778,76 @@ def test_executive_plan_rejects_forward_or_unknown_dependencies(owner_client):
     })
     assert response.status_code == 422
     assert owner_client.get("/work-items", headers=headers).json()["count"] == 0
+
+
+class _LearningPlannerFakeAdapter:
+    def generate(self, request, *, model):
+        return ModelResult(
+            text='{"role_key":"market_intelligence_analyst","note":"Verify publication dates and prefer current primary sources for demand claims.","rationale":"The reviewed report identified inconsistent source freshness.","expected_measurement":"Reduce stale-source findings in the next five market reports.","risk_level":"low"}',
+            provider="unorouter", model=model, cost_usd=0.0,
+        )
+
+
+def test_review_outcome_generates_owner_approved_learning_note(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Review market evidence", "objective": "Prepare a sourced buyer-demand report",
+        "department": "intelligence-research",
+    }).json()
+    item_id = UUID(created["item_id"])
+    store = app.dependency_overrides[get_store]()
+    from dataclasses import replace
+    item = store.get_work_item(item_id)
+    store.save_work_item_with_audit(replace(item, state=TaskState.IN_PROGRESS), AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.start", subject_type="work_item",
+        subject_id=str(item_id), outcome="recorded", correlation_id="learning-test",
+    ))
+    deliverable = AgentDeliverable(
+        id=uuid4(), work_item_id=item_id, role_key="market_intelligence_analyst",
+        content="Buyer demand appears strong. Sources were not all current.",
+        provider="fake", model="deterministic", cost_usd=0.0,
+    )
+    store.save_deliverable_with_audit(deliverable, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+        actor_id="test-agent", action="worker.deliverable_saved",
+        subject_type="work_item", subject_id=str(item_id),
+        outcome="recorded", correlation_id="learning-test",
+    ))
+    reviewed = owner_client.post(
+        f"/work-items/{item_id}/review", headers=headers,
+        json={"approved": True, "rationale": "Useful report; source freshness should improve."},
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["evaluation_recorded"] is True
+    evaluation_id = reviewed.json()["evaluation_id"]
+
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway.configure(((
+        ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
+        _LearningPlannerFakeAdapter(),
+    ),))
+    proposed = owner_client.post("/learning/ai-proposals", headers=headers, json={
+        "evaluation_ids": [evaluation_id],
+    })
+    assert proposed.status_code == 200
+    proposal_id = proposed.json()["id"]
+    assert proposed.json()["owner_approval_required"] is True
+    assert proposed.json()["note_applied"] is False
+
+    decision = owner_client.post(
+        f"/learning/proposals/{proposal_id}/decision", headers=headers,
+        json={"approved": True, "rationale": "Approved for future market research work."},
+    )
+    assert decision.status_code == 200
+    applied = owner_client.post(
+        f"/learning/proposals/{proposal_id}/apply-note", headers=headers, json={},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["state"] == "implemented"
+    notes = owner_client.get(
+        "/learning/notes/market_intelligence_analyst", headers=headers,
+    ).json()
+    assert notes["count"] == 1
+    assert "publication dates" in notes["notes"][0]["note"]
+    assert runtime.store.verify_audit_chain()
