@@ -1376,6 +1376,7 @@ def list_work_item_delegation_proposals(
 @app.post("/work-items/{item_id}/review", dependencies=[Depends(require_owner_key)])
 def review_work_item(
     item_id: UUID, payload: WorkItemReviewInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
     store: SQLiteStore = Depends(get_store),
 ) -> dict:
     from datetime import datetime, timezone
@@ -1395,7 +1396,37 @@ def review_work_item(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if state is None:
         raise HTTPException(status_code=409, detail="Work item is not awaiting review.")
-    return {"item_id": str(item_id), "state": state.value, "approved": payload.approved}
+    evaluation_id = None
+    evaluation_error = None
+    try:
+        deliverables = store.list_deliverables(item_id)
+        evaluation = OutcomeEvaluation(
+            id=uuid4(), work_item_id=item_id, evaluator="owner",
+            grade=OutcomeGrade.SUCCESS if payload.approved else OutcomeGrade.PARTIAL,
+            rubric_scores={
+                "owner_acceptance": 5 if payload.approved else 2,
+                "scope_fit": 5 if payload.approved else 2,
+                "evidence_quality": 4 if payload.approved else 2,
+            },
+            evidence_refs=tuple(f"deliverable:{item['id']}" for item in deliverables),
+            observations=payload.rationale,
+        )
+        learning_event = AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action="learning.review_outcome_recorded",
+            subject_type="work_item", subject_id=str(item_id),
+            outcome=evaluation.grade.value, correlation_id=str(uuid4()),
+            details={"evaluation_id": str(evaluation.id)},
+        )
+        runtime.learning.save_evaluation(evaluation, learning_event)
+        evaluation_id = str(evaluation.id)
+    except Exception as exc:
+        evaluation_error = type(exc).__name__
+    return {
+        "item_id": str(item_id), "state": state.value, "approved": payload.approved,
+        "evaluation_id": evaluation_id, "evaluation_recorded": evaluation_id is not None,
+        "evaluation_error": evaluation_error,
+    }
 
 @app.post("/work-items/{item_id}/transition", dependencies=[Depends(require_owner_key)])
 def change_work_item_state(
