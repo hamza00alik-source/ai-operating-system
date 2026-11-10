@@ -19,7 +19,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from ai_os.db import connect
-from ai_os.credentials import save_business_integration
+from ai_os.credentials import save_business_integration, _fernet
 
 class OAuthError(RuntimeError):
     pass
@@ -140,7 +140,7 @@ def begin(provider: str, business_id: str) -> str:
     params = {"client_id": cfg["client_id"], "redirect_uri": cfg["redirect_uri"],
               "response_type": "code", "state": state, "scope": " ".join(spec["scopes"])}
     if provider == "tiktok":
-        params["client_key"] = params.pop("client_id")
+        params["client_key"] = params.pop("client_id")\n        params["scope"] = ",".join(spec["scopes"])
     if provider == "pinterest":
         params["scope"] = ",".join(spec["scopes"])
     if provider == "reddit":
@@ -155,7 +155,7 @@ def begin(provider: str, business_id: str) -> str:
         db.execute("DELETE FROM social_oauth_states WHERE created_at < ?", (int(time.time()) - 900,))
         db.execute("INSERT INTO social_oauth_states(state_hash,business_id,provider,verifier_encrypted,created_at) VALUES(?,?,?,?,?)",
                    (hashlib.sha256(state.encode()).hexdigest(), business_id, provider,
-                    verifier, int(time.time())))
+                    _fernet().encrypt(verifier.encode()).decode("ascii") if verifier else None, int(time.time())))
     return spec["authorize"] + "?" + urllib.parse.urlencode(params)
 
 def _request_json(url: str, data: dict | None = None, headers: dict | None = None) -> dict:
@@ -201,7 +201,7 @@ def complete(provider: str, state: str, code: str) -> dict:
     elif provider == "meta":
         data.update({"client_id": cfg["client_id"], "client_secret": cfg["client_secret"]})
     elif provider == "x":
-        data.update({"client_id": cfg["client_id"], "code_verifier": row["verifier_encrypted"]})
+        data.update({"client_id": cfg["client_id"], "code_verifier": _fernet().decrypt(row["verifier_encrypted"].encode()).decode()})
         headers["Authorization"] = "Basic " + base64.b64encode(
             (cfg["client_id"] + ":" + cfg["client_secret"]).encode()).decode()
     elif provider in {"pinterest", "reddit"}:
