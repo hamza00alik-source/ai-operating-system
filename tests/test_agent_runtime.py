@@ -138,3 +138,39 @@ def test_worker_loop_stops_cleanly_after_stop_signal(monkeypatch):
     monkeypatch.setattr(agent_runtime, "run_pending_once", idle_once)
     agent_runtime.worker_loop(stop, poll_seconds=1)
     assert len(calls) == 1
+
+
+def test_worker_pool_starts_the_configured_number_of_consumers(monkeypatch):
+    import threading
+    from ai_os import agent_runtime
+
+    stop = threading.Event()
+    barrier = threading.Barrier(2)
+    thread_ids = []
+
+    def fake_worker_loop(stop_event, poll_seconds):
+        thread_ids.append(threading.get_ident())
+        barrier.wait(timeout=3)
+        stop_event.set()
+
+    monkeypatch.setattr(agent_runtime, "worker_loop", fake_worker_loop)
+    agent_runtime.worker_pool(stop, poll_seconds=1, concurrency=2)
+    assert len(set(thread_ids)) == 2
+
+
+def test_worker_pool_clamps_concurrency_to_four(monkeypatch):
+    import threading
+    from ai_os import agent_runtime
+
+    stop = threading.Event()
+    started = []
+    barrier = threading.Barrier(4)
+
+    def fake_worker_loop(stop_event, poll_seconds):
+        started.append(threading.get_ident())
+        barrier.wait(timeout=3)
+        stop_event.set()
+
+    monkeypatch.setattr(agent_runtime, "worker_loop", fake_worker_loop)
+    agent_runtime.worker_pool(stop, poll_seconds=1, concurrency=99)
+    assert len(set(started)) == 4

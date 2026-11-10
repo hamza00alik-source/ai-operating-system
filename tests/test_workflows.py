@@ -35,10 +35,15 @@ def test_workflow_handoff_unlocks_next_step_only_after_success(monkeypatch, tmp_
     assert task_is_runnable(first["task_id"]) is True
     assert task_is_runnable(second["task_id"]) is False
     finish_workflow_task(first["task_id"], True)
+    finish_workflow_task(first["task_id"], True)
     current = get_workflow(workflow["id"])
     assert current["steps"][0]["status"] == "completed"
     assert current["steps"][1]["status"] == "queued"
     assert task_is_runnable(second["task_id"]) is True
+    from ai_os.db import connect
+    with connect() as db:
+        next_run = db.execute("SELECT status FROM agent_runs WHERE task_id=?", (second["task_id"],)).fetchone()
+    assert next_run["status"] == "queued"
 
 
 def test_company_wide_cycle_is_business_scoped_and_covers_all_departments(monkeypatch, tmp_path):
@@ -53,6 +58,11 @@ def test_company_wide_cycle_is_business_scoped_and_covers_all_departments(monkey
     assert [step["department"] for step in workflow["steps"]] == expected
     assert workflow["business_id"] == "physical-agency"
     assert len(workflow["steps"]) == 12
+    from ai_os.db import connect
+    with connect() as db:
+        first_run = db.execute("SELECT status FROM agent_runs WHERE task_id=?",
+                               (workflow["steps"][0]["task_id"],)).fetchone()
+    assert first_run["status"] == "queued"
     assert workflow["steps"][0]["status"] == "queued"
     assert all(step["status"] == "blocked" for step in workflow["steps"][1:])
     assert task_is_runnable(workflow["steps"][0]["task_id"])
@@ -141,6 +151,12 @@ def test_departments_can_message_and_delegate_only_within_business(monkeypatch,t
     delegated=delegate_task("digital-products","research","product","Draft product requirements",
                             "Use only verified findings.",parent["id"])
     assert delegated["status"]=="queued"
+    assert delegated["run_status"]=="queued"
+    from ai_os.db import connect
+    with connect() as db:
+        delegated_run=db.execute("SELECT status FROM agent_runs WHERE task_id=?",
+                                 (delegated["child_task_id"],)).fetchone()
+    assert delegated_run["status"]=="queued"
     assert delegated["from_department"]=="research" and delegated["to_department"]=="product"
     assert len(list_delegations("digital-products",department="product"))==1
     assert list_messages("digital-products",department="product")[0]["related_task_id"]==delegated["child_task_id"]
