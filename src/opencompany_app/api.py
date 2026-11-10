@@ -559,8 +559,14 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
     if not payload.model.endswith(":free"):
         raise HTTPException(status_code=422, detail="Only explicitly free model IDs ending in :free are accepted.")
     try:
+        runtime.stop_workers_for_provider_change()
         revision = runtime.secret_vault.put("unorouter", {"api_key": payload.api_key, "model": payload.model})
-        runtime.configure_unorouter({"api_key": payload.api_key, "model": payload.model, "confirmed_free": "true"})
+        runtime.configure_unorouter(
+            {"api_key": payload.api_key, "model": payload.model, "confirmed_free": "true"},
+            workers_already_stopped=True,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="Workers are still processing; provider settings were not changed.") from exc
     except SecretVaultError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"configured": True, "model": payload.model, "api_key_saved": True, "revision": revision,
@@ -598,8 +604,14 @@ def test_unorouter_connection(runtime: OpenCompanyRuntime = Depends(get_runtime)
 
 @app.delete("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
 def remove_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
-    removed = runtime.secret_vault.delete("unorouter")
-    runtime.configure_unorouter(None)
+    try:
+        runtime.stop_workers_for_provider_change()
+        removed = runtime.secret_vault.delete("unorouter")
+        runtime.configure_unorouter(None, workers_already_stopped=True)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="Workers are still processing; provider settings were not changed.") from exc
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored provider settings could not be removed safely.") from exc
     return {"removed": removed, "configured": False, "paid_fallback": False}
 
 
