@@ -156,6 +156,44 @@ class SQLiteStore:
                  _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
             )
 
+    def save_work_item_with_audit(self, item: WorkItem, record: AuditRecord) -> str:
+        """Persist a work item change and its audit evidence in one transaction."""
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._connection.execute(
+                    """INSERT INTO work_items
+                       (id,title,objective,department,state,assigned_agent_id,dependencies_json,created_at)
+                       VALUES(?,?,?,?,?,?,?,?)
+                       ON CONFLICT(id) DO UPDATE SET
+                         title=excluded.title, objective=excluded.objective,
+                         department=excluded.department, state=excluded.state,
+                         assigned_agent_id=excluded.assigned_agent_id,
+                         dependencies_json=excluded.dependencies_json,
+                         created_at=excluded.created_at""",
+                    (str(item.id), item.title, item.objective, item.department, item.state.value,
+                     str(item.assigned_agent_id) if item.assigned_agent_id else None,
+                     _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
+                )
+                row = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    """INSERT INTO audit_events
+                       (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                       VALUES(?,?,?,?,?)""",
+                    (str(record.id), record.occurred_at.isoformat(), _json(payload),
+                     previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return event_hash
+            except Exception:
+                self._connection.execute("ROLLBACK")
+                raise
+
     def get_work_item(self, item_id: UUID) -> WorkItem | None:
         with self._lock:
             row = self._connection.execute(
