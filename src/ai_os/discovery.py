@@ -419,7 +419,7 @@ def run_scan(scan_id: str, worker_id: str | None = None, *, already_claimed: boo
                 raise RuntimeError('Discovery scan lease was lost before completion.')
     except Exception as exc:
         with connect() as db:
-            db.execute("UPDATE discovery_scans SET status='failed',finished_at=?,result_count=?,error=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=?", (now(), count, str(exc)[:1000], scan_id, worker_id))
+            db.execute("UPDATE discovery_scans SET status='failed',finished_at=?,result_count=?,error=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=? AND lease_expires_at>?", (now(), count, str(exc)[:1000], scan_id, worker_id, now()))
         raise
     finally:
         stop_heartbeat.set()
