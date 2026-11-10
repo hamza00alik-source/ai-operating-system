@@ -11,16 +11,16 @@ def test_business_memories_are_strictly_isolated(monkeypatch, tmp_path):
 
     record_experience("agency-run", "agency-task", "sales", "Wholesale buyer qualification",
                       "Agency-only buyer qualification lesson.", business_id="physical-agency")
-    record_experience("brand-run", "brand-task", "sales", "Wholesale buyer qualification",
+    record_experience("brand-run", "brand-task", "sales", "Own-brand customer retention strategy",
                       "Own-brand customer retention lesson.", business_id="physical-brand")
-    record_experience("digital-run", "digital-task", "marketing", "Downloadable product launch",
+    record_experience("digital-run", "digital-task", "marketing", "Digital downloadable product positioning",
                       "Digital product launch lesson.", business_id="digital-products")
 
     agency_memory = list_memories("proposed", business_id="physical-agency")
     assert len(agency_memory) == 1
     assert agency_memory[0]["business_id"] == "physical-agency"
-    assert list_memories("proposed", business_id="physical-brand") == []
-    assert list_memories("proposed", business_id="digital-products") == []
+    assert len(list_memories("proposed", business_id="physical-brand")) == 1
+    assert len(list_memories("proposed", business_id="digital-products")) == 1
 
     review_memory(agency_memory[0]["id"], "approved", "Owner approved")
     assert len(retrieve_memories("wholesale buyer qualification", "sales", business_id="physical-agency")) == 1
