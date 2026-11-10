@@ -68,12 +68,18 @@ class OpenCompanyWorker:
             )
             deliverable = replace(deliverable, id=stable_id)
             self.artifact_sink.save(deliverable)
-            self.store.append_audit_record(self._audit(
-                lease, "worker.deliverable_saved",
-                {"role_key": role_key, "deliverable_id": str(deliverable.id),
-                 "provider": deliverable.provider, "model": deliverable.model,
-                 "cost_usd": deliverable.cost_usd, "review_required": True},
-            ))
+            saved = self.store.save_deliverable_with_audit(
+                deliverable,
+                self._audit(
+                    lease, "worker.deliverable_saved",
+                    {"role_key": role_key, "deliverable_id": str(deliverable.id),
+                     "provider": deliverable.provider, "model": deliverable.model,
+                     "cost_usd": deliverable.cost_usd, "review_required": True,
+                     "task_state": "review"},
+                ),
+            )
+            if not saved:
+                raise WorkerConfigurationError("work item is no longer in progress")
             self.queue.complete(lease)
             return "completed_review_required"
         except Exception as exc:
