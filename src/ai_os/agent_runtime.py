@@ -45,8 +45,8 @@ def renew_run_lease(run_id: str, worker_id: str, lease_seconds: int = 1800) -> b
     ).isoformat()
     with connect() as db:
         changed = db.execute(
-            "UPDATE agent_runs SET lease_expires_at=? WHERE id=? AND status='running' AND lease_owner=?",
-            (expires_at, run_id, worker_id),
+            "UPDATE agent_runs SET lease_expires_at=? WHERE id=? AND status='running' AND lease_owner=? AND lease_expires_at>?",
+            (expires_at, run_id, worker_id, _now()),
         ).rowcount
     return changed == 1
 
