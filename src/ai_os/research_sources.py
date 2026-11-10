@@ -18,6 +18,14 @@ from html.parser import HTMLParser
 from uuid import uuid4
 
 from ai_os.db import connect
+from ai_os.brain import BUSINESS_IDS
+
+
+def _scope(value: str = "core") -> str:
+    scope = (value or "core").strip()
+    if scope not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
+    return scope
 
 MAX_BYTES = 1_000_000
 MAX_TEXT = 18_000
@@ -113,7 +121,8 @@ def _add_redirect_provenance(text: str, submitted_url: str, final_url: str) -> s
     return note + "\n\n" + text
 
 
-def capture_source(url: str) -> dict:
+def capture_source(url: str, business_id: str = "core") -> dict:
+    scope = _scope(business_id)
     submitted_url = _validate_url(url)
     safe_url = submitted_url
     redirect_handler = _SafeRedirect()
@@ -162,12 +171,13 @@ def capture_source(url: str) -> dict:
     with connect() as db:
         db.execute(
             """INSERT INTO research_sources
-            (id,url,title,content,captured_at,content_type)
-            VALUES(?,?,?,?,?,?)""",
-            (source_id, safe_url, title, text, captured_at, content_type[:120]),
+            (id,business_id,url,title,content,captured_at,content_type)
+            VALUES(?,?,?,?,?,?,?)""",
+            (source_id, scope, safe_url, title, text, captured_at, content_type[:120]),
         )
     return {
         "id": source_id,
+        "business_id": scope,
         "url": safe_url,
         "submitted_url": submitted_url,
         "redirected": redirected,
@@ -184,21 +194,24 @@ def capture_source(url: str) -> dict:
     }
 
 
-def list_sources(limit: int = 50) -> list[dict]:
+def list_sources(limit: int = 50, business_id: str = "core") -> list[dict]:
+    scope = _scope(business_id)
     limit = max(1, min(int(limit), 100))
     with connect() as db:
         rows = db.execute(
-            "SELECT id,url,title,captured_at,content_type,length(content) AS characters FROM research_sources ORDER BY captured_at DESC LIMIT ?",
-            (limit,),
+            "SELECT id,business_id,url,title,captured_at,content_type,length(content) AS characters FROM research_sources WHERE business_id=? ORDER BY captured_at DESC LIMIT ?",
+            (scope, limit),
         ).fetchall()
     return [dict(row) for row in rows]
 
 
-def research_context(query: str, limit: int = 8) -> str:
+def research_context(query: str, limit: int = 8, business_id: str = "core") -> str:
+    scope = _scope(business_id)
     terms = [term.casefold() for term in query.split() if len(term) > 3][:12]
     with connect() as db:
         rows = db.execute(
-            "SELECT id,url,title,content,captured_at FROM research_sources ORDER BY captured_at DESC LIMIT 100"
+            "SELECT id,url,title,content,captured_at FROM research_sources WHERE business_id=? ORDER BY captured_at DESC LIMIT 100"
+        , (scope,)
         ).fetchall()
     scored = []
     for row in rows:
