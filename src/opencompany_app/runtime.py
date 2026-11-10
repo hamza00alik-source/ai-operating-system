@@ -63,6 +63,7 @@ class OpenCompanyRuntime:
             configured_unorouter_gateway(configuration)
             if configuration is not None else ModelGateway()
         )
+        self.gateway.set_usage_recorder(self.usage.record)
         self.worker.executor._gateway = self.gateway
         broker = self.worker.executor._research_broker
         if broker is not None:
@@ -153,6 +154,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
             "confirmed_free": "true",
         }) if stored_unorouter is not None else configured_unorouter_gateway()
     )
+    gateway.set_usage_recorder(usage.record)
     api_anything = ApiAnythingClient.from_env()
     research_broker = ResearchBroker(api_anything, gateway) if api_anything is not None else None
     def read_dependency_deliverables(item):
