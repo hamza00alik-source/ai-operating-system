@@ -135,3 +135,48 @@ def test_executor_records_successful_model_usage_without_secret_material():
     assert events[0]["cost_usd"] == 0
     assert "api_key" not in events[0]
     assert result.review_required is True
+
+
+def test_manager_execution_receives_completed_prerequisite_deliverables():
+    adapter = CapturingAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    dependency_id = uuid4()
+    parent = WorkItem(
+        uuid4(), "Synthesize specialist findings",
+        "Consolidate the completed specialist research into a manager report",
+        "research", state=TaskState.IN_PROGRESS, depends_on=(dependency_id,),
+    )
+    executor = AgentExecutor(
+        gateway,
+        dependency_context=lambda item: [{
+            "work_item_id": str(dependency_id),
+            "deliverables": [{
+                "role_key": "market_demand_researcher",
+                "content": "Specialist evidence: buyers show stronger demand in category A.",
+                "provider": "test",
+                "model": "deterministic",
+                "cost_usd": 0.0,
+            }],
+        }],
+    )
+    executor.execute("market_intelligence_analyst", parent)
+    assert "Completed prerequisite deliverables" in adapter.request.prompt
+    assert "buyers show stronger demand in category A" in adapter.request.prompt
+
+
+def test_dependent_execution_fails_closed_without_prerequisite_reader():
+    adapter = CapturingAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    dependency_id = uuid4()
+    parent = WorkItem(
+        uuid4(), "Synthesize specialist findings",
+        "Consolidate completed findings",
+        "research", state=TaskState.IN_PROGRESS, depends_on=(dependency_id,),
+    )
+    with pytest.raises(ValueError, match="dependency reader"):
+        AgentExecutor(gateway).execute("market_intelligence_analyst", parent)
+    assert adapter.request is None
