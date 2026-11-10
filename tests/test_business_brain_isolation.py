@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from ai_os.api import app
 from ai_os.brain import record_experience, retrieve_memories, review_memory, list_memories
-from ai_os.db import initialize_database
+from ai_os.db import connect, initialize_database
 
 
 def test_business_memories_are_strictly_isolated(monkeypatch, tmp_path):
