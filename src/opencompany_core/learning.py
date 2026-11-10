@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Mapping
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from .domain import _require_text, _require_utc
 
@@ -91,7 +91,7 @@ def create_improvement_proposal(
 ) -> ImprovementProposal:
     """Turn one evaluation into a proposal; no code or settings are modified."""
     return ImprovementProposal(
-        id=UUID(int=0), target=target, change_summary=change_summary,
+        id=uuid4(), target=target, change_summary=change_summary,
         rationale=rationale, expected_measurement=expected_measurement,
         risk_level=risk_level, based_on_evaluations=(evaluation.id,),
         state=ProposalState.PROPOSED,
