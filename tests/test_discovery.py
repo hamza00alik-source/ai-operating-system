@@ -137,3 +137,26 @@ def test_expired_discovery_lease_cannot_be_renewed(monkeypatch, tmp_path):
     with connect() as db:
         db.execute("UPDATE discovery_scans SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE id=?", (scan['id'],))
     assert renew_scan_lease(scan['id'], 'worker-a') is False
+
+
+
+def test_expired_discovery_worker_cannot_write_failure_state(monkeypatch, tmp_path):
+    from ai_os import discovery
+    from ai_os.db import connect
+    monkeypatch.setenv('AI_OS_DATABASE_URL', f"sqlite:///{tmp_path / 'discovery-stale-failure.db'}")
+    initialize_database()
+    scan = create_scan(['agent-frameworks'])
+    discovery.claim_next_scan('worker-a')
+
+    def expire_then_return(_query):
+        with connect() as db:
+            db.execute("UPDATE discovery_scans SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE id=?", (scan['id'],))
+        return []
+
+    monkeypatch.setattr(discovery, '_github_search', expire_then_return)
+    with pytest.raises(RuntimeError, match='lease'):
+        discovery.run_scan(scan['id'], 'worker-a', already_claimed=True)
+    with connect() as db:
+        row = db.execute("SELECT status,lease_owner FROM discovery_scans WHERE id=?", (scan['id'],)).fetchone()
+    assert row['status'] == 'running'
+    assert row['lease_owner'] == 'worker-a'
