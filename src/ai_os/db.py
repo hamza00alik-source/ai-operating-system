@@ -196,6 +196,12 @@ def initialize_database() -> None:
             if column_name not in agent_run_columns:
                 connection.execute("ALTER TABLE agent_runs ADD COLUMN " + column_name + " " + column_type)
         connection.execute("CREATE INDEX IF NOT EXISTS idx_agent_runs_lease ON agent_runs(status, lease_expires_at)")
+        # Persistent discovery-scan leases; safe for existing SQLite volumes.
+        discovery_scan_columns = {row["name"] for row in connection.execute("PRAGMA table_info(discovery_scans)")}
+        for column_name in ("lease_owner", "lease_expires_at"):
+            if column_name not in discovery_scan_columns:
+                connection.execute("ALTER TABLE discovery_scans ADD COLUMN " + column_name + " TEXT")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_discovery_scans_lease ON discovery_scans(status, lease_expires_at)")
         # Backward-compatible migration for databases created before owner review.
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(discovery_candidates)")}
         if "review_state" not in columns:
