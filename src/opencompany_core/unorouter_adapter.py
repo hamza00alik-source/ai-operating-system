@@ -7,6 +7,7 @@ ID ending in :free. It never chooses a paid route or performs paid fallback.
 from __future__ import annotations
 
 import json
+import math
 import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -82,9 +83,13 @@ class UnoRouterAdapter:
             if reported_cost is None:
                 raise ValueError("provider did not explicitly report request cost")
             cost = float(reported_cost)
-            if cost < 0:
-                raise ValueError("negative provider cost")
-        except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as exc:
+            if not math.isfinite(cost) or cost < 0:
+                raise ValueError("provider cost must be finite and non-negative")
+            input_tokens = int(input_tokens) if input_tokens is not None else None
+            output_tokens = int(output_tokens) if output_tokens is not None else None
+            if (input_tokens is not None and input_tokens < 0) or (output_tokens is not None and output_tokens < 0):
+                raise ValueError("provider token usage must be non-negative")
+        except (AttributeError, KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as exc:
             raise ProviderUnavailable("UnoRouter returned an invalid chat-completion response.") from exc
 
         if returned_model != model:
@@ -96,8 +101,8 @@ class UnoRouterAdapter:
             provider="unorouter",
             model=model,
             cost_usd=cost,
-            input_tokens=int(input_tokens) if input_tokens is not None else None,
-            output_tokens=int(output_tokens) if output_tokens is not None else None,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
 
