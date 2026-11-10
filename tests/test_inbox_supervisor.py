@@ -28,3 +28,7 @@ def test_parse_no_action_decision():
 def test_reject_invalid_or_external_decisions(response):
     with pytest.raises((ValueError, json.JSONDecodeError)):
         _parse_decision(response)
+
+def test_parse_fenced_json_decision():
+    response = chr(96) * 3 + 'json\\n{"action":"no_action","reason":"FYI"}\\n' + chr(96) * 3
+    assert _parse_decision(response)["action"] == "no_action"
