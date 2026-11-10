@@ -46,6 +46,8 @@ class OpenCompanyRuntime:
     unorouter_tested_at: str | None = None
 
     def configure_unorouter(self, configuration: dict[str, str] | None) -> None:
+        # Stop any running workers while credentials or provider routing change.
+        self.fleet.stop(timeout_seconds=5.0)
         self.gateway = (
             configured_unorouter_gateway(configuration)
             if configuration is not None else ModelGateway()
@@ -55,6 +57,17 @@ class OpenCompanyRuntime:
         if broker is not None:
             broker.gateway = self.gateway
         self.unorouter_tested_at = None
+
+    def start_workers_if_ready(self) -> bool:
+        """Start the fleet only after a successful owner test of a free provider."""
+        enabled = os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        if not enabled or not os.environ.get("OPENCOMPANY_OWNER_API_KEY", "").strip():
+            return False
+        if self.unorouter_tested_at is None:
+            return False
+        if not self.gateway.eligible_providers(request_budget_usd=0.0):
+            return False
+        return bool(self.fleet.start())
 
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
