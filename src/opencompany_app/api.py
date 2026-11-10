@@ -12,7 +12,7 @@ from dataclasses import replace
 from functools import lru_cache
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -38,6 +38,10 @@ app = FastAPI(
     version="0.2.0",
     description="Owner-authenticated API for OpenCompany's independently authored operating core.",
 )
+
+
+class OwnerLoginInput(BaseModel):
+    api_key: str = Field(min_length=1, max_length=512)
 
 
 class PlanItemInput(BaseModel):
@@ -109,14 +113,24 @@ def get_store() -> SQLiteStore:
 
 
 def require_owner_key(
+    request: Request,
     x_opencompany_api_key: str | None = Header(default=None),
+    x_csrf_token: str | None = Header(default=None),
+    opencompany_session: str | None = Cookie(default=None),
 ) -> str:
     expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
     if not expected:
         raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
-    if not x_opencompany_api_key or not hmac.compare_digest(x_opencompany_api_key, expected):
-        raise HTTPException(status_code=401, detail="Owner authentication failed.")
-    return "owner"
+    if opencompany_session:
+        runtime = _default_runtime()
+        mutating = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
+        if runtime.sessions.validate(
+            opencompany_session, x_csrf_token, require_csrf=mutating
+        ):
+            return "owner"
+    if x_opencompany_api_key and hmac.compare_digest(x_opencompany_api_key, expected):
+        return "owner"
+    raise HTTPException(status_code=401, detail="Owner authentication failed.")
 
 
 def _record(item: WorkItem, action: str) -> AuditRecord:
@@ -129,6 +143,45 @@ def _record(item: WorkItem, action: str) -> AuditRecord:
         outcome="recorded", correlation_id=str(uuid4()),
         details={"state": item.state.value, "department": item.department},
     )
+
+
+@app.post("/auth/session")
+def create_owner_session(
+    payload: OwnerLoginInput,
+    response: Response,
+) -> dict:
+    """Exchange the owner API key for a revocable HttpOnly session cookie."""
+    expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Owner authentication is not configured.")
+    if not hmac.compare_digest(payload.api_key, expected):
+        raise HTTPException(status_code=401, detail="Owner authentication failed.")
+    token, csrf, expires = _default_runtime().sessions.create(lifetime_hours=12)
+    secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
+    response.set_cookie(
+        "opencompany_session", token, max_age=12 * 60 * 60, httponly=True,
+        secure=secure_cookie, samesite="strict", path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {"authenticated": True, "csrf_token": csrf, "expires_at": expires.isoformat()}
+
+
+@app.get("/auth/session", dependencies=[Depends(require_owner_key)])
+def owner_session_status() -> dict:
+    return {"authenticated": True, "session_type": "owner"}
+
+
+@app.post("/auth/logout", dependencies=[Depends(require_owner_key)])
+def revoke_owner_session(
+    request: Request,
+    response: Response,
+    opencompany_session: str | None = Cookie(default=None),
+) -> dict:
+    if opencompany_session:
+        _default_runtime().sessions.revoke(opencompany_session)
+    response.delete_cookie("opencompany_session", path="/", httponly=True, samesite="strict")
+    response.headers["Cache-Control"] = "no-store"
+    return {"authenticated": False, "revoked": bool(opencompany_session)}
 
 
 @app.get("/owner", response_class=HTMLResponse)
