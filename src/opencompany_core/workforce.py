@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from typing import Iterable, Mapping
 
 from .specialist_roles import DEPARTMENT_LABELS, EXTRA_SPECIALIST_TITLES, SPECIALIST_TITLES
+from .specialist_capabilities import derive_specialist_capabilities
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,13 +180,15 @@ def _specialist_roles() -> tuple[RoleSpec, ...]:
             slug = "_".join(part for part in "".join(ch.lower() if ch.isalnum() else " " for ch in title).split())
             key = f"{department_key.replace('-', '_')}__{slug}"
             focus = slug.replace("_", " ")
+            specialist_methods = derive_specialist_capabilities(department_key, title)
+            method_summary = ", ".join(value.replace("_", " ") for value in specialist_methods)
             roles.append(RoleSpec(
                 key=key,
                 title=title,
                 function=department_label,
                 team_key=f"{department_key}__team_{index // 5 + 1}",
-                mission=f"Deliver the {focus} capability for {department_label}; produce evidence-backed work, coordinate handoffs, and document assumptions and limitations.",
-                capabilities=(department_key.replace("-", "_"), *tuple(slug.split("_")), "specialist_execution", "evidence_synthesis", "quality_review"),
+                mission=f"Own the {focus} workstream for {department_label}; apply {method_summary} to deliver a traceable, decision-ready result, coordinate handoffs, and document assumptions and limitations.",
+                capabilities=(department_key.replace("-", "_"), *specialist_methods, *tuple(slug.split("_")), "specialist_execution", "evidence_synthesis", "quality_review"),
                 permitted_outputs=(f"{slug}_brief", f"{slug}_analysis", f"{slug}_work_product", "handoff_summary"),
                 prohibited_actions=("bypassing_owner_approval", "inventing_evidence_or_results", "using_unapproved_paid_services", "taking_external_actions_outside_assigned_scope"),
             ))
