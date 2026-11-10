@@ -62,3 +62,17 @@ def test_company_wide_cycle_is_business_scoped_and_covers_all_departments(monkey
     assert list_workflows(business_id="digital-products") == []
     with pytest.raises(ValueError):
         create_workflow("company-wide-operating-cycle", business_id="all-businesses")
+
+
+def test_workflow_handoff_persists_output_for_next_department(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'workflow-output.db'}")
+    from ai_os.db import connect
+    from ai_os.workflows import create_workflow, finish_workflow_task, get_workflow
+    workflow = create_workflow("company-wide-operating-cycle", business_id="physical-agency")
+    first, second = workflow["steps"][:2]
+    finish_workflow_task(first["task_id"], True, "Evidence: three verified buyer interviews.")
+    with connect() as db:
+        next_task = db.execute("SELECT description FROM tasks WHERE id=?", (second["task_id"],)).fetchone()
+    assert "three verified buyer interviews" in next_task["description"]
+    refreshed = get_workflow(workflow["id"])
+    assert "three verified buyer interviews" in refreshed["steps"][0]["output"]
