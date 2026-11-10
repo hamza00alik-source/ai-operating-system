@@ -22,6 +22,7 @@ from opencompany_core.worker_fleet import WorkerFleet
 from opencompany_core.collaboration_store import HandoffRepository
 from opencompany_core.learning_store import LearningRepository
 from opencompany_core.github_evolution import GitHubEvolutionClient
+from opencompany_core.api_anything import ApiAnythingClient
 
 
 @dataclass(slots=True)
@@ -36,6 +37,7 @@ class OpenCompanyRuntime:
     handoffs: HandoffRepository
     learning: LearningRepository
     github_evolution: GitHubEvolutionClient | None
+    api_anything: ApiAnythingClient | None
 
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
@@ -58,6 +60,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     handoffs = HandoffRepository(store._connection, store._lock)
     learning = LearningRepository(store._connection, store._lock)
     github_evolution = GitHubEvolutionClient.from_env()
+    api_anything = ApiAnythingClient.from_env()
     queue = DurableWorkerQueue(
         store._connection,
         max_attempts=int(os.environ.get("OPENCOMPANY_WORKER_MAX_ATTEMPTS", "3")),
@@ -78,4 +81,4 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         preferred_provider="unorouter",
     )
     fleet = WorkerFleet(worker, store)
-    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs, learning=learning, github_evolution=github_evolution)
+    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs, learning=learning, github_evolution=github_evolution, api_anything=api_anything)
