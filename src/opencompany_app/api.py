@@ -1,27 +1,30 @@
-"""Standalone, read-only API for the independently authored OpenCompany core.
+"""Standalone OpenCompany API, independent of legacy AIOS modules.
 
-This application is intentionally separate from the legacy AIOS service while
-the latter undergoes provenance review. It exposes no model, filesystem, shell,
-credential, payment, publishing, or production-control endpoints.
+The service exposes a public read-only health check. All company records and
+write operations require an owner API key. No endpoint invokes a model or
+performs an external business action.
 """
 from __future__ import annotations
 
-from uuid import UUID
+import hmac
+import os
+from functools import lru_cache
+from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from opencompany_core.domain import TaskState, WorkItem
-from opencompany_core.planning import (
-    PlanError, WorkPlan, action_requires_owner_approval,
-)
+from opencompany_core.domain import AuditRecord, TaskState, WorkItem
+from opencompany_core.lifecycle import StateTransitionError, transition_work_item
+from opencompany_core.persistence import SQLiteStore
+from opencompany_core.planning import PlanError, WorkPlan, action_requires_owner_approval
 from opencompany_core.workforce import default_workforce
 
 
 app = FastAPI(
     title="OpenCompany Core",
-    version="0.1.0",
-    description="Read-only preview API for OpenCompany's independently authored operating core.",
+    version="0.2.0",
+    description="Owner-authenticated API for OpenCompany's independently authored operating core.",
 )
 
 
@@ -38,9 +41,55 @@ class PlanPreviewInput(BaseModel):
     items: list[PlanItemInput] = Field(max_length=200)
 
 
+class WorkItemCreateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    objective: str = Field(min_length=1, max_length=12000)
+    department: str = Field(min_length=1, max_length=80)
+    depends_on: tuple[UUID, ...] = ()
+
+
+class WorkItemTransitionInput(BaseModel):
+    target_state: TaskState
+
+
+@lru_cache(maxsize=1)
+def _default_store() -> SQLiteStore:
+    database = os.environ.get("OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3")
+    return SQLiteStore(database)
+
+
+def get_store() -> SQLiteStore:
+    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
+        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
+    return _default_store()
+
+
+def require_owner_key(
+    x_opencompany_api_key: str | None = Header(default=None),
+) -> str:
+    expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
+    if not x_opencompany_api_key or not hmac.compare_digest(x_opencompany_api_key, expected):
+        raise HTTPException(status_code=401, detail="Owner authentication failed.")
+    return "owner"
+
+
+def _record(item: WorkItem, action: str) -> AuditRecord:
+    from datetime import datetime, timezone
+
+    return AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner", action=action,
+        subject_type="work_item", subject_id=str(item.id),
+        outcome="recorded", correlation_id=str(uuid4()),
+        details={"state": item.state.value, "department": item.department},
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "opencompany-core", "mode": "read-only"}
+    return {"status": "ok", "service": "opencompany-core", "mode": "owner-authenticated"}
 
 
 @app.get("/workforce/roles")
@@ -51,11 +100,8 @@ def workforce_roles() -> dict:
         "count": len(roles),
         "roles": [
             {
-                "key": role.key,
-                "title": role.title,
-                "function": role.function,
-                "mission": role.mission,
-                "capabilities": list(role.capabilities),
+                "key": role.key, "title": role.title, "function": role.function,
+                "mission": role.mission, "capabilities": list(role.capabilities),
                 "permitted_outputs": list(role.permitted_outputs),
                 "prohibited_actions": list(role.prohibited_actions),
             }
@@ -68,12 +114,8 @@ def workforce_roles() -> dict:
 def preview_plan(payload: PlanPreviewInput) -> dict:
     items = tuple(
         WorkItem(
-            id=item.id,
-            title=item.title,
-            objective=item.objective,
-            department=item.department,
-            state=item.state,
-            depends_on=item.depends_on,
+            id=item.id, title=item.title, objective=item.objective,
+            department=item.department, state=item.state, depends_on=item.depends_on,
         )
         for item in payload.items
     )
@@ -88,8 +130,7 @@ def preview_plan(payload: PlanPreviewInput) -> dict:
             {
                 "id": str(item.id),
                 "waiting_for": [
-                    str(dependency)
-                    for dependency in item.depends_on
+                    str(dependency) for dependency in item.depends_on
                     if plan.by_id[dependency].state != TaskState.COMPLETED
                 ],
             }
@@ -110,4 +151,65 @@ def protected_actions() -> dict[str, list[str]]:
         "owner_approval_required": [
             action for action in actions if action_requires_owner_approval(action)
         ]
+    }
+
+
+@app.get("/work-items", dependencies=[Depends(require_owner_key)])
+def list_work_items(store: SQLiteStore = Depends(get_store)) -> dict:
+    items = store.list_work_items(limit=1000)
+    return {
+        "count": len(items),
+        "items": [
+            {
+                "id": str(item.id), "title": item.title, "objective": item.objective,
+                "department": item.department, "state": item.state.value,
+                "depends_on": [str(value) for value in item.depends_on],
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in items
+        ],
+    }
+
+
+@app.post("/work-items", dependencies=[Depends(require_owner_key)])
+def create_work_item(
+    payload: WorkItemCreateInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    item = WorkItem(
+        id=uuid4(), title=payload.title, objective=payload.objective,
+        department=payload.department, state=TaskState.DRAFT,
+        depends_on=payload.depends_on,
+    )
+    existing = store.list_work_items(limit=1000)
+    try:
+        WorkPlan(tuple(existing) + (item,))
+    except PlanError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    store.save_work_item_with_audit(item, _record(item, "work_item.created"))
+    return {"item_id": str(item.id), "state": item.state.value}
+
+
+@app.post("/work-items/{item_id}/transition", dependencies=[Depends(require_owner_key)])
+def change_work_item_state(
+    item_id: UUID,
+    payload: WorkItemTransitionInput,
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    item = store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    known = {value.id: value for value in store.list_work_items(limit=1000)}
+    try:
+        changed = transition_work_item(item, payload.target_state, known_items=known)
+    except StateTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    store.save_work_item_with_audit(changed, _record(changed, "work_item.state_changed"))
+    return {"item_id": str(changed.id), "state": changed.state.value}
+
+
+@app.get("/audit/verify", dependencies=[Depends(require_owner_key)])
+def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
+    return {
+        "event_count": store.audit_event_count(),
+        "chain_valid": store.verify_audit_chain(),
     }
