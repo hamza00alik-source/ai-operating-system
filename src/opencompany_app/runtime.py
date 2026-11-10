@@ -62,7 +62,10 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         lock=store._lock,
     )
     gateway = configured_unorouter_gateway()
-    executor = AgentExecutor(gateway=gateway)
+    executor = AgentExecutor(
+        gateway=gateway,
+        learning_context=learning.list_learning_notes,
+    )
     worker = OpenCompanyWorker(
         queue=queue,
         store=store,
