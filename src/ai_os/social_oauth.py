@@ -28,7 +28,7 @@ class OAuthError(RuntimeError):
 # accounts. The owner chooses the business environment in the dashboard.
 PROVIDERS = {
     "meta": {
-        "label": "Facebook / Instagram (Meta)",
+        "label": "Meta · Facebook Pages and linked Instagram professional accounts",
         "client_id_env": "AI_OS_OAUTH_META_CLIENT_ID",
         "client_secret_env": "AI_OS_OAUTH_META_CLIENT_SECRET",
         "redirect_env": "AI_OS_OAUTH_META_REDIRECT_URI",
@@ -226,6 +226,9 @@ def complete(provider: str, state: str, code: str) -> dict:
     if provider == "reddit":
         identity_headers["User-Agent"] = "AIOS/1.0 (owner-authorized account link)"
     identity = _request_json(spec["identity"], headers=identity_headers)
+    if provider == "meta":
+        pages = _request_json("https://graph.facebook.com/v24.0/me/accounts?fields=id,name,instagram_business_account{id,username}", headers=identity_headers)
+        identity["pages"] = pages.get("data", [])
     if provider == "tiktok":
         identity = identity.get("data", {}).get("user", {})
     elif provider == "youtube":
