@@ -20,6 +20,19 @@ class ProviderCandidate:
 
 CANDIDATES = (
     ProviderCandidate(
+        key="unorouter-free-models",
+        display_name="UnoRouter free API models",
+        access_mode="OpenAI-compatible chat completions API",
+        current_free_evidence="Owner-configured account catalogue and explicit :free model selection are required; free availability and account quotas must be checked at use time.",
+        limits_or_conditions=(
+            "Only an explicitly selected model ID ending in :free is eligible for automatic company routing.",
+            "The adapter never selects paid model IDs and never performs paid fallback.",
+            "Provider-side free availability, rate limits, and account entitlements can change.",
+            "A provider-reported non-zero cost is rejected by the zero-cost gateway policy.",
+        ),
+        activation_gate="Owner configures the UnoRouter API key, selects an account-accessible :free model, and sets OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true.",
+    ),
+    ProviderCandidate(
         key="openrouter-free-models",
         display_name="OpenRouter free model variants",
         access_mode="OpenAI-compatible API",
