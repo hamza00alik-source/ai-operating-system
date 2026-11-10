@@ -17,7 +17,8 @@ def oauth_env(monkeypatch, tmp_path):
     }.items():
         client_id_name = "CLIENT_KEY" if provider == "tiktok" else "CLIENT_ID"
         monkeypatch.setenv("AI_OS_OAUTH_" + prefix + "_" + client_id_name, "client-id-" + provider)
-        monkeypatch.setenv("AI_OS_OAUTH_" + prefix + "_CLIENT_SECRET", "client-secret-" + provider)
+        secret_name = "SHARED_SECRET" if provider == "etsy" else "CLIENT_SECRET"
+        monkeypatch.setenv("AI_OS_OAUTH_" + prefix + "_" + secret_name, "client-secret-" + provider)
         monkeypatch.setenv("AI_OS_OAUTH_" + prefix + "_REDIRECT_URI",
             "https://aios.example.com/business-integrations/social/" + provider + "/callback")
     initialize_database()
