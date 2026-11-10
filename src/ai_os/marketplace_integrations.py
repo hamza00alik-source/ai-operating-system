@@ -59,6 +59,7 @@ def verify_playerauctions(api_secret: str, config: dict) -> dict:
         raise MarketplaceCheckError("PlayerAuctions API check failed: " + str(message)[:300])
     result = data.get("data") or {}
     return {"provider": "playerauctions", "connected": True,
+            "account": "PlayerAuctions seller account",
             "capability": "read-only seller offer access",
             "sampled_offers": len(result.get("items") or []),
             "external_actions": "GET only; no offers, pricing, inventory or orders changed"}
