@@ -6,6 +6,7 @@ no paid fallback and reserves quota before every outbound attempt.
 from __future__ import annotations
 
 import json
+from contextlib import closing
 import os
 import sqlite3
 import threading
@@ -34,7 +35,7 @@ class SQLiteRequestQuota:
         self.daily_limit = daily_limit
         self.per_minute_limit = per_minute_limit
         self._lock = threading.Lock()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS provider_request_quota ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, "
