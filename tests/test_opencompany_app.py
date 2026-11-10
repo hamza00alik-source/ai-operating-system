@@ -1111,3 +1111,22 @@ def test_runtime_factory_never_starts_background_workers(monkeypatch, tmp_path):
         assert runtime.fleet.status().running is False
     finally:
         runtime.close()
+
+
+
+def test_readiness_checks_persistent_storage_without_requiring_provider(owner_client):
+    response = owner_client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "service": "opencompany-core",
+        "storage": "ok",
+        "worker_fleet_running": False,
+        "provider_required_for_readiness": False,
+    }
+
+
+def test_readiness_requires_owner_runtime_configuration(monkeypatch):
+    monkeypatch.delenv("OPENCOMPANY_OWNER_API_KEY", raising=False)
+    response = client.get("/ready")
+    assert response.status_code == 503
