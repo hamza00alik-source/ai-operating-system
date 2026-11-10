@@ -138,7 +138,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("work-count").textContent=work.count;
       byId("provider-state").textContent=provider.gateway_enabled?"Free model configured":"Disabled";
       byId("queue-count").textContent=queue.counts.queued||0;
-      byId("worker-status").textContent=fleet.running?"Workers running":"Workers stopped";
+      byId("worker-status").textContent=fleet.running?"Workers running · "+fleet.concurrency+" threads":"Workers stopped · "+fleet.concurrency+" configured";
       byId("start-workers").disabled=fleet.running;
       byId("stop-workers").disabled=!fleet.running;
       byId("create-executive-plan").disabled=!agents.agents.some(a=>a.role_key==="chief_executive_orchestrator" && a.state==="active");
