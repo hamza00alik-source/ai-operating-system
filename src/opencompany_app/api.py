@@ -62,6 +62,11 @@ class UnoRouterSettingsInput(BaseModel):
     confirm_free: bool
 
 
+class GitHubEvolutionSettingsInput(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+    confirm_draft_pr_only: bool
+
+
 
 class PlanItemInput(BaseModel):
     id: UUID
@@ -615,6 +620,65 @@ def remove_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)
     return {"removed": removed, "configured": False, "paid_fallback": False}
 
 
+@app.get("/settings/integrations/github-evolution", dependencies=[Depends(require_owner_key)])
+def get_github_evolution_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    return {
+        "configured": runtime.github_evolution is not None,
+        "repository": runtime.github_evolution.repository if runtime.github_evolution else os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY"),
+        "base_branch": runtime.github_evolution.base_branch if runtime.github_evolution else os.environ.get("OPENCOMPANY_GITHUB_BASE_BRANCH", "clean-room-rebuild"),
+        "token_present": runtime.secret_vault.status("github_evolution")["configured"],
+        "token": None,
+        "auto_merge": False,
+        "auto_deploy": False,
+        "allowed_output": "draft_pull_requests_only",
+    }
+
+
+@app.put("/settings/integrations/github-evolution", dependencies=[Depends(require_owner_key)])
+def save_github_evolution_settings(
+    payload: GitHubEvolutionSettingsInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if payload.confirm_draft_pr_only is not True:
+        raise HTTPException(status_code=422, detail="Owner must confirm GitHub access is for draft PR creation only.")
+    if not os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY", "").strip():
+        raise HTTPException(status_code=503, detail="The GitHub repository must be configured by the service owner before saving a token.")
+    try:
+        runtime.secret_vault.put("github_evolution", {"token": payload.token})
+        runtime.configure_github_evolution(payload.token)
+    except (SecretVaultError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="GitHub credentials could not be saved safely.") from exc
+    return {
+        "configured": True,
+        "repository": runtime.github_evolution.repository,
+        "base_branch": runtime.github_evolution.base_branch,
+        "token_saved": True,
+        "token_echoed": False,
+        "auto_merge": False,
+        "auto_deploy": False,
+    }
+
+
+@app.post("/settings/integrations/github-evolution/test", dependencies=[Depends(require_owner_key)])
+def test_github_evolution_access(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if runtime.github_evolution is None:
+        raise HTTPException(status_code=503, detail="GitHub code evolution is not configured.")
+    try:
+        return runtime.github_evolution.verify_access()
+    except GitHubEvolutionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.delete("/settings/integrations/github-evolution", dependencies=[Depends(require_owner_key)])
+def remove_github_evolution_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        removed = runtime.secret_vault.delete("github_evolution")
+        runtime.configure_github_evolution(None)
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="GitHub credentials could not be removed safely.") from exc
+    return {"removed": removed, "configured": False, "token_echoed": False, "auto_merge": False, "auto_deploy": False}
+
+
 @app.get("/providers/candidates")
 def provider_candidates() -> dict:
     items = free_provider_candidates()
@@ -1118,7 +1182,7 @@ def create_code_evolution_proposal(
     if runtime.github_evolution is None:
         raise HTTPException(
             status_code=503,
-            detail="Code evolution is not connected. Configure OPENCOMPANY_GITHUB_TOKEN and OPENCOMPANY_GITHUB_REPOSITORY as server-side secrets.",
+            detail="Code evolution is not connected. Configure the repository on the service and save a GitHub token in the owner dashboard.",
         )
     try:
         result = generate_code_evolution_pr(
