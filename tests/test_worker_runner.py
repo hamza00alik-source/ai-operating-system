@@ -121,9 +121,9 @@ def test_worker_retry_uses_stable_artifact_id_after_sink_failure(tmp_path):
     sink = FailOnceSink()
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), sink)
     with pytest.raises(OSError, match="temporary sink failure"):
-        worker.run_once(agent, "operations_manager")
+        worker.run_once(agent, "marketplace_operations_analyst")
     assert queue.counts() == {"queued": 1}
-    assert worker.run_once(agent, "operations_manager") == "completed_review_required"
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
     assert len(sink.items) == 1
     assert queue.counts() == {"done": 1}
     assert store.audit_event_count() == 2
