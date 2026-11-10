@@ -289,7 +289,7 @@ def test_business_integration(business_id: str, provider: str):
         return {**verification, "external_actions": "read-only verification only"}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError) as exc:
+    except (platform_integrations.IntegrationCheckError, marketplace_integrations.MarketplaceCheckError, social_oauth.OAuthError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
