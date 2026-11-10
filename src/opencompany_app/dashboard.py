@@ -38,7 +38,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   </section>
   <section class="grid" aria-label="Company overview">
     <div class="metric"><span class="muted">Departments</span><strong id="department-count">—</strong></div>
-    <div class="metric"><span class="muted">Manager profiles</span><strong id="agent-count">—</strong></div>
+    <div class="metric"><span class="muted">Agent profiles</span><strong id="agent-count">—</strong></div>
     <div class="metric"><span class="muted">Specialist roles</span><strong id="specialist-count">—</strong></div>
     <div class="metric"><span class="muted">Work items</span><strong id="work-count">—</strong></div>
     <div class="metric"><span class="muted">Model gateway</span><strong id="provider-state" style="font-size:1.05rem">—</strong></div>
@@ -49,8 +49,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   </section>
   <section class="panel">
     <div class="row">
-      <div><h2 class="section-title" style="margin:0">Department manager agents</h2><p class="muted">Profiles begin in draft state; this does not start workers.</p></div>
-      <button id="provision" disabled>Provision managers</button>
+      <div><h2 class="section-title" style="margin:0">Company agent profiles</h2><p class="muted">CEO, managers and specialists are created as drafts; provisioning does not start workers.</p></div>
+      <div class="auth"><button id="provision-executive" disabled>Provision CEO</button><button id="provision" disabled>Provision managers</button><button id="provision-specialists" disabled>Provision 250 specialists</button></div>
     </div>
     <div id="agents" class="list"><p class="muted">Connect to view manager profiles.</p></div>
   </section>
@@ -112,6 +112,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       clear("work-items","No work items.");
       work.items.forEach(w=>addCard(byId("work-items"),w.title,w.department+" · "+w.objective,w.state));
       byId("provision").disabled=false;
+      byId("provision-executive").disabled=false;
+      byId("provision-specialists").disabled=false;
       setMessage("Connected. Private records loaded. No agents were activated and no external actions were performed.","success");
     }catch(error){setMessage(error.message,"error");}
   }
@@ -125,12 +127,22 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     ownerKey="";keyInput.value="";sessionStorage.removeItem("opencompany-owner-key");
     ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
     ["department-count","agent-count","specialist-count","work-count","provider-state"].forEach(id=>byId(id).textContent="—");
-    byId("provision").disabled=true;setMessage("Disconnected. The key was cleared from this tab.");
+    byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;setMessage("Disconnected. The key was cleared from this tab.");
   });
   byId("provision").addEventListener("click",async()=>{
     byId("provision").disabled=true;
     try{const result=await request("/agents/bootstrap",{method:"POST",body:"{}"});setMessage(result.count+" department manager profiles are saved as drafts. No worker was started.","success");await load();}
     catch(error){setMessage(error.message,"error");byId("provision").disabled=false;}
+  });
+  byId("provision-executive").addEventListener("click",async()=>{
+    byId("provision-executive").disabled=true;
+    try{const result=await request("/agents/bootstrap-executive",{method:"POST",body:"{}"});setMessage(result.agent.name+" profile saved as a draft. No worker was started.","success");await load();}
+    catch(error){setMessage(error.message,"error");byId("provision-executive").disabled=false;}
+  });
+  byId("provision-specialists").addEventListener("click",async()=>{
+    byId("provision-specialists").disabled=true;
+    try{const result=await request("/agents/bootstrap-specialists",{method:"POST",body:"{}"});setMessage(result.count+" specialist profiles saved as drafts. No workers were started.","success");await load();}
+    catch(error){setMessage(error.message,"error");byId("provision-specialists").disabled=false;}
   });
   const saved=sessionStorage.getItem("opencompany-owner-key");
   if(saved){ownerKey=saved;keyInput.value=saved;load();}
