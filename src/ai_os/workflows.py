@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 from ai_os.db import connect, initialize_database
+from ai_os.brain import BUSINESS_IDS
 
 TEMPLATES = {
     "digital-product-launch": {
@@ -36,7 +37,7 @@ def initialize_workflows() -> None:
     with connect() as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS workflow_instances (
-            id TEXT PRIMARY KEY, template_id TEXT NOT NULL, name TEXT NOT NULL,
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', template_id TEXT NOT NULL, name TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS workflow_steps (
@@ -56,7 +57,9 @@ def list_templates() -> dict:
         for key, value in TEMPLATES.items()],
         "execution_policy": "Only the first step is queued. Later steps remain blocked until the preceding step completes. Each step requires an explicit owner-triggered execution."}
 
-def create_workflow(template_id: str) -> dict:
+def create_workflow(template_id: str, business_id: str = "core") -> dict:
+    if business_id not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
     if template_id not in TEMPLATES:
         raise LookupError("Workflow template not found")
     initialize_workflows()
@@ -64,13 +67,13 @@ def create_workflow(template_id: str) -> dict:
     workflow_id, now = str(uuid4()), datetime.now(timezone.utc).isoformat()
     created = []
     with connect() as db:
-        db.execute("INSERT INTO workflow_instances(id,template_id,name,status,created_at) VALUES(?,?,?,'active',?)",
-                   (workflow_id, template_id, template["name"], now))
+        db.execute("INSERT INTO workflow_instances(id,business_id,template_id,name,status,created_at) VALUES(?,?,?,?,'active',?)",
+                   (workflow_id, business_id, template_id, template["name"], now))
         for index, (department, title, description) in enumerate(template["steps"], start=1):
             task_id = str(uuid4())
             status = "queued" if index == 1 else "blocked"
-            db.execute("""INSERT INTO tasks(id,title,description,department,status,created_at)
-                VALUES(?,?,?,?,?,?)""", (task_id, title, description, department, status, now))
+            db.execute("""INSERT INTO tasks(id,title,description,department,business_id,status,created_at)
+                VALUES(?,?,?,?,?,?,?)""", (task_id, title, description, department, business_id, status, now))
             step_id = str(uuid4())
             db.execute("""INSERT INTO workflow_steps
                 (id,workflow_id,task_id,sequence_no,department,title,status,created_at)
@@ -119,8 +122,10 @@ def finish_workflow_task(task_id: str, success: bool) -> None:
         else:
             db.execute("UPDATE workflow_instances SET status='completed' WHERE id=?", (step["workflow_id"],))
 
-def list_workflows(limit: int = 50) -> list[dict]:
+def list_workflows(limit: int = 50, business_id: str = "core") -> list[dict]:
+    if business_id not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
     initialize_workflows()
     with connect() as db:
-        rows = db.execute("SELECT id FROM workflow_instances ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 100)),)).fetchall()
+        rows = db.execute("SELECT id FROM workflow_instances WHERE business_id=? ORDER BY created_at DESC LIMIT ?", (business_id, max(1, min(limit, 100)))).fetchall()
     return [item for row in rows if (item := get_workflow(row["id"])) is not None]
