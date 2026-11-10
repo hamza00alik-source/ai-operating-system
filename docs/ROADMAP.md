@@ -32,7 +32,8 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Autonomous inbox interpretation and independent task creation
 - [ ] Task dependencies and assignment
 - [x] Static specialist registry sourced from Agency Agents
-- [x] Three-stage task collaboration: lead specialist, independent collaborator, and CEO integration/QA review\n- [ ] Autonomous department inbox interpretation and multi-agent task planning
+- [x] Three-stage task collaboration: lead specialist, independent collaborator, and CEO integration/QA review
+- [ ] Autonomous department inbox interpretation and multi-agent task planning
 - [ ] Retry policy, timeouts, execution logs
 - [x] In-service discovery polling worker (single service)
 - [x] Durable agent worker queue with atomic claims and bounded in-process concurrency
@@ -45,7 +46,9 @@ A feature is complete only when tested and its operating limits are documented.
 - [x] Backward-compatible migration assigning legacy tasks/memories to internal core
 - [ ] Full business-level isolation for research sources, credentials, customers, finance, integrations, and dashboard access
 - [x] Source-attributed research capture and business-scoped retrieval (URL evidence retained separately from learned memories)
-- [ ] Evaluation datasets and agent-quality regression benchmarks\n- [x] Guarded code-evolution writer: allowlisted source/test/docs edits in isolated GitHub branches and draft PRs\n- [ ] Configure a least-privilege GitHub token and enable code-evolution flag in Railway; validate CI and owner review
+- [ ] Evaluation datasets and agent-quality regression benchmarks
+- [x] Guarded code-evolution writer: allowlisted source/test/docs edits in isolated GitHub branches and draft PRs
+- [ ] Configure a least-privilege GitHub token and enable code-evolution flag in Railway; validate CI and owner review
 - [x] Autonomous six-hour telemetry evaluation and evidence-labelled improvement proposals requiring owner review
 
 ## Phase 4 — Integrations
@@ -71,4 +74,8 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [ ] Back up and migrate existing Railway SQLite data before switching to Supabase; keep the current database active until a verified rollback is available.
 - [ ] Configure external provider app credentials and owner OAuth connections for social, marketplace and WooCommerce accounts.
 - [ ] Add verified free LLM provider credentials/models; agent execution otherwise waits safely when no eligible provider is connected.
-\n## Guarded autonomy policy\n- [x] AI may collaborate internally, generate code proposals, and open isolated draft PRs when explicitly configured.\n- [ ] AI-generated code changes are not auto-merged or deployed; production release remains owner-controlled.\n- [ ] External write permissions remain disabled until each platform connection is authenticated and scoped; publishing, customer contact, purchases, payments, and commitments require explicit owner approval.\n
+
+## Guarded autonomy policy
+- [x] AI may collaborate internally, generate code proposals, and open isolated draft PRs when explicitly configured.
+- [ ] AI-generated code changes are not auto-merged or deployed; production release remains owner-controlled.
+- [ ] External write permissions remain disabled until each platform connection is authenticated and scoped; publishing, customer contact, purchases, payments, and commitments require explicit owner approval.
