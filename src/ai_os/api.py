@@ -29,7 +29,7 @@ from ai_os.department_collaboration import send_message, list_messages, mark_mes
 from ai_os.executive_supervisor import executive_status, supervise_once
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
-from ai_os import platform_integrations, social_oauth, marketplace_integrations
+from ai_os import platform_integrations, social_oauth, marketplace_integrations, code_evolution
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -185,6 +185,11 @@ class ResearchSourceRequest(BaseModel):
 class BrainMemoryReview(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     note: str = Field(default="", max_length=1000)
+
+
+class CodeEvolutionRequest(BaseModel):
+    objective: str = Field(min_length=1, max_length=5000)
+    target_path: str = Field(min_length=1, max_length=300)
 
 
 class OpenRouterCredentialRequest(BaseModel):
@@ -534,6 +539,23 @@ def get_business_environments():
         ],
         "memory_isolation": "Exact business_id scope; no cross-business memory fallback.",
     }
+
+
+@app.get("/code-evolution/status", dependencies=[Depends(require_owner_key)])
+def get_code_evolution_status():
+    """Report whether guarded branch-only AI code evolution is configured."""
+    return code_evolution.readiness()
+
+
+@app.post("/code-evolution/proposals", dependencies=[Depends(require_owner_key)])
+def post_code_evolution_proposal(payload: CodeEvolutionRequest):
+    """Generate one allowlisted code change in a new branch and open a draft PR."""
+    try:
+        return code_evolution.create_proposal(payload.objective, payload.target_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except code_evolution.CodeEvolutionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/brain/status", dependencies=[Depends(require_api_key)])
