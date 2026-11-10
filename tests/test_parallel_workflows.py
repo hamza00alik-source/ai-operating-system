@@ -32,19 +32,18 @@ def test_parallel_downstream_waits_for_all_three_branches(monkeypatch, tmp_path)
     workflow = create_workflow("parallel-company-operating-cycle", business_id="physical-agency")
     for step in workflow["steps"][:3]:
         finish_workflow_task(step["task_id"], True, step["department"] + " output")
-    for index in (3, 4):
-        finish_workflow_task(workflow["steps"][index]["task_id"], True, "branch output")
+    finish_workflow_task(workflow["steps"][3]["task_id"], True, "design output")
+    finish_workflow_task(workflow["steps"][4]["task_id"], True, "engineering output")
     current = get_workflow(workflow["id"])
     assert current["steps"][6]["status"] == "blocked"
     finish_workflow_task(workflow["steps"][5]["task_id"], True, "last branch output")
     current = get_workflow(workflow["id"])
     assert current["steps"][6]["status"] == "queued"
-    assert "design output" in current["steps"][6]["output"] or current["steps"][6]["status"] == "queued"
     with connect() as db:
         description = db.execute("SELECT description FROM tasks WHERE id=?",
                                   (workflow["steps"][6]["task_id"],)).fetchone()["description"]
     assert "design output" in description
-    assert "engineering output" not in description or "branch output" in description
+    assert "engineering output" in description
     assert "last branch output" in description
 
 
