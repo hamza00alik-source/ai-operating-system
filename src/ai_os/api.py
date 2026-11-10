@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
-from ai_os.brain import brain_status, list_memories, review_memory
+from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
@@ -374,16 +374,34 @@ def post_research_source(payload: ResearchSourceRequest):
         raise HTTPException(status_code=422, detail="The URL contains unsupported invisible or non-ASCII characters. Remove hidden formatting characters and try again.") from exc
 
 
+@app.get("/business-environments", dependencies=[Depends(require_api_key)])
+def get_business_environments():
+    return {
+        "shared_core": "One shared reasoning/model platform and reusable technical capabilities; no shared business memories.",
+        "environments": [
+            {"id": "physical-agency", "name": "Physical Products Agency", "scope": "Third-party physical-product suppliers and clients only."},
+            {"id": "physical-brand", "name": "Own Physical Products Brand", "scope": "Owner's own physical products and brand only."},
+            {"id": "digital-products", "name": "Digital Products", "scope": "Digital products and licensing only."},
+            {"id": "core", "name": "AIOS Core", "scope": "Legacy and internal operating-system tasks; not a business-memory sharing pool."},
+        ],
+        "memory_isolation": "Exact business_id scope; no cross-business memory fallback.",
+    }
+
+
 @app.get("/brain/status", dependencies=[Depends(require_api_key)])
-def get_brain_status():
-    return brain_status()
+def get_brain_status(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return brain_status(business_id)
 
 
 @app.get("/brain/memories", dependencies=[Depends(require_api_key)])
-def get_brain_memories(status: str | None = None, limit: int = 100):
+def get_brain_memories(status: str | None = None, limit: int = 100, business_id: str = "core"):
     if status is not None and status not in {"proposed", "approved", "rejected"}:
         raise HTTPException(status_code=422, detail="Invalid memory status.")
-    return list_memories(status, limit)
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_memories(status, limit, business_id)
 
 
 @app.post("/brain/memories/{memory_id}/review", dependencies=[Depends(require_owner_key)])
