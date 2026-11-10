@@ -47,6 +47,7 @@ def test_dashboard_includes_owner_only_unorouter_settings_controls():
 def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
     monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
     from opencompany_core import unorouter_adapter
 
     class FakeResponse:
@@ -67,6 +68,8 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
 
     monkeypatch.setattr(unorouter_adapter, "urlopen", fake_urlopen)
     runtime = create_runtime(str(tmp_path / "test.sqlite3"))
+    worker_starts = []
+    runtime.fleet.start = lambda: worker_starts.append(True) or True
     api.app.dependency_overrides[api.get_runtime] = lambda: runtime
     client = TestClient(api.app)
     headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
@@ -74,10 +77,14 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
         saved = client.put("/settings/providers/unorouter", headers=headers,
             json={"api_key":"private-unorouter-token-123456","model":"qwen/model:free","confirm_free":True})
         assert saved.status_code == 200
+        assert worker_starts == []
         tested = client.post("/settings/providers/unorouter/test", headers=headers, json={})
         assert tested.status_code == 200
         assert tested.json()["cost_usd"] == 0
         assert tested.json()["paid_fallback"] is False
+        assert tested.json()["worker_autostart_enabled"] is True
+        assert tested.json()["worker_started"] is True
+        assert worker_starts == [True]
         assert captured["url"] == "https://api.unorouter.com/v1/chat/completions"
         assert captured["payload"]["model"] == "qwen/model:free"
         status = client.get("/settings/providers/unorouter", headers=headers)
