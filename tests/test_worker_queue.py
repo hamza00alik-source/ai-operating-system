@@ -87,11 +87,14 @@ def test_shared_store_claim_is_atomic_and_expired_final_lease_dead_letters(tmp_p
     ))
     queue = DurableWorkerQueue(store._connection, lock=store._lock, max_attempts=1, lease_seconds=10)
     queue.enqueue(item.id, agent_id, {"role_key": agent.role_key})
+    assert queue.available_agent_ids(now=now) == (agent_id,)
     first = queue.claim(agent_id, now=now)
+    assert queue.available_agent_ids(now=now) == ()
     assert first is not None and first.attempt == 1
     assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
 
     future = now + timedelta(seconds=20)
+    assert queue.available_agent_ids(now=future) == (agent_id,)
     assert queue.claim(agent_id, now=future) is None
     assert queue.counts() == {"dead": 1}
     assert store.get_work_item(item.id).state == TaskState.FAILED
