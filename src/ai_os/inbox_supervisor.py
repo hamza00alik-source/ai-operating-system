@@ -28,7 +28,10 @@ def _parse_decision(response: str) -> dict:
     """Parse a strict JSON decision; reject malformed or unsafe suggestions."""
     text = (response or "").strip()
     if text.startswith("```"):
-        text = re.sub(r"^\`\`\`(?:json)?\\s*|\\s*\`\`\`$", "", text, flags=re.I)
+        text = text[3:]
+        if text[:4].casefold() == "json":
+            text = text[4:]
+        text = text.rsplit("```", 1)[0].strip()
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("Inbox interpreter did not return a JSON object.")
