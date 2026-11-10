@@ -21,7 +21,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def _json(value: Any) -> str:
@@ -73,40 +73,63 @@ class SQLiteStore:
                 raise RuntimeError("database schema is newer than this application supports")
             if version == _SCHEMA_VERSION:
                 return
-            self._connection.executescript("""
-                BEGIN IMMEDIATE;
-                CREATE TABLE IF NOT EXISTS agent_profiles (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    department TEXT NOT NULL,
-                    purpose TEXT NOT NULL,
-                    capabilities_json TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    revision INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS work_items (
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    objective TEXT NOT NULL,
-                    department TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    assigned_agent_id TEXT,
-                    dependencies_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS audit_events (
-                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id TEXT NOT NULL UNIQUE,
-                    occurred_at TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    previous_hash TEXT NOT NULL,
-                    event_hash TEXT NOT NULL UNIQUE
-                );
-                CREATE INDEX IF NOT EXISTS idx_work_items_state_created
-                    ON work_items(state, created_at);
-                PRAGMA user_version = 1;
-                COMMIT;
-            """)
+            if version == 0:
+                self._connection.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE IF NOT EXISTS agent_profiles (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        department TEXT NOT NULL,
+                        purpose TEXT NOT NULL,
+                        capabilities_json TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        revision INTEGER NOT NULL,
+                        role_key TEXT,
+                        team_key TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS work_items (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        objective TEXT NOT NULL,
+                        department TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        assigned_agent_id TEXT,
+                        dependencies_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS audit_events (
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id TEXT NOT NULL UNIQUE,
+                        occurred_at TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        previous_hash TEXT NOT NULL,
+                        event_hash TEXT NOT NULL UNIQUE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_work_items_state_created
+                        ON work_items(state, created_at);
+                    PRAGMA user_version = 2;
+                    COMMIT;
+                """)
+                return
+            if version == 1:
+                columns = {
+                    row["name"] for row in self._connection.execute(
+                        "PRAGMA table_info(agent_profiles)"
+                    ).fetchall()
+                }
+                self._connection.execute("BEGIN IMMEDIATE")
+                try:
+                    if "role_key" not in columns:
+                        self._connection.execute("ALTER TABLE agent_profiles ADD COLUMN role_key TEXT")
+                    if "team_key" not in columns:
+                        self._connection.execute("ALTER TABLE agent_profiles ADD COLUMN team_key TEXT")
+                    self._connection.execute("PRAGMA user_version = 2")
+                    self._connection.execute("COMMIT")
+                except Exception:
+                    self._connection.execute("ROLLBACK")
+                    raise
+                return
+            raise RuntimeError(f"unsupported database schema version: {version}")
 
     def close(self) -> None:
         with self._lock:
@@ -116,14 +139,16 @@ class SQLiteStore:
         with self._lock:
             self._connection.execute(
                 """INSERT INTO agent_profiles
-                   (id,name,department,purpose,capabilities_json,state,revision)
-                   VALUES(?,?,?,?,?,?,?)
+                   (id,name,department,purpose,capabilities_json,state,revision,role_key,team_key)
+                   VALUES(?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                      name=excluded.name, department=excluded.department,
                      purpose=excluded.purpose, capabilities_json=excluded.capabilities_json,
-                     state=excluded.state, revision=excluded.revision""",
+                     state=excluded.state, revision=excluded.revision,
+                     role_key=excluded.role_key, team_key=excluded.team_key""",
                 (str(agent.id), agent.name, agent.department, agent.purpose,
-                 _json(list(agent.capabilities)), agent.state.value, agent.revision),
+                 _json(list(agent.capabilities)), agent.state.value, agent.revision,
+                 agent.role_key, agent.team_key),
             )
 
     def list_agents(self, *, department: str | None = None, limit: int = 100) -> tuple[AgentProfile, ...]:
@@ -151,10 +176,11 @@ class SQLiteStore:
             try:
                 cursor = self._connection.execute(
                     """INSERT OR IGNORE INTO agent_profiles
-                       (id,name,department,purpose,capabilities_json,state,revision)
-                       VALUES(?,?,?,?,?,?,?)""",
+                       (id,name,department,purpose,capabilities_json,state,revision,role_key,team_key)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
                     (str(agent.id), agent.name, agent.department, agent.purpose,
-                     _json(list(agent.capabilities)), agent.state.value, agent.revision),
+                     _json(list(agent.capabilities)), agent.state.value, agent.revision,
+                     agent.role_key, agent.team_key),
                 )
                 if cursor.rowcount == 0:
                     self._connection.execute("ROLLBACK")
@@ -189,6 +215,7 @@ class SQLiteStore:
             id=UUID(row["id"]), name=row["name"], department=row["department"],
             purpose=row["purpose"], capabilities=tuple(json.loads(row["capabilities_json"])),
             state=AgentState(row["state"]), revision=row["revision"],
+            role_key=row["role_key"], team_key=row["team_key"],
         )
 
     def save_work_item(self, item: WorkItem) -> None:
