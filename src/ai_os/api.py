@@ -75,10 +75,19 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     _discovery_thread.start()
+    # Development keeps an in-process worker. Production runs the dedicated worker process.
+    if settings.environment == "development":
+        _agent_stop.clear()
+        _agent_thread = threading.Thread(target=_agent_worker_loop, name="aios-agent-worker-dev", daemon=True)
+        _agent_thread.start()
     try:
         yield
     finally:
         _discovery_stop.set()
+        _agent_stop.set()
+        if _agent_thread is not None:
+            _agent_thread.join(timeout=10)
+            _agent_thread = None
         if _discovery_thread is not None:
             _discovery_thread.join(timeout=10)
             _discovery_thread = None
