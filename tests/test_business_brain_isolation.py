@@ -95,9 +95,9 @@ def test_research_sources_are_retrieved_only_within_their_business(monkeypatch, 
 
     assert [x["id"] for x in list_sources(business_id="physical-agency")] == ["agency-source"]
     assert [x["id"] for x in list_sources(business_id="physical-brand")] == ["brand-source"]
-    assert "agency-source" not in research_context("wholesale buyers", business_id="physical-brand")
-    assert "agency-source" not in research_context("wholesale buyers", business_id="digital-products")
-    assert "agency-source" in research_context("wholesale buyers", business_id="physical-agency")
+    assert "example.com/agency" not in research_context("wholesale buyers", business_id="physical-brand")
+    assert "example.com/agency" not in research_context("wholesale buyers", business_id="digital-products")
+    assert "example.com/agency" in research_context("wholesale buyers", business_id="physical-agency")
 
 
 
