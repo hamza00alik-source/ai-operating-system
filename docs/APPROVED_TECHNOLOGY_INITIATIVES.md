@@ -49,7 +49,7 @@ Important remaining limitation:
 - The current run_pending_once queue claims are not a distributed lease protocol. Run one worker process against one persistent SQLite database; do not scale to multiple replicas until atomic claims, lease renewal, stale-claim recovery, and retry limits are implemented and tested.
 - A host restart may leave a run marked running; the current startup recovery marks interrupted runs failed for explicit owner retry. It does not silently replay model requests.
 
-Status: standalone worker import/runtime path repaired on this branch with bounded process-level backoff and graceful shutdown. CI covers both-queue processing and transient recovery. Multi-worker leases, atomic queue claims, stale-claim recovery, and bounded job retries remain pending.
+Status: standalone worker import/runtime path repaired with bounded process-level backoff and graceful shutdown. Agent runs and discovery scans now use atomic SQLite claims, worker-owned expiring leases, heartbeat renewal, ownership checks before committing results, and expiry-aware recovery. Expired/interrupted work is marked failed for explicit owner review; uncertain model/API work is never automatically replayed. Stale workers cannot renew expired leases or write final failure/completion state after ownership is lost. Coordination remains single-host SQLite only; this is not a distributed multi-host lease/fencing system.
 
 ## 4. AI Video Production Research — LongCat-Video
 
