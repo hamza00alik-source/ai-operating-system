@@ -38,7 +38,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   </section>
   <section class="grid" aria-label="Company overview">
     <div class="metric"><span class="muted">Departments</span><strong id="department-count">—</strong></div>
-    <div class="metric"><span class="muted">Manager profiles</span><strong id="agent-count">—</strong></div>\n    <div class="metric"><span class="muted">Specialist roles</span><strong id="specialist-count">—</strong></div>
+    <div class="metric"><span class="muted">Manager profiles</span><strong id="agent-count">—</strong></div>
+    <div class="metric"><span class="muted">Specialist roles</span><strong id="specialist-count">—</strong></div>
     <div class="metric"><span class="muted">Work items</span><strong id="work-count">—</strong></div>
     <div class="metric"><span class="muted">Model gateway</span><strong id="provider-state" style="font-size:1.05rem">—</strong></div>
   </section>
@@ -97,7 +98,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         request("/providers/status"),request("/media/capabilities"),request("/workforce/roles")
       ]);
       byId("department-count").textContent=org.count;
-      byId("agent-count").textContent=agents.count;\n      byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
+      byId("agent-count").textContent=agents.count;
+      byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
       byId("work-count").textContent=work.count;
       byId("provider-state").textContent=provider.gateway_enabled?"Free model configured":"Disabled";
       clear("departments","No departments returned.");
