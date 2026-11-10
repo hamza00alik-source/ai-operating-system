@@ -26,7 +26,8 @@ from ai_os.workflows import list_templates, create_workflow, get_workflow, list_
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.executive_supervisor import executive_status, supervise_once
 from ai_os.research_sources import capture_source, list_sources
-from ai_os import website_api\nfrom ai_os import platform_integrations
+from ai_os import website_api
+from ai_os import platform_integrations
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
