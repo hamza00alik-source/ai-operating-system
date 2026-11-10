@@ -98,7 +98,7 @@ The compatibility code also creates the business-scope and workflow-scope indexe
 2. Preserve integer flags (`free_confirmed`, `verified`) as integers unless application code is deliberately changed.
 3. Translate SQLite `INTEGER PRIMARY KEY AUTOINCREMENT` to PostgreSQL identity or serial semantics, and verify returned IDs and sequence behavior through the existing psycopg adapter.
 4. Reproduce all primary keys, composite keys, foreign keys, unique constraints, and the `business_records.record_type` CHECK constraint.
-5. The current app's PostgreSQL adapter rewrites `PRAGMA table_info`, `INSERT OR IGNORE`, autoincrement DDL, and qmark placeholders. It is not a general SQLite-to-PostgreSQL SQL translator; all runtime SQL paths need integration tests.
+5. The app's PostgreSQL adapter rewrites `PRAGMA table_info`, `INSERT OR IGNORE`, autoincrement DDL, qmark placeholders, and now SQLite named placeholders (`:name`) to psycopg named placeholders (`%(name)s`). It is not a general SQLite-to-PostgreSQL SQL translator; all runtime SQL paths still need integration tests.
 6. PostgreSQL enforces foreign keys; SQLite's default foreign-key enforcement is commonly disabled unless explicitly enabled. Test data creation and deletion paths with PostgreSQL semantics.
 7. The app connects with a privileged database connection. Do not expose database credentials, service-role keys, or this connection to browser code. Do not grant Data API access merely to make the app work; the app uses its backend database adapter.
 8. Supabase's project has an RLS auto-enable event trigger. The baseline must be tested with that trigger present. Do not modify its function grants or event trigger as part of this migration without a separately reviewed remediation.
@@ -110,7 +110,7 @@ The compatibility code also creates the business-scope and workflow-scope indexe
 - No local/disposable PostgreSQL migration test has been run.
 - No end-to-end integration test against PostgreSQL has been run.
 - Runtime SQL outside initialization still requires a full compatibility scan and test coverage.
-- The repository's current CI test workflow runs pytest but does not provision a PostgreSQL service, so it cannot currently prove PostgreSQL compatibility.
+- A PostgreSQL 16 service-backed CI job has now been added. Its first run is pending; until it passes, PostgreSQL compatibility remains unverified.
 - The 22-table inventory is based on the current source files; future runtime-created tables must be included if found in later source changes.
 
 ## Next safe step
