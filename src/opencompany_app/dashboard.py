@@ -110,7 +110,45 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       addCard(byId("capabilities"),"Model gateway",provider.gateway_enabled?"Configured model: "+provider.model+". Live inference is not yet verified.":"No provider is active. Paid fallback is disabled.",provider.billing_mode);
       media.capabilities.forEach(v=>addCard(byId("capabilities"),v.display_name,v.generation_modes.join(", ")+". "+v.execution_requirements.join("; "),v.state));
       clear("work-items","No work items.");
-      work.items.forEach(w=>addCard(byId("work-items"),w.title,w.department+" · "+w.objective,w.state));
+      work.items.forEach(w=>{
+        const card=document.createElement("article");card.className="item";
+        const row=document.createElement("div");row.className="row";
+        const heading=document.createElement("h3");heading.textContent=w.title;row.append(heading);
+        const badge=document.createElement("span");badge.className="pill";badge.textContent=w.state;row.append(badge);
+        card.append(row);
+        const detail=document.createElement("p");detail.textContent=w.department+" · "+w.objective;card.append(detail);
+        if(w.state==="review"){
+          const actions=document.createElement("div");actions.className="auth";
+          const view=document.createElement("button");view.textContent="View draft";
+          view.addEventListener("click",async()=>{
+            view.disabled=true;
+            try{
+              const result=await request("/work-items/"+w.id+"/deliverables");
+              result.deliverables.forEach(d=>{
+                const draft=document.createElement("pre");draft.style.whiteSpace="pre-wrap";draft.style.overflowWrap="anywhere";draft.textContent=d.content;card.append(draft);
+              });
+              if(result.count){
+                const approve=document.createElement("button");approve.textContent="Approve draft";
+                approve.addEventListener("click",async()=>{
+                  approve.disabled=true;
+                  try{await request("/work-items/"+w.id+"/review",{method:"POST",body:JSON.stringify({approved:true,rationale:"Approved by owner after dashboard review."})});setMessage("Draft approved and work completed.","success");await load();}
+                  catch(error){setMessage(error.message,"error");approve.disabled=false;}
+                });
+                const revise=document.createElement("button");revise.textContent="Request revision";
+                revise.addEventListener("click",async()=>{
+                  revise.disabled=true;
+                  try{await request("/work-items/"+w.id+"/review",{method:"POST",body:JSON.stringify({approved:false,rationale:"Please revise the draft and resubmit for owner review."})});setMessage("Revision requested. Work returned to READY.","success");await load();}
+                  catch(error){setMessage(error.message,"error");revise.disabled=false;}
+                });
+                actions.append(approve,revise);
+              }
+            }catch(error){setMessage(error.message,"error");}
+            finally{view.disabled=false;}
+          });
+          actions.append(view);card.append(actions);
+        }
+        byId("work-items").append(card);
+      });
       byId("provision").disabled=false;
       byId("provision-executive").disabled=false;
       byId("provision-specialists").disabled=false;
