@@ -23,7 +23,7 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
-from opencompany_core.provisioning import bootstrap_department_managers
+from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
@@ -283,6 +283,22 @@ def bootstrap_agents(store: SQLiteStore = Depends(get_store)) -> dict:
         "agents": [
             {"id": str(item.id), "department": item.department,
              "role_capabilities": list(item.capabilities), "state": item.state.value}
+            for item in agents
+        ],
+        "execution_started": False,
+    }
+
+
+@app.post("/agents/bootstrap-specialists", dependencies=[Depends(require_owner_key)])
+def bootstrap_specialists(store: SQLiteStore = Depends(get_store)) -> dict:
+    agents = bootstrap_specialist_profiles(store)
+    return {
+        "count": len(agents),
+        "created_profiles": len(agents),
+        "all_draft": all(item.state.value == "draft" for item in agents),
+        "agents": [
+            {"id": str(item.id), "name": item.name, "department": item.department,
+             "capabilities": list(item.capabilities), "state": item.state.value}
             for item in agents
         ],
         "execution_started": False,
