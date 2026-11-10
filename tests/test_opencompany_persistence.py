@@ -110,5 +110,5 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     ).fetchall()}
     version = store._connection.execute("PRAGMA user_version").fetchone()[0]
     assert {"role_key", "team_key"} <= columns
-    assert version == 2
+    assert version == 3
     store.close()
