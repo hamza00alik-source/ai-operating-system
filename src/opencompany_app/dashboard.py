@@ -120,9 +120,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
     try{
-      const [org,agents,work,provider,media,workforce,queue,fleet,learning]=await Promise.all([
+      const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution]=await Promise.all([
         request("/organization/departments"),request("/agents"),request("/work-items"),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals"),request("/code-evolution/config-status")
       ]);
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
@@ -134,7 +134,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("start-workers").disabled=fleet.running;
       byId("stop-workers").disabled=!fleet.running;
       byId("create-executive-plan").disabled=!agents.agents.some(a=>a.role_key==="chief_executive_orchestrator" && a.state==="active");
-      byId("create-code-pr").disabled=false;
+      byId("create-code-pr").disabled=!codeEvolution.enabled;
+      byId("code-pr-result").textContent=codeEvolution.enabled?"Connected to "+codeEvolution.repository+" · branch "+codeEvolution.base_branch:"GitHub code-evolution credentials are not configured on the server.";
       clear("learning-proposals","No learning proposals yet.");
       learning.proposals.forEach(proposal=>{
         const card=document.createElement("article");card.className="item";
