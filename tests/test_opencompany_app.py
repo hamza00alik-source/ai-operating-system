@@ -31,8 +31,40 @@ def test_workforce_endpoint_exposes_only_original_opencompany_roles():
     assert response.status_code == 200
     payload = response.json()
     assert payload["catalogue"] == "opencompany-original"
-    assert payload["count"] == 9
+    assert payload["count"] == 10
     assert all(role["prohibited_actions"] for role in payload["roles"])
+
+
+
+def test_original_department_endpoint_exposes_ten_department_contracts():
+    response = client.get("/organization/departments")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["catalogue"] == "opencompany-original"
+    assert payload["count"] == 10
+    assert all(item["manager_role_key"] in item["role_keys"] for item in payload["departments"])
+    assert all(item["approval_boundaries"] for item in payload["departments"])
+
+
+def test_video_and_provider_endpoints_are_explicitly_not_active():
+    video = client.get("/media/capabilities")
+    assert video.status_code == 200
+    capability = video.json()["capabilities"][0]
+    assert capability["key"] == "longcat-video"
+    assert capability["state"] == "researched_not_connected"
+
+    providers = client.get("/providers/candidates")
+    assert providers.status_code == 200
+    assert providers.json()["gateway_enabled"] is False
+    assert all(item["configured"] is False for item in providers.json()["candidates"])
+
+
+def test_plan_preview_rejects_unknown_department():
+    response = client.post("/plans/preview", json={"items": [{
+        "id": str(uuid4()), "title": "Write report",
+        "objective": "Prepare a sourced report", "department": "agency-agent-department",
+    }]})
+    assert response.status_code == 422
 
 
 def test_plan_preview_identifies_ready_and_blocked_items_without_execution():
@@ -40,10 +72,10 @@ def test_plan_preview_identifies_ready_and_blocked_items_without_execution():
     dependent = uuid4()
     response = client.post("/plans/preview", json={"items": [
         {"id": str(prerequisite), "title": "Collect evidence",
-         "objective": "Gather public source evidence", "department": "research",
+         "objective": "Gather public source evidence", "department": "intelligence-research",
          "state": "in_progress"},
         {"id": str(dependent), "title": "Write report",
-         "objective": "Prepare a sourced report", "department": "research",
+         "objective": "Prepare a sourced report", "department": "intelligence-research",
          "state": "ready", "depends_on": [str(prerequisite)]},
     ]})
     assert response.status_code == 200
@@ -56,7 +88,7 @@ def test_plan_preview_identifies_ready_and_blocked_items_without_execution():
 def test_plan_preview_rejects_unknown_dependencies():
     response = client.post("/plans/preview", json={"items": [{
         "id": str(uuid4()), "title": "Write report",
-        "objective": "Prepare a sourced report", "department": "research",
+        "objective": "Prepare a sourced report", "department": "intelligence-research",
         "depends_on": [str(uuid4())],
     }]})
     assert response.status_code == 422
@@ -66,9 +98,9 @@ def test_plan_preview_rejects_dependency_cycles():
     first, second = uuid4(), uuid4()
     response = client.post("/plans/preview", json={"items": [
         {"id": str(first), "title": "First", "objective": "First objective",
-         "department": "operations", "depends_on": [str(second)]},
+         "department": "customer-operations", "depends_on": [str(second)]},
         {"id": str(second), "title": "Second", "objective": "Second objective",
-         "department": "operations", "depends_on": [str(first)]},
+         "department": "customer-operations", "depends_on": [str(first)]},
     ]})
     assert response.status_code == 422
 
@@ -89,7 +121,7 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Prepare market brief",
         "objective": "Create a sourced market brief for owner review",
-        "department": "research",
+        "department": "intelligence-research",
     })
     assert created.status_code == 200
     item_id = created.json()["item_id"]
@@ -116,11 +148,11 @@ def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_c
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     first = owner_client.post("/work-items", headers=headers, json={
         "title": "Gather source data", "objective": "Collect primary sources",
-        "department": "research",
+        "department": "intelligence-research",
     }).json()
     second = owner_client.post("/work-items", headers=headers, json={
         "title": "Write evidence brief", "objective": "Synthesize collected sources",
-        "department": "research", "depends_on": [first["item_id"]],
+        "department": "intelligence-research", "depends_on": [first["item_id"]],
     }).json()
     ready = owner_client.post(
         f"/work-items/{second['item_id']}/transition", headers=headers,
