@@ -38,6 +38,7 @@ class ManagerDelegationPlan:
     mode: DelegationMode
     selected_team_key: str | None
     specialists: tuple[SpecialistSelection, ...]
+    manager_covered_capabilities: tuple[str, ...]
     uncovered_capabilities: tuple[str, ...]
     assignment_performed: bool = False
     execution_started: bool = False
@@ -71,7 +72,8 @@ def plan_department_work(
             work_item_id=str(item.id), department=item.department,
             manager_role_key=manager.key, manager_title=manager.title,
             mode=DelegationMode.MANAGER_DIRECT, selected_team_key=None,
-            specialists=(), uncovered_capabilities=(),
+            specialists=(), manager_covered_capabilities=manager_covered,
+            uncovered_capabilities=(),
         )
 
     candidates = workforce.match_in_department(item.department, requested)
@@ -80,7 +82,8 @@ def plan_department_work(
             work_item_id=str(item.id), department=item.department,
             manager_role_key=manager.key, manager_title=manager.title,
             mode=DelegationMode.OWNER_REVIEW, selected_team_key=None,
-            specialists=(), uncovered_capabilities=requested,
+            specialists=(), manager_covered_capabilities=manager_covered,
+            uncovered_capabilities=tuple(value for value in requested if value not in manager_covered),
         )
 
     by_team: dict[str, list[tuple[int, RoleSpec, tuple[str, ...]]]] = {}
@@ -106,12 +109,15 @@ def plan_department_work(
         )
         for _, role, matched in members[:max_specialists]
     )
-    covered = {capability for member in selected for capability in member.matched_capabilities}
+    covered = set(manager_covered) | {
+        capability for member in selected for capability in member.matched_capabilities
+    }
     uncovered = tuple(value for value in requested if value not in covered)
     mode = DelegationMode.SPECIALIST_TEAM if selected and not uncovered else DelegationMode.OWNER_REVIEW
     return ManagerDelegationPlan(
         work_item_id=str(item.id), department=item.department,
         manager_role_key=manager.key, manager_title=manager.title,
         mode=mode, selected_team_key=selected_team if selected else None,
-        specialists=selected, uncovered_capabilities=uncovered,
+        specialists=selected, manager_covered_capabilities=manager_covered,
+        uncovered_capabilities=uncovered,
     )
