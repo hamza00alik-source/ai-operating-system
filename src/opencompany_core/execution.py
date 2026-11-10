@@ -1,10 +1,11 @@
 """Bounded text-work execution for OpenCompany specialist roles.
-import json
 
 Executors produce draft artifacts only. They have no tools, credentials, or
 authority to perform external actions.
 """
 from __future__ import annotations
+
+import json
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
