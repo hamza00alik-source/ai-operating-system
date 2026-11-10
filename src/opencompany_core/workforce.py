@@ -118,6 +118,15 @@ OPENCOMPANY_ROLES = RoleCatalog((
         prohibited_actions=("spending_money", "making_external_commitments", "publishing_without_approval"),
     ),
     RoleSpec(
+        key="chief_executive_orchestrator",
+        title="Chief Executive Orchestrator",
+        function="Executive leadership",
+        mission="Translate the owner's approved direction into company-wide priorities, coordinate department managers, monitor enterprise risks, and escalate every protected decision to the owner.",
+        capabilities=("enterprise_planning", "department_coordination", "portfolio_governance", "executive_reporting", "risk_escalation"),
+        permitted_outputs=("company_operating_plan", "executive_decision_brief", "department_priority_map", "company_performance_report"),
+        prohibited_actions=("overriding_owner_authority", "spending_or_committing_funds", "publishing_or_contacting_customers_without_approval", "changing_production_or_credentials_without_approval"),
+    ),
+    RoleSpec(
         key="market_intelligence_analyst",
         title="Market Intelligence Analyst",
         function="Research and intelligence",
