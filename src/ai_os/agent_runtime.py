@@ -525,8 +525,8 @@ def run_pending_once(worker_id: str | None = None) -> bool:
             has_partial_deliverable = bool(saved and saved["specialist_output"])
             final_status = "partial" if has_partial_deliverable else "failed"
             changed = db.execute(
-                "UPDATE agent_runs SET status=?,error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=?",
-                (final_status, str(exc)[:1000], _now(), run_id, worker_id),
+                "UPDATE agent_runs SET status=?,error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=? AND lease_expires_at>?",
+                (final_status, str(exc)[:1000], _now(), run_id, worker_id, _now()),
             ).rowcount
             if changed:
                 db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
