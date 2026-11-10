@@ -651,6 +651,16 @@ def change_work_item_state(
     return {"item_id": str(changed.id), "state": changed.state.value}
 
 
+@app.get("/work-items/{item_id}/deliverables", dependencies=[Depends(require_owner_key)])
+def list_work_item_deliverables(
+    item_id: UUID, store: SQLiteStore = Depends(get_store),
+) -> dict:
+    if store.get_work_item(item_id) is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    artifacts = store.list_deliverables(item_id)
+    return {"count": len(artifacts), "deliverables": artifacts}
+
+
 @app.get("/audit/verify", dependencies=[Depends(require_owner_key)])
 def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
     return {
