@@ -81,8 +81,10 @@ class LearningRepository:
                 task = self._db.execute(
                     "SELECT state FROM work_items WHERE id=?", (str(item.work_item_id),)
                 ).fetchone()
-                if task is None or task["state"] not in {TaskState.COMPLETED.value, TaskState.FAILED.value}:
-                    raise ValueError("outcome evaluations require completed or failed work")
+                if task is None or task["state"] not in {TaskState.COMPLETED.value, TaskState.FAILED.value, TaskState.READY.value}:
+                    raise ValueError("outcome evaluations require a completed, failed, or owner-returned task")
+                if task["state"] == TaskState.READY.value and not any(ref.startswith("deliverable:") for ref in item.evidence_refs):
+                    raise ValueError("returned work evaluations must cite at least one deliverable")
                 for ref in item.evidence_refs:
                     if ref.startswith("deliverable:"):
                         deliverable_id = ref.split(":", 1)[1]
