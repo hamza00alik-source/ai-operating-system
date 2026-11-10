@@ -53,6 +53,10 @@ class OpenCompanyWorker:
         self.request_budget_usd = request_budget_usd
         self.preferred_provider = preferred_provider
 
+    def available_agent_ids(self) -> tuple[UUID, ...]:
+        """Return only assignees with queued work or expired leases."""
+        return self.queue.available_agent_ids()
+
     def run_once(self, agent_id: UUID, role_key: str) -> str:
         lease = self.queue.claim(agent_id)
         if lease is None:
