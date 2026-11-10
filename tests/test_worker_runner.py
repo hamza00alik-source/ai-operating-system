@@ -40,7 +40,7 @@ class FailOnceSink(MemorySink):
         super().save(deliverable)
 
 
-def setup(tmp_path, *, agent_state=AgentState.ACTIVE, agent_team_key="management"):
+def setup(tmp_path, *, agent_state=AgentState.ACTIVE, agent_team_key="management", queue_max_attempts=3):
     agent_id = uuid4()
     item = WorkItem(
         id=uuid4(), title="Test task", objective="Produce a draft",
@@ -55,7 +55,7 @@ def setup(tmp_path, *, agent_state=AgentState.ACTIVE, agent_team_key="management
         capabilities=("marketplace_research",), state=agent_state,
         role_key="marketplace_operations_analyst", team_key=agent_team_key,
     ))
-    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3")
+    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3", max_attempts=queue_max_attempts)
     queue.enqueue(item.id, agent_id, {"source": "test"})
     return agent_id, item, store, queue
 
@@ -185,10 +185,7 @@ class AlwaysFailSink(MemorySink):
 
 
 def test_exhausted_queue_retries_mark_work_item_failed(tmp_path):
-    agent, item, store, queue = setup(tmp_path)
-    queue.close()
-    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3", max_attempts=1)
-    queue.enqueue(item.id, agent, {"source": "test"})
+    agent, item, store, queue = setup(tmp_path, queue_max_attempts=1)
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), AlwaysFailSink())
     with pytest.raises(OSError, match="permanent sink failure"):
         worker.run_once(agent, "marketplace_operations_analyst")
