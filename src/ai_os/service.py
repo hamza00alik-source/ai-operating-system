@@ -10,11 +10,11 @@ def _now() -> str:
 def create_task(payload: TaskCreate) -> dict:
     task = {"id": str(uuid4()), "title": payload.title,
             "description": payload.description, "department": payload.department,
-            "status": "queued", "created_at": _now()}
+            "business_id": payload.business_id, "status": "queued", "created_at": _now()}
     with connect() as db:
         db.execute("""INSERT INTO tasks
-            (id,title,description,department,status,created_at)
-            VALUES (:id,:title,:description,:department,:status,:created_at)""", task)
+            (id,title,description,department,business_id,status,created_at)
+            VALUES (:id,:title,:description,:department,:business_id,:status,:created_at)""", task)
     return task
 
 def list_tasks() -> list[dict]:
