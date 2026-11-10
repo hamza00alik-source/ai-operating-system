@@ -43,6 +43,16 @@ def _postgres_sql(statement: str) -> str | tuple[str, tuple[str, ...]]:
             'ORDER BY c.ordinal_position',
             (table, table),
         )
+    insert_ignore = re.match(r"\s*INSERT\s+OR\s+IGNORE\s+INTO\b", statement, re.IGNORECASE)
+    if insert_ignore:
+        statement = re.sub(
+            r"INSERT\s+OR\s+IGNORE\s+INTO",
+            "INSERT INTO",
+            statement,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        statement = statement.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
     statement = re.sub(
         r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
         "BIGSERIAL PRIMARY KEY",
@@ -71,7 +81,18 @@ class _PostgresConnection:
             parameters = fixed_parameters
         else:
             statement = translated
-        return self._connection.execute(statement, parameters)
+        try:
+            return self._connection.execute(statement, parameters)
+        except Exception as exc:
+            # Preserve the legacy SQLite-facing missing-table contract used by
+            # credential status helpers; let all other database errors surface.
+            try:
+                from psycopg.errors import UndefinedTable
+            except ImportError:
+                raise
+            if isinstance(exc, UndefinedTable):
+                raise sqlite3.OperationalError(str(exc)) from exc
+            raise
 
     def executescript(self, script):
         for statement in script.split(";"):
