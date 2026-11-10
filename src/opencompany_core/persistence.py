@@ -389,6 +389,45 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def save(self, deliverable: Any) -> None:
+        """Idempotently stage a review-required artifact before its atomic audit transition."""
+        if not deliverable.review_required:
+            raise ValueError("worker deliverables must require review")
+        values = (
+            str(deliverable.work_item_id), deliverable.role_key, deliverable.content,
+            deliverable.provider, deliverable.model, float(deliverable.cost_usd),
+            deliverable.created_at.isoformat(), 1,
+        )
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                item = self._connection.execute(
+                    "SELECT state FROM work_items WHERE id=?", (str(deliverable.work_item_id),)
+                ).fetchone()
+                if item is None or item["state"] != TaskState.IN_PROGRESS.value:
+                    raise ValueError("artifact can only be staged for an in-progress work item")
+                existing = self._connection.execute(
+                    "SELECT * FROM deliverables WHERE id=?", (str(deliverable.id),)
+                ).fetchone()
+                if existing is not None:
+                    old = (
+                        existing["work_item_id"], existing["role_key"], existing["content"],
+                        existing["provider"], existing["model"], float(existing["cost_usd"]),
+                        existing["created_at"], int(existing["review_required"]),
+                    )
+                    if old != values:
+                        raise ValueError("deliverable ID already exists with different content")
+                else:
+                    self._connection.execute(
+                        "INSERT INTO deliverables (id,work_item_id,role_key,content,provider,model,cost_usd,created_at,review_required) VALUES(?,?,?,?,?,?,?,?,?)",
+                        (str(deliverable.id), *values),
+                    )
+                self._connection.execute("COMMIT")
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def save_deliverable_with_audit(self, deliverable: Any, record: AuditRecord) -> bool:
         """Persist a draft, move its task to review, and audit atomically."""
         if not deliverable.review_required:
