@@ -137,6 +137,8 @@ Company task stages may use only providers that are configured and explicitly ow
 
 ## Runtime and owner-controlled execution
 
+The deployment exposes two distinct probes: `GET /health` is a process-liveness check; `GET /ready` verifies that owner runtime configuration exists and the persistent SQLite database passes `PRAGMA quick_check`. Readiness intentionally does not require a configured model provider, so the owner can open the dashboard and configure UnoRouter after first deployment. Railway's staged healthcheck uses `/ready`.
+
 The independent OpenCompany API and worker now compose around one SQLite connection and transaction boundary. The API does not start workers at import or process startup.
 
 - Run the API container with `python main.py`; its ASGI target is `opencompany_app.api:app`.
