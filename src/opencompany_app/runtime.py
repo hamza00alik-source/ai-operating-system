@@ -208,14 +208,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         usage=usage,
         secret_vault_errors=secret_vault_errors,
     )
-    # Background workers require an explicit owner configuration, an
-    # explicit autostart flag, and a confirmed zero-cost provider. This keeps
-    # generic runtime construction inert while allowing the API process to
-    # start autonomously when its deployment is fully configured.
-    if (
-        os.environ.get("OPENCOMPANY_OWNER_API_KEY")
-        and os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true"
-        and gateway.eligible_providers(request_budget_usd=0.0)
-    ):
-        fleet.start()
+    # Runtime construction stays inert. For dashboard-managed credentials,
+    # workers start only after the owner runs a successful provider test in
+    # this process; a service restart therefore requires fresh verification.
     return runtime
