@@ -832,7 +832,12 @@ def enqueue_work_item(
         role = default_workforce().get(agent.role_key)
     except LookupError as exc:
         raise HTTPException(status_code=409, detail="Assigned agent role is not in the original workforce catalogue.") from exc
-    if agent.role_key not in department.role_keys or role.team_key != agent.team_key:
+    expected_team = (
+        "executive" if agent.role_key == "chief_executive_orchestrator"
+        else "management" if agent.role_key == department.manager_role_key
+        else role.team_key
+    )
+    if agent.role_key not in department.role_keys or expected_team != agent.team_key:
         raise HTTPException(status_code=409, detail="Assigned agent role or team does not match the department catalogue.")
     if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
         raise HTTPException(status_code=503, detail="No owner-configured free inference provider is available; queue admission is blocked.")
