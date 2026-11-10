@@ -47,6 +47,9 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "Request revision" in response.text
     assert "AI usage &amp; cost ledger" in response.text or "AI usage & cost ledger" in response.text
     assert "loadModelUsage" in response.text
+    assert 'id="github-evolution-token"' in response.text
+    assert "draft pull requests only" in response.text
+    assert "loadGitHubEvolutionSettings" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
