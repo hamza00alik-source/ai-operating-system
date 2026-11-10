@@ -19,7 +19,7 @@ from .worker_queue import DurableWorkerQueue, QueueError, WorkerLease
 
 class ArtifactSink(Protocol):
     def save(self, deliverable: AgentDeliverable) -> None:
-        """Persist a review-required deliverable durably."""
+        """Persist durably and idempotently using deliverable.id as the key."""
 
 
 class WorkerConfigurationError(RuntimeError):
