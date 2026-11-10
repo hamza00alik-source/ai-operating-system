@@ -488,6 +488,7 @@ def preview_work_item_delegation(
             }
             for specialist in plan.specialists
         ],
+        "manager_covered_capabilities": list(plan.manager_covered_capabilities),
         "uncovered_capabilities": list(plan.uncovered_capabilities),
         "assignment_performed": plan.assignment_performed,
         "execution_started": plan.execution_started,
