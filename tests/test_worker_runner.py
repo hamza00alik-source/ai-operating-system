@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from opencompany_core.domain import TaskState, WorkItem
+from opencompany_core.domain import AgentProfile, AgentState, TaskState, WorkItem
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.worker_queue import DurableWorkerQueue
@@ -39,15 +39,21 @@ class FailOnceSink(MemorySink):
         super().save(deliverable)
 
 
-def setup(tmp_path):
+def setup(tmp_path, *, agent_state=AgentState.ACTIVE):
     agent_id = uuid4()
     item = WorkItem(
         id=uuid4(), title="Test task", objective="Produce a draft",
-        department="operations", state=TaskState.IN_PROGRESS,
+        department="revenue-partnerships", state=TaskState.IN_PROGRESS,
         assigned_agent_id=agent_id,
     )
     store = SQLiteStore(tmp_path / "core.sqlite3")
     store.save_work_item(item)
+    store.save_agent(AgentProfile(
+        id=agent_id, name="Marketplace Operations Manager",
+        department="revenue-partnerships", purpose="Coordinate marketplace work",
+        capabilities=("marketplace_research",), state=agent_state,
+        role_key="marketplace_operations_analyst", team_key="management",
+    ))
     queue = DurableWorkerQueue(tmp_path / "queue.sqlite3")
     queue.enqueue(item.id, agent_id, {"source": "test"})
     return agent_id, item, store, queue
@@ -57,7 +63,7 @@ def test_worker_saves_review_required_artifact_then_completes(tmp_path):
     agent, item, store, queue = setup(tmp_path)
     sink = MemorySink()
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), sink)
-    assert worker.run_once(agent, "operations_manager") == "completed_review_required"
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
     assert len(sink.items) == 1
     artifact = next(iter(sink.items.values()))
     assert artifact.review_required is True
@@ -76,6 +82,26 @@ def test_worker_requires_durable_sink(tmp_path):
     store.close()
 
 
+def test_worker_rejects_draft_agent_profile(tmp_path):
+    agent, item, store, queue = setup(tmp_path, agent_state=AgentState.DRAFT)
+    worker = OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink())
+    with pytest.raises(WorkerConfigurationError, match="not active"):
+        worker.run_once(agent, "marketplace_operations_analyst")
+    assert queue.counts() == {"queued": 1}
+    queue.close()
+    store.close()
+
+
+def test_worker_rejects_role_not_bound_to_agent_profile(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    worker = OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink())
+    with pytest.raises(WorkerConfigurationError, match="role does not match"):
+        worker.run_once(agent, "risk_and_quality_reviewer")
+    assert queue.counts() == {"queued": 1}
+    queue.close()
+    store.close()
+
+
 def test_worker_rejects_wrong_agent_assignment(tmp_path):
     agent, item, store, queue = setup(tmp_path)
     other = uuid4()
@@ -84,7 +110,7 @@ def test_worker_rejects_wrong_agent_assignment(tmp_path):
     queue.enqueue(item.id, other, {})
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink())
     with pytest.raises(WorkerConfigurationError, match="assignment"):
-        worker.run_once(other, "operations_manager")
+        worker.run_once(other, "marketplace_operations_analyst")
     assert queue.counts() == {"queued": 1}
     queue.close()
     store.close()
