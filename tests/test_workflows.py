@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from ai_os import api
 
@@ -38,3 +39,26 @@ def test_workflow_handoff_unlocks_next_step_only_after_success(monkeypatch, tmp_
     assert current["steps"][0]["status"] == "completed"
     assert current["steps"][1]["status"] == "queued"
     assert task_is_runnable(second["task_id"]) is True
+
+
+def test_company_wide_cycle_is_business_scoped_and_covers_all_departments(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'company-cycle.db'}")
+    from ai_os.workflows import create_workflow, list_workflows, task_is_runnable
+    workflow = create_workflow("company-wide-operating-cycle", business_id="physical-agency")
+    expected = [
+        "executive", "research", "product", "design", "engineering", "legal-compliance",
+        "quality-assurance", "marketing", "sales-marketplace", "customer-support",
+        "finance", "people-workforce",
+    ]
+    assert [step["department"] for step in workflow["steps"]] == expected
+    assert workflow["business_id"] == "physical-agency"
+    assert len(workflow["steps"]) == 12
+    assert workflow["steps"][0]["status"] == "queued"
+    assert all(step["status"] == "blocked" for step in workflow["steps"][1:])
+    assert task_is_runnable(workflow["steps"][0]["task_id"])
+    assert not task_is_runnable(workflow["steps"][1]["task_id"])
+    assert len(list_workflows(business_id="physical-agency")) == 1
+    assert list_workflows(business_id="physical-brand") == []
+    assert list_workflows(business_id="digital-products") == []
+    with pytest.raises(ValueError):
+        create_workflow("company-wide-operating-cycle", business_id="all-businesses")
