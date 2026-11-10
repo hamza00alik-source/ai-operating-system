@@ -196,9 +196,11 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
+    worker_concurrency = int(os.environ.get("OPENCOMPANY_WORKER_CONCURRENCY", "2"))
     fleet = WorkerFleet(
         worker, store,
         idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
+        concurrency=worker_concurrency,
     )
     runtime = OpenCompanyRuntime(
         store=store, queue=queue, worker=worker, delegations=delegations,
