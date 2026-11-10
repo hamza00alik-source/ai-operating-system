@@ -75,7 +75,7 @@ def _replace_sqlite_placeholders(statement: str) -> str:
         following = statement[index + 1] if index + 1 < len(statement) else ""
         if line_comment:
             output.append(char)
-            if char == "\\n":
+            if char == "\n":
                 line_comment = False
         elif block_comment:
             output.append(char)
