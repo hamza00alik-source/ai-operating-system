@@ -525,7 +525,7 @@ async function pollAgentRun(runId){try{const r=await api("/agent-runs/"+encodeUR
 
 window.decideApproval=async(id,decision)=>{if(!confirm("Confirm "+decision+" this requested action? The CEO/agent must still execute it through the approved runtime."))return;try{await api("/approvals/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision})});await loadOperations()}catch(e){say(e.message)}};
 $("taskForm").addEventListener("submit",async e=>{e.preventDefault();const title=$("taskTitle").value.trim();if(!title)return;try{await api("/tasks",{method:"POST",body:JSON.stringify({title,department:$("taskDepartment").value,business_id:$("taskBusiness").value})});$("taskTitle").value="";await loadOperations()}catch(e){say(e.message)}});
-$("loadAgents").onclick=loadAgents;$("agentSearch").addEventListener("input",()=>{clearTimeout(window.agentSearchTimer);window.agentSearchTimer=setTimeout(loadAgents,250)});$("departmentFilter").onchange=loadAgents;$("loadOperations").onclick=loadOperations;
+$("loadAgents").onclick=loadAgents;$("agentSearch").addEventListener("input",()=>{clearTimeout(window.agentSearchTimer);window.agentSearchTimer=setTimeout(loadAgents,250)});$("departmentFilter").onchange=loadAgents;$("loadOperations").onclick=loadOperations;$("taskBusiness").addEventListener("change",loadOperations);
 async function loadResearchSources(){
  try{
   const rows=await api("/research/sources?business_id="+encodeURIComponent($("researchBusiness").value));
