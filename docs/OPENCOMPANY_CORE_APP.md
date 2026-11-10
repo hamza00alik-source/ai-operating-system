@@ -30,12 +30,14 @@ Public, read-only endpoints:
 - `GET /policy/protected-actions` — lists actions that require explicit owner approval.
 
 Owner-authenticated endpoints require `X-OpenCompany-API-Key`:
+- `GET /agents` — lists owner-visible department manager profiles.
+- `POST /agents/bootstrap` — idempotently creates one draft manager profile per department; it does not activate or execute agents.
 - `GET /work-items` — lists persisted work items.
 - `POST /work-items` — creates a work item in the draft state.
 - `POST /work-items/{id}/transition` — validates and records a permitted state transition.
 - `GET /audit/verify` — checks the integrity of the local audit hash chain.
 
-The organization registry validates department-to-role assignments and publishes each department's accountabilities, manager role, decision scope, measures, and approval boundaries. The current workforce contains ten original specialist/manager role definitions; department manager role keys are assignments, not proof that ten continuously running agents exist.
+The organization registry validates department-to-role assignments and publishes each department's accountabilities, manager role, decision scope, measures, and approval boundaries. The owner can bootstrap ten persistent department-manager profiles in draft state; these profiles are not active workers and cannot execute until model access, worker orchestration, and approval controls are connected. The current workforce contains ten original specialist/manager role definitions; department manager role keys are assignments, not proof that ten continuously running agents exist.
 
 The core library also includes a provider-neutral model gateway and a bounded specialist executor. No provider is enabled by default. OpenRouter free variants, Groq, and Cloudflare Workers AI are recorded as candidates only; account eligibility, exact model pricing, credentials, and zero-cost inference have not been verified. A provider can be called only when its configuration explicitly confirms free access or carries a separate owner-approved spending ceiling. The executor produces draft text deliverables only; it has no tools or authority to perform external actions.
 
