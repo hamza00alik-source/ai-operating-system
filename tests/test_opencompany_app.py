@@ -55,6 +55,29 @@ def test_workforce_endpoint_exposes_only_original_opencompany_roles():
 
 
 
+def test_department_route_preview_selects_only_that_department_specialists():
+    response = client.post("/workforce/route-preview", json={
+        "department": "intelligence-research",
+        "required_capabilities": ["market", "researcher"],
+        "limit": 5,
+    })
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["candidate_count"] > 0
+    assert payload["candidates"][0]["title"] == "Market Demand Researcher"
+    assert all(candidate["team_key"].startswith("intelligence-research__") for candidate in payload["candidates"])
+    assert payload["assignment_performed"] is False
+    assert payload["execution_started"] is False
+
+
+def test_department_route_preview_rejects_unknown_department():
+    response = client.post("/workforce/route-preview", json={
+        "department": "not-a-department",
+        "required_capabilities": ["research"],
+    })
+    assert response.status_code == 422
+
+
 def test_original_department_endpoint_exposes_ten_department_contracts():
     response = client.get("/organization/departments")
     assert response.status_code == 200
