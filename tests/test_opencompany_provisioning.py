@@ -11,6 +11,7 @@ def test_bootstrap_creates_ten_draft_manager_profiles_and_is_idempotent(tmp_path
     assert len(second) == 10
     assert len({item.id for item in first}) == 10
     assert all(item.state == AgentState.DRAFT for item in first)
+    assert all(item.role_key and item.team_key == "management" for item in first)
     assert {item.department for item in first} == {
         "executive-office", "intelligence-research", "product-innovation",
         "engineering-ai-systems", "media-creative-production",
