@@ -53,7 +53,7 @@ The new dashboard stores the owner API key in browser `sessionStorage`, where pa
 
 The new API can create work items and move them through states, but it has no API for agent activation, task assignment, or queue submission in the original implementation. The worker requires an artifact sink, but no production sink implementation exists. Collaboration and learning are not persisted. The worker also needed stronger checks to ensure the assigned profile is active and its role/department match the work being executed.
 
-The first identity-control increment has now been implemented in this branch: agent profiles persist `role_key` and `team_key`; the worker rejects missing/inactive profiles, role mismatches and department mismatches; owners can explicitly activate/pause/retire profiles using revision-checked, audited state changes. This does not start a worker or execute a task. A deterministic manager-led delegation preview now chooses direct manager handling, one coherent specialist team of up to five, or owner review if capability coverage is missing. It is still only a preview and does not persist assignments or execute agents.
+The first identity-control increment has now been implemented in this branch: agent profiles persist `role_key` and `team_key`; the worker rejects missing/inactive profiles, role mismatches, department mismatches and team mismatches; owners can explicitly activate/pause/retire profiles using revision-checked, audited state changes. This does not start a worker or execute a task. A deterministic manager-led delegation preview now chooses direct manager handling, one coherent specialist team of up to five (including explicitly marked supporting roles), or owner review if capability coverage is missing. It is still only a preview and does not persist assignments or execute agents.
 
 ### High — production still points at the legacy service
 
@@ -79,7 +79,7 @@ The new SQLite store currently persists agent profiles, work items and audit eve
 
 ## Clean-room and provenance boundary
 
-The new `opencompany_core` and `opencompany_app` code paths are separate from the legacy `ai_os` package. The new API imports OpenCompany modules and does not import the Agency-Agent manifest or fetch its role Markdown. The legacy manifest, source registry, remote role loader, and associated legacy tests remain in the repository and must remain quarantined from the new runtime. Preserve provenance history; do not erase commits to conceal earlier source exposure.
+The new `opencompany_core` and `opencompany_app` code paths are separate from the legacy `ai_os` package. A static scan of all 23 new OpenCompany source files found no imports from `ai_os` and no remote Agency-Agent role-instruction URL. The only outbound network adapter in the new source is the explicitly configured OpenRouter model adapter. The new API does not import the Agency-Agent manifest or fetch its role Markdown. The legacy manifest, source registry, remote role loader, and associated legacy tests remain in the repository and must remain quarantined from the new runtime. Preserve provenance history; do not erase commits to conceal earlier source exposure.
 
 A source-level similarity review and qualified legal review are still required before public or commercial distribution. An independent rewrite reduces risk but cannot guarantee that no claim will arise.
 
