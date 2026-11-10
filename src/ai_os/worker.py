@@ -16,6 +16,7 @@ import threading
 
 from ai_os.agent_runtime import recover_interrupted_runs, worker_pool
 from ai_os.db import initialize_database
+from ai_os.inbox_supervisor import inbox_supervisor_loop
 
 
 def main() -> None:
@@ -38,7 +39,18 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
-    worker_pool(stop_event, poll_seconds=poll_seconds, concurrency=concurrency)
+    inbox_thread = threading.Thread(
+        target=inbox_supervisor_loop,
+        args=(stop_event, poll_seconds),
+        name="aios-inbox-supervisor",
+        daemon=True,
+    )
+    inbox_thread.start()
+    try:
+        worker_pool(stop_event, poll_seconds=poll_seconds, concurrency=concurrency)
+    finally:
+        stop_event.set()
+        inbox_thread.join(timeout=10)
 
 
 if __name__ == "__main__":
