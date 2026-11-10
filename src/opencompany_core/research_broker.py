@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from .api_anything import ApiAnythingClient
 from .domain import WorkItem
 from .model_gateway import ModelGateway, ModelRequest
+from .organization import default_organization
 from .workforce import RoleSpec
 
 
@@ -92,7 +93,11 @@ class ResearchBroker:
         self.gateway = gateway
 
     def collect(self, role: RoleSpec, item: WorkItem) -> ResearchOutcome:
-        if role.department not in {
+        department_key = next(
+            (department.key for department in default_organization().all() if role.key in department.role_keys),
+            None,
+        )
+        if department_key not in {
             "intelligence-research", "product-innovation", "marketing-audience-growth",
             "revenue-partnerships", "customer-operations",
         }:
