@@ -66,6 +66,13 @@ def initialize_database() -> None:
             model TEXT NOT NULL, base_url TEXT NOT NULL,
             free_confirmed INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS business_integration_credentials (
+            business_id TEXT NOT NULL, provider TEXT NOT NULL,
+            encrypted_secret TEXT NOT NULL, config_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            PRIMARY KEY(business_id, provider)
+        );
+        CREATE INDEX IF NOT EXISTS idx_business_integrations_scope ON business_integration_credentials(business_id, provider);
         CREATE TABLE IF NOT EXISTS agent_runs (
             id TEXT PRIMARY KEY,
             task_id TEXT NOT NULL,
