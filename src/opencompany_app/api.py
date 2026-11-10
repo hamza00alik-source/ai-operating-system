@@ -26,6 +26,7 @@ from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
 from opencompany_core.manager_orchestration import plan_department_work
+from opencompany_core.delegation_records import DelegationRepository
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
@@ -80,6 +81,18 @@ class WorkItemTransitionInput(BaseModel):
 def _default_store() -> SQLiteStore:
     database = os.environ.get("OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3")
     return SQLiteStore(database)
+
+
+@lru_cache(maxsize=1)
+def _default_delegation_store() -> DelegationRepository:
+    database = os.environ.get("OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3")
+    return DelegationRepository(database)
+
+
+def get_delegation_store() -> DelegationRepository:
+    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
+        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
+    return _default_delegation_store()
 
 
 def get_store() -> SQLiteStore:
@@ -494,6 +507,60 @@ def preview_work_item_delegation(
         "assignment_performed": plan.assignment_performed,
         "execution_started": plan.execution_started,
     }
+
+    
+@app.post("/work-items/{item_id}/delegation-proposals", dependencies=[Depends(require_owner_key)])
+def create_work_item_delegation_proposal(
+    item_id: UUID,
+    payload: DelegationPreviewInput,
+    store: SQLiteStore = Depends(get_store),
+    delegations: DelegationRepository = Depends(get_delegation_store),
+) -> dict:
+    """Persist a manager's proposed team and draft child tasks; never enqueue them."""
+    item = store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    try:
+        plan = plan_department_work(item, payload.required_capabilities, max_specialists=payload.max_specialists)
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    profiles = store.list_agents(limit=1000)
+    manager = next((agent for agent in profiles if agent.role_key == plan.manager_role_key and agent.department == item.department), None)
+    if manager is None:
+        raise HTTPException(status_code=409, detail="Provision department manager profiles before creating a delegation proposal.")
+    children = []
+    if plan.mode.value == "specialist_team":
+        for specialist in plan.specialists:
+            profile = next((agent for agent in profiles if agent.role_key == specialist.role_key and agent.team_key == specialist.team_key and agent.department == item.department), None)
+            if profile is None:
+                raise HTTPException(status_code=409, detail=f"Specialist profile is not provisioned: {specialist.role_key}")
+            children.append({
+                "assigned_agent_id": str(profile.id),
+                "role_key": specialist.role_key,
+                "team_key": specialist.team_key,
+                "title": f"{specialist.title}: {item.title}",
+                "objective": f"Support parent work item {item.id}. Parent objective: {item.objective} Required capabilities: {', '.join(payload.required_capabilities)}. Produce an internal draft for manager review only.",
+            })
+    return delegations.create_proposal(
+        parent_work_item_id=item.id,
+        request={"required_capabilities": payload.required_capabilities, "max_specialists": payload.max_specialists},
+        manager_agent_id=manager.id,
+        mode=plan.mode.value,
+        team_key=plan.selected_team_key,
+        children=children,
+    )
+
+
+@app.get("/work-items/{item_id}/delegation-proposals", dependencies=[Depends(require_owner_key)])
+def list_work_item_delegation_proposals(
+    item_id: UUID,
+    store: SQLiteStore = Depends(get_store),
+    delegations: DelegationRepository = Depends(get_delegation_store),
+) -> dict:
+    if store.get_work_item(item_id) is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    proposals = delegations.list_for_parent(item_id)
+    return {"count": len(proposals), "proposals": proposals}
 
 
 @app.post("/work-items/{item_id}/transition", dependencies=[Depends(require_owner_key)])
