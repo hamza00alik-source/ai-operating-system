@@ -152,12 +152,15 @@ def retry_run(run_id: str) -> dict:
     return dict(updated)
 
 
-def list_runs(task_id: str | None = None) -> list[dict]:
+def list_runs(task_id: str | None = None, business_id: str = "core") -> list[dict]:
+    from ai_os.brain import BUSINESS_IDS
+    if business_id not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
     with connect() as db:
         if task_id:
-            rows = db.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at DESC", (task_id,)).fetchall()
+            rows = db.execute("SELECT r.* FROM agent_runs r JOIN tasks t ON t.id=r.task_id WHERE r.task_id=? AND t.business_id=? ORDER BY r.created_at DESC", (task_id, business_id)).fetchall()
         else:
-            rows = db.execute("SELECT * FROM agent_runs ORDER BY created_at DESC LIMIT 100").fetchall()
+            rows = db.execute("SELECT r.* FROM agent_runs r JOIN tasks t ON t.id=r.task_id WHERE t.business_id=? ORDER BY r.created_at DESC LIMIT 100", (business_id,)).fetchall()
     return [_public_row(row) for row in rows]
 
 
