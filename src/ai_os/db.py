@@ -163,6 +163,27 @@ def initialize_database() -> None:
             FOREIGN KEY(asset_id) REFERENCES code_assets(id)
         );
         CREATE INDEX IF NOT EXISTS idx_license_offers_created ON license_offers(created_at);
+        CREATE TABLE IF NOT EXISTS department_messages (
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL, sender_department TEXT NOT NULL,
+            recipient_department TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL,
+            related_task_id TEXT, status TEXT NOT NULL DEFAULT 'unread',
+            created_at TEXT NOT NULL, read_at TEXT,
+            FOREIGN KEY(related_task_id) REFERENCES tasks(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_department_messages_inbox
+            ON department_messages(business_id, recipient_department, status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_department_messages_thread
+            ON department_messages(business_id, created_at);
+        CREATE TABLE IF NOT EXISTS department_delegations (
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL, parent_task_id TEXT,
+            child_task_id TEXT NOT NULL UNIQUE, from_department TEXT NOT NULL,
+            to_department TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(parent_task_id) REFERENCES tasks(id),
+            FOREIGN KEY(child_task_id) REFERENCES tasks(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_department_delegations_scope
+            ON department_delegations(business_id, status, created_at);
         CREATE TABLE IF NOT EXISTS discovery_candidates (
             canonical_url TEXT PRIMARY KEY, full_name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL,
