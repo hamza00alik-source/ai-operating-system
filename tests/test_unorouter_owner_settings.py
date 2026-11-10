@@ -205,3 +205,48 @@ def test_github_evolution_token_requires_explicit_draft_only_confirmation(monkey
     finally:
         api.app.dependency_overrides.clear()
         runtime.close()
+
+
+def test_startup_recovers_from_encryption_key_rotation_and_allows_secret_replacement(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "first-encryption-key-at-least-32-characters")
+    monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
+    path = str(tmp_path / "rotated-key.sqlite3")
+    first = create_runtime(path)
+    first.secret_vault.put("unorouter", {"api_key": "old-unorouter-key-private-123456", "model": "qwen/model:free"})
+    first.secret_vault.put("github_evolution", {"token": "old-github-token-private-123456789"})
+    first.close()
+
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "second-encryption-key-at-least-32-characters")
+    runtime = create_runtime(path)
+    api.app.dependency_overrides[api.get_runtime] = lambda: runtime
+    client = TestClient(api.app)
+    headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
+    try:
+        assert runtime.gateway.eligible_providers(request_budget_usd=0.0) == ()
+        assert runtime.github_evolution is None
+        assert set(runtime.secret_vault_errors) == {"unorouter", "github_evolution"}
+        github_status = client.get("/settings/integrations/github-evolution", headers=headers)
+        assert github_status.status_code == 200
+        assert github_status.json()["token_present"] is True
+        assert github_status.json()["configuration_error"] is not None
+
+        replaced_uno = client.put(
+            "/settings/providers/unorouter", headers=headers,
+            json={"api_key": "new-unorouter-key-private-123456", "model": "qwen/model:free", "confirm_free": True},
+        )
+        assert replaced_uno.status_code == 200
+        assert "unorouter" not in runtime.secret_vault_errors
+        assert runtime.gateway.eligible_providers(request_budget_usd=0.0) == ("unorouter",)
+
+        replaced_github = client.put(
+            "/settings/integrations/github-evolution", headers=headers,
+            json={"token": "new-github-token-private-123456789",
+                  "confirm_draft_pr_only": True},
+        )
+        assert replaced_github.status_code == 200
+        assert "github_evolution" not in runtime.secret_vault_errors
+        assert runtime.github_evolution is not None
+    finally:
+        api.app.dependency_overrides.clear()
+        runtime.close()
