@@ -58,7 +58,10 @@ def recommend_department_plan(
         f"Allowed capability identifiers: {json.dumps(allowed, separators=(',', ':'))}"
     )
     result = gateway.complete(
-        ModelRequest(prompt=prompt, request_id=str(uuid4()), max_output_tokens=900),
+        ModelRequest(
+            prompt=prompt, request_id=str(uuid4()), max_output_tokens=900,
+            work_item_id=str(item.id), role_key=manager.key,
+        ),
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
