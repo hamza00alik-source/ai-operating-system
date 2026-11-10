@@ -461,7 +461,7 @@ def run_pending_once() -> bool:
                 (run_id, "completed", "Run completed successfully. No external actions were taken.", _now()),
             )
         from ai_os.workflows import finish_workflow_task
-        finish_workflow_task(task_id, True)
+        finish_workflow_task(task_id, True, ceo_result["response"])
         experience_id = record_experience(
             run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"],
             business_id=task.get("business_id", "core"),
