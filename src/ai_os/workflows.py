@@ -50,6 +50,10 @@ def initialize_workflows() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow ON workflow_steps(workflow_id, sequence_no);
         """)
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(workflow_instances)")}
+        if "business_id" not in columns:
+            db.execute("ALTER TABLE workflow_instances ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_workflow_instances_scope ON workflow_instances(business_id, created_at)")
 
 def list_templates() -> dict:
     return {"templates": [{"id": key, "name": value["name"], "description": value["description"],
