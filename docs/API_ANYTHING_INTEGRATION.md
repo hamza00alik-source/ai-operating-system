@@ -101,7 +101,7 @@ where provider is `meta`, `tiktok`, `youtube`, `pinterest`, `reddit`, `x`, or `e
 
 App registration, provider review/approval, redirect URI registration, and environment-variable entry are owner-side prerequisites. Meta, TikTok, Pinterest, Google, X and Etsy may restrict scopes/features until app review or production access is approved. For Etsy, select a Seller App for the owner’s own shop; the connection uses only `shops_r`. Reddit external Data API access has its own approval and terms process; Devvit app login is not a substitute for credentials for an external AIOS integration. The dashboard reports each app as setup-required until all three variables exist; it does not pretend an account is connected. The OAuth status endpoint is owner-authenticated. Callback state is single-use and short-lived.
 
-**Current limitation:** token refresh and provider-specific publishing endpoints are not yet implemented. An expired token must be re-authorized. Publishing stays out of scope until separate owner-approved action workflows and provider permission review are complete.
+**Token lifecycle:** Etsy access tokens expire after about one hour; the read-only Test action now uses the documented refresh-token grant when an access token has expired, rotates and re-encrypts the returned token pair in the same business vault, then verifies the shop with GET requests. If the refresh token is absent or rejected, the owner must reconnect. Other providers still require their own refresh-token handling. Provider-specific publishing endpoints are not implemented. Publishing stays out of scope until separate owner-approved action workflows and provider permission review are complete.
 
 ## Marketplace and digital storefront integrations
 
