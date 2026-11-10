@@ -21,7 +21,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 def _json(value: Any) -> str:
@@ -107,7 +107,9 @@ class SQLiteStore:
                     );
                     CREATE INDEX IF NOT EXISTS idx_work_items_state_created
                         ON work_items(state, created_at);
-                    PRAGMA user_version = 2;
+                    CREATE TABLE IF NOT EXISTS deliverables (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id), role_key TEXT NOT NULL, content TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, cost_usd REAL NOT NULL CHECK(cost_usd >= 0), created_at TEXT NOT NULL, review_required INTEGER NOT NULL CHECK(review_required IN (0,1)));
+                    CREATE INDEX IF NOT EXISTS idx_deliverables_work_item ON deliverables(work_item_id, created_at);
+                    PRAGMA user_version = 3;
                     COMMIT;
                 """)
                 return
@@ -124,6 +126,17 @@ class SQLiteStore:
                     if "team_key" not in columns:
                         self._connection.execute("ALTER TABLE agent_profiles ADD COLUMN team_key TEXT")
                     self._connection.execute("PRAGMA user_version = 2")
+                    self._connection.execute("COMMIT")
+                except Exception:
+                    self._connection.execute("ROLLBACK")
+                    raise
+                version = 2
+            if version == 2:
+                self._connection.execute("BEGIN IMMEDIATE")
+                try:
+                    self._connection.execute("CREATE TABLE IF NOT EXISTS deliverables (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id), role_key TEXT NOT NULL, content TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, cost_usd REAL NOT NULL CHECK(cost_usd >= 0), created_at TEXT NOT NULL, review_required INTEGER NOT NULL CHECK(review_required IN (0,1)))")
+                    self._connection.execute("CREATE INDEX IF NOT EXISTS idx_deliverables_work_item ON deliverables(work_item_id, created_at)")
+                    self._connection.execute("PRAGMA user_version = 3")
                     self._connection.execute("COMMIT")
                 except Exception:
                     self._connection.execute("ROLLBACK")
