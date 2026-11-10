@@ -19,7 +19,7 @@ def test_worker_loop_processes_both_existing_queues(monkeypatch):
     calls = []
     stop = StopAfterWait()
 
-    def discovery():
+    def discovery(**_kwargs):
         calls.append("discovery")
         return True
 
@@ -31,6 +31,7 @@ def test_worker_loop_processes_both_existing_queues(monkeypatch):
 
     monkeypatch.setattr(worker_service, "run_discovery_once", discovery)
     monkeypatch.setattr(worker_service, "recover_interrupted_runs", lambda: 0)
+    monkeypatch.setattr(worker_service, "recover_interrupted_scans", lambda: 0)
     monkeypatch.setattr(worker_service, "run_agent_once", agent)
     worker_service.run_worker_loop(worker_id="test-worker", stop_event=stop, poll_seconds=2)
     assert calls == ["discovery", "agent"]
@@ -40,7 +41,7 @@ def test_worker_loop_recovers_from_transient_queue_error(monkeypatch):
     calls = []
     stop = StopAfterWait()
 
-    def discovery():
+    def discovery(**_kwargs):
         calls.append("discovery")
         if len(calls) == 1:
             raise RuntimeError("temporary")
