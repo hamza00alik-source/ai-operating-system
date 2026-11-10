@@ -47,6 +47,12 @@ class PlanPreviewInput(BaseModel):
     items: list[PlanItemInput] = Field(max_length=200)
 
 
+class WorkforceRoutePreviewInput(BaseModel):
+    department: str = Field(min_length=1, max_length=80)
+    required_capabilities: list[str] = Field(min_length=1, max_length=20)
+    limit: int = Field(default=5, ge=1, le=10)
+
+
 class WorkItemCreateInput(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     objective: str = Field(min_length=1, max_length=12000)
@@ -129,6 +135,38 @@ def workforce_roles() -> dict:
             }
             for role in roles
         ],
+    }
+
+
+@app.post("/workforce/route-preview")
+def workforce_route_preview(payload: WorkforceRoutePreviewInput) -> dict:
+    try:
+        default_organization().get(payload.department)
+        matches = default_workforce().match_in_department(
+            payload.department, payload.required_capabilities
+        )[:payload.limit]
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    requested = {value.strip().casefold() for value in payload.required_capabilities}
+    return {
+        "department": payload.department,
+        "required_capabilities": payload.required_capabilities,
+        "candidate_count": len(matches),
+        "candidates": [
+            {
+                "role_key": role.key,
+                "title": role.title,
+                "team_key": role.team_key,
+                "matched_capabilities": [
+                    capability for capability in role.capabilities
+                    if capability.casefold() in requested
+                ],
+                "capabilities": list(role.capabilities),
+            }
+            for role in matches
+        ],
+        "assignment_performed": False,
+        "execution_started": False,
     }
 
 
