@@ -106,7 +106,7 @@ The compatibility code also creates the business-scope and workflow-scope indexe
 
 ## Known validation gaps
 
-- No executable PostgreSQL baseline has been generated or applied.
+- A standalone PostgreSQL baseline migration has now been generated at `supabase/migrations/20261110160000_aios_initial_schema.sql`. It has not been applied to the connected Supabase project; its isolated CI validation is pending.
 - No local/disposable PostgreSQL migration test has been run.
 - No end-to-end integration test against PostgreSQL has been run.
 - Runtime SQL outside initialization still requires a full compatibility scan and test coverage.
