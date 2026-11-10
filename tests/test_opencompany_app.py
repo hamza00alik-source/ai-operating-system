@@ -54,6 +54,9 @@ def test_health_reports_owner_authenticated_mode():
 
 
 def test_provider_status_exposes_unorouter_as_company_provider_without_secret(monkeypatch):
+    monkeypatch.delenv("OPENCOMPANY_OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCOMPANY_OPENROUTER_FREE_MODEL", raising=False)
+    monkeypatch.delenv("OPENCOMPANY_CONFIRM_OPENROUTER_FREE", raising=False)
     monkeypatch.setenv("OPENCOMPANY_UNOROUTER_API_KEY", "never-return-this-secret")
     monkeypatch.setenv("OPENCOMPANY_UNOROUTER_FREE_MODEL", "sample/chat-model:free")
     monkeypatch.setenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "true")
@@ -69,6 +72,9 @@ def test_provider_status_exposes_unorouter_as_company_provider_without_secret(mo
 
 
 def test_provider_status_keeps_unorouter_disabled_without_owner_confirmation(monkeypatch):
+    monkeypatch.delenv("OPENCOMPANY_OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCOMPANY_OPENROUTER_FREE_MODEL", raising=False)
+    monkeypatch.delenv("OPENCOMPANY_CONFIRM_OPENROUTER_FREE", raising=False)
     monkeypatch.setenv("OPENCOMPANY_UNOROUTER_API_KEY", "test-secret")
     monkeypatch.setenv("OPENCOMPANY_UNOROUTER_FREE_MODEL", "sample/chat-model:free")
     monkeypatch.delenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", raising=False)
