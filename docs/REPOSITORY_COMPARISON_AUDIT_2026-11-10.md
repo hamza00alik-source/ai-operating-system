@@ -94,6 +94,15 @@ A source-level similarity review and qualified legal review are still required b
 8. Replace legacy deployment entrypoints only after feature parity, migration/rollback plans, backup/restore, security review and end-to-end tests.
 9. Remove or isolate quarantined legacy material from release/build inputs and complete the SBOM/licence/provenance review.
 
+## Verification after the first remediation increment
+
+- Latest tested code commit: `de35ed9e99c829586feea4b2070c36b21e2e3f7f`.
+- GitHub Actions: **225 passed, 1 warning**.
+- The tested changes include schema v2 role/team identity, owner-controlled audited agent state transitions, worker active/role/department/team validation, the manager delegation preview, and the UnoRouter company-routing exclusion.
+- A later documentation-only commit is on the branch; its test run was still in progress at the time this audit note was updated.
+- PR #105 remains draft, unmerged and mergeable. The PR currently changes 59 files; it is 146 commits ahead and 2 commits behind the latest `main`.
+- The Vercel workflow's PR job runs tests only. Its Vercel Build Output job is skipped on pull requests, so there is no Vercel build/deployment verification.
+
 ## Safety and release boundary
 
 PR #105 remains draft and unmerged. This audit and the identity-control implementation do not authorize production deployment, merge, database migration, credential rotation, paid API calls, purchases, publishing, customer contact, or financial actions. All agent profiles remain draft unless an owner explicitly changes their state; profile activation does not start workers.
