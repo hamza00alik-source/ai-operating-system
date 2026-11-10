@@ -102,9 +102,11 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
     try{
       const status=await request("/settings/integrations/github-evolution");
       byId("github-evolution-state").textContent=status.configured?"Connected · "+(status.repository||"repository"):"Not connected";
-      byId("github-evolution-detail").textContent=status.configured
-        ?"Encrypted token saved. Repository: "+status.repository+" · Base: "+status.base_branch+". Draft PR creation only; auto-merge and auto-deploy are disabled."
-        :"No owner-managed GitHub token is saved. The code-evolution PR integration remains disabled.";
+      byId("github-evolution-detail").textContent=status.configuration_error
+        ?status.configuration_error
+        :(status.configured
+          ?"Encrypted token saved. Repository: "+status.repository+" · Base: "+status.base_branch+". Draft PR creation only; auto-merge and auto-deploy are disabled."
+          :(status.token_present?"A saved token exists but is not active; replace it or remove it.":"No owner-managed GitHub token is saved. The code-evolution PR integration remains disabled."));
       byId("github-evolution-test").disabled=!status.configured;
       byId("github-evolution-remove").disabled=!status.token_present;
     }catch(error){byId("github-evolution-detail").textContent=error.message;}
