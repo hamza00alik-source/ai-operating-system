@@ -64,3 +64,63 @@ def test_free_api_catalog_sync_imports_evidence_without_enabling_providers(monke
     assert provider["sources"][0]["url"] == "https://example.com/docs"
     assert provider["review_state"] == "pending"
     assert "no provider was enabled" in result["important"].lower()
+
+
+def test_discovery_scan_claim_and_lease_ownership(monkeypatch, tmp_path):
+    from ai_os.discovery import claim_next_scan, renew_scan_lease
+    monkeypatch.setenv('AI_OS_DATABASE_URL', f"sqlite:///{tmp_path / 'discovery-lease.db'}")
+    initialize_database()
+    scan = create_scan(['agent-frameworks'])
+    claimed = claim_next_scan('worker-a', lease_seconds=120)
+    assert claimed['id'] == scan['id']
+    assert claimed['lease_owner'] == 'worker-a'
+    assert claim_next_scan('worker-b') is None
+    assert renew_scan_lease(scan['id'], 'worker-b') is False
+    assert renew_scan_lease(scan['id'], 'worker-a') is True
+
+
+def test_discovery_recovery_fails_expired_scan_without_requeue(monkeypatch, tmp_path):
+    from ai_os.discovery import recover_interrupted_scans
+    from ai_os.db import connect
+    monkeypatch.setenv('AI_OS_DATABASE_URL', f"sqlite:///{tmp_path / 'discovery-recovery.db'}")
+    initialize_database()
+    scan = create_scan(['agent-frameworks'])
+    with connect() as db:
+        db.execute("UPDATE discovery_scans SET status='running',lease_owner='dead-worker',lease_expires_at='2000-01-01T00:00:00+00:00' WHERE id=?", (scan['id'],))
+    assert recover_interrupted_scans() == 1
+    with connect() as db:
+        row = db.execute('SELECT status,lease_owner,lease_expires_at FROM discovery_scans WHERE id=?', (scan['id'],)).fetchone()
+    assert row['status'] == 'failed'
+    assert row['lease_owner'] is None and row['lease_expires_at'] is None
+    assert recover_interrupted_scans() == 0
+
+
+def test_discovery_recovery_preserves_live_lease(monkeypatch, tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from ai_os.discovery import recover_interrupted_scans
+    from ai_os.db import connect
+    monkeypatch.setenv('AI_OS_DATABASE_URL', f"sqlite:///{tmp_path / 'discovery-live.db'}")
+    initialize_database()
+    scan = create_scan(['agent-frameworks'])
+    future = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    with connect() as db:
+        db.execute("UPDATE discovery_scans SET status='running',lease_owner='active-worker',lease_expires_at=? WHERE id=?", (future, scan['id']))
+    assert recover_interrupted_scans() == 0
+    with connect() as db:
+        assert db.execute('SELECT status FROM discovery_scans WHERE id=?', (scan['id'],)).fetchone()['status'] == 'running'
+
+
+def test_discovery_scan_stops_when_lease_is_lost(monkeypatch, tmp_path):
+    from ai_os import discovery
+    from ai_os.db import connect
+    monkeypatch.setenv('AI_OS_DATABASE_URL', f"sqlite:///{tmp_path / 'discovery-fence.db'}")
+    initialize_database()
+    scan = create_scan(['agent-frameworks'])
+    discovery.claim_next_scan('owner-a')
+    monkeypatch.setattr(discovery, '_github_search', lambda _query: [{'html_url': 'https://github.com/a/b', 'license': {'spdx_id': 'MIT'}}])
+    monkeypatch.setattr(discovery, '_assert_scan_lease', lambda *_args: (_ for _ in ()).throw(RuntimeError('lease lost')))
+    import pytest
+    with pytest.raises(RuntimeError, match='lease lost'):
+        discovery.run_scan(scan['id'], 'owner-a', already_claimed=True)
+    with connect() as db:
+        assert db.execute('SELECT COUNT(*) AS n FROM discovery_candidates').fetchone()['n'] == 0
