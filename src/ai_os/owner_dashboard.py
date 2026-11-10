@@ -355,6 +355,12 @@ th{background:#101b2c}
 <div class="panel"><h3>Record expense for approval</h3><form id="expenseForm"><input name="title" required maxlength="160" placeholder="Expense / invoice" style="width:100%;margin:6px 0"><input name="amount" required type="number" min="0" step="0.01" placeholder="Amount" style="width:100%;margin:6px 0"><select name="currency" style="width:100%;margin:6px 0"><option>USD</option><option>PKR</option><option>EUR</option><option>GBP</option></select><textarea name="notes" maxlength="2000" placeholder="Purpose / vendor" style="width:100%;margin:6px 0"></textarea><button type="submit">Submit for owner review</button></form></div>
 </div>
 <div id="businessMessage" class="status" role="status"></div>
+<div class="panel section">
+<h3>Business integration vault · encrypted storage</h3>
+<p class="small">Store a platform credential against exactly one selected business. Values and configuration are encrypted at rest and never displayed again. This vault does not yet connect to the platform or authorize external actions; integrations require a separately implemented adapter.</p>
+<div class="toolbar"><select id="integrationProvider"><option value="woocommerce">WooCommerce</option><option value="shopify">Shopify</option><option value="meta">Meta</option><option value="tiktok">TikTok</option><option value="paypal">PayPal</option><option value="stripe">Stripe</option><option value="marketplace">Marketplace</option><option value="other">Other</option></select><input id="integrationSecret" type="password" autocomplete="off" placeholder="API token / secret" style="flex:1;min-width:180px"><input id="integrationConfig" placeholder='Optional config JSON, e.g. {"store_url":"https://..."}' style="flex:1;min-width:220px"><button id="saveBusinessIntegration">Save encrypted</button></div>
+<div id="integrationMessage" class="status" role="status">No integration action taken.</div><div id="integrationRows" class="small">Loading integration status…</div>
+</div>
 <h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div><h3>Investors & partners</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Organization</th><th>Contact</th><th>Stage</th><th>Notes</th></tr></thead><tbody id="investorRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 </section>
@@ -540,7 +546,7 @@ async function captureResearchSource(){
  finally{b.disabled=false}
 }
 $("captureResearchSource").onclick=captureResearchSource;
-$("refreshResearchSources").onclick=loadResearchSources;$("researchBusiness").addEventListener("change",loadResearchSources);$("businessScope").addEventListener("change",loadBusiness);
+$("refreshResearchSources").onclick=loadResearchSources;$("researchBusiness").addEventListener("change",loadResearchSources);$("businessScope").addEventListener("change",()=>{loadBusiness();loadBusinessIntegrations()});
 
 async function loadBrain(){
  try{
@@ -737,6 +743,24 @@ fallback.style.display="none";
  const formData=form=>Object.fromEntries(new FormData(form).entries());
  const send=async(path,body)=>api(path,{method:"POST",body:JSON.stringify(body)});
  const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
+ async function loadBusinessIntegrations(){
+  try{
+   const data=await api("/business-integrations/"+encodeURIComponent($("businessScope").value));
+   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></div>').join("")||"No platform credentials stored for this business.";
+  }catch(e){$("integrationRows").textContent=e.message}
+ }
+ window.deleteBusinessIntegration=async provider=>{
+  if(!confirm("Delete the stored "+provider+" credential for "+$("businessScope").value+"?"))return;
+  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent(provider),{method:"DELETE"});$("integrationMessage").textContent="Stored credential deleted.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}
+ };
+ $("saveBusinessIntegration").addEventListener("click",async()=>{
+  const secret=$("integrationSecret").value;
+  if(!secret){$("integrationMessage").textContent="Enter the credential value first.";return}
+  let config={};
+  try{const raw=$("integrationConfig").value.trim();if(raw)config=JSON.parse(raw);if(!config||Array.isArray(config)||typeof config!=="object")throw new Error("Configuration must be a JSON object.")}catch(e){$("integrationMessage").textContent="Configuration JSON is invalid: "+e.message;return}
+  const button=$("saveBusinessIntegration");button.disabled=true;
+  try{await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/"+encodeURIComponent($("integrationProvider").value),{method:"POST",body:JSON.stringify({secret,config})});$("integrationSecret").value="";$("integrationConfig").value="";$("integrationMessage").textContent="Credential and configuration encrypted and stored. No external connection has been made.";await loadBusinessIntegrations()}catch(e){$("integrationMessage").textContent=e.message}finally{button.disabled=false}
+ });
  async function loadBusiness(){
   try{
    const businessId=$("businessScope").value;const scope="?business_id="+encodeURIComponent(businessId);const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"+scope),api("/business/customers"+scope),api("/business/investors"+scope),api("/business/expenses"+scope),api("/business/revenue"+scope)]);
