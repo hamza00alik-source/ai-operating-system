@@ -336,6 +336,7 @@ def test_owner_can_preview_manager_specialist_team_without_assigning_work(owner_
     assert plan["mode"] == "specialist_team"
     assert len(plan["specialists"]) == 5
     assert len({item["team_key"] for item in plan["specialists"]}) == 1
+    assert sum(item["supporting_member"] for item in plan["specialists"]) == 2
     assert plan["assignment_performed"] is False
     assert plan["execution_started"] is False
 
