@@ -192,30 +192,35 @@ def sync_free_api_catalog() -> dict:
 
 
 def _evidence_freshness(last_verified: str | None, sources: list[dict] | None = None, *, max_age_days: int = 30) -> dict:
-    """Classify evidence age without treating catalog claims as provider verification."""
-    candidates = []
-    for value in [last_verified, *[
-        source.get("accessed") for source in (sources or []) if isinstance(source, dict)
-    ]]:
+    """Classify evidence age conservatively; this is not a live provider test."""
+    def parse(value):
         if not value:
-            continue
+            return None
         try:
             parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
-            candidates.append(parsed.astimezone(timezone.utc))
+            return parsed.astimezone(timezone.utc)
         except (TypeError, ValueError):
-            continue
-    if not candidates:
+            return None
+
+    verified_date = parse(last_verified)
+    basis = "catalog last_verified date; not a live provider test"
+    evidence_date = verified_date
+    if evidence_date is None:
+        source_dates = [
+            parsed for source in (sources or []) if isinstance(source, dict)
+            if (parsed := parse(source.get("accessed"))) is not None
+        ]
+        evidence_date = max(source_dates) if source_dates else None
+        basis = "source accessed date only; not a provider verification or live test"
+    if evidence_date is None:
         return {"state": "unknown", "age_days": None, "max_age_days": max_age_days,
                 "basis": "no usable verification or source-access date"}
-    # Use the newest dated evidence while preserving whether the catalog's own
-    # last_verified field was present; a recent source access is not a live test.
-    newest = max(candidates)
-    age_days = max(0, (datetime.now(timezone.utc).date() - newest.date()).days)
-    state = "stale" if age_days > max_age_days else "recent"
-    return {"state": state, "age_days": age_days, "max_age_days": max_age_days,
-            "basis": "catalog last_verified/source accessed date; not a live provider test"}
+    age_days = max(0, (datetime.now(timezone.utc).date() - evidence_date.date()).days)
+    return {"state": "stale" if age_days > max_age_days else "recent",
+            "age_days": age_days, "max_age_days": max_age_days, "basis": basis}
+
 
 
 def list_free_api_catalog(category: str | None = None) -> dict:
