@@ -44,7 +44,10 @@ class OpenCompanyRuntime:
     unorouter_tested_at: str | None = None
 
     def configure_unorouter(self, configuration: dict[str, str] | None) -> None:
-        self.gateway = configured_unorouter_gateway(configuration)
+        self.gateway = (
+            configured_unorouter_gateway(configuration)
+            if configuration is not None else ModelGateway()
+        )
         self.worker.executor._gateway = self.gateway
         broker = self.worker.executor._research_broker
         if broker is not None:
