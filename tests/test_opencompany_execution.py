@@ -4,7 +4,7 @@ from uuid import uuid4
 from opencompany_core.domain import TaskState, WorkItem
 from opencompany_core.execution import AgentExecutor
 from opencompany_core.model_gateway import (
-    BillingMode, ModelGateway, ModelResult, ProviderPolicy,
+    BillingMode, ModelGateway, ModelResult, NoEligibleProvider, ProviderPolicy,
 )
 
 
@@ -50,7 +50,7 @@ def test_executor_rejects_tasks_not_in_progress():
 
 def test_executor_cannot_call_a_disabled_provider():
     gateway = ModelGateway()
-    with pytest.raises(Exception, match="No explicitly enabled provider"):
+    with pytest.raises(NoEligibleProvider, match="No explicitly enabled provider"):
         AgentExecutor(gateway).execute("market_intelligence_analyst", task())
 
 
