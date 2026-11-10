@@ -249,13 +249,13 @@ def post_llm_benchmark(payload: ModelBenchmarkRequest):
         entry = record_benchmark(
             provider=payload.provider, model=provider.get("model"),
             outcome="error", latency_ms=None, usage=None,
-            error=str(exc), cost_class="owner-confirmed-free",
+            error=f"{type(exc).__name__}: benchmark request failed", cost_class="owner-confirmed-free",
         )
         if isinstance(exc, PermissionError):
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         if isinstance(exc, ValueError):
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        raise HTTPException(status_code=502, detail={"message": "Provider benchmark failed.", "benchmark": entry}) from exc
+        raise HTTPException(status_code=502, detail={"message": "Provider benchmark failed. Sensitive upstream details were not retained.", "benchmark": entry}) from exc
 
 
 @app.get("/llm/providers", dependencies=[Depends(require_api_key)])
