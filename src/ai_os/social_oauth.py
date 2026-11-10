@@ -141,7 +141,8 @@ def begin(provider: str, business_id: str) -> str:
     params = {"client_id": cfg["client_id"], "redirect_uri": cfg["redirect_uri"],
               "response_type": "code", "state": state, "scope": " ".join(spec["scopes"])}
     if provider == "tiktok":
-        params["client_key"] = params.pop("client_id")\n        params["scope"] = ",".join(spec["scopes"])
+        params["client_key"] = params.pop("client_id")
+        params["scope"] = ",".join(spec["scopes"])
     if provider == "pinterest":
         params["scope"] = ",".join(spec["scopes"])
     if provider == "reddit":
