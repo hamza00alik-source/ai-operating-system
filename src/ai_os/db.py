@@ -59,7 +59,55 @@ def _postgres_sql(statement: str) -> str | tuple[str, tuple[str, ...]]:
         statement,
         flags=re.IGNORECASE,
     )
-    return statement.replace("?", "%s")
+    # Replace SQLite bind markers without altering question marks inside
+    # quoted SQL strings or comments.
+    return _replace_sqlite_placeholders(statement)
+
+
+def _replace_sqlite_placeholders(statement: str) -> str:
+    output = []
+    index = 0
+    quote = None
+    line_comment = False
+    block_comment = False
+    while index < len(statement):
+        char = statement[index]
+        following = statement[index + 1] if index + 1 < len(statement) else ""
+        if line_comment:
+            output.append(char)
+            if char == "\\n":
+                line_comment = False
+        elif block_comment:
+            output.append(char)
+            if char == "*" and following == "/":
+                output.append(following)
+                index += 1
+                block_comment = False
+        elif quote:
+            output.append(char)
+            if char == quote:
+                if following == quote:
+                    output.append(following)
+                    index += 1
+                else:
+                    quote = None
+        elif char in ("'", '"'):
+            quote = char
+            output.append(char)
+        elif char == "-" and following == "-":
+            output.extend((char, following))
+            index += 1
+            line_comment = True
+        elif char == "/" and following == "*":
+            output.extend((char, following))
+            index += 1
+            block_comment = True
+        elif char == "?":
+            output.append("%s")
+        else:
+            output.append(char)
+        index += 1
+    return "".join(output)
 
 
 class _PostgresConnection:
