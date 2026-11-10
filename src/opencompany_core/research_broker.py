@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from uuid import uuid4
 from dataclasses import dataclass
 
 from .api_anything import ApiAnythingClient
@@ -125,7 +126,7 @@ class ResearchBroker:
         )
         try:
             selection = self.gateway.complete(
-                ModelRequest(prompt=selection_prompt, max_output_tokens=700),
+                ModelRequest(prompt=selection_prompt, request_id=str(uuid4()), max_output_tokens=700),
                 request_budget_usd=0.0, preferred_provider="unorouter",
             )
             chosen = json.loads(selection.text)
