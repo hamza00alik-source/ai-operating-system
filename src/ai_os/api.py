@@ -24,6 +24,7 @@ from ai_os.credentials import save_openrouter, credential_status, CredentialVaul
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
+from ai_os.executive_supervisor import executive_status, supervise_once
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
 from ai_os import business_ops
@@ -508,6 +509,22 @@ def post_department_delegation(payload: DepartmentDelegationRequest):
                              payload.title,payload.description,payload.parent_task_id)
     except ValueError as exc: raise HTTPException(status_code=422,detail=str(exc)) from exc
     except LookupError as exc: raise HTTPException(status_code=404,detail=str(exc)) from exc
+
+
+
+@app.get("/company/executive/status", dependencies=[Depends(require_api_key)])
+def get_executive_status(business_id: str | None = None):
+    """Read executive metrics and alerts, optionally scoped to one business."""
+    try:
+        return executive_status(business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/company/executive/supervise", dependencies=[Depends(require_owner_key)])
+def post_executive_supervise():
+    """Owner-triggered reconciliation of failures and workflow blockers."""
+    return supervise_once()
 
 
 @app.get("/company/workflows", dependencies=[Depends(require_api_key)])
