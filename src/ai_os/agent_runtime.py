@@ -318,9 +318,8 @@ def _finish_step(run_id: str, sequence_no: int, output: str) -> None:
         )
 
 
-def run_pending_once() -> bool:
-    # Claim a queued run with one atomic SQLite UPDATE. This prevents the API
-    # fallback worker and a dedicated worker process from executing the same run.
+def _claim_next_run() -> tuple[str, dict] | None:
+    """Atomically claim one queued run and return its task snapshot."""
     with connect() as db:
         row = db.execute(
             """UPDATE agent_runs
@@ -336,13 +335,20 @@ def run_pending_once() -> bool:
             (_now(),),
         ).fetchone()
         if row is None:
-            return False
+            return None
         run_id, task_id = row["id"], row["task_id"]
         db.execute("UPDATE tasks SET status='running' WHERE id=?", (task_id,))
         task_row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
-    try:
+    return run_id, dict(task_row)
+
+
+def run_pending_once() -> bool:
+    # The atomic claim prevents two processes from executing the same queued run.
+    claimed = _claim_next_run()
+    if claimed is None:
+        return False
+    run_id, task = claimed    try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
-        task = dict(task_row)
         with connect() as db:
             prior_steps = {item["sequence_no"]: dict(item) for item in db.execute(
                 "SELECT * FROM agent_run_steps WHERE run_id=? ORDER BY sequence_no", (run_id,)
