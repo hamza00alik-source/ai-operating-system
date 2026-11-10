@@ -20,12 +20,15 @@ class RoleSpec:
     capabilities: tuple[str, ...]
     permitted_outputs: tuple[str, ...]
     prohibited_actions: tuple[str, ...]
+    team_key: str = "general"
 
     def __post_init__(self) -> None:
         for name in ("key", "title", "function", "mission"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be a non-empty string")
+        if not isinstance(self.team_key, str) or not self.team_key.strip():
+            raise ValueError("team_key must be a non-empty string")
         if not self.capabilities or any(not value.strip() for value in self.capabilities):
             raise ValueError("each role must declare capabilities")
         if not self.permitted_outputs:
@@ -74,7 +77,7 @@ def _specialist_roles() -> tuple[RoleSpec, ...]:
         department_label = DEPARTMENT_LABELS[department_key]
         if len(titles) != 25:
             raise RuntimeError(f"{department_key} must define exactly 25 specialist roles")
-        for title in titles:
+        for index, title in enumerate(titles):
             slug = "_".join(part for part in "".join(ch.lower() if ch.isalnum() else " " for ch in title).split())
             key = f"{department_key.replace('-', '_')}__{slug}"
             focus = slug.replace("_", " ")
@@ -82,6 +85,7 @@ def _specialist_roles() -> tuple[RoleSpec, ...]:
                 key=key,
                 title=title,
                 function=department_label,
+                team_key=f"{department_key}__team_{index // 5 + 1}",
                 mission=f"Deliver the {focus} capability for {department_label}; produce evidence-backed work, coordinate handoffs, and document assumptions and limitations.",
                 capabilities=(department_key.replace("-", "_"), *tuple(slug.split("_")), "specialist_execution", "evidence_synthesis", "quality_review"),
                 permitted_outputs=(f"{slug}_brief", f"{slug}_analysis", f"{slug}_work_product", "handoff_summary"),
