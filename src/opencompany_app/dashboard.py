@@ -111,8 +111,25 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("stop-workers").disabled=!fleet.running;
       clear("departments","No departments returned.");
       org.departments.forEach(d=>addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)"));
-      clear("agents","No manager profiles yet. Use Provision managers to create draft profiles.");
-      agents.agents.forEach(a=>addCard(byId("agents"),a.name,a.department+" · "+a.capabilities.join(", "),a.state));
+      clear("agents","No agent profiles yet. Provision the CEO, managers and specialists first.");
+      agents.agents.forEach(a=>{
+        const card=document.createElement("article");card.className="item";
+        const row=document.createElement("div");row.className="row";
+        const heading=document.createElement("h3");heading.textContent=a.name;row.append(heading);
+        const badge=document.createElement("span");badge.className="pill";badge.textContent=a.state;row.append(badge);
+        card.append(row);
+        const detail=document.createElement("p");detail.textContent=a.department+" · "+(a.role_key||"unassigned role")+" · "+(a.team_key||"unassigned team");card.append(detail);
+        if(a.state==="draft" || a.state==="paused"){
+          const activate=document.createElement("button");activate.textContent="Activate agent";
+          activate.addEventListener("click",async()=>{activate.disabled=true;try{await request("/agents/"+a.id+"/state",{method:"POST",body:JSON.stringify({target_state:"active",expected_revision:a.revision})});setMessage(a.name+" activated. No task was automatically queued.","success");await load();}catch(error){setMessage(error.message,"error");activate.disabled=false;}});
+          card.append(activate);
+        }else if(a.state==="active"){
+          const pause=document.createElement("button");pause.textContent="Pause agent";
+          pause.addEventListener("click",async()=>{pause.disabled=true;try{await request("/agents/"+a.id+"/state",{method:"POST",body:JSON.stringify({target_state:"paused",expected_revision:a.revision})});setMessage(a.name+" paused.","success");await load();}catch(error){setMessage(error.message,"error");pause.disabled=false;}});
+          card.append(pause);
+        }
+        byId("agents").append(card);
+      });
       clear("capabilities","No capability data returned.");
       addCard(byId("capabilities"),"Model gateway",provider.gateway_enabled?"Configured model: "+provider.model+". Live inference is not yet verified.":"No provider is active. Paid fallback is disabled.",provider.billing_mode);
       media.capabilities.forEach(v=>addCard(byId("capabilities"),v.display_name,v.generation_modes.join(", ")+". "+v.execution_requirements.join("; "),v.state));
