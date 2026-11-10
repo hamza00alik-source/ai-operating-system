@@ -56,7 +56,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
     store = SQLiteStore(path)
-    delegations = DelegationRepository(path)
+    delegations = DelegationRepository(store._connection, store._lock)
     sessions = OwnerSessionStore(store._connection, store._lock)
     handoffs = HandoffRepository(store._connection, store._lock)
     learning = LearningRepository(store._connection, store._lock)
