@@ -73,7 +73,15 @@ def test_research_broker_rejects_sensitive_args_and_unlisted_operations():
 
 def test_research_broker_skips_departments_without_research_scope():
     client = FakeResearchClient()
-    role = default_workforce().get("python_platform_engineer")
+    role = default_workforce().get("engineering_ai_systems__python_platform_engineer")
     outcome = ResearchBroker(client, make_gateway("{}")).collect(role, make_item())
     assert outcome.result is None
     assert client.calls == []
+
+
+def test_role_department_is_resolved_from_team_and_leadership_function():
+    workforce = default_workforce()
+    specialist = workforce.get("engineering_ai_systems__python_platform_engineer")
+    manager_like = workforce.get("market_intelligence_analyst")
+    assert specialist.department == "engineering-ai-systems"
+    assert manager_like.department == "intelligence-research"
