@@ -37,6 +37,9 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "provision-executive" in response.text
     assert "provision-specialists" in response.text
     assert "Specialist roles" in response.text
+    assert "View draft" in response.text
+    assert "Approve draft" in response.text
+    assert "Request revision" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
