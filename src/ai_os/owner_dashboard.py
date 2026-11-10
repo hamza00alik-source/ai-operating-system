@@ -848,7 +848,7 @@ fallback.style.display="none";
   try{
    const scope=encodeURIComponent($("businessScope").value);
    const data=await api("/business-integrations/"+scope);
-   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><span class="toolbar">'+(["wordpress","woocommerce","playerauctions","etsy"].includes(x.provider)?'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="testBusinessIntegration(this.dataset.provider)">Test</button>':'')+'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></span></div>').join("")||"No platform accounts connected to this business.";
+   $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><span class="toolbar">'+(["wordpress","woocommerce","playerauctions","etsy","meta","tiktok","youtube","pinterest","reddit","x"].includes(x.provider)?'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="testBusinessIntegration(this.dataset.provider)">Test</button>':'')+'<button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></span></div>').join("")||"No platform accounts connected to this business.";
   }catch(e){$("integrationRows").textContent=e.message}
   await loadSocialOAuth();
  }
