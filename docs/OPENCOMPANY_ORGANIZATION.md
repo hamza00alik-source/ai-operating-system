@@ -42,7 +42,7 @@ Cross-department work is represented by work items and explicit dependencies. A 
 
 ## Current implementation boundary
 
-The registry and read-only API are implemented in opencompany_core.organization and GET /organization/departments. The role catalogue is exposed by GET /workforce/roles. Manager and specialist profile provisioning are owner-authenticated and create draft profiles only. This does not instantiate always-running agents. Durable specialist assignment, team-level execution, live collaboration, and worker activation remain separate implementation stages.
+The registry and read-only API are implemented in opencompany_core.organization and GET /organization/departments. The role catalogue is exposed by GET /workforce/roles. POST /workforce/route-preview ranks specialist candidates within a department using requested capability tags; it is a preview only and does not assign work or execute agents. Manager and specialist profile provisioning are owner-authenticated and create draft profiles only. This does not instantiate always-running agents. Durable specialist assignment, team-level execution, live collaboration, and worker activation remain separate implementation stages.
 
 ## Provenance
 
