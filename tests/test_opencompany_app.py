@@ -566,9 +566,16 @@ def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_
     assert status.status_code == 200 and status.json()["authenticated"] is True
     blocked = owner_client.post("/agents/bootstrap", json={})
     assert blocked.status_code == 401
-    allowed = owner_client.post("/agents/bootstrap", headers={"X-CSRF-Token": csrf}, json={})
+    allowed = owner_client.post(
+        "/agents/bootstrap",
+        headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
+        json={},
+    )
     assert allowed.status_code == 200
-    logout = owner_client.post("/auth/logout", headers={"X-CSRF-Token": csrf})
+    logout = owner_client.post(
+        "/auth/logout",
+        headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
+    )
     assert logout.status_code == 200
     after = owner_client.get("/agents")
     assert after.status_code == 401
@@ -900,3 +907,30 @@ def test_code_evolution_config_status_does_not_expose_credentials(owner_client):
     assert response.status_code == 200
     assert response.json()["enabled"] is True
     assert "token" not in response.text.lower()
+
+
+
+def test_owner_cookie_session_rejects_cross_origin_write_even_with_csrf(owner_client):
+    login = owner_client.post("/auth/session", json={"api_key": "test-owner-key"})
+    assert login.status_code == 200
+    response = owner_client.post(
+        "/agents/bootstrap",
+        headers={
+            "X-CSRF-Token": login.json()["csrf_token"],
+            "Origin": "https://attacker.example",
+        },
+        json={},
+    )
+    assert response.status_code == 403
+    assert "same origin" in response.json()["detail"]
+
+
+def test_owner_cookie_session_requires_origin_on_mutating_requests(owner_client):
+    login = owner_client.post("/auth/session", json={"api_key": "test-owner-key"})
+    assert login.status_code == 200
+    response = owner_client.post(
+        "/agents/bootstrap",
+        headers={"X-CSRF-Token": login.json()["csrf_token"]},
+        json={},
+    )
+    assert response.status_code == 403
