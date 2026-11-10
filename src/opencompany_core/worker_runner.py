@@ -58,6 +58,12 @@ class OpenCompanyWorker:
         if lease is None:
             return "idle"
         try:
+            existing_item = self.store.get_work_item(lease.work_item_id)
+            if existing_item is not None and existing_item.state == TaskState.REVIEW:
+                saved = self.store.list_deliverables(lease.work_item_id)
+                if any(value["role_key"] == role_key for value in saved):
+                    self.queue.complete(lease)
+                    return "completed_review_required"
             deliverable = self._execute_lease(lease, role_key)
             # A retry of the same work/role must address the same artifact key.
             # This lets a durable sink safely deduplicate after a crash between
