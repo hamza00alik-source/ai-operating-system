@@ -927,8 +927,8 @@ def create_agent_handoff(
         artifact_ids=tuple(payload.artifact_ids), created_at=now, updated_at=now,
     )
     event = AuditRecord(
-        id=uuid4(), occurred_at=now, actor_type="agent",
-        actor_id=str(item.assigned_agent_id), action="agent.handoff_proposed",
+        id=uuid4(), occurred_at=now, actor_type="owner",
+        actor_id="owner", action="owner.proposed_agent_handoff",
         subject_type="agent_handoff", subject_id=str(handoff.id), outcome="proposed",
         correlation_id=str(uuid4()),
         details={"work_item_id": str(item.id), "recipient_agent_id": str(payload.recipient_agent_id)},
