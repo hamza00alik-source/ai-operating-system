@@ -922,10 +922,12 @@ def test_owner_can_generate_isolated_code_evolution_draft_pr(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
+    runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
     runtime.gateway = ModelGateway.configure(((
         ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
         _CodeEvolutionFakeAdapter(),
     ),))
+    runtime.gateway.set_usage_recorder(runtime.usage.record)
     response = owner_client.post("/code-evolution/proposals", headers=headers, json={
         "problem": "Improve a source module with a small, tested reliability change.",
         "file_paths": ["src/opencompany_core/sample.py"],
@@ -943,6 +945,7 @@ def test_owner_can_generate_isolated_code_evolution_draft_pr(owner_client):
 def test_code_evolution_config_status_does_not_expose_credentials(owner_client):
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
+    runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
     response = owner_client.get("/code-evolution/config-status", headers={"X-OpenCompany-API-Key": "test-owner-key"})
     assert response.status_code == 200
     assert response.json()["enabled"] is True
