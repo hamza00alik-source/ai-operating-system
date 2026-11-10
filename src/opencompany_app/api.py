@@ -96,16 +96,10 @@ def get_runtime() -> OpenCompanyRuntime:
     return _default_runtime()
 
 
-@lru_cache(maxsize=1)
-def _default_delegation_store() -> DelegationRepository:
-    database = os.environ.get("OPENCOMPANY_DATABASE_PATH", "data/opencompany_core.sqlite3")
-    return DelegationRepository(database)
-
-
 def get_delegation_store() -> DelegationRepository:
     if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
         raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
-    return _default_delegation_store()
+    return _default_runtime().delegations
 
 
 def get_store() -> SQLiteStore:
