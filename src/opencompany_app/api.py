@@ -582,9 +582,18 @@ def test_unorouter_connection(runtime: OpenCompanyRuntime = Depends(get_runtime)
     if result.text.strip() != "OPENCOMPANY_UNOROUTER_OK":
         raise HTTPException(status_code=502, detail="UnoRouter returned an unexpected test response; connection was not marked verified.")
     runtime.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
+    worker_started = False
+    worker_start_error = None
+    try:
+        worker_started = runtime.start_workers_if_ready()
+    except Exception as exc:
+        worker_start_error = type(exc).__name__
     return {"success": True, "provider": result.provider, "model": result.model, "cost_usd": result.cost_usd,
             "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
-            "output_preview": result.text[:160], "tested_at": runtime.unorouter_tested_at, "paid_fallback": False}
+            "output_preview": result.text[:160], "tested_at": runtime.unorouter_tested_at,
+            "worker_autostart_enabled": os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"},
+            "worker_started": worker_started, "worker_start_error": worker_start_error,
+            "paid_fallback": False}
 
 
 @app.delete("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
