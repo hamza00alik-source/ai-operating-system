@@ -1208,3 +1208,80 @@ def test_model_usage_summary_is_owner_authenticated_and_secret_free(owner_client
     assert "api_key" not in response.text.lower()
     denied = owner_client.get("/usage/model")
     assert denied.status_code == 401
+
+
+def test_auto_queue_runs_only_after_owner_approval_and_zero_cost_provider_readiness(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK", "true")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    parent = owner_client.post("/work-items", headers=headers, json={
+        "title": "Automate manager-led market assessment",
+        "objective": "Complete specialist research and consolidate it for owner review",
+        "department": "intelligence-research",
+    }).json()
+    proposal = owner_client.post(
+        f"/work-items/{parent['item_id']}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 1},
+    ).json()
+    profiles = {
+        agent["id"]: agent
+        for agent in owner_client.get("/agents", headers=headers).json()["agents"]
+    }
+    child = proposal["children"][0]
+    specialist = profiles[child["assigned_agent_id"]]
+    manager = next(value for value in profiles.values() if value["role_key"] == "market_intelligence_analyst")
+    for profile in (specialist, manager):
+        response = owner_client.post(
+            f"/agents/{profile['id']}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": profile["revision"]},
+        )
+        assert response.status_code == 200
+
+    runtime = app.dependency_overrides[get_runtime]()
+
+    class ReadyFreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            return ("unorouter-free",)
+
+    class DeterministicExecutor:
+        def execute(self, requested_role, item, **kwargs):
+            return AgentDeliverable(
+                id=uuid4(), work_item_id=item.id, role_key=requested_role,
+                content=f"Approved-input draft from {requested_role}.",
+                provider="test", model="deterministic", cost_usd=0.0,
+            )
+
+    runtime.gateway = ReadyFreeGateway()
+    runtime.worker.executor = DeterministicExecutor()
+    approved = owner_client.post(
+        f"/work-items/{parent['item_id']}/delegation-proposals/{proposal['id']}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+    payload = approved.json()
+    child_id = payload["materialized_work_items"][0]["id"]
+    assert payload["auto_queue"]["enabled"] is True
+    assert payload["auto_queue"]["provider_ready"] is True
+    assert payload["auto_queue"]["queued_work_item_ids"] == [child_id]
+    assert payload["queue_entries_created"] is True
+    assert runtime.queue.counts()["queued"] == 1
+
+    assert runtime.worker.run_once(UUID(specialist["id"]), child["role_key"]) == "completed_review_required"
+    child_review = owner_client.post(
+        f"/work-items/{child_id}/review", headers=headers,
+        json={"approved": True, "rationale": "Specialist evidence is accepted for manager synthesis."},
+    )
+    assert child_review.status_code == 200
+    assert child_review.json()["auto_queue"]["queued_work_item_ids"] == [parent["item_id"]]
+    assert runtime.queue.counts()["queued"] == 1
+
+    assert runtime.worker.run_once(UUID(manager["id"]), "market_intelligence_analyst") == "completed_review_required"
+    manager_review = owner_client.post(
+        f"/work-items/{parent['item_id']}/review", headers=headers,
+        json={"approved": True, "rationale": "Manager synthesis accepted."},
+    )
+    assert manager_review.status_code == 200
+    assert manager_review.json()["state"] == "completed"
