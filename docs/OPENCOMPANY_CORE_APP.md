@@ -22,7 +22,8 @@ Never commit the owner API key. Supply it through a private environment-variable
 - `GET /owner` — serves the independent mobile-friendly owner console. The owner key is entered by the owner and held in tab session storage only; private API requests remain owner-authenticated.
 
 Public, read-only endpoints:
-- `GET /health` — confirms service availability.
+- `GET /health` — process liveness probe; confirms the ASGI process is responsive.
+- `GET /ready` — deployment readiness probe; requires owner runtime configuration and a successful SQLite integrity check, but does not require a configured provider.
 - `GET /workforce/roles` — returns the original OpenCompany capability specifications.
 - `GET /organization/departments` — returns the ten independently designed department contracts.
 - `GET /media/capabilities` — reports video-production capability state; LongCat-Video remains researched, not connected.
