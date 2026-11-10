@@ -43,7 +43,7 @@ The rebuild is a cleaner independently authored domain foundation, with original
 
 ### High — UnoRouter terms and company use are unresolved
 
-The legacy code includes UnoRouter in its provider list and the generic free-provider fallback function defaults to UnoRouter. However, the README later describes UnoRouter as personal-test-only and ineligible for company routing. The current UnoRouter Terms (last updated 2026-10-20) state that UnoRouter does not offer business-customer accounts and impose additional routing/data restrictions for business customers. Do not use a consumer UnoRouter account for company workloads unless UnoRouter gives written clarification that the intended use is permitted. The new rebuild must not silently inherit the legacy default.
+The legacy code originally included UnoRouter in its provider list and the generic free-provider fallback defaulted to it, despite README statements describing it as personal-test-only. The current UnoRouter Terms (last updated 2026-10-20) state that UnoRouter does not offer business-customer accounts and impose additional routing/data restrictions for business customers. This branch now adds a fail-closed eligibility gate that excludes UnoRouter from legacy company task routing/failover while preserving the isolated owner-triggered personal-test and read-only catalogue paths. Written provider clarification is still required before any company workload can use it.
 
 ### High — the new owner console has weaker browser credential handling
 
@@ -53,7 +53,7 @@ The new dashboard stores the owner API key in browser `sessionStorage`, where pa
 
 The new API can create work items and move them through states, but it has no API for agent activation, task assignment, or queue submission in the original implementation. The worker requires an artifact sink, but no production sink implementation exists. Collaboration and learning are not persisted. The worker also needed stronger checks to ensure the assigned profile is active and its role/department match the work being executed.
 
-The first identity-control increment has now been started in this branch: agent profiles persist `role_key` and `team_key`; the worker rejects missing/inactive profiles, role mismatches and department mismatches; owners can explicitly activate/pause/retire profiles using revision-checked, audited state changes. This does not start a worker or execute a task.
+The first identity-control increment has now been implemented in this branch: agent profiles persist `role_key` and `team_key`; the worker rejects missing/inactive profiles, role mismatches and department mismatches; owners can explicitly activate/pause/retire profiles using revision-checked, audited state changes. This does not start a worker or execute a task. A deterministic manager-led delegation preview now chooses direct manager handling, one coherent specialist team of up to five, or owner review if capability coverage is missing. It is still only a preview and does not persist assignments or execute agents.
 
 ### High — production still points at the legacy service
 
@@ -85,8 +85,7 @@ A source-level similarity review and qualified legal review are still required b
 
 ## Ordered next steps
 
-1. Finish role-bound agent identity and owner-controlled activation (in progress in this branch).
-2. Build a manager-led assignment/delegation service with durable assignment records and specialist role validation.
+1. Build durable manager-led assignment/delegation records and subtask creation on top of the new team-selection preview.
 3. Persist handoffs, artifacts, execution attempts, model usage and learning proposals.
 4. Add a production-grade artifact store and connect queue enqueue/claim/complete to the API and supervised worker process.
 5. Add a compliant, verified provider adapter. Keep UnoRouter disabled for company workloads pending written provider clarification; do not send customer/confidential data to consumer free endpoints.
