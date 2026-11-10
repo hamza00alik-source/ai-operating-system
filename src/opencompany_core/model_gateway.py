@@ -34,12 +34,16 @@ class ModelRequest:
     prompt: str
     request_id: str
     max_output_tokens: int = 1200
+    work_item_id: str = "system"
+    role_key: str = "system"
 
     def __post_init__(self) -> None:
         if not self.prompt.strip():
             raise ValueError("prompt cannot be empty")
         if not self.request_id.strip():
             raise ValueError("request_id cannot be empty")
+        if not self.work_item_id.strip() or not self.role_key.strip():
+            raise ValueError("model request accounting identity cannot be empty")
         if not 1 <= self.max_output_tokens <= 16000:
             raise ValueError("max_output_tokens must be between 1 and 16000")
 
@@ -95,11 +99,18 @@ class _ConfiguredProvider:
 class ModelGateway:
     """Select only explicitly enabled providers that fit the request budget."""
 
-    def __init__(self, providers: tuple[_ConfiguredProvider, ...] = ()) -> None:
+    def __init__(
+        self, providers: tuple[_ConfiguredProvider, ...] = (),
+        usage_recorder=None,
+    ) -> None:
         names = [item.policy.name for item in providers]
         if len(set(names)) != len(names):
             raise ValueError("provider names must be unique")
         self._providers = tuple(sorted(providers, key=lambda item: (item.policy.priority, item.policy.name)))
+        self._usage_recorder = usage_recorder
+
+    def set_usage_recorder(self, recorder) -> None:
+        self._usage_recorder = recorder
 
     @classmethod
     def configure(cls, entries: tuple[tuple[ProviderPolicy, ModelAdapter], ...]) -> "ModelGateway":
@@ -161,5 +172,19 @@ class ModelGateway:
                 raise CostPolicyViolation("provider-reported cost exceeds the request budget")
             if result.cost_usd > item.policy.max_cost_per_request_usd:
                 raise CostPolicyViolation("provider-reported cost exceeds its configured ceiling")
+            if self._usage_recorder is not None:
+                try:
+                    self._usage_recorder({
+                        "request_id": request.request_id,
+                        "work_item_id": request.work_item_id,
+                        "role_key": request.role_key,
+                        "provider": result.provider,
+                        "model": result.model,
+                        "input_tokens": result.input_tokens,
+                        "output_tokens": result.output_tokens,
+                        "cost_usd": result.cost_usd,
+                    })
+                except Exception as exc:
+                    raise CostPolicyViolation("model result could not be durably recorded; execution is blocked") from exc
             return result
         raise NoEligibleProvider("All eligible providers were unavailable: " + "; ".join(failures))
