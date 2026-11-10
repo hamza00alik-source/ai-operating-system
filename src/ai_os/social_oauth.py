@@ -140,6 +140,8 @@ def begin(provider: str, business_id: str) -> str:
     verifier = secrets.token_urlsafe(64) if provider == "x" else None
     params = {"client_id": cfg["client_id"], "redirect_uri": cfg["redirect_uri"],
               "response_type": "code", "state": state, "scope": " ".join(spec["scopes"])}
+    if provider == "meta":
+        params["scope"] = ",".join(spec["scopes"])
     if provider == "tiktok":
         params["client_key"] = params.pop("client_id")
         params["scope"] = ",".join(spec["scopes"])
