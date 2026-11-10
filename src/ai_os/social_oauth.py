@@ -228,10 +228,12 @@ def complete(provider: str, state: str, code: str) -> dict:
         data.update({"client_key": cfg["client_id"], "client_secret": cfg["client_secret"]})
     elif provider == "meta":
         data.update({"client_id": cfg["client_id"], "client_secret": cfg["client_secret"]})
-    elif provider in {"x", "etsy"}:
+    elif provider == "x":
         data.update({"client_id": cfg["client_id"], "code_verifier": _fernet().decrypt(row["verifier_encrypted"].encode()).decode()})
         headers["Authorization"] = "Basic " + base64.b64encode(
             (cfg["client_id"] + ":" + cfg["client_secret"]).encode()).decode()
+    elif provider == "etsy":
+        data.update({"client_id": cfg["client_id"], "code_verifier": _fernet().decrypt(row["verifier_encrypted"].encode()).decode()})
     elif provider in {"pinterest", "reddit"}:
         if provider == "reddit":
             data["redirect_uri"] = cfg["redirect_uri"]
