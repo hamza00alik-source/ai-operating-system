@@ -28,3 +28,14 @@ def test_postgres_table_info_preserves_sqlite_column_metadata():
     assert "AS pk" in statement
     assert "PRIMARY KEY" in statement
     assert parameters == ("agent_runs", "agent_runs")
+
+
+def test_postgres_translates_insert_or_ignore():
+    statement = _postgres_sql(
+        "INSERT OR IGNORE INTO department_inbox_processing "
+        "(message_id,status) VALUES(?,?)"
+    )
+    assert statement == (
+        "INSERT INTO department_inbox_processing "
+        "(message_id,status) VALUES(%s,%s) ON CONFLICT DO NOTHING"
+    )
