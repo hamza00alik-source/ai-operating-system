@@ -94,3 +94,26 @@ def test_empty_or_placeholder_output_uses_free_fallback(monkeypatch):
     assert result["provider"] == "gemini"
     assert result["fallback_used"] is True
     assert result["provider_attempts"][0]["status"] == "invalid_or_empty_output"
+
+
+
+def test_unorouter_consumer_account_is_skipped_for_company_task_failover(monkeypatch):
+    _enable(monkeypatch, "UNOROUTER", "https://api.unorouter.com/v1", "sample-model:free")
+    _enable(monkeypatch, "GROQ", "https://api.groq.com/openai/v1", "free-model")
+    calls = []
+
+    def fake_generate(provider_id, prompt):
+        calls.append(provider_id)
+        return {
+            "provider": provider_id, "model": "free-model",
+            "response": "A compliant provider returned a usable internal draft.",
+            "latency_ms": 9, "usage": {}, "live": True,
+        }
+
+    monkeypatch.setattr(llm_gateway, "generate", fake_generate)
+    result = llm_gateway.generate_with_fallback("Prepare a company work draft")
+    assert calls == ["groq"]
+    assert result["provider"] == "groq"
+    uno = next(item for item in llm_gateway.list_providers() if item["id"] == "unorouter")
+    assert uno["configured"] is True
+    assert uno["eligible"] is False
