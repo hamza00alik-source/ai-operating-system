@@ -90,6 +90,17 @@ PROVIDERS = {
         "token_mode": "basic_form",
         "identity": "https://oauth.reddit.com/api/v1/me",
     },
+    "etsy": {
+        "label": "Etsy shop",
+        "client_id_env": "AI_OS_OAUTH_ETSY_CLIENT_ID",
+        "client_secret_env": "AI_OS_OAUTH_ETSY_SHARED_SECRET",
+        "redirect_env": "AI_OS_OAUTH_ETSY_REDIRECT_URI",
+        "authorize": "https://www.etsy.com/oauth/connect",
+        "token": "https://api.etsy.com/v3/public/oauth/token",
+        "scopes": ["shops_r"],
+        "token_mode": "etsy_pkce",
+        "identity": "https://api.etsy.com/v3/application/users/me",
+    },
     "x": {
         "label": "X",
         "client_id_env": "AI_OS_OAUTH_X_CLIENT_ID",
@@ -150,7 +161,7 @@ def begin(provider: str, business_id: str) -> str:
     _fernet()  # fail before sending the owner to consent if token encryption is unavailable
     cfg = _config(provider)
     state = secrets.token_urlsafe(32)
-    verifier = secrets.token_urlsafe(64) if provider == "x" else None
+    verifier = secrets.token_urlsafe(64) if provider in {"x", "etsy"} else None
     params = {"client_id": cfg["client_id"], "redirect_uri": cfg["redirect_uri"],
               "response_type": "code", "state": state, "scope": " ".join(spec["scopes"])}
     if provider == "meta":
@@ -162,7 +173,7 @@ def begin(provider: str, business_id: str) -> str:
         params["scope"] = ",".join(spec["scopes"])
     if provider == "reddit":
         params.update({"duration": "permanent"})
-    if provider == "x":
+    if provider in {"x", "etsy"}:
         params.update({"code_challenge": base64.urlsafe_b64encode(
             hashlib.sha256(verifier.encode()).digest()).decode().rstrip("="),
             "code_challenge_method": "S256"})
@@ -217,7 +228,7 @@ def complete(provider: str, state: str, code: str) -> dict:
         data.update({"client_key": cfg["client_id"], "client_secret": cfg["client_secret"]})
     elif provider == "meta":
         data.update({"client_id": cfg["client_id"], "client_secret": cfg["client_secret"]})
-    elif provider == "x":
+    elif provider in {"x", "etsy"}:
         data.update({"client_id": cfg["client_id"], "code_verifier": _fernet().decrypt(row["verifier_encrypted"].encode()).decode()})
         headers["Authorization"] = "Basic " + base64.b64encode(
             (cfg["client_id"] + ":" + cfg["client_secret"]).encode()).decode()
@@ -238,9 +249,16 @@ def complete(provider: str, state: str, code: str) -> dict:
     if not isinstance(access_token, str) or not access_token:
         raise OAuthError("OAuth exchange did not return an access token.")
     identity_headers = {"Authorization": "Bearer " + access_token}
+    if provider == "etsy":
+        identity_headers["x-api-key"] = cfg["client_id"] + ":" + cfg["client_secret"]
     if provider == "reddit":
         identity_headers["User-Agent"] = "AIOS/1.0 (owner-authorized account link)"
     identity = _request_json(spec["identity"], headers=identity_headers)
+    if provider == "etsy":
+        shop_id = identity.get("shop_id")
+        if not shop_id:
+            raise OAuthError("Etsy did not return a connected shop for this seller account.")
+        identity["shop"] = _request_json("https://api.etsy.com/v3/application/shops/" + str(int(shop_id)), headers=identity_headers)
     if provider == "meta":
         pages = _request_json("https://graph.facebook.com/v24.0/me/accounts?fields=id,name,instagram_business_account{id,username}", headers=identity_headers)
         identity["pages"] = pages.get("data", [])
@@ -261,9 +279,10 @@ def complete(provider: str, state: str, code: str) -> dict:
         "token_type": token.get("token_type", "Bearer"),
         "expires_at": int(time.time()) + int(expires) if expires else None,
         "scope": token.get("scope") or token.get("scopes") or " ".join(spec["scopes"])})
-    label = identity.get("name") or identity.get("display_name") or identity.get("username") or identity.get("id") or identity.get("open_id") or "Verified account"
+    label = (identity.get("shop") or {}).get("shop_name") or identity.get("name") or identity.get("display_name") or identity.get("username") or identity.get("id") or identity.get("open_id") or "Verified account"
     save_business_integration(row["business_id"], provider, credential,
         {"account": str(label)[:200], "identity": identity, "connected_at": datetime.now(timezone.utc).isoformat(),
-         "scopes": spec["scopes"], "read_only": True})
+         "scopes": spec["scopes"], "read_only": True,
+         **({"etsy_api_key": cfg["client_id"], "etsy_shared_secret": cfg["client_secret"]} if provider == "etsy" else {})})
     return {"business_id": row["business_id"], "provider": provider, "account": str(label)[:200],
             "connected": True, "token_expiry_seconds": expires, "read_only": True}
