@@ -98,3 +98,37 @@ def test_research_sources_are_retrieved_only_within_their_business(monkeypatch, 
     assert "agency-source" not in research_context("wholesale buyers", business_id="physical-brand")
     assert "agency-source" not in research_context("wholesale buyers", business_id="digital-products")
     assert "agency-source" in research_context("wholesale buyers", business_id="physical-agency")
+
+
+
+def test_business_integration_credentials_are_encrypted_and_isolated(monkeypatch, tmp_path):
+    from cryptography.fernet import Fernet
+    from ai_os.credentials import (save_business_integration, business_integration_statuses,
+                                   get_business_integration_credential, delete_business_integration)
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "business-integrations.db"))
+    monkeypatch.setenv("AI_OS_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+    initialize_database()
+
+    saved = save_business_integration("physical-agency", "woocommerce", "secret-agency-token", {"store_url": "https://agency.example"})
+    assert saved["configured"] is True
+    assert saved["secret_returned"] is False
+    assert business_integration_statuses("physical-agency")[0]["provider"] == "woocommerce"
+    assert business_integration_statuses("physical-brand") == []
+    credential = get_business_integration_credential("physical-agency", "woocommerce")
+    assert credential["secret"] == "secret-agency-token"
+    assert get_business_integration_credential("physical-brand", "woocommerce") is None
+    with connect() as db:
+        stored = db.execute("SELECT encrypted_secret FROM business_integration_credentials WHERE business_id=?", ("physical-agency",)).fetchone()["encrypted_secret"]
+    assert "secret-agency-token" not in stored
+    assert delete_business_integration("physical-agency", "woocommerce") is True
+    assert get_business_integration_credential("physical-agency", "woocommerce") is None
+
+
+def test_investor_contacts_are_business_scoped(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "business-investors.db"))
+    initialize_database()
+    from ai_os import business_ops
+    business_ops.create_investor({"name": "Agency investor", "business_id": "physical-agency"})
+    business_ops.create_investor({"name": "Brand investor", "business_id": "physical-brand"})
+    assert [x["name"] for x in business_ops.list_investors(business_id="physical-agency")] == ["Agency investor"]
+    assert [x["name"] for x in business_ops.list_investors(business_id="physical-brand")] == ["Brand investor"]
