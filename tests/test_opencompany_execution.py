@@ -79,3 +79,20 @@ def test_executor_default_gateway_stays_disabled_without_owner_configuration(mon
     monkeypatch.delenv("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", raising=False)
     executor = AgentExecutor()
     assert executor._gateway.eligible_providers() == ()
+
+
+def test_executor_receives_only_owner_approved_learning_notes():
+    adapter = CapturingAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    executor = AgentExecutor(
+        gateway,
+        learning_context=lambda role_key: [
+            {"note": "Always include primary-source URLs in demand estimates."},
+            {"note": "Avoid extrapolating from one marketplace's reviews."},
+        ],
+    )
+    executor.execute("market_intelligence_analyst", task())
+    assert "Always include primary-source URLs" in adapter.request.prompt
+    assert "Avoid extrapolating from one marketplace" in adapter.request.prompt
