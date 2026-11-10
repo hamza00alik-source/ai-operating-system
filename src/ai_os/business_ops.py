@@ -247,7 +247,7 @@ def list_investors(limit: int = 300, business_id: str = "core") -> list[dict]:
     with connect() as db:
         rows = db.execute(
             "SELECT * FROM investor_contacts WHERE business_id=? ORDER BY created_at DESC LIMIT ?",
-            (scope, max(1, min(limit, 500)),
+            (scope, max(1, min(limit, 500))),
         ).fetchall()
     return [dict(x) for x in rows]
 
