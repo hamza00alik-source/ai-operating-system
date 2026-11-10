@@ -203,30 +203,30 @@ def require_owner_key(
         raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
     if opencompany_session:
         mutating = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
-        # Browser sessions are same-origin only. SameSite cookies and a CSRF
-        # token are required, and the Origin host must match the request Host.
-        # API-key clients remain available for explicit server-to-server use.
-        if mutating:
-            origin = request.headers.get("origin")
-            host = request.headers.get("host", "").casefold()
-            try:
-                origin_parts = urlsplit(origin or "")
-                origin_host = origin_parts.netloc.casefold()
-                valid_origin = (
-                    origin_parts.scheme in {"http", "https"}
-                    and bool(origin_host)
-                    and origin_host == host
-                    and origin_parts.path in {"", "/"}
-                    and not origin_parts.query
-                    and not origin_parts.fragment
-                )
-            except ValueError:
-                valid_origin = False
-            if not valid_origin:
-                raise HTTPException(status_code=403, detail="Owner session requests must use the same origin.")
         if runtime.sessions.validate(
             opencompany_session, x_csrf_token, require_csrf=mutating
         ):
+            # Browser sessions are same-origin only. SameSite cookies and a
+            # session-bound CSRF token are required, and Origin must match Host.
+            # API-key clients remain available for explicit server-to-server use.
+            if mutating:
+                origin = request.headers.get("origin")
+                host = request.headers.get("host", "").casefold()
+                try:
+                    origin_parts = urlsplit(origin or "")
+                    origin_host = origin_parts.netloc.casefold()
+                    valid_origin = (
+                        origin_parts.scheme in {"http", "https"}
+                        and bool(origin_host)
+                        and origin_host == host
+                        and origin_parts.path in {"", "/"}
+                        and not origin_parts.query
+                        and not origin_parts.fragment
+                    )
+                except ValueError:
+                    valid_origin = False
+                if not valid_origin:
+                    raise HTTPException(status_code=403, detail="Owner session requests must use the same origin.")
             return "owner"
     if x_opencompany_api_key and hmac.compare_digest(x_opencompany_api_key, expected):
         return "owner"
