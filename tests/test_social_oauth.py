@@ -219,3 +219,34 @@ def test_expired_nonrefreshable_social_token_requires_reconnect(oauth_env):
     with pytest.raises(social_oauth.OAuthError, match="expired; reconnect"):
         social_oauth.verify_social_credential("meta", credential, {}, "physical-brand")
 
+
+
+def test_x_expired_token_refreshes_with_pkce_app_credentials_and_persists_rotation(oauth_env, monkeypatch):
+    import time
+    credential = json.dumps({"access_token": "old-x-access", "refresh_token": "old-x-refresh",
+                             "expires_at": int(time.time()) - 1, "scope": "users.read tweet.read offline.access"})
+    calls, saved = [], {}
+    def fake_request(endpoint, data=None, headers=None):
+        calls.append((endpoint, data, headers))
+        if endpoint == social_oauth.PROVIDERS["x"]["token"]:
+            assert data["grant_type"] == "refresh_token"
+            assert data["refresh_token"] == "old-x-refresh"
+            assert data["client_id"] == "client-id-x"
+            import base64
+            assert headers["Authorization"] == "Basic " + base64.b64encode(
+                b"client-id-x:client-secret-x").decode()
+            return {"access_token": "new-x-access", "refresh_token": "rotated-x-refresh",
+                    "expires_in": 7200, "scope": "users.read tweet.read offline.access"}
+        return {"data": {"id": "x-1", "name": "X Owner", "username": "x-owner"}}
+    monkeypatch.setattr(social_oauth, "_request_json", fake_request)
+    monkeypatch.setattr(social_oauth, "save_business_integration",
+        lambda business_id, provider, secret, config: saved.update(
+            business_id=business_id, provider=provider, secret=json.loads(secret), config=config))
+    result = social_oauth.verify_social_credential("x", credential, {"read_only": True}, "digital-products")
+    assert result["connected"] is True
+    assert result["account"] == "X Owner"
+    assert result["token_refreshed"] is True
+    assert saved["business_id"] == "digital-products"
+    assert saved["secret"]["access_token"] == "new-x-access"
+    assert saved["secret"]["refresh_token"] == "rotated-x-refresh"
+    assert calls[-1][2]["Authorization"] == "Bearer new-x-access"
