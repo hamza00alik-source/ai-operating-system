@@ -5,6 +5,7 @@ from uuid import uuid4
 import json
 from ai_os.db import connect, initialize_database
 from ai_os.brain import BUSINESS_IDS
+from ai_os.workflow_dag import COMPANY_CYCLE_DEPENDENCIES
 
 TEMPLATES = {
     "digital-product-launch": {
