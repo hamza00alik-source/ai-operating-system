@@ -43,6 +43,7 @@ class OpenCompanyRuntime:
     api_anything: ApiAnythingClient | None
     secret_vault: ProviderSecretVault
     usage: ModelUsageRepository
+    secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
 
     def stop_workers_for_provider_change(self) -> None:
@@ -67,6 +68,7 @@ class OpenCompanyRuntime:
         if broker is not None:
             broker.gateway = self.gateway
         self.unorouter_tested_at = None
+        self.secret_vault_errors.pop("unorouter", None)
 
     def start_workers_if_ready(self) -> bool:
         """Start the fleet only after a successful owner test of a free provider."""
@@ -90,6 +92,7 @@ class OpenCompanyRuntime:
         self.github_evolution = GitHubEvolutionClient(
             token, repository, base_branch=base_branch,
         )
+        self.secret_vault_errors.pop("github_evolution", None)
 
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
@@ -113,8 +116,15 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     learning = LearningRepository(store._connection, store._lock)
     secret_vault = ProviderSecretVault(store._connection, store._lock)
     usage = ModelUsageRepository(store._connection, store._lock)
-    stored_github = secret_vault.get("github_evolution")
-    if stored_github is not None and os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY", "").strip():
+    secret_vault_errors: dict[str, str] = {}
+    try:
+        stored_github = secret_vault.get("github_evolution")
+    except Exception as exc:
+        stored_github = None
+        secret_vault_errors["github_evolution"] = "Stored GitHub token cannot be decrypted; replace it or remove it from the owner dashboard."
+    if "github_evolution" in secret_vault_errors:
+        github_evolution = None
+    elif stored_github is not None and os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY", "").strip():
         github_evolution = GitHubEvolutionClient(
             stored_github["token"],
             os.environ["OPENCOMPANY_GITHUB_REPOSITORY"].strip(),
@@ -128,14 +138,19 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         lease_seconds=int(os.environ.get("OPENCOMPANY_WORKER_LEASE_SECONDS", "300")),
         lock=store._lock,
     )
-    stored_unorouter = secret_vault.get("unorouter")
+    try:
+        stored_unorouter = secret_vault.get("unorouter")
+    except Exception as exc:
+        stored_unorouter = None
+        secret_vault_errors["unorouter"] = "Stored UnoRouter credentials cannot be decrypted; replace them in the owner dashboard."
     gateway = (
-        configured_unorouter_gateway({
+        ModelGateway()
+        if "unorouter" in secret_vault_errors
+        else configured_unorouter_gateway({
             "api_key": stored_unorouter["api_key"],
             "model": stored_unorouter["model"],
             "confirmed_free": "true",
-        })
-        if stored_unorouter is not None else configured_unorouter_gateway()
+        }) if stored_unorouter is not None else configured_unorouter_gateway()
     )
     api_anything = ApiAnythingClient.from_env()
     research_broker = ResearchBroker(api_anything, gateway) if api_anything is not None else None
@@ -185,6 +200,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         learning=learning, github_evolution=github_evolution, api_anything=api_anything,
         secret_vault=secret_vault,
         usage=usage,
+        secret_vault_errors=secret_vault_errors,
     )
     # Background workers require an explicit owner configuration, an
     # explicit autostart flag, and a confirmed zero-cost provider. This keeps
