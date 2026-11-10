@@ -67,7 +67,7 @@ def test_worker_rejects_wrong_agent_assignment(tmp_path):
     agent, item, store, queue = setup(tmp_path)
     other = uuid4()
     queue.close()
-    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3")
+    queue = DurableWorkerQueue(tmp_path / "wrong-agent-queue.sqlite3")
     queue.enqueue(item.id, other, {})
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), MemorySink())
     with pytest.raises(WorkerConfigurationError, match="assignment"):
