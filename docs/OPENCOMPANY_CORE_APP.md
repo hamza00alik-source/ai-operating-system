@@ -67,3 +67,7 @@ Do not point production deployment at this application yet. Before production us
 - Provenance and licence audit of the remaining legacy repository.
 
 The existing deployment configuration remains unchanged while the independent service is developed and verified.
+
+## Durable model usage ledger
+
+Successful specialist inference calls are recorded in the shared SQLite database with request ID, work item, role, provider/model, reported token counts and reported cost. Request IDs are idempotent; conflicting accounting for an existing ID is rejected. The owner-only `GET /usage/model` endpoint returns aggregate totals and the latest 100 events. API keys, prompts and completion text are not stored in this ledger. The ledger is accounting evidence based on provider-reported usage, not an independent billing statement.
