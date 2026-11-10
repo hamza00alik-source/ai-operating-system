@@ -267,6 +267,8 @@ def verify_social_credential(provider: str, secret: str, config: dict, business_
         account = identity.get("name") or identity.get("id")
     elif provider == "youtube":
         account = (identity.get("snippet") or {}).get("title") or identity.get("id")
+    elif provider == "x":
+        account = identity.get("name") or identity.get("username") or identity.get("id")
     else:
         account = identity.get("display_name") or identity.get("username") or identity.get("name") or identity.get("id") or identity.get("open_id")
     if not account:
