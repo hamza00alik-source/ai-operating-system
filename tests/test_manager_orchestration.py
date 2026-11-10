@@ -31,7 +31,8 @@ def test_manager_selects_one_coherent_specialist_team_when_needed():
     assert len(plan.specialists) == 5
     assert len({member.team_key for member in plan.specialists}) == 1
     assert plan.selected_team_key == plan.specialists[0].team_key
-    assert all(member.matched_capabilities for member in plan.specialists)
+    assert sum(member.supporting_member for member in plan.specialists) == 2
+    assert all(member.matched_capabilities or member.supporting_member for member in plan.specialists)
     assert plan.assignment_performed is False
     assert plan.execution_started is False
 
