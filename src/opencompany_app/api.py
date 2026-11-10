@@ -1711,6 +1711,15 @@ def approve_work_item_delegation_proposal(
     if proposal["mode"] == "owner_review" or not proposal["children"]:
         raise HTTPException(status_code=409, detail="Unresolved capabilities prevent approval.")
     profiles = {str(agent.id): agent for agent in store.list_agents(limit=1000)}
+    manager = profiles.get(proposal["manager_agent_id"])
+    expected_manager_role = default_organization().get(parent.department).manager_role_key
+    if (
+        manager is None or manager.state != AgentState.ACTIVE
+        or manager.role_key != expected_manager_role
+        or manager.department != parent.department
+        or manager.team_key != "management"
+    ):
+        raise HTTPException(status_code=409, detail="The assigned department manager must remain ACTIVE with the expected role before approval.")
     tasks, events = [], []
     for child in proposal["children"]:
         agent = profiles.get(child["assigned_agent_id"])
@@ -1741,8 +1750,28 @@ def approve_work_item_delegation_proposal(
         details={"parent_work_item_id": str(item_id), "child_count": len(tasks),
                  "queue_entries_created": False},
     ))
+    parent_update = replace(
+        parent,
+        state=TaskState.READY,
+        assigned_agent_id=manager.id,
+        depends_on=tuple(task.id for task in tasks),
+    )
+    events.append(AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner", action="delegation.manager_synthesis_assigned",
+        subject_type="work_item", subject_id=str(parent.id), outcome="recorded",
+        correlation_id=str(proposal_id),
+        details={
+            "manager_agent_id": str(manager.id),
+            "manager_role_key": manager.role_key,
+            "dependency_work_item_ids": [str(task.id) for task in tasks],
+            "state": TaskState.READY.value,
+        },
+    ))
     try:
-        saved = store.approve_delegation_proposal(proposal_id, tuple(tasks), tuple(events))
+        saved = store.approve_delegation_proposal(
+            proposal_id, tuple(tasks), tuple(events), parent_update=parent_update,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not saved:
@@ -1753,6 +1782,14 @@ def approve_work_item_delegation_proposal(
             {"id": str(task.id), "assigned_agent_id": str(task.assigned_agent_id),
              "state": task.state.value} for task in tasks
         ],
+        "manager_synthesis_work_item": {
+            "id": str(parent_update.id),
+            "assigned_agent_id": str(manager.id),
+            "role_key": manager.role_key,
+            "state": parent_update.state.value,
+            "depends_on": [str(value) for value in parent_update.depends_on],
+            "ready_after_all_children_are_owner_approved": True,
+        },
         "queue_entries_created": False, "execution_started": False,
     }
 
