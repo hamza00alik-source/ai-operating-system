@@ -20,8 +20,8 @@ from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
-from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
-from ai_os.brain import brain_status, list_memories, review_memory
+from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration
+from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
@@ -150,6 +150,7 @@ class ModelRunRequest(BaseModel):
 
 class ResearchSourceRequest(BaseModel):
     url: str = Field(min_length=12, max_length=2048)
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
 
 
 class BrainMemoryReview(BaseModel):
@@ -171,6 +172,43 @@ class ProviderCredentialRequest(BaseModel):
 class ProviderModelRequest(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     confirm_free_only: bool
+
+
+class BusinessIntegrationRequest(BaseModel):
+    secret: str = Field(min_length=8, max_length=4096)
+    config: dict = Field(default_factory=dict)
+
+
+@app.get("/business-integrations/{business_id}", dependencies=[Depends(require_owner_key)])
+def get_business_integrations(business_id: str):
+    if business_id not in {"physical-agency", "physical-brand", "digital-products"}:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    try:
+        return {"business_id": business_id, "integrations": business_integration_statuses(business_id),
+                "security": "Encrypted at rest; secret values are never returned by this API."}
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/business-integrations/{business_id}/{provider}", dependencies=[Depends(require_owner_key)])
+def post_business_integration(business_id: str, provider: str, payload: BusinessIntegrationRequest):
+    try:
+        return save_business_integration(business_id, provider, payload.secret, payload.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CredentialVaultUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/business-integrations/{business_id}/{provider}", dependencies=[Depends(require_owner_key)])
+def delete_business_integration_route(business_id: str, provider: str):
+    try:
+        deleted = delete_business_integration(business_id, provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Business integration credential not found.")
+    return {"business_id": business_id, "provider": provider, "deleted": True}
 
 
 @app.get("/llm/credentials", dependencies=[Depends(require_owner_key)])
@@ -352,8 +390,10 @@ def get_company_overview():
 
 
 @app.get("/research/sources", dependencies=[Depends(require_api_key)])
-def get_research_sources():
-    return list_sources()
+def get_research_sources(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_sources(business_id=business_id)
 
 
 @app.post("/research/sources", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -367,23 +407,41 @@ def post_research_source(payload: ResearchSourceRequest):
             ch for ch in submitted_url
             if unicodedata.category(ch) not in {"Cf", "Cc", "Cs", "Zl", "Zp"}
         ).strip()
-        return capture_source(submitted_url)
+        return capture_source(submitted_url, payload.business_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except UnicodeError as exc:
         raise HTTPException(status_code=422, detail="The URL contains unsupported invisible or non-ASCII characters. Remove hidden formatting characters and try again.") from exc
 
 
+@app.get("/business-environments", dependencies=[Depends(require_api_key)])
+def get_business_environments():
+    return {
+        "shared_core": "One shared reasoning/model platform and reusable technical capabilities; no shared business memories.",
+        "environments": [
+            {"id": "physical-agency", "name": "Physical Products Agency", "scope": "Third-party physical-product suppliers and clients only."},
+            {"id": "physical-brand", "name": "Own Physical Products Brand", "scope": "Owner's own physical products and brand only."},
+            {"id": "digital-products", "name": "Digital Products", "scope": "Digital products and licensing only."},
+            {"id": "core", "name": "AIOS Core", "scope": "Legacy and internal operating-system tasks; not a business-memory sharing pool."},
+        ],
+        "memory_isolation": "Exact business_id scope; no cross-business memory fallback.",
+    }
+
+
 @app.get("/brain/status", dependencies=[Depends(require_api_key)])
-def get_brain_status():
-    return brain_status()
+def get_brain_status(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return brain_status(business_id)
 
 
 @app.get("/brain/memories", dependencies=[Depends(require_api_key)])
-def get_brain_memories(status: str | None = None, limit: int = 100):
+def get_brain_memories(status: str | None = None, limit: int = 100, business_id: str = "core"):
     if status is not None and status not in {"proposed", "approved", "rejected"}:
         raise HTTPException(status_code=422, detail="Invalid memory status.")
-    return list_memories(status, limit)
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_memories(status, limit, business_id)
 
 
 @app.post("/brain/memories/{memory_id}/review", dependencies=[Depends(require_owner_key)])
@@ -405,17 +463,21 @@ def get_workflow_templates():
 
 
 @app.post("/company/workflows/{template_id}/start", status_code=201, dependencies=[Depends(require_owner_key)])
-def post_start_workflow(template_id: str):
+def post_start_workflow(template_id: str, business_id: str = "core"):
     """Create a persisted workflow; only its first task is queued."""
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
-        return create_workflow(template_id)
+        return create_workflow(template_id, business_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/company/workflows/instances", dependencies=[Depends(require_api_key)])
-def get_workflow_instances():
-    return list_workflows()
+def get_workflow_instances(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_workflows(business_id=business_id)
 
 
 @app.get("/company/workflows/{workflow_id}", dependencies=[Depends(require_api_key)])
@@ -428,6 +490,7 @@ def get_workflow_detail(workflow_id: str):
 
 
 class BusinessRecordRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
     title: str = Field(min_length=1, max_length=160)
     amount: float | None = Field(default=None, ge=0, le=1000000000)
     currency: str = Field(default="USD", min_length=3, max_length=3)
@@ -437,6 +500,7 @@ class BusinessRecordRequest(BaseModel):
 
 
 class InvestorRequest(BaseModel):
+    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
     name: str = Field(min_length=1, max_length=180)
     organization: str = Field(default="", max_length=180)
     contact: str = Field(default="", max_length=200)
@@ -464,13 +528,17 @@ class LicenseOfferRequest(BaseModel):
 
 
 @app.get("/business/summary", dependencies=[Depends(require_api_key)])
-def get_business_summary():
-    return business_ops.business_summary()
+def get_business_summary(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.business_summary(business_id)
 
 
 @app.get("/business/customers", dependencies=[Depends(require_api_key)])
-def get_business_customers():
-    return business_ops.list_records("customer")
+def get_business_customers(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_records("customer", business_id=business_id)
 
 
 @app.post("/business/customers", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -482,8 +550,10 @@ def post_business_customer(payload: BusinessRecordRequest):
 
 
 @app.get("/business/expenses", dependencies=[Depends(require_api_key)])
-def get_business_expenses():
-    return business_ops.list_records("expense")
+def get_business_expenses(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_records("expense", business_id=business_id)
 
 
 @app.post("/business/expenses", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -495,8 +565,10 @@ def post_business_expense(payload: BusinessRecordRequest):
 
 
 @app.get("/business/revenue", dependencies=[Depends(require_api_key)])
-def get_business_revenue():
-    return business_ops.list_records("revenue")
+def get_business_revenue(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_records("revenue", business_id=business_id)
 
 
 @app.post("/business/revenue", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -508,8 +580,10 @@ def post_business_revenue(payload: BusinessRecordRequest):
 
 
 @app.get("/business/investors", dependencies=[Depends(require_api_key)])
-def get_business_investors():
-    return business_ops.list_investors()
+def get_business_investors(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_investors(business_id=business_id)
 
 
 @app.post("/business/investors", status_code=201, dependencies=[Depends(require_owner_key)])
@@ -559,8 +633,10 @@ def post_task(payload: TaskCreate):
 
 
 @app.get("/tasks", response_model=list[TaskOut], dependencies=[Depends(require_api_key)])
-def get_tasks():
-    return list_tasks()
+def get_tasks(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_tasks(business_id)
 
 
 @app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
@@ -576,7 +652,8 @@ def execute_task(task_id: str):
 
 
 @app.post("/agent-runs/{run_id}/retry", status_code=202, dependencies=[Depends(require_api_key)])
-def retry_agent_run(run_id: str):
+def retry_agent_run(run_id: str, business_id: str):
+    _require_run_business_scope(run_id, business_id)
     try:
         return retry_run(run_id)
     except LookupError as exc:
@@ -586,23 +663,40 @@ def retry_agent_run(run_id: str):
 
 
 @app.get("/agent-runs", dependencies=[Depends(require_api_key)])
-def get_agent_runs(task_id: str | None = None):
-    return list_runs(task_id)
+def get_agent_runs(task_id: str | None = None, business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_runs(task_id, business_id)
 
 
-@app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
-def get_agent_run(run_id: str):
+def _require_run_business_scope(run_id: str, business_id: str) -> dict:
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    with connect() as db:
+        row = db.execute(
+            """SELECT r.id FROM agent_runs r
+            JOIN tasks t ON t.id=r.task_id
+            WHERE r.id=? AND t.business_id=?""",
+            (run_id, business_id),
+        ).fetchone()
+    if row is None:
+        # Do not disclose whether a run exists in another business environment.
+        raise HTTPException(status_code=404, detail="Agent run not found in this business environment.")
     result = get_run(run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
     return result
 
 
+@app.get("/agent-runs/{run_id}", dependencies=[Depends(require_api_key)])
+def get_agent_run(run_id: str, business_id: str = "core"):
+    return _require_run_business_scope(run_id, business_id)
+
+
 @app.get("/agent-runs/{run_id}/events", dependencies=[Depends(require_api_key)])
-def get_agent_run_events(run_id: str):
-    """Return the persisted execution timeline for an owner-visible run."""
-    if get_run(run_id) is None:
-        raise HTTPException(status_code=404, detail="Agent run not found")
+def get_agent_run_events(run_id: str, business_id: str = "core"):
+    """Return the persisted execution timeline only within its selected business."""
+    _require_run_business_scope(run_id, business_id)
     with connect() as db:
         rows = db.execute(
             "SELECT id, stage, message, created_at FROM agent_run_events WHERE run_id=? ORDER BY id ASC",
@@ -611,10 +705,9 @@ def get_agent_run_events(run_id: str):
     return [dict(row) for row in rows]
 
 @app.get("/agent-runs/{run_id}/steps", dependencies=[Depends(require_api_key)])
-def get_agent_run_steps(run_id: str):
-    """Return each collaborating agent's persisted contribution."""
-    if get_run(run_id) is None:
-        raise HTTPException(status_code=404, detail="Agent run not found")
+def get_agent_run_steps(run_id: str, business_id: str = "core"):
+    """Return agent contributions only within the selected business."""
+    _require_run_business_scope(run_id, business_id)
     with connect() as db:
         rows = db.execute(
             """SELECT sequence_no, role, agent_id, agent_name, status,
@@ -643,8 +736,10 @@ def post_approval(payload: ApprovalCreate):
     response_model=list[ApprovalOut],
     dependencies=[Depends(require_api_key)],
 )
-def get_approvals():
-    return list_approvals()
+def get_approvals(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return list_approvals(business_id)
 
 
 @app.post(
