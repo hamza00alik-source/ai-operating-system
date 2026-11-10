@@ -70,6 +70,8 @@ class AgentProfile:
     capabilities: tuple[str, ...]
     state: AgentState = AgentState.DRAFT
     revision: int = 1
+    role_key: str | None = None
+    team_key: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.name, "name", maximum=120)
@@ -79,6 +81,11 @@ class AgentProfile:
             raise ValueError("revision must be positive")
         if not self.capabilities or any(not item.strip() for item in self.capabilities):
             raise ValueError("capabilities must contain non-empty entries")
+        if (self.role_key is None) != (self.team_key is None):
+            raise ValueError("role_key and team_key must either both be set or both be absent")
+        if self.role_key is not None:
+            _require_text(self.role_key, "role_key", maximum=160)
+            _require_text(self.team_key, "team_key", maximum=120)
 
 
 @dataclass(frozen=True, slots=True)
