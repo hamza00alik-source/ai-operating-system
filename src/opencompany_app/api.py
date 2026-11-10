@@ -820,6 +820,17 @@ def _free_provider_ready(runtime: OpenCompanyRuntime) -> bool:
 def _auto_queue_task(runtime: OpenCompanyRuntime, task: WorkItem, agent, *, action: str) -> None:
     from datetime import datetime, timezone
 
+    if agent is None or agent.state != AgentState.ACTIVE or agent.department != task.department:
+        raise QueueError("automatic queueing requires an active assignee in the task department")
+    department = default_organization().get(task.department)
+    role = default_workforce().get(agent.role_key)
+    expected_team = (
+        "executive" if agent.role_key == "chief_executive_orchestrator"
+        else "management" if agent.role_key == department.manager_role_key
+        else role.team_key
+    )
+    if agent.role_key not in department.role_keys or agent.team_key != expected_team:
+        raise QueueError("automatic queueing rejected an unverified role/team assignment")
     event = AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc),
         actor_type="system", actor_id="opencompany-auto-queue",
@@ -1835,7 +1846,8 @@ def approve_work_item_delegation_proposal(
         "auto_queue": auto_queue,
         "materialized_work_items": [
             {"id": str(task.id), "assigned_agent_id": str(task.assigned_agent_id),
-             "state": task.state.value} for task in tasks
+             "state": "queued" if str(task.id) in auto_queue["queued_work_item_ids"] else task.state.value}
+            for task in tasks
         ],
         "manager_synthesis_work_item": {
             "id": str(parent_update.id),
@@ -1845,7 +1857,8 @@ def approve_work_item_delegation_proposal(
             "depends_on": [str(value) for value in parent_update.depends_on],
             "ready_after_all_children_are_owner_approved": True,
         },
-        "queue_entries_created": False, "execution_started": False,
+        "queue_entries_created": bool(auto_queue["queued_work_item_ids"]),
+        "execution_started": False,
     }
 
 
