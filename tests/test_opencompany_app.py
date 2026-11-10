@@ -934,3 +934,19 @@ def test_owner_cookie_session_requires_origin_on_mutating_requests(owner_client)
         json={},
     )
     assert response.status_code == 403
+
+
+def test_runtime_repositories_share_one_sqlite_connection_and_lock(owner_client):
+    runtime = app.dependency_overrides[get_runtime]()
+    connection = runtime.store._connection
+    lock = runtime.store._lock
+    assert runtime.queue._db is connection
+    assert runtime.delegations._db is connection
+    assert runtime.sessions._db is connection
+    assert runtime.handoffs._db is connection
+    assert runtime.learning._db is connection
+    assert runtime.queue._lock is lock
+    assert runtime.delegations._lock is lock
+    assert runtime.sessions._lock is lock
+    assert runtime.handoffs._lock is lock
+    assert runtime.learning._lock is lock
