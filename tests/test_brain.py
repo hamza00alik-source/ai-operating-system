@@ -29,3 +29,37 @@ def test_brain_rejects_memory_review_decisions_outside_allowlist(monkeypatch, tm
     initialize_database()
     with pytest.raises(ValueError):
         review_memory("missing", "auto-approve")
+
+
+def test_autonomous_learning_cycle_creates_evidence_based_proposal_and_is_idempotent(monkeypatch, tmp_path):
+    from ai_os.brain import run_learning_cycle, record_failure_experience
+    from ai_os.db import connect
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "brain-autonomy.db"))
+    initialize_database()
+    now = "2026-11-10T12:00:00+00:00"
+    with connect() as db:
+        db.execute("INSERT INTO tasks(id,title,department,business_id,status,created_at) VALUES(?,?,?,?,?,?)",
+                   ("task-a", "Research demand", "research", "core", "completed", now))
+        for i, status in enumerate(("completed", "failed", "partial"), 1):
+            db.execute("INSERT INTO agent_runs(id,task_id,status,created_at) VALUES(?,?,?,?)",
+                       (f"run-{i}", "task-a", status, now))
+    record_failure_experience("run-f", "task-a", "research", "Research demand", "provider timeout")
+    result = run_learning_cycle("core")
+    assert result["proposals_created"] == 1
+    assert result["proposals"][0]["department"] == "research"
+    proposals = list_memories("proposed", business_id="core")
+    assert any(item["category"] == "improvement" for item in proposals)
+    second = run_learning_cycle("core")
+    assert second["already_ran"] is True
+    status = brain_status("core")
+    assert status["autonomy"]["learning_cycles"] == 1
+    assert status["autonomy"]["pending_improvement_proposals"] == 1
+
+
+def test_learning_cycles_are_isolated_by_business(monkeypatch, tmp_path):
+    from ai_os.brain import run_learning_cycle, brain_status
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "brain-isolation.db"))
+    initialize_database()
+    run_learning_cycle("physical-agency")
+    assert brain_status("physical-agency")["autonomy"]["learning_cycles"] == 1
+    assert brain_status("core")["autonomy"]["learning_cycles"] == 0

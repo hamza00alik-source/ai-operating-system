@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from ai_os.db import connect
 from ai_os.llm_gateway import generate_with_fallback
-from ai_os.brain import retrieve_memories, record_experience
+from ai_os.brain import retrieve_memories, record_experience, record_failure_experience
 from ai_os.research_sources import research_context
 
 logger = logging.getLogger("ai_os.agent_runtime")
@@ -500,6 +500,15 @@ def run_pending_once() -> bool:
             )
         from ai_os.workflows import finish_workflow_task
         finish_workflow_task(task_id, False)
+        try:
+            failure_id = record_failure_experience(
+                run_id, task_id, task.get("department", "general"), task.get("title", "Untitled task"),
+                str(exc), business_id=task.get("business_id", "core"),
+            )
+            _record_event(run_id, "brain_failure_saved", "Failure metadata saved for autonomous reliability evaluation.")
+            logger.info("Agent run %s failure experience %s stored", run_id, failure_id)
+        except Exception:
+            logger.exception("Could not persist failure experience for run %s", run_id)
     return True
 
 
