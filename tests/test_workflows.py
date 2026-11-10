@@ -35,6 +35,7 @@ def test_workflow_handoff_unlocks_next_step_only_after_success(monkeypatch, tmp_
     assert task_is_runnable(first["task_id"]) is True
     assert task_is_runnable(second["task_id"]) is False
     finish_workflow_task(first["task_id"], True)
+    finish_workflow_task(first["task_id"], True)
     current = get_workflow(workflow["id"])
     assert current["steps"][0]["status"] == "completed"
     assert current["steps"][1]["status"] == "queued"
