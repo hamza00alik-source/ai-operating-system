@@ -421,6 +421,34 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def review_work_item_with_audit(self, work_item_id: UUID, *, approved: bool, rationale: str, record: AuditRecord) -> TaskState | None:
+        """Record an owner review decision and transition REVIEW atomically."""
+        if not isinstance(approved, bool) or not rationale.strip() or len(rationale) > 2000:
+            raise ValueError("review decision and a 1-2000 character rationale are required")
+        target = TaskState.COMPLETED if approved else TaskState.READY
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                item = self._connection.execute("SELECT state FROM work_items WHERE id=?", (str(work_item_id),)).fetchone()
+                if item is None or item["state"] != TaskState.REVIEW.value:
+                    self._connection.execute("ROLLBACK")
+                    return None
+                count = self._connection.execute("SELECT COUNT(*) AS n FROM deliverables WHERE work_item_id=? AND review_required=1", (str(work_item_id),)).fetchone()["n"]
+                if int(count) < 1:
+                    self._connection.execute("ROLLBACK")
+                    raise ValueError("work item has no review-required deliverable")
+                self._connection.execute("UPDATE work_items SET state=? WHERE id=? AND state=?", (target.value, str(work_item_id), TaskState.REVIEW.value))
+                row = self._connection.execute("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute("INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)", (str(record.id), record.occurred_at.isoformat(), _json(payload), previous_hash, event_hash))
+                self._connection.execute("COMMIT")
+                return target
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
     def fail_work_item_with_audit(self, work_item_id: UUID, record: AuditRecord) -> bool:
         """Move an in-progress task to failed only after its queue exhausts retries."""
         with self._lock:
