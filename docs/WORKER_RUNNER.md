@@ -4,7 +4,7 @@
 
 `OpenCompanyWorker.run_once(agent_id, role_key)` claims at most one durable
 queue lease, reloads the work item from the authoritative store, verifies the
-assigned agent, active profile state, persisted role identity, matching department,
+assigned agent, active profile state, persisted role identity, matching department and team,
 and `in_progress` state, and invokes the existing cost-gated
 specialist executor. The result must be written through an injected durable
 `ArtifactSink`; the worker fails closed if no sink is configured. It records
