@@ -567,6 +567,13 @@ def enqueue_work_item(
         raise HTTPException(status_code=409, detail="Assigned agent must be active in the task department.")
     if not agent.role_key or not agent.team_key:
         raise HTTPException(status_code=409, detail="Assigned agent must have a verified role and team.")
+    try:
+        department = default_organization().get(item.department)
+        role = default_workforce().get(agent.role_key)
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail="Assigned agent role is not in the original workforce catalogue.") from exc
+    if agent.role_key not in department.role_keys or role.team_key != agent.team_key:
+        raise HTTPException(status_code=409, detail="Assigned agent role or team does not match the department catalogue.")
     event = AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc),
         actor_type="owner", actor_id="owner", action="work_item.queued",
