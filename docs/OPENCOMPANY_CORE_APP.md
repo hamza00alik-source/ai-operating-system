@@ -24,7 +24,8 @@ Public, read-only endpoints:
 - `GET /workforce/roles` — returns the original OpenCompany capability specifications.
 - `GET /organization/departments` — returns the ten independently designed department contracts.
 - `GET /media/capabilities` — reports video-production capability state; LongCat-Video remains researched, not connected.
-- `GET /providers/candidates` — lists candidate free-model routes and activation gates; no provider is configured.
+- `GET /providers/candidates` — lists candidate free-model routes and activation gates.
+- `GET /providers/status` — reports whether the explicit OpenRouter free-model configuration is present, without exposing credentials.
 - `POST /plans/preview` — validates a proposed dependency graph and reports ready or blocked work. It does not enqueue or execute tasks.
 - `GET /policy/protected-actions` — lists actions that require explicit owner approval.
 
