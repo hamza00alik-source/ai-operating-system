@@ -76,14 +76,13 @@ class WorkerFleet:
                     self._idle += 1
                 self._stop.wait(self.idle_poll_seconds)
                 continue
-            agents = (
-                agent for agent in self.store.list_agents(limit=1000)
-                if agent.id in available_ids and agent.state.value == "active" and agent.role_key
-            )
             did_work = False
-            for agent in agents:
+            for agent_id in sorted(available_ids, key=str):
                 if self._stop.is_set():
                     break
+                agent = self.store.get_agent(agent_id)
+                if agent is None or agent.state.value != "active" or not agent.role_key:
+                    continue
                 try:
                     result = self.worker.run_once(agent.id, agent.role_key)
                     with self._lock:
