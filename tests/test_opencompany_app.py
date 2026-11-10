@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from uuid import UUID, uuid4
 
+import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
 from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
@@ -1050,3 +1051,23 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     assert reviewed.json()["state"] == "completed"
     assert reviewed.json()["evaluation_recorded"] is True
     assert runtime.store.verify_audit_chain() is True
+
+
+def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
+    calls = []
+
+    class Fleet:
+        def start(self):
+            calls.append("started")
+            return True
+
+    class Runtime:
+        fleet = Fleet()
+
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
+    monkeypatch.setattr(api_module, "_default_runtime", lambda: Runtime())
+
+    api_module.initialize_autonomous_runtime()
+
+    assert calls == ["started"]
