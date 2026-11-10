@@ -164,11 +164,12 @@ def test_worker_pool_clamps_concurrency_to_four(monkeypatch):
 
     stop = threading.Event()
     started = []
+    barrier = threading.Barrier(4)
 
     def fake_worker_loop(stop_event, poll_seconds):
         started.append(threading.get_ident())
-        if len(started) == 4:
-            stop_event.set()
+        barrier.wait(timeout=3)
+        stop_event.set()
 
     monkeypatch.setattr(agent_runtime, "worker_loop", fake_worker_loop)
     agent_runtime.worker_pool(stop, poll_seconds=1, concurrency=99)
