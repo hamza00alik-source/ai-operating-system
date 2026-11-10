@@ -153,6 +153,24 @@ def media_capabilities() -> dict:
     }
 
 
+@app.get("/providers/status")
+def provider_runtime_status() -> dict:
+    api_key = os.environ.get("OPENCOMPANY_OPENROUTER_API_KEY", "").strip()
+    model = os.environ.get("OPENCOMPANY_OPENROUTER_FREE_MODEL", "").strip()
+    confirmation = os.environ.get("OPENCOMPANY_CONFIRM_OPENROUTER_FREE", "").strip().lower()
+    configured = bool(api_key and model.endswith(":free") and confirmation == "true")
+    partial = bool(api_key or model or confirmation) and not configured
+    return {
+        "gateway_enabled": configured,
+        "provider": "openrouter" if configured else None,
+        "model": model if configured else None,
+        "billing_mode": "free_confirmed" if configured else "disabled",
+        "partial_configuration_detected": partial,
+        "real_inference_verified": False,
+        "paid_fallback": False,
+    }
+
+
 @app.get("/providers/candidates")
 def provider_candidates() -> dict:
     items = free_provider_candidates()
