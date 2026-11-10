@@ -147,6 +147,10 @@ def finish_workflow_task(task_id: str, success: bool, output: str = "") -> None:
             db.execute("UPDATE tasks SET status='queued', description=description || ? WHERE id=?", ("\n\nPREVIOUS DEPARTMENT HANDOFF (same business/workflow; verify claims):\n" + output[:12000], following["task_id"]))
         else:
             db.execute("UPDATE workflow_instances SET status='completed' WHERE id=?", (step["workflow_id"],))
+    if success:
+        from ai_os.department_collaboration import record_workflow_handoff_message
+        record_workflow_handoff_message(task_id, output)
+
 
 def list_workflows(limit: int = 50, business_id: str = "core") -> list[dict]:
     if business_id not in BUSINESS_IDS:
