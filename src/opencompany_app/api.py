@@ -23,7 +23,7 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
-from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles
+from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
@@ -118,7 +118,7 @@ def workforce_roles() -> dict:
         "catalogue": "opencompany-original",
         "count": len(roles),
         "specialist_count": sum(1 for role in roles if "__" in role.key),
-        "manager_role_count": sum(1 for role in roles if "__" not in role.key),
+        "leadership_role_count": sum(1 for role in roles if "__" not in role.key),
         "team_count": len({role.team_key for role in roles if "__" in role.key}),
         "roles": [
             {
@@ -288,6 +288,17 @@ def bootstrap_agents(store: SQLiteStore = Depends(get_store)) -> dict:
              "role_capabilities": list(item.capabilities), "state": item.state.value}
             for item in agents
         ],
+        "execution_started": False,
+    }
+
+
+@app.post("/agents/bootstrap-executive", dependencies=[Depends(require_owner_key)])
+def bootstrap_executive(store: SQLiteStore = Depends(get_store)) -> dict:
+    agent = bootstrap_executive_orchestrator(store)
+    return {
+        "count": 1,
+        "agent": {"id": str(agent.id), "name": agent.name,
+                  "department": agent.department, "state": agent.state.value},
         "execution_started": False,
     }
 
