@@ -628,3 +628,14 @@ def test_queue_admission_rejects_unassigned_and_inactive_work(owner_client):
     rejected = owner_client.post(f"/work-items/{item_id}/enqueue", headers=headers)
     assert rejected.status_code == 409
     assert owner_client.get("/workers/queue", headers=headers).json()["total"] == 0
+
+
+def test_owner_can_start_and_stop_worker_fleet_explicitly(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    status = owner_client.get("/workers/status", headers=headers)
+    assert status.status_code == 200
+    assert status.json()["running"] is False
+    started = owner_client.post("/workers/start", headers=headers, json={})
+    assert started.status_code == 200 and started.json()["running"] is True
+    stopped = owner_client.post("/workers/stop", headers=headers, json={})
+    assert stopped.status_code == 200 and stopped.json()["running"] is False
