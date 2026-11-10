@@ -43,8 +43,11 @@ class ProviderSecretVault:
         return AESGCM(key)
 
     def put(self, provider: str, value: dict[str, str]) -> int:
-        if provider != "unorouter":
+        if provider not in {"unorouter", "github_evolution"}:
             raise ValueError("unsupported provider secret")
+        required = ("api_key", "model") if provider == "unorouter" else ("token",)
+        if any(not isinstance(value.get(key), str) or not value[key].strip() for key in required):
+            raise ValueError("provider secret payload is incomplete")
         nonce = secrets.token_bytes(12)
         aad = f"opencompany:provider:{provider}:v1".encode()
         plaintext = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -60,7 +63,7 @@ class ProviderSecretVault:
         return revision
 
     def get(self, provider: str) -> dict[str, str] | None:
-        if provider != "unorouter":
+        if provider not in {"unorouter", "github_evolution"}:
             raise ValueError("unsupported provider secret")
         with self._lock:
             row = self._db.execute("SELECT nonce,ciphertext FROM provider_secrets WHERE provider=?", (provider,)).fetchone()
@@ -70,14 +73,20 @@ class ProviderSecretVault:
         try:
             raw = self._cipher().decrypt(bytes(row["nonce"]), bytes(row["ciphertext"]), aad)
             value = json.loads(raw.decode())
-            if not isinstance(value, dict) or not isinstance(value.get("api_key"), str):
+            if not isinstance(value, dict):
                 raise ValueError("invalid secret payload")
-            return {"api_key": value["api_key"], "model": str(value["model"])}
+            if provider == "unorouter":
+                if not isinstance(value.get("api_key"), str) or not isinstance(value.get("model"), str):
+                    raise ValueError("invalid UnoRouter secret payload")
+                return {"api_key": value["api_key"], "model": value["model"]}
+            if not isinstance(value.get("token"), str):
+                raise ValueError("invalid GitHub secret payload")
+            return {"token": value["token"]}
         except Exception as exc:
             raise SecretVaultError("Stored provider credentials could not be decrypted; verify the server encryption key.") from exc
 
     def delete(self, provider: str) -> bool:
-        if provider != "unorouter":
+        if provider not in {"unorouter", "github_evolution"}:
             raise ValueError("unsupported provider secret")
         with self._lock:
             cursor = self._db.execute("DELETE FROM provider_secrets WHERE provider=?", (provider,))
