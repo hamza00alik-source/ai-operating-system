@@ -28,7 +28,7 @@ def bootstrap_department_managers(store: SQLiteStore) -> tuple[AgentProfile, ...
                 department=department.key,
                 purpose=department.mission,
                 capabilities=role.capabilities,
-                state=AgentState.DRAFT,
+                state=AgentState.DRAFT, role_key=role.key, team_key="management",
             )
             now = datetime.now(timezone.utc)
             event = AuditRecord(
@@ -68,7 +68,7 @@ def bootstrap_specialist_profiles(store: SQLiteStore) -> tuple[AgentProfile, ...
                     department=department.key,
                     purpose=role.mission,
                     capabilities=role.capabilities,
-                    state=AgentState.DRAFT,
+                    state=AgentState.DRAFT, role_key=role.key, team_key=role.team_key,
                 )
                 now = datetime.now(timezone.utc)
                 event = AuditRecord(
@@ -106,7 +106,7 @@ def bootstrap_executive_orchestrator(store: SQLiteStore) -> AgentProfile:
         department="executive-office",
         purpose=role.mission,
         capabilities=role.capabilities,
-        state=AgentState.DRAFT,
+        state=AgentState.DRAFT, role_key=role.key, team_key="executive",
     )
     event = AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc),
