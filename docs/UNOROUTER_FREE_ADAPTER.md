@@ -24,7 +24,7 @@ from opencompany_core.unorouter_adapter import configured_unorouter_gateway
 gateway = configured_unorouter_gateway()
 ```
 
-The gateway implements the common ModelGateway interface consumed by AgentExecutor; this makes the same owner-enabled provider available to any role using that execution service. The adapter sends non-streaming chat-completion requests with bounded output tokens and a 45-second timeout. Responses are size-limited and checked for the selected model identity. Transport errors are converted to safe provider errors without exposing response bodies or credentials.
+The gateway implements the common ModelGateway interface consumed by AgentExecutor. When an AgentExecutor is constructed without an explicitly supplied gateway, it now resolves this owner-configured UnoRouter gateway automatically; this makes the same provider available to every role using that executor. The adapter sends non-streaming chat-completion requests with bounded output tokens and a 45-second timeout. Responses are size-limited and checked for the selected model identity. Transport errors are converted to safe provider errors without exposing response bodies or credentials.
 
 The zero-cost gateway rejects any response that reports a non-zero cost. If UnoRouter is unavailable or rate-limited, the task receives a provider-unavailable result; this adapter does not silently select a paid route. A separately configured free provider may be added to the gateway by the application, but no fallback is configured by this adapter.
 
