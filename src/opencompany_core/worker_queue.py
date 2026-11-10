@@ -302,6 +302,18 @@ class DurableWorkerQueue:
             if cursor.rowcount != 1:
                 raise QueueError("lease is stale or no longer owned by this worker")
 
+    def available_agent_ids(self, *, now: datetime | None = None) -> tuple[UUID, ...]:
+        """Return only agents with queued work or an expired lease to recover."""
+        instant = now or datetime.now(timezone.utc)
+        with self._lock:
+            rows = self._db.execute(
+                """SELECT DISTINCT agent_id FROM worker_queue
+                   WHERE state='queued' OR (state='leased' AND lease_expires_at<=?)
+                   ORDER BY agent_id""",
+                (instant.isoformat(),),
+            ).fetchall()
+        return tuple(UUID(row["agent_id"]) for row in rows)
+
     def counts(self) -> dict[str, int]:
         with self._lock:
             rows = self._db.execute(
