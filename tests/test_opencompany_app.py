@@ -2,8 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from uuid import uuid4
 
-from opencompany_app.api import app, get_store
+from opencompany_app.api import app, get_store, get_delegation_store
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.delegation_records import DelegationRepository
 
 
 client = TestClient(app)
@@ -12,12 +13,16 @@ client = TestClient(app)
 @pytest.fixture
 def owner_client(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
-    store = SQLiteStore(tmp_path / "owner-api.sqlite3")
+    database = tmp_path / "owner-api.sqlite3"
+    store = SQLiteStore(database)
+    delegations = DelegationRepository(database)
     app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_delegation_store] = lambda: delegations
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
     store.close()
+    delegations.close()
 
 
 def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_headers():
@@ -375,3 +380,79 @@ def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_c
         json={"target_state": "queued"},
     )
     assert queued.status_code == 409
+
+
+
+def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
+    assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Assess market demand",
+        "objective": "Prepare a sourced market-demand assessment",
+        "department": "intelligence-research",
+    }).json()
+    item_id = created["item_id"]
+    proposal_response = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals", headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert proposal_response.status_code == 200
+    proposal = proposal_response.json()
+    assert proposal["status"] == "draft"
+    assert len(proposal["children"]) == 5
+    assert proposal["queue_entries_created"] is False
+
+    agents = {agent["id"]: agent for agent in owner_client.get("/agents", headers=headers).json()["agents"]}
+    for child in proposal["children"]:
+        agent = agents[child["assigned_agent_id"]]
+        activated = owner_client.post(
+            f"/agents/{agent['id']}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": agent["revision"]},
+        )
+        assert activated.status_code == 200
+
+    approved = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals/{proposal['id']}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+    payload = approved.json()
+    assert payload["status"] == "approved"
+    assert len(payload["materialized_work_items"]) == 5
+    assert all(task["state"] == "ready" for task in payload["materialized_work_items"])
+    assert payload["queue_entries_created"] is False
+    assert payload["execution_started"] is False
+
+    saved = owner_client.get(f"/work-items/{item_id}/delegation-proposals", headers=headers).json()
+    assert saved["proposals"][0]["status"] == "approved"
+    assert all(child["state"] == "approved" for child in saved["proposals"][0]["children"])
+    audit = owner_client.get("/audit/verify", headers=headers)
+    assert audit.status_code == 200 and audit.json()["chain_valid"] is True
+
+    repeated = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals/{proposal['id']}/approve",
+        headers=headers,
+    )
+    assert repeated.status_code == 409
+
+
+def test_delegation_approval_rejects_inactive_specialist_profiles(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Assess market demand", "objective": "Prepare a sourced assessment",
+        "department": "intelligence-research",
+    }).json()
+    proposal = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals", headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    ).json()
+    response = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals/{proposal['id']}/approve",
+        headers=headers,
+    )
+    assert response.status_code == 409
+    assert "explicitly active" in response.json()["detail"]
+    assert owner_client.get(f"/work-items/{created['item_id']}/delegation-proposals", headers=headers).json()["proposals"][0]["status"] == "draft"
