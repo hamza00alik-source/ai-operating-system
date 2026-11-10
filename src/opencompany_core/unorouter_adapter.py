@@ -78,8 +78,10 @@ class UnoRouterAdapter:
             usage = decoded.get("usage") or {}
             input_tokens = usage.get("prompt_tokens")
             output_tokens = usage.get("completion_tokens")
-            reported_cost = usage.get("cost", decoded.get("cost", 0.0))
-            cost = float(reported_cost or 0.0)
+            reported_cost = usage.get("cost", decoded.get("cost"))
+            if reported_cost is None:
+                raise ValueError("provider did not explicitly report request cost")
+            cost = float(reported_cost)
             if cost < 0:
                 raise ValueError("negative provider cost")
         except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as exc:
@@ -99,7 +101,7 @@ class UnoRouterAdapter:
         )
 
 
-def configured_unorouter_provider() -> tuple[ProviderPolicy, UnoRouterAdapter] | None:
+def configured_unorouter_provider(configuration: dict[str, str] | None = None) -> tuple[ProviderPolicy, UnoRouterAdapter] | None:
     """Return the explicitly owner-enabled free provider, otherwise None.
 
     Required environment variables:
@@ -107,9 +109,14 @@ def configured_unorouter_provider() -> tuple[ProviderPolicy, UnoRouterAdapter] |
       OPENCOMPANY_UNOROUTER_FREE_MODEL (must end in :free)
       OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true
     """
-    api_key = os.environ.get("OPENCOMPANY_UNOROUTER_API_KEY", "").strip()
-    model = os.environ.get("OPENCOMPANY_UNOROUTER_FREE_MODEL", "").strip()
-    confirmation = os.environ.get("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "").strip().lower()
+    if configuration is not None:
+        api_key = str(configuration.get("api_key", "")).strip()
+        model = str(configuration.get("model", "")).strip()
+        confirmation = "true" if configuration.get("confirmed_free") == "true" else ""
+    else:
+        api_key = os.environ.get("OPENCOMPANY_UNOROUTER_API_KEY", "").strip()
+        model = os.environ.get("OPENCOMPANY_UNOROUTER_FREE_MODEL", "").strip()
+        confirmation = os.environ.get("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "").strip().lower()
     if not (api_key or model or confirmation):
         return None
     if not api_key or not model or not model.endswith(":free") or confirmation != "true":
@@ -124,18 +131,23 @@ def configured_unorouter_provider() -> tuple[ProviderPolicy, UnoRouterAdapter] |
     return policy, UnoRouterAdapter(api_key)
 
 
-def configured_unorouter_gateway():
-    """Build a gateway for all company roles using the owner-enabled UnoRouter route."""
+def configured_unorouter_gateway(configuration: dict[str, str] | None = None):
+    """Build a gateway using encrypted owner settings or explicit environment settings."""
     from .model_gateway import ModelGateway
 
-    configured = configured_unorouter_provider()
+    configured = configured_unorouter_provider(configuration)
     return ModelGateway.configure((configured,)) if configured is not None else ModelGateway()
 
 
-def unorouter_configuration_status() -> dict[str, object]:
-    api_key = os.environ.get("OPENCOMPANY_UNOROUTER_API_KEY", "").strip()
-    model = os.environ.get("OPENCOMPANY_UNOROUTER_FREE_MODEL", "").strip()
-    confirmation = os.environ.get("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "").strip().lower()
+def unorouter_configuration_status(configuration: dict[str, str] | None = None) -> dict[str, object]:
+    if configuration is not None:
+        api_key = str(configuration.get("api_key", "")).strip()
+        model = str(configuration.get("model", "")).strip()
+        confirmation = "true" if configuration.get("confirmed_free") == "true" else ""
+    else:
+        api_key = os.environ.get("OPENCOMPANY_UNOROUTER_API_KEY", "").strip()
+        model = os.environ.get("OPENCOMPANY_UNOROUTER_FREE_MODEL", "").strip()
+        confirmation = os.environ.get("OPENCOMPANY_CONFIRM_UNOROUTER_FREE", "").strip().lower()
     configured = bool(api_key and model.endswith(":free") and confirmation == "true")
     partial = bool(api_key or model or confirmation) and not configured
     return {
