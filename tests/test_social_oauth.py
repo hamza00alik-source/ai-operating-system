@@ -104,3 +104,30 @@ def test_etsy_pkce_authorization_and_verified_shop_link(oauth_env, monkeypatch):
     assert saved["provider"] == "etsy"
     assert saved["config"]["etsy_api_key"] == "client-id-etsy"
     assert saved["secret"]["access_token"] == "12345.etsy-access-token"
+
+
+def test_etsy_saved_connection_retest_is_read_only(oauth_env, monkeypatch):
+    import time
+    credential = json.dumps({"access_token": "12345.token", "expires_at": int(time.time()) + 3600})
+    calls = []
+    def fake_request(endpoint, data=None, headers=None):
+        calls.append((endpoint, data, headers))
+        if endpoint.endswith("/users/me"):
+            return {"user_id": 12345, "shop_id": 67890}
+        return {"shop_id": 67890, "shop_name": "My Digital Shop"}
+    monkeypatch.setattr(social_oauth, "_request_json", fake_request)
+    result = social_oauth.verify_etsy_credential(credential, {
+        "etsy_api_key": "etsy-key", "etsy_shared_secret": "etsy-shared-secret"})
+    assert result["connected"] is True
+    assert result["account"] == "My Digital Shop"
+    assert all(call[1] is None for call in calls)
+    assert all(call[2]["Authorization"] == "Bearer 12345.token" for call in calls)
+    assert all(call[2]["x-api-key"] == "etsy-key:etsy-shared-secret" for call in calls)
+
+
+def test_etsy_retest_rejects_expired_access_token(oauth_env):
+    import time
+    credential = json.dumps({"access_token": "12345.token", "expires_at": int(time.time()) - 1})
+    with pytest.raises(social_oauth.OAuthError, match="expired"):
+        social_oauth.verify_etsy_credential(credential, {
+            "etsy_api_key": "etsy-key", "etsy_shared_secret": "etsy-shared-secret"})
