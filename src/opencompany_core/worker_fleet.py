@@ -70,9 +70,15 @@ class WorkerFleet:
 
     def _run(self) -> None:
         while not self._stop.is_set():
+            available_ids = set(self.worker.available_agent_ids())
+            if not available_ids:
+                with self._lock:
+                    self._idle += 1
+                self._stop.wait(self.idle_poll_seconds)
+                continue
             agents = (
                 agent for agent in self.store.list_agents(limit=1000)
-                if agent.state.value == "active" and agent.role_key
+                if agent.id in available_ids and agent.state.value == "active" and agent.role_key
             )
             did_work = False
             for agent in agents:
