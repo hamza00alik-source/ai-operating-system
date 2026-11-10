@@ -380,7 +380,13 @@ th{background:#101b2c}
 <div class="toolbar section" id="woocommerceFields" style="display:none"><input id="integrationConsumerKey" autocomplete="off" placeholder="WooCommerce consumer key" style="flex:1;min-width:180px"><input id="integrationSecretWoo" type="password" autocomplete="new-password" placeholder="WooCommerce consumer secret" style="flex:1;min-width:220px"></div>
 <div class="toolbar section"><button id="saveBusinessIntegration">Connect & verify account</button><span class="small">Credentials are sent only to your authenticated AIOS backend and encrypted at rest.</span></div>
 <div id="integrationMessage" class="status" role="status">No integration action taken.</div><div id="integrationRows" class="small">Loading integration status…</div>
-<p class="small">Additional account adapters still pending: Instagram, Facebook, TikTok, YouTube, Pinterest, Reddit and X require their own official OAuth app registrations and scopes. Marketplace connectors (including Eldorado and other sales channels) need their individual supported API/auth flows. These are deliberately not shown as connected until a real owner-authorized account test succeeds.</p>
+<div class="section" style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px">
+<strong>Social account sign-in · official OAuth</strong>
+<p class="small">Connect through each platform's official authorization page. AIOS requests read-oriented permissions only. Tokens are encrypted server-side and scoped to the selected business. No posts, videos, messages, ads or account settings are changed.</p>
+<div id="socialOAuthRows" class="grid"><div class="small">Checking social OAuth app setup…</div></div>
+<div id="socialOAuthMessage" class="status">No social account authorization started.</div>
+</div>
+<p class="small">Marketplace account adapters are a separate implementation track. The exact marketplace list and each provider's API access requirements must be confirmed; no marketplace login is simulated or marked connected.</p>
 </div>
 <h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div><h3>Investors & partners</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Organization</th><th>Contact</th><th>Stage</th><th>Notes</th></tr></thead><tbody id="investorRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
@@ -796,12 +802,27 @@ fallback.style.display="none";
  const formData=form=>Object.fromEntries(new FormData(form).entries());
  const send=async(path,body)=>api(path,{method:"POST",body:JSON.stringify(body)});
  const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
+ async function loadSocialOAuth(){
+  const root=$("socialOAuthRows");if(!root)return;
+  try{
+   const [status,connected]=await Promise.all([api("/business-integrations/social/status"),api("/business-integrations/"+encodeURIComponent($("businessScope").value))]);
+   const linked=new Set((connected.integrations||[]).map(x=>x.provider));
+   root.innerHTML=(status.providers||[]).map(p=>'<article class="metric"><strong style="font-size:16px">'+esc(p.label)+'</strong><span>'+(linked.has(p.provider)?'<span class="good">Account linked to this business</span>':p.app_configured?'<span class="warn">Ready for owner sign-in</span>':'<span class="warn">Developer app setup required</span>')+'</span><span class="small">Read-only scopes: '+esc((p.read_only_scopes||[]).join(", "))+'</span><button class="secondary" type="button" data-social-provider="'+esc(p.provider)+'" '+(!p.app_configured||linked.has(p.provider)?'disabled':'')+'>'+(linked.has(p.provider)?'Connected':p.app_configured?'Connect account':'Not configured')+'</button></article>').join("");
+  }catch(e){root.textContent="Social connection status unavailable: "+e.message}
+ }
+ $("socialOAuthRows")?.addEventListener("click",async e=>{
+  const button=e.target.closest("[data-social-provider]");if(!button)return;
+  const provider=button.dataset.socialProvider;button.disabled=true;$("socialOAuthMessage").textContent="Preparing secure "+provider+" authorization…";
+  try{const result=await api("/business-integrations/"+encodeURIComponent($("businessScope").value)+"/social/"+encodeURIComponent(provider)+"/start",{method:"POST",body:"{}"});window.location.assign(result.authorize_url)}
+  catch(err){$("socialOAuthMessage").textContent="Could not start authorization: "+err.message;button.disabled=false}
+ });
  async function loadBusinessIntegrations(){
   try{
    const scope=encodeURIComponent($("businessScope").value);
    const data=await api("/business-integrations/"+scope);
    $("integrationRows").innerHTML=(data.integrations||[]).map(x=>'<div class="toolbar" style="justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>'+esc(x.provider)+' · <span class="good">Encrypted credential stored</span></span><span class="toolbar"><button class="secondary" data-provider="'+esc(x.provider)+'" onclick="testBusinessIntegration(this.dataset.provider)">Test</button><button class="secondary" data-provider="'+esc(x.provider)+'" onclick="deleteBusinessIntegration(this.dataset.provider)">Delete</button></span></div>').join("")||"No platform accounts connected to this business.";
   }catch(e){$("integrationRows").textContent=e.message}
+  await loadSocialOAuth();
  }
  window.testBusinessIntegration=async provider=>{
   $("integrationMessage").textContent="Testing saved "+provider+" credentials with a read-only request…";
