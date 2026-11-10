@@ -63,6 +63,7 @@ def run_worker_loop(
 
 
 def main() -> None:
+    initialize_database()
     providers = [item for item in list_providers() if item.get("eligible")]
     if not providers:
         raise SystemExit(
@@ -76,7 +77,6 @@ def main() -> None:
     except ValueError:
         interval = 3
     interval = max(1, min(interval, 60))
-    initialize_database()
     recovered = recover_interrupted_runs()
     worker_id = f"agent-worker-{uuid4()}"
     logger.info(
