@@ -11,6 +11,12 @@ The `clean-room-rebuild` branch and draft PR #105 contain a separate, independen
 The clean-room branch currently has ten original departments, 250 specialist role contracts, ten department-manager roles, and one owner-subordinate executive orchestrator. These are role definitions and draft profiles, not 261 continuously running agents. Manager delegation is currently a deterministic preview; assignment persistence, queue wiring, live model execution, durable artifacts, and always-on operation remain under development.
 
 
+## UnoRouter company inference provider
+
+UnoRouter is a first-class provider in the independent OpenCompany runtime, not a read-only catalogue or personal-test-only integration. The new core includes an OpenAI-compatible chat adapter and a gateway factory usable by AgentExecutor. Owner configuration requires a private `OPENCOMPANY_UNOROUTER_API_KEY`, an exact `OPENCOMPANY_UNOROUTER_FREE_MODEL` ending in `:free`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true`. The provider status endpoint reports configuration without exposing credentials. Paid model IDs and paid fallback are excluded; non-zero provider-reported cost is rejected. See [the UnoRouter adapter guide](docs/UNOROUTER_FREE_ADAPTER.md).
+
+This implementation does not import or reuse the legacy AIOS provider code. The new runtime still requires deployment configuration and an owner-authorized live inference test before real provider execution can be claimed as verified.
+
 ## Principles
 - Human approval before external or consequential actions.
 - No spending, publishing, customer commitments, or production changes without explicit approval.
