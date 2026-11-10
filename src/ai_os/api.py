@@ -21,15 +21,16 @@ from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
 from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
-from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
+from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, worker_pool, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory, run_learning_cycle
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
-from ai_os.executive_supervisor import executive_status, supervise_once
+from ai_os.executive_supervisor import executive_status, supervise_once, executive_supervisor_loop
+from ai_os.inbox_supervisor import process_inbox_once
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
-from ai_os import platform_integrations, social_oauth, marketplace_integrations
+from ai_os import platform_integrations, social_oauth, marketplace_integrations, code_evolution
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -58,28 +59,77 @@ _discovery_stop = threading.Event()
 _discovery_thread: threading.Thread | None = None
 _agent_stop = threading.Event()
 _agent_thread: threading.Thread | None = None
+_learning_thread: threading.Thread | None = None
+_inbox_thread: threading.Thread | None = None
+_executive_thread: threading.Thread | None = None
+
+
+def _has_eligible_model() -> bool:
+    try:
+        return any(item.get("eligible") for item in list_providers())
+    except Exception:
+        logger.exception("Could not check free model-provider readiness.")
+        return False
 
 
 def _agent_worker_loop() -> None:
-    logger.info("Bounded agent execution worker started.")
-    next_learning_cycle = 0.0
+    """Run bounded queue consumers in the same single-replica API service."""
+    poll_seconds = max(1, min(int(__import__("os").getenv("AI_OS_WORKER_POLL_SECONDS", "3")), 30))
+    concurrency = max(1, min(int(__import__("os").getenv("AI_OS_WORKER_CONCURRENCY", "2")), 4))
+    while not _agent_stop.is_set():
+        if not _has_eligible_model():
+            logger.warning("Agent queue is idle: no owner-confirmed eligible free model provider is configured.")
+            _agent_stop.wait(30)
+            continue
+        try:
+            recovered = recover_interrupted_runs()
+            if recovered:
+                logger.warning("Recovered %s interrupted run(s); they require owner retry.", recovered)
+            worker_pool(_agent_stop, poll_seconds=poll_seconds, concurrency=concurrency)
+        except Exception:
+            logger.exception("Agent worker pool recovered from a process-level error.")
+            _agent_stop.wait(5)
+
+
+def _brain_learning_loop() -> None:
+    """Run business-isolated deterministic learning cycles every six hours."""
+    next_cycle = 0.0
     while not _agent_stop.is_set():
         try:
-            if time.monotonic() >= next_learning_cycle:
+            if time.monotonic() >= next_cycle:
                 for business_id in sorted(BUSINESS_IDS):
+                    if _agent_stop.is_set():
+                        break
                     try:
                         result = run_learning_cycle(business_id)
                         if not result.get("already_ran"):
-                            logger.info("Autonomous brain cycle completed for %s: %s proposals", business_id, result.get("proposals_created", 0))
+                            logger.info("Autonomous brain cycle completed for %s: %s proposals",
+                                        business_id, result.get("proposals_created", 0))
                     except Exception:
                         logger.exception("Autonomous brain cycle failed for %s", business_id)
-                next_learning_cycle = time.monotonic() + 21600
-            if not run_agent_pending_once():
-                _agent_stop.wait(3)
+                next_cycle = time.monotonic() + 21600
+            _agent_stop.wait(30)
         except Exception:
-            logger.exception("Agent worker recovered from an error.")
-            _agent_stop.wait(3)
-    logger.info("Bounded agent execution worker stopped.")
+            logger.exception("Brain learning scheduler recovered from an error.")
+            _agent_stop.wait(30)
+
+
+def _inbox_worker_loop() -> None:
+    """Interpret internal department messages only when a free model is available."""
+    while not _agent_stop.is_set():
+        try:
+            if not _has_eligible_model():
+                _agent_stop.wait(30)
+                continue
+            result = process_inbox_once()
+            if result.get("processed"):
+                logger.info("Department inbox supervisor processed %s message(s), queued %s internal task(s).",
+                            result.get("processed"), result.get("tasks_created"))
+            else:
+                _agent_stop.wait(5)
+        except Exception:
+            logger.exception("Department inbox supervisor recovered from an error.")
+            _agent_stop.wait(10)
 
 
 def _discovery_worker_loop() -> None:
@@ -97,7 +147,7 @@ def _discovery_worker_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global _discovery_thread, _agent_thread
+    global _discovery_thread, _agent_thread, _learning_thread, _inbox_thread, _executive_thread
     settings = get_settings()
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
@@ -109,22 +159,33 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     _discovery_thread.start()
-    # Development keeps an in-process worker. Production runs the dedicated worker process.
-    if settings.environment == "development":
+
+    # Production runs the bounded worker in this same single-replica service.
+    # This avoids a second Railway service needing to share the SQLite volume.
+    import os
+    embedded_worker = settings.environment == "development" or os.getenv("AI_OS_EMBEDDED_WORKER", "false").strip().casefold() in {"1", "true", "yes", "on"}
+    if embedded_worker:
         _agent_stop.clear()
-        _agent_thread = threading.Thread(target=_agent_worker_loop, name="aios-agent-worker-dev", daemon=True)
-        _agent_thread.start()
+        _agent_thread = threading.Thread(target=_agent_worker_loop, name="aios-agent-worker", daemon=True)
+        _learning_thread = threading.Thread(target=_brain_learning_loop, name="aios-brain-learning", daemon=True)
+        _inbox_thread = threading.Thread(target=_inbox_worker_loop, name="aios-inbox-supervisor", daemon=True)
+        _executive_thread = threading.Thread(
+            target=executive_supervisor_loop, args=(_agent_stop, 15),
+            name="aios-executive-supervisor", daemon=True,
+        )
+        for thread in (_agent_thread, _learning_thread, _inbox_thread, _executive_thread):
+            thread.start()
+        logger.info("Embedded AIOS worker suite started; one service replica and shared persistent volume are required.")
+
     try:
         yield
     finally:
         _discovery_stop.set()
         _agent_stop.set()
-        if _agent_thread is not None:
-            _agent_thread.join(timeout=10)
-            _agent_thread = None
-        if _discovery_thread is not None:
-            _discovery_thread.join(timeout=10)
-            _discovery_thread = None
+        for thread in (_agent_thread, _learning_thread, _inbox_thread, _executive_thread, _discovery_thread):
+            if thread is not None:
+                thread.join(timeout=10)
+        _agent_thread = _learning_thread = _inbox_thread = _executive_thread = _discovery_thread = None
 
 
 app = FastAPI(
@@ -185,6 +246,11 @@ class ResearchSourceRequest(BaseModel):
 class BrainMemoryReview(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     note: str = Field(default="", max_length=1000)
+
+
+class CodeEvolutionRequest(BaseModel):
+    objective: str = Field(min_length=1, max_length=5000)
+    target_path: str = Field(min_length=1, max_length=300)
 
 
 class OpenRouterCredentialRequest(BaseModel):
@@ -534,6 +600,23 @@ def get_business_environments():
         ],
         "memory_isolation": "Exact business_id scope; no cross-business memory fallback.",
     }
+
+
+@app.get("/code-evolution/status", dependencies=[Depends(require_owner_key)])
+def get_code_evolution_status():
+    """Report whether guarded branch-only AI code evolution is configured."""
+    return code_evolution.readiness()
+
+
+@app.post("/code-evolution/proposals", dependencies=[Depends(require_owner_key)])
+def post_code_evolution_proposal(payload: CodeEvolutionRequest):
+    """Generate one allowlisted code change in a new branch and open a draft PR."""
+    try:
+        return code_evolution.create_proposal(payload.objective, payload.target_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except code_evolution.CodeEvolutionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/brain/status", dependencies=[Depends(require_api_key)])

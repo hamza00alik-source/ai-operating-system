@@ -1,25 +1,26 @@
 # Dedicated AIOS agent worker
 
-The API and agent worker are separate processes in production. The API creates queued runs; the worker polls the same database and executes them. The worker is a long-running process, not a serverless request or scheduled function.
+The API creates queued runs; the bounded worker polls the same database and executes them. On Railway, the preferred deployment is an embedded worker suite inside the existing single-replica API service, so API, queue consumers, inbox supervisor, executive supervisor and learning scheduler share the same persistent volume. A separate worker service is supported only when both services use a genuinely shared server database/queue.
 
 ## Production service configuration
 
-Create a second service from the same repository and deployment revision as the API:
+### Recommended Railway configuration
 
-- Start command: `python -m ai_os.worker`
-- Runtime: persistent, always-on worker process
-- Replicas: **1** (SQLite-backed queue is not configured for multiple worker replicas)
-- Environment: same `AI_OS_ENV`, `AI_OS_DATABASE_URL`, model-provider configuration and encryption settings as the API
-- Storage: mount the **same persistent volume at the same absolute path** used by the API's SQLite database
-- Poll interval: optional `AI_OS_WORKER_POLL_SECONDS=3`
-- In-process queue consumers: optional `AI_OS_WORKER_CONCURRENCY=2` (clamped to 1–4; default 2)
+- Keep the API service at **1 replica** while SQLite is the queue/database.
+- Mount the existing persistent volume at `/data` on the API service.
+- Set `AI_OS_EMBEDDED_WORKER=true` to start the queue consumers, department inbox supervisor, executive supervisor and six-hour learning scheduler inside the API service.
+- Optional `AI_OS_WORKER_POLL_SECONDS=3`.
+- Optional `AI_OS_WORKER_CONCURRENCY=2` (clamped to 1–4; default 2).
+- The API and all embedded workers then use the same process configuration and `/data` volume; no second Railway service is required.
 
-The API must not use an ephemeral local SQLite file while the worker uses a different filesystem. If the platform cannot share one persistent volume between services, do not deploy this worker design there; first migrate the queue and operational data to a shared server database.
+### Separate worker service (alternative)
+
+For a future PostgreSQL/server-queue deployment, a separate persistent service can run `python -m ai_os.worker`. It must use the exact same server database and model-provider configuration as the API. Do not attach a SQLite-backed worker service unless the platform provides a genuinely shared filesystem mount; a copied or separate volume is not shared storage.
 
 ## Runtime behavior and safety
 
-- Development mode retains the in-process worker for local convenience.
-- Non-development API mode does not start an in-process agent worker. Run this dedicated service.
+- Development mode starts the in-process worker suite for local convenience.
+- Non-development API mode starts it only when `AI_OS_EMBEDDED_WORKER=true`.
 - Queue claims use one atomic SQLite update, allowing a bounded number of consumer threads inside the single worker replica to claim distinct runs safely.
 - Keep one worker replica. Increase concurrency only within the configured 1–4 thread limit; SQLite remains the shared queue store.
 - On worker startup, runs left in `running` are marked failed and require an owner-requested retry. This avoids silently repeating model work.

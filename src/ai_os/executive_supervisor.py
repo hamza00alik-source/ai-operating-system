@@ -14,6 +14,7 @@ from uuid import uuid4
 from ai_os.brain import BUSINESS_IDS
 from ai_os.db import connect, initialize_database
 from ai_os.workflows import initialize_workflows
+from ai_os.config import get_settings
 
 logger = logging.getLogger("ai_os.executive_supervisor")
 
@@ -23,6 +24,12 @@ def _now() -> str:
 
 
 def _table_exists(db, name: str) -> bool:
+    """Check table presence for either supported persistence backend."""
+    if get_settings().database_url.startswith(("postgres://", "postgresql://")):
+        return db.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema=current_schema() AND table_name=?",
+            (name,),
+        ).fetchone() is not None
     return db.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
     ).fetchone() is not None

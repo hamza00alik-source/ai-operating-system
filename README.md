@@ -58,6 +58,21 @@ The Technology Discovery panel can sync the structured public dataset from [IdoY
 
 The catalog sync never saves provider credentials, makes inference calls, enables a provider, or spends money. A provider must still be checked against official pricing, terms, region availability, privacy/training rules, and a live $0 account test before an owner may configure it in the LLM gateway. Unknown stays unknown.
 
+## Guarded autonomous code evolution
+
+AIOS can generate a narrow code change, commit it to a new isolated GitHub branch, and open a draft pull request for automated CI validation. It is intentionally not permitted to write to the base branch, merge a PR, deploy generated code, change secrets, or execute generated code in the production process.
+
+Owner-only endpoints:
+- `GET /code-evolution/status` — reports configuration readiness without exposing credentials.
+- `POST /code-evolution/proposals` — accepts an objective and one allowlisted target path, uses the configured free-only model gateway to generate a complete replacement file, and opens a draft PR.
+
+Configuration required on the Railway API service:
+- `AI_OS_CODE_EVOLUTION_ENABLED=true`
+- `AI_OS_GITHUB_TOKEN` — fine-grained GitHub token restricted to this repository with Contents: read/write and Pull requests: read/write.
+- Optional `AI_OS_GITHUB_REPOSITORY` and `AI_OS_GITHUB_BASE_BRANCH`.
+
+The code writer is fail-closed when the flag or token is missing. Security-sensitive modules (API/authentication, credentials, database, and external account adapters) are protected from AI-generated edits. The allowlist is limited to non-protected AIOS Python modules, tests, and Markdown documentation. GitHub Actions must pass and an owner must review/merge the PR. No generated change is automatically deployed.
+
 ## Guarded live LLM gateway
 
 The API exposes:
