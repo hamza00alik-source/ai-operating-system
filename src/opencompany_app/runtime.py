@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from opencompany_core.execution import AgentExecutor
+from opencompany_core.model_gateway import ModelGateway
+from opencompany_core.unorouter_adapter import configured_unorouter_gateway
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.worker_queue import DurableWorkerQueue
 from opencompany_core.worker_runner import OpenCompanyWorker
@@ -27,6 +29,7 @@ class OpenCompanyRuntime:
     delegations: DelegationRepository
     sessions: OwnerSessionStore
     fleet: WorkerFleet
+    gateway: ModelGateway
 
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
@@ -52,7 +55,8 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         lease_seconds=int(os.environ.get("OPENCOMPANY_WORKER_LEASE_SECONDS", "300")),
         lock=store._lock,
     )
-    executor = AgentExecutor()
+    gateway = configured_unorouter_gateway()
+    executor = AgentExecutor(gateway=gateway)
     worker = OpenCompanyWorker(
         queue=queue,
         store=store,
@@ -62,4 +66,4 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         preferred_provider="unorouter",
     )
     fleet = WorkerFleet(worker, store)
-    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet)
+    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet, gateway=gateway)
