@@ -969,11 +969,13 @@ def test_runtime_repositories_share_one_sqlite_connection_and_lock(owner_client)
     assert runtime.sessions._db is connection
     assert runtime.handoffs._db is connection
     assert runtime.learning._db is connection
+    assert runtime.usage._db is connection
     assert runtime.queue._lock is lock
     assert runtime.delegations._lock is lock
     assert runtime.sessions._lock is lock
     assert runtime.handoffs._lock is lock
     assert runtime.learning._lock is lock
+    assert runtime.usage._lock is lock
 
 
 def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client):
