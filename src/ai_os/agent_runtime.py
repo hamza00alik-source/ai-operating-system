@@ -351,7 +351,7 @@ def run_pending_once() -> bool:
             for item in memories
         ) or "No owner-approved relevant memories exist yet."
         _record_event(run_id, "brain_memory_retrieved", f"Business brain supplied {len(memories)} approved relevant memories for {task.get('business_id', 'core')}.")
-        evidence_context = research_context(task["title"] + " " + task.get("description", ""))
+        evidence_context = research_context(task["title"] + " " + task.get("description", ""), business_id=task.get("business_id", "core"))
         evidence_count = evidence_context.count("Source URL: ")
         _record_event(run_id, "research_evidence_retrieved", f"Research evidence layer supplied {evidence_count} captured source(s) relevant to this task.")
         _record_event(run_id, "specialist_started", "Specialist is preparing the task deliverable using the configured model.")
