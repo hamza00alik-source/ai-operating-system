@@ -325,6 +325,45 @@ class SQLiteStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
+    def save_work_items_with_audit(
+        self, items: tuple[WorkItem, ...], records: tuple[AuditRecord, ...]
+    ) -> None:
+        """Persist a complete draft plan and all audit events atomically."""
+        if not items or len(items) != len(records):
+            raise ValueError("each planned work item requires one audit record")
+        if len({item.id for item in items}) != len(items):
+            raise ValueError("planned work item identifiers must be unique")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                for item in items:
+                    self._connection.execute(
+                        """INSERT INTO work_items
+                           (id,title,objective,department,state,assigned_agent_id,dependencies_json,created_at)
+                           VALUES(?,?,?,?,?,?,?,?)""",
+                        (str(item.id), item.title, item.objective, item.department,
+                         item.state.value, str(item.assigned_agent_id) if item.assigned_agent_id else None,
+                         _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
+                    )
+                for record in records:
+                    row = self._connection.execute(
+                        "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                    ).fetchone()
+                    previous_hash = row["event_hash"] if row else _ZERO_HASH
+                    payload = _audit_payload(record, previous_hash)
+                    self._connection.execute(
+                        """INSERT INTO audit_events
+                           (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                           VALUES(?,?,?,?,?)""",
+                        (str(record.id), record.occurred_at.isoformat(), _json(payload),
+                         previous_hash, _digest(payload)),
+                    )
+                self._connection.execute("COMMIT")
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def approve_delegation_proposal(
         self, proposal_id: UUID, items: tuple[WorkItem, ...],
         records: tuple[AuditRecord, ...],
