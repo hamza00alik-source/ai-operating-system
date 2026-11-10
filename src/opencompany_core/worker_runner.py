@@ -16,6 +16,7 @@ from .domain import AuditRecord, TaskState
 from .execution import AgentDeliverable, AgentExecutor
 from .persistence import SQLiteStore
 from .worker_queue import DurableWorkerQueue, QueueError, WorkerLease
+from .organization import default_organization
 
 
 class ArtifactSink(Protocol):
@@ -94,6 +95,21 @@ class OpenCompanyWorker:
             raise WorkerConfigurationError("queued agent does not match work-item assignment")
         if item.state != TaskState.IN_PROGRESS:
             raise WorkerConfigurationError("work item must be in progress before execution")
+        agent = self.store.get_agent(lease.agent_id)
+        if agent is None:
+            raise WorkerConfigurationError("assigned agent profile does not exist")
+        if agent.state.value != "active":
+            raise WorkerConfigurationError("assigned agent profile is not active")
+        if agent.department != item.department:
+            raise WorkerConfigurationError("assigned agent department does not match work item")
+        if agent.role_key != role_key:
+            raise WorkerConfigurationError("execution role does not match assigned agent profile")
+        try:
+            department = default_organization().get(item.department)
+        except LookupError as exc:
+            raise WorkerConfigurationError("work item department is not registered") from exc
+        if role_key not in department.role_keys:
+            raise WorkerConfigurationError("execution role is not permitted in the work item department")
         return self.executor.execute(
             role_key, item, request_budget_usd=self.request_budget_usd,
             preferred_provider=self.preferred_provider,
