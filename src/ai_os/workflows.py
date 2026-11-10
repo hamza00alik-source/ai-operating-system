@@ -29,6 +29,26 @@ TEMPLATES = {
             ("operations", "Deliver adoption recommendation", "Summarize evidence, risks, owner decisions and a reversible next step. Do not enable integrations.")
         ]
     }
+    ,
+    "company-wide-operating-cycle": {
+        "name": "Company-wide cross-department operating cycle",
+        "description": "A supervised end-to-end cycle that routes one business objective through every registered company department. Use one business objective per run; never combine records or customer data across businesses.",
+        "steps": [
+            ("executive", "Set objective, scope and owner decision gates", "Define the business objective, intended business environment, measurable outcome, scope, exclusions, risks and owner approval gates. Do not mix the physical-products agency, physical-products brand and digital-products business."),
+            ("research", "Validate the opportunity with evidence", "Collect dated, attributable evidence about customers, demand, competitors, market conditions and risks. Separate verified facts, estimates and hypotheses; cite primary sources and mark unknowns."),
+            ("product", "Specify the offer and acceptance criteria", "Define the proposed product or service, target buyer, value proposition, deliverables, exclusions, acceptance criteria and assumptions. Do not promise availability or delivery."),
+            ("design", "Prepare creative and production specifications", "Produce a detailed creative brief, visual direction, required assets, file formats, accessibility requirements and quality criteria. Distinguish a brief from assets actually created."),
+            ("engineering", "Assess technical delivery and integrations", "Define implementation tasks, dependencies, architecture, security, data handling and integration requirements. Prefer free/read-only options; do not connect accounts or deploy."),
+            ("legal-compliance", "Review licensing, platform and policy risks", "Identify applicable platform terms, intellectual-property/licensing concerns, privacy and advertising-claim risks. Cite authoritative sources and flag matters needing qualified legal review."),
+            ("quality-assurance", "Verify deliverables and release readiness", "Create and execute only available safe tests; record test evidence, defects, compatibility, acceptance status and release blockers. Never mark untested work as passed."),
+            ("marketing", "Prepare audience and campaign materials", "Develop positioning, channel strategy, content calendar, SEO/marketplace keywords and draft creative copy. Draft only; no publishing, paid promotion or customer outreach."),
+            ("sales-marketplace", "Prepare inbound sales and listing operations", "Prepare listing drafts, pricing hypotheses, marketplace requirements, enquiry qualification and order handoff procedures. Do not publish, accept orders or make customer commitments."),
+            ("customer-support", "Prepare support and feedback handling", "Create support categories, draft response templates, escalation rules, refund/complaint triage and feedback capture. Do not send messages or promise refunds."),
+            ("finance", "Validate costs, pricing and financial controls", "Record only evidenced costs and verified revenue inputs, estimate unit economics with assumptions visible, identify free-tier limits and flag any spend. No purchases, payments or financial commitments."),
+            ("people-workforce", "Review departmental performance and workload", "Review the outputs, missing evidence, workload and capability gaps across departments. Propose role, workflow or training improvements for owner review; do not change permissions autonomously.")
+        ]
+    }
+
 }
 
 def initialize_workflows() -> None:
