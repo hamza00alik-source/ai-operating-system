@@ -598,6 +598,33 @@ def worker_queue_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
     }
 
 
+@app.get("/workers/status", dependencies=[Depends(require_owner_key)])
+def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    status = runtime.fleet.status()
+    return {
+        "running": status.running,
+        "completed_cycles": status.completed_cycles,
+        "idle_cycles": status.idle_cycles,
+        "failed_cycles": status.failed_cycles,
+        "active_agent_profiles": sum(
+            1 for agent in runtime.store.list_agents(limit=1000)
+            if agent.state == AgentState.ACTIVE and agent.role_key
+        ),
+    }
+
+
+@app.post("/workers/start", dependencies=[Depends(require_owner_key)])
+def start_worker_fleet(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    started = runtime.fleet.start()
+    return {"running": runtime.fleet.status().running, "started_now": started}
+
+
+@app.post("/workers/stop", dependencies=[Depends(require_owner_key)])
+def stop_worker_fleet(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    stopped = runtime.fleet.stop(timeout_seconds=10.0)
+    return {"running": runtime.fleet.status().running, "stopped_now": stopped}
+
+
 @app.post("/workers/{agent_id}/run-once", dependencies=[Depends(require_owner_key)])
 def run_agent_once(
     agent_id: UUID,
