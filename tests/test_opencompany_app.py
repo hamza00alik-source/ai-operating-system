@@ -145,6 +145,30 @@ def test_wrong_owner_key_is_rejected(owner_client):
     assert response.status_code == 401
 
 
+def test_owner_can_bootstrap_ten_draft_department_managers(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    first = owner_client.post("/agents/bootstrap", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["count"] == 10
+    assert first.json()["all_draft"] is True
+    assert first.json()["execution_started"] is False
+
+    second = owner_client.post("/agents/bootstrap", headers=headers)
+    assert second.status_code == 200
+    assert second.json()["count"] == 10
+
+    listed = owner_client.get("/agents", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 10
+    assert all(item["state"] == "draft" for item in listed.json()["agents"])
+
+
+def test_agent_registry_requires_owner_authentication(owner_client):
+    response = owner_client.get("/agents", headers={"X-OpenCompany-API-Key": "wrong"})
+    assert response.status_code == 401
+
+
+
 def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     created = owner_client.post("/work-items", headers=headers, json={
