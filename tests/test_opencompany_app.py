@@ -652,6 +652,16 @@ def test_owner_can_start_and_stop_worker_fleet_explicitly(owner_client):
     status = owner_client.get("/workers/status", headers=headers)
     assert status.status_code == 200
     assert status.json()["running"] is False
+    blocked = owner_client.post("/workers/start", headers=headers, json={})
+    assert blocked.status_code == 503
+
+    runtime = app.dependency_overrides[get_runtime]()
+
+    class ReadyFreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),)
+
+    runtime.gateway = ReadyFreeGateway()
     started = owner_client.post("/workers/start", headers=headers, json={})
     assert started.status_code == 200 and started.json()["running"] is True
     stopped = owner_client.post("/workers/stop", headers=headers, json={})
@@ -1061,13 +1071,24 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
             calls.append("started")
             return True
 
+    class Gateway:
+        ready = False
+
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),) if self.ready else ()
+
     class Runtime:
         fleet = Fleet()
+        gateway = Gateway()
 
+    runtime = Runtime()
     monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
-    monkeypatch.setattr(api_module, "_default_runtime", lambda: Runtime())
+    monkeypatch.setattr(api_module, "_default_runtime", lambda: runtime)
 
     api_module.initialize_autonomous_runtime()
+    assert calls == []
 
+    runtime.gateway.ready = True
+    api_module.initialize_autonomous_runtime()
     assert calls == ["started"]
