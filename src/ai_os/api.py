@@ -20,6 +20,7 @@ from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
 from ai_os.model_intelligence import provider_intelligence
+from ai_os.model_benchmarks import record_benchmark, list_benchmarks
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses
 from ai_os.brain import brain_status, list_memories, review_memory
@@ -149,6 +150,11 @@ class ModelRunRequest(BaseModel):
     approve_paid_request: bool = False
 
 
+class ModelBenchmarkRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    confirm_free_only: bool
+
+
 class ResearchSourceRequest(BaseModel):
     url: str = Field(min_length=12, max_length=2048)
 
@@ -210,6 +216,46 @@ def post_provider_model(provider_id: str, payload: ProviderModelRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+
+
+@app.get("/llm/benchmarks", dependencies=[Depends(require_owner_key)])
+def get_llm_benchmarks(limit: int = Query(default=50, ge=1, le=200)):
+    """List persisted owner-triggered benchmark outcomes; performs no inference."""
+    return list_benchmarks(limit)
+
+
+@app.post("/llm/benchmarks/run", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_llm_benchmark(payload: ModelBenchmarkRequest):
+    """Run one explicit, fixed-prompt benchmark against an owner-confirmed free provider."""
+    if payload.confirm_free_only is not True:
+        raise HTTPException(status_code=403, detail="Explicit free-only confirmation is required.")
+    providers = {item["id"]: item for item in list_providers()}
+    provider = providers.get(payload.provider)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="Unknown provider.")
+    if not provider.get("eligible") or not provider.get("free_confirmed"):
+        raise HTTPException(status_code=403, detail="Provider is not currently eligible under the existing owner-confirmed free-only gateway rules.")
+    try:
+        result = test_provider(payload.provider)
+        entry = record_benchmark(
+            provider=payload.provider, model=result.get("model"),
+            outcome="passed" if result.get("test_passed") else "failed",
+            latency_ms=result.get("latency_ms"), usage=result.get("usage"),
+            error=None, cost_class="owner-confirmed-free",
+        )
+        return {"benchmark": entry, "test_passed": bool(result.get("test_passed")),
+                "response": result.get("response", ""), "warning": "Provider free-tier limits and terms can change; verify before use."}
+    except Exception as exc:
+        entry = record_benchmark(
+            provider=payload.provider, model=provider.get("model"),
+            outcome="error", latency_ms=None, usage=None,
+            error=str(exc), cost_class="owner-confirmed-free",
+        )
+        if isinstance(exc, PermissionError):
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        if isinstance(exc, ValueError):
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail={"message": "Provider benchmark failed.", "benchmark": entry}) from exc
 
 
 @app.get("/llm/providers", dependencies=[Depends(require_api_key)])
