@@ -145,7 +145,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("api-anything-status").textContent=apiAnything.enabled?(apiAnything.healthy===false?"Connector error":"Read-only connected"):"Not configured";
       byId("search-research").disabled=!apiAnything.enabled || apiAnything.healthy===false;
       byId("create-code-pr").disabled=!codeEvolution.enabled;
-      byId("code-pr-result").textContent=codeEvolution.enabled?"Connected to "+codeEvolution.repository+" · branch "+codeEvolution.base_branch:"GitHub code-evolution credentials are not configured on the server.";
+      byId("code-pr-result").textContent=codeEvolution.enabled?"Verified · "+codeEvolution.repository+" · branch "+codeEvolution.base_branch:(codeEvolution.configured?"Token saved but repository access is not verified. Test GitHub access in Integrations before creating draft PRs.":"GitHub code-evolution credentials are not configured on the server.");
       clear("learning-proposals","No learning proposals yet.");
       learning.proposals.forEach(proposal=>{
         const card=document.createElement("article");card.className="item";
