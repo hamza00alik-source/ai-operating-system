@@ -33,8 +33,12 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Durable agent worker queue, scheduler, leases, and retries
 
 ## Phase 3 — Memory and learning
+- [x] Business-scoped task assignment for physical agency, own physical brand, and digital products
+- [x] Exact-scope persistent memory retrieval; no cross-business fallback
+- [x] Business-tagged experience capture and owner-approved lessons
+- [x] Backward-compatible migration assigning legacy tasks/memories to internal core
+- [ ] Full business-level isolation for research sources, credentials, customers, finance, integrations, and dashboard access
 - [ ] Source-attributed company knowledge
-- [ ] Retrieval and access controls
 - [ ] Evaluation datasets and regression checks
 - [ ] Improvement proposals requiring human approval
 
