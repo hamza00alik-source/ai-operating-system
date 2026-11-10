@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class WorkerFleetStatus:
     running: bool
+    concurrency: int
     completed_cycles: int
     idle_cycles: int
     failed_cycles: int
@@ -30,14 +31,18 @@ class WorkerFleet:
         store: SQLiteStore,
         *,
         idle_poll_seconds: float = 2.0,
+        concurrency: int = 2,
     ) -> None:
         if not 0.1 <= idle_poll_seconds <= 60:
             raise ValueError("idle_poll_seconds must be between 0.1 and 60")
+        if not 1 <= concurrency <= 16:
+            raise ValueError("worker concurrency must be between 1 and 16")
         self.worker = worker
         self.store = store
         self.idle_poll_seconds = idle_poll_seconds
+        self.concurrency = concurrency
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
         self._lock = threading.RLock()
         self._completed = 0
         self._idle = 0
@@ -45,28 +50,37 @@ class WorkerFleet:
 
     def start(self) -> bool:
         with self._lock:
-            if self._thread is not None and self._thread.is_alive():
+            if any(thread.is_alive() for thread in self._threads):
                 return False
             self._stop.clear()
-            self._thread = threading.Thread(
-                target=self._run, name="opencompany-worker-fleet", daemon=True
-            )
-            self._thread.start()
+            self._threads = [
+                threading.Thread(
+                    target=self._run,
+                    name=f"opencompany-worker-{index + 1}",
+                    daemon=True,
+                )
+                for index in range(self.concurrency)
+            ]
+            for thread in self._threads:
+                thread.start()
             return True
 
     def stop(self, *, timeout_seconds: float = 10.0) -> bool:
         with self._lock:
-            thread = self._thread
-            if thread is None or not thread.is_alive():
+            threads = tuple(self._threads)
+            alive = tuple(thread for thread in threads if thread.is_alive())
+            if not alive:
                 return False
             self._stop.set()
-        thread.join(timeout=max(0.1, min(timeout_seconds, 30.0)))
-        return not thread.is_alive()
+        deadline = time.monotonic() + max(0.1, min(timeout_seconds, 30.0))
+        for thread in alive:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        return not any(thread.is_alive() for thread in alive)
 
     def status(self) -> WorkerFleetStatus:
         with self._lock:
-            running = self._thread is not None and self._thread.is_alive()
-            return WorkerFleetStatus(running, self._completed, self._idle, self._failed)
+            running = any(thread.is_alive() for thread in self._threads)
+            return WorkerFleetStatus(running, self.concurrency, self._completed, self._idle, self._failed)
 
     def _run(self) -> None:
         while not self._stop.is_set():
