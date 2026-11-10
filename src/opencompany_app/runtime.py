@@ -92,7 +92,14 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs,
         learning=learning, github_evolution=github_evolution, api_anything=api_anything,
     )
-    # Worker lifecycle belongs to the API lifespan, which verifies the
-    # free-provider gate before starting. Tests and other callers can safely
-    # construct a runtime without launching background threads.
+    # Background workers require an explicit owner configuration, an
+    # explicit autostart flag, and a confirmed zero-cost provider. This keeps
+    # generic runtime construction inert while allowing the API process to
+    # start autonomously when its deployment is fully configured.
+    if (
+        os.environ.get("OPENCOMPANY_OWNER_API_KEY")
+        and os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true"
+        and gateway.eligible_providers(request_budget_usd=0.0)
+    ):
+        fleet.start()
     return runtime
