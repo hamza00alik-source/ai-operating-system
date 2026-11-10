@@ -17,7 +17,7 @@ def test_postgres_translates_pragma_table_info():
     statement, parameters = _postgres_sql("PRAGMA table_info(agent_runs)")
     assert "information_schema.columns" in statement
     assert "column_name AS name" in statement
-    assert parameters == ("agent_runs",)
+    assert parameters == ("agent_runs", "agent_runs")
 
 
 def test_postgres_table_info_preserves_sqlite_column_metadata():
