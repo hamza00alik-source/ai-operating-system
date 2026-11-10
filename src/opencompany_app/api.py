@@ -565,10 +565,10 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
             {"api_key": payload.api_key, "model": payload.model, "confirmed_free": "true"},
             workers_already_stopped=True,
         )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail="Workers are still processing; provider settings were not changed.") from exc
     except SecretVaultError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="Workers are still processing; provider settings were not changed.") from exc
     return {"configured": True, "model": payload.model, "api_key_saved": True, "revision": revision,
             "billing_mode": "free_confirmed", "automatic_paid_fallback": False, "live_inference_tested": False}
 
@@ -608,10 +608,10 @@ def remove_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)
         runtime.stop_workers_for_provider_change()
         removed = runtime.secret_vault.delete("unorouter")
         runtime.configure_unorouter(None, workers_already_stopped=True)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail="Workers are still processing; provider settings were not changed.") from exc
     except SecretVaultError as exc:
         raise HTTPException(status_code=503, detail="Stored provider settings could not be removed safely.") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="Workers are still processing; provider settings were not changed.") from exc
     return {"removed": removed, "configured": False, "paid_fallback": False}
 
 
