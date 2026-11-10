@@ -97,6 +97,7 @@ def test_workforce_endpoint_exposes_only_original_opencompany_roles():
     assert payload["team_count"] == 100
     assert all(role["prohibited_actions"] for role in payload["roles"])
     assert all(role["team_key"] for role in payload["roles"])
+    assert all(role["playbook"]["workflow_steps"] and role["playbook"]["quality_rubric"] for role in payload["roles"])
 
 
 
