@@ -20,6 +20,18 @@ def owner_client(tmp_path, monkeypatch):
     store.close()
 
 
+def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_headers():
+    response = client.get("/owner")
+    assert response.status_code == 200
+    assert "OpenCompany Owner Console" in response.text
+    assert "sessionStorage" in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+
+
+
 def test_health_reports_owner_authenticated_mode():
     response = client.get("/health")
     assert response.status_code == 200
