@@ -248,12 +248,13 @@ def list_investors(limit: int = 300, business_id: str = "core") -> list[dict]:
     with connect() as db:
         rows = db.execute(
             "SELECT * FROM investor_contacts WHERE business_id=? ORDER BY created_at DESC LIMIT ?",
-            (scope, max(1, min(limit, 500)),,
+            (scope, max(1, min(limit, 500)),
         ).fetchall()
     return [dict(x) for x in rows]
 
 
 def create_investor(payload: dict) -> dict:
+    scope = _scope(payload.get("business_id", "core"))
     name = _clean(payload.get("name"), 180)
     if not name:
         raise ValueError("Investor name is required.")
@@ -261,7 +262,7 @@ def create_investor(payload: dict) -> dict:
     if stage not in {"prospect", "contacted", "interested", "due_diligence", "committed", "declined"}:
         raise ValueError("Unsupported investor stage.")
     item = {
-        "id": str(uuid4()), "name": name,
+        "id": str(uuid4()), "business_id": scope, "name": name,
         "organization": _clean(payload.get("organization"), 180),
         "contact": _clean(payload.get("contact"), 200),
         "stage": stage, "notes": _clean(payload.get("notes"), 2000),
