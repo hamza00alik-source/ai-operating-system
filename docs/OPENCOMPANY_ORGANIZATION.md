@@ -25,9 +25,9 @@ The owner is the ultimate authority for strategy, budgets, identity, external co
 
 ## Workforce scale and specialist teams
 
-The initial workforce catalogue contains 250 independently authored specialist role contracts: 25 per department, arranged into five capability teams of five roles each. The ten existing manager role specifications remain separate from those specialist roles, alongside the executive coordination role. This produces 250 specialist roles plus the management/orchestration roles; it is a role catalogue, not a claim that 261 agents are continuously running.
+The initial workforce catalogue contains 250 independently authored specialist role contracts: 25 per department, arranged into five capability teams of five roles each. Above them are ten department-manager roles and one distinct Chief Executive Orchestrator role that remains subordinate to the owner. This produces 261 role contracts in total; it is a role catalogue, not a claim that 261 agents are continuously running.
 
-Each specialist contract records a distinct title, mission, capability tags, permitted output types, prohibited actions, and deterministic team assignment. The manager is responsible for decomposing department objectives, assigning work to the relevant team, collecting handoffs, and reviewing results. Specialist profiles can be provisioned as drafts through the owner-authenticated `POST /agents/bootstrap-specialists` endpoint. Provisioning is idempotent and audited; it does not activate workers or authorize external actions.
+Each specialist contract records a distinct title, mission, capability tags, permitted output types, prohibited actions, and deterministic team assignment. The manager is responsible for decomposing department objectives, assigning work to the relevant team, collecting handoffs, and reviewing results. The CEO/orchestrator profile can be provisioned as a draft through `POST /agents/bootstrap-executive`; specialist profiles can be provisioned through the owner-authenticated `POST /agents/bootstrap-specialists` endpoint. Provisioning is idempotent and audited; it does not activate workers or authorize external actions.
 
 ## Department contract
 
