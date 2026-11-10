@@ -16,7 +16,7 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
     <button id="unorouter-refresh" type="button">Refresh status</button>
   </div>
   <p id="unorouter-detail" class="muted" aria-live="polite">Credentials are not configured.</p>
-  <p class="muted">Connection testing sends one short test prompt only when you press the test button. It does not create tasks, start workers, or use paid models.</p>
+  <p class="muted">Connection testing sends one short prompt. After a successful zero-cost test, the worker fleet starts automatically only when owner-configured autostart is enabled. Paid fallback is never used.</p>
 </section>
 <section class="panel" id="model-usage">
   <div class="row"><h2 class="section-title" style="margin:0">AI usage & cost ledger</h2><button id="usage-refresh" type="button">Refresh usage</button></div>
@@ -56,7 +56,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
       await request("/settings/providers/unorouter",{method:"PUT",body:JSON.stringify({api_key:apiKey,model,confirm_free:confirmed})});
       byId("unorouter-api-key").value="";
       byId("unorouter-confirm-free").checked=false;
-      setMessage("UnoRouter credentials encrypted and saved. The free-only gateway is now configured; run the connection test before enabling workers.","success");
+      setMessage("UnoRouter credentials encrypted and saved. Run the connection test; workers can start only after successful free-provider verification when autostart is enabled.","success");
       await loadUnoRouterSettings();
     }catch(error){setMessage(error.message,"error");}
     finally{byId("unorouter-save").disabled=false;}
@@ -65,8 +65,9 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
     byId("unorouter-test").disabled=true;
     try{
       const result=await request("/settings/providers/unorouter/test",{method:"POST",body:"{}"});
-      setMessage("UnoRouter test succeeded: "+result.model+" · "+result.cost_usd+" USD reported cost · "+result.output_preview,"success");
-      await loadUnoRouterSettings();
+      const workerMessage=result.worker_started?"Worker fleet started automatically.":(result.worker_autostart_enabled?"Worker fleet did not start; check the owner worker controls.":"Worker autostart is disabled.");
+      setMessage("UnoRouter test succeeded: "+result.model+" · "+result.cost_usd+" USD reported cost. "+workerMessage,"success");
+      await load();
     }catch(error){setMessage(error.message,"error");}
     finally{byId("unorouter-test").disabled=false;}
   });
@@ -77,7 +78,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
       await request("/settings/providers/unorouter",{method:"DELETE"});
       byId("unorouter-api-key").value="";byId("unorouter-model").value="";byId("unorouter-confirm-free").checked=false;
       setMessage("UnoRouter credentials removed. No paid fallback was enabled.","success");
-      await loadUnoRouterSettings();
+      await load();
     }catch(error){setMessage(error.message,"error");byId("unorouter-remove").disabled=false;}
   });
   byId("connect").addEventListener("click",()=>{setTimeout(loadUnoRouterSettings,0);});
