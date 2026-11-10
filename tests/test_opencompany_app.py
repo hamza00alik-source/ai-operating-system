@@ -205,6 +205,52 @@ def test_owner_can_bootstrap_ten_draft_department_managers(owner_client):
     assert all(item["state"] == "draft" for item in listed.json()["agents"])
 
 
+def test_owner_can_activate_manager_profile_without_starting_worker(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    agent = owner_client.get("/agents", headers=headers).json()["agents"][0]
+    assert agent["role_key"] and agent["team_key"]
+
+    response = owner_client.post(
+        f"/agents/{agent['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": agent["revision"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["state"] == "active"
+    assert response.json()["revision"] == agent["revision"] + 1
+    assert response.json()["worker_started"] is False
+
+    updated = owner_client.get("/agents", headers=headers).json()["agents"]
+    assert next(item for item in updated if item["id"] == agent["id"])["state"] == "active"
+
+
+def test_agent_activation_rejects_stale_revision(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    agent = owner_client.get("/agents", headers=headers).json()["agents"][0]
+    changed = owner_client.post(
+        f"/agents/{agent['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": agent["revision"]},
+    )
+    assert changed.status_code == 200
+    stale = owner_client.post(
+        f"/agents/{agent['id']}/state", headers=headers,
+        json={"target_state": "paused", "expected_revision": agent["revision"]},
+    )
+    assert stale.status_code == 409
+
+
+def test_agent_state_changes_require_owner_authentication(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    agent = owner_client.get("/agents", headers=headers).json()["agents"][0]
+    response = owner_client.post(
+        f"/agents/{agent['id']}/state",
+        json={"target_state": "active", "expected_revision": agent["revision"]},
+    )
+    assert response.status_code == 401
+
+
 def test_owner_can_bootstrap_one_draft_executive_orchestrator(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     first = owner_client.post("/agents/bootstrap-executive", headers=headers)
