@@ -166,7 +166,7 @@ def credential_status() -> dict:
     }
 
 
-BUSINESS_INTEGRATION_PROVIDERS = {"wordpress", "woocommerce", "shopify", "meta", "tiktok", "paypal", "stripe", "marketplace", "other"}
+BUSINESS_INTEGRATION_PROVIDERS = {"wordpress", "woocommerce", "shopify", "meta", "tiktok", "youtube", "pinterest", "reddit", "x", "paypal", "stripe", "marketplace", "other"}
 
 
 def save_business_integration(business_id: str, provider: str, secret: str, config: dict | None = None) -> dict:
