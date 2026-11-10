@@ -197,3 +197,24 @@ def test_exhausted_queue_retries_mark_work_item_failed(tmp_path):
     assert store.verify_audit_chain()
     queue.close()
     store.close()
+
+
+def test_deliverable_write_and_review_transition_roll_back_together(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    duplicate_event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.duplicate", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="atomic-test",
+    )
+    store.append_audit_record(duplicate_event)
+    deliverable = AgentDeliverable(
+        id=uuid4(), work_item_id=item.id, role_key="marketplace_operations_analyst",
+        content="Draft", provider="fake", model="deterministic", cost_usd=0.0,
+    )
+    with pytest.raises(Exception):
+        store.save_deliverable_with_audit(deliverable, duplicate_event)
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+    assert store.list_deliverables(item.id) == ()
+    assert store.verify_audit_chain()
+    queue.close()
+    store.close()
