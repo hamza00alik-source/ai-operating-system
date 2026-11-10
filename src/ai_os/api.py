@@ -249,7 +249,7 @@ def start_social_oauth(business_id: str, provider: str):
                 "external_actions": "authorization only; read-oriented scopes"}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except social_oauth.OAuthError as exc:
+    except (social_oauth.OAuthError, CredentialVaultUnavailable) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
