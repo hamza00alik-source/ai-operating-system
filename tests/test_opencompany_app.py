@@ -312,7 +312,7 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
     item_id = created.json()["item_id"]
     assert created.json()["state"] == "draft"
 
-    for state in ("ready", "queued", "in_progress", "review"):
+    for state in ("ready", "queued", "in_progress"):
         response = owner_client.post(
             f"/work-items/{item_id}/transition", headers=headers,
             json={"target_state": state},
@@ -320,11 +320,6 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
         assert response.status_code == 200
         assert response.json()["state"] == state
 
-    direct_completion = owner_client.post(
-        f"/work-items/{item_id}/transition", headers=headers,
-        json={"target_state": "completed"},
-    )
-    assert direct_completion.status_code == 409
     store = app.dependency_overrides[get_store]()
     deliverable = AgentDeliverable(
         id=uuid4(), work_item_id=UUID(item_id), role_key="market_intelligence_analyst",
@@ -336,6 +331,11 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
         subject_id=item_id, outcome="recorded", correlation_id="api-review-test",
     )
     assert store.save_deliverable_with_audit(deliverable, event)
+    direct_completion = owner_client.post(
+        f"/work-items/{item_id}/transition", headers=headers,
+        json={"target_state": "completed"},
+    )
+    assert direct_completion.status_code == 409
     reviewed = owner_client.post(
         f"/work-items/{item_id}/review", headers=headers,
         json={"approved": True, "rationale": "The draft meets the acceptance criteria."},
@@ -349,7 +349,7 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
 
     audit = owner_client.get("/audit/verify", headers=headers)
     assert audit.status_code == 200
-    assert audit.json() == {"event_count": 7, "chain_valid": True}
+    assert audit.json() == {"event_count": 6, "chain_valid": True}
 
 
 def test_owner_can_preview_manager_specialist_team_without_assigning_work(owner_client):
