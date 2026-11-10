@@ -38,7 +38,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   </section>
   <section class="grid" aria-label="Company overview">
     <div class="metric"><span class="muted">Departments</span><strong id="department-count">—</strong></div>
-    <div class="metric"><span class="muted">Manager profiles</span><strong id="agent-count">—</strong></div>
+    <div class="metric"><span class="muted">Manager profiles</span><strong id="agent-count">—</strong></div>\n    <div class="metric"><span class="muted">Specialist roles</span><strong id="specialist-count">—</strong></div>
     <div class="metric"><span class="muted">Work items</span><strong id="work-count">—</strong></div>
     <div class="metric"><span class="muted">Model gateway</span><strong id="provider-state" style="font-size:1.05rem">—</strong></div>
   </section>
@@ -92,12 +92,12 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
     try{
-      const [org,agents,work,provider,media]=await Promise.all([
+      const [org,agents,work,provider,media,workforce]=await Promise.all([
         request("/organization/departments"),request("/agents"),request("/work-items"),
-        request("/providers/status"),request("/media/capabilities")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles")
       ]);
       byId("department-count").textContent=org.count;
-      byId("agent-count").textContent=agents.count;
+      byId("agent-count").textContent=agents.count;\n      byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
       byId("work-count").textContent=work.count;
       byId("provider-state").textContent=provider.gateway_enabled?"Free model configured":"Disabled";
       clear("departments","No departments returned.");
@@ -122,7 +122,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   byId("disconnect").addEventListener("click",()=>{
     ownerKey="";keyInput.value="";sessionStorage.removeItem("opencompany-owner-key");
     ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
-    ["department-count","agent-count","work-count","provider-state"].forEach(id=>byId(id).textContent="—");
+    ["department-count","agent-count","specialist-count","work-count","provider-state"].forEach(id=>byId(id).textContent="—");
     byId("provision").disabled=true;setMessage("Disconnected. The key was cleared from this tab.");
   });
   byId("provision").addEventListener("click",async()=>{
