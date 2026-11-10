@@ -41,13 +41,18 @@ class AgentExecutor:
 
     def __init__(
         self,
-        gateway: ModelGateway,
+        gateway: ModelGateway | None = None,
         *,
         workforce: RoleCatalog | None = None,
         max_output_tokens: int = 1600,
     ) -> None:
         if not 1 <= max_output_tokens <= 16000:
             raise ValueError("max_output_tokens must be between 1 and 16000")
+        if gateway is None:
+            # Resolve the owner-enabled provider lazily to avoid a module cycle.
+            from .unorouter_adapter import configured_unorouter_gateway
+
+            gateway = configured_unorouter_gateway()
         self._gateway = gateway
         self._workforce = workforce or default_workforce()
         self._max_output_tokens = max_output_tokens
