@@ -125,10 +125,11 @@ This first version uses local lexical retrieval and SQLite; it requires no embed
 
 Company task stages may use only providers that are configured and explicitly owner-confirmed as free. The gateway never upgrades billing, selects a paid model, or falls back to an unconfirmed endpoint. If every eligible provider is unavailable or out of quota, the task fails safely and waits for owner action or quota reset. Provider attempts and the provider used for each stage are recorded in run metadata.
 
-**UnoRouter is excluded from company task routing.** Its current Terms state that it does not offer business-customer accounts. The legacy connector is retained only for owner-triggered personal connection tests and read-only catalogue inspection. Do not use a consumer UnoRouter account for company workloads unless the provider confirms the intended business use in writing. Use synthetic, non-sensitive prompts for personal tests; do not send customer, company, confidential, credential, or sensitive personal data.
+**UnoRouter is a first-class optional company inference provider in the independent OpenCompany runtime.** The adapter requires a server-side API key, an exact free model ID ending in `:free`, and explicit owner confirmation. It has no paid-model selection or paid fallback and rejects non-zero provider-reported cost. The live credential and real inference remain unverified; review the provider's current terms, billing state, privacy and data handling before sending confidential or customer data. Use synthetic, non-sensitive input for the first owner-authorized live test.
 
-- `GET /llm/unorouter/catalog` — owner-authenticated, read-only catalogue lookup.
-- `POST /llm/unorouter/personal-test` — isolated owner-triggered personal test.
-- UnoRouter is not eligible for `/llm/run`, agent stages, automatic provider failover, or company execution.
-- The generic company provider router considers only other configured, owner-confirmed free providers; no paid fallback or automatic top-up is permitted.
+- New OpenCompany configuration: `OPENCOMPANY_UNOROUTER_API_KEY`, `OPENCOMPANY_UNOROUTER_FREE_MODEL`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true`.
+- `AgentExecutor` resolves the configured UnoRouter gateway when no explicit gateway is injected.
+- The legacy `/llm/unorouter/catalog` and `/llm/unorouter/personal-test` routes belong to the old application and are not the integration path for the independent rebuild.
+- The new API/worker composition and manager-led multi-agent execution are still incomplete; enabling the adapter alone does not make the company runtime fully operational.
+
 
