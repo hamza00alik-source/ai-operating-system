@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from uuid import UUID, uuid4
 
-from opencompany_app.api import app, get_store, get_delegation_store
+from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
+from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
@@ -17,15 +18,16 @@ client = TestClient(app)
 def owner_client(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
     database = tmp_path / "owner-api.sqlite3"
-    store = SQLiteStore(database)
-    delegations = DelegationRepository(database)
+    runtime = create_runtime(str(database))
+    store = runtime.store
+    delegations = runtime.delegations
+    app.dependency_overrides[get_runtime] = lambda: runtime
     app.dependency_overrides[get_store] = lambda: store
     app.dependency_overrides[get_delegation_store] = lambda: delegations
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-    store.close()
-    delegations.close()
+    runtime.close()
 
 
 def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_headers():
@@ -343,15 +345,27 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
     item_id = created.json()["item_id"]
     assert created.json()["state"] == "draft"
 
-    for state in ("ready", "queued", "in_progress"):
-        response = owner_client.post(
+    ready = owner_client.post(
+        f"/work-items/{item_id}/transition", headers=headers,
+        json={"target_state": "ready"},
+    )
+    assert ready.status_code == 200
+    for state in ("queued", "in_progress"):
+        blocked = owner_client.post(
             f"/work-items/{item_id}/transition", headers=headers,
             json={"target_state": state},
         )
-        assert response.status_code == 200
-        assert response.json()["state"] == state
+        assert blocked.status_code == 409
 
     store = app.dependency_overrides[get_store]()
+    from dataclasses import replace
+    current = store.get_work_item(UUID(item_id))
+    event_start = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.prepare_in_progress", subject_type="work_item",
+        subject_id=item_id, outcome="recorded", correlation_id="api-review-test",
+    )
+    store.save_work_item_with_audit(replace(current, state=TaskState.IN_PROGRESS), event_start)
     deliverable = AgentDeliverable(
         id=uuid4(), work_item_id=UUID(item_id), role_key="market_intelligence_analyst",
         content="Review-ready draft", provider="fake", model="deterministic", cost_usd=0.0,
@@ -380,7 +394,7 @@ def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
 
     audit = owner_client.get("/audit/verify", headers=headers)
     assert audit.status_code == 200
-    assert audit.json() == {"event_count": 6, "chain_valid": True}
+    assert audit.json() == {"event_count": 5, "chain_valid": True}
 
 
 def test_owner_can_preview_manager_specialist_team_without_assigning_work(owner_client):
@@ -532,3 +546,85 @@ def test_deliverables_endpoint_requires_owner_and_returns_persisted_records(owne
     assert response.json() == {"count": 0, "deliverables": []}
     unauthorized = owner_client.get(f"/work-items/{item_id}/deliverables")
     assert unauthorized.status_code == 401
+
+
+
+def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_client):
+    login = owner_client.post("/auth/session", json={"api_key": "test-owner-key"})
+    assert login.status_code == 200
+    csrf = login.json()["csrf_token"]
+    cookie = owner_client.cookies.get("opencompany_session")
+    assert cookie
+    assert "opencompany_session" in login.headers.get("set-cookie", "")
+    assert "httponly" in login.headers.get("set-cookie", "").lower()
+    assert "samesite=strict" in login.headers.get("set-cookie", "").lower()
+
+    status = owner_client.get("/auth/session")
+    assert status.status_code == 200 and status.json()["authenticated"] is True
+    blocked = owner_client.post("/agents/bootstrap", json={})
+    assert blocked.status_code == 401
+    allowed = owner_client.post("/agents/bootstrap", headers={"X-CSRF-Token": csrf}, json={})
+    assert allowed.status_code == 200
+    logout = owner_client.post("/auth/logout", headers={"X-CSRF-Token": csrf})
+    assert logout.status_code == 200
+    after = owner_client.get("/agents")
+    assert after.status_code == 401
+
+
+def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research buyer demand",
+        "objective": "Prepare a sourced buyer-demand report",
+        "department": "intelligence-research",
+    }).json()
+    item_id = created["item_id"]
+    proposal = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals", headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    ).json()
+    agents = {a["id"]: a for a in owner_client.get("/agents", headers=headers).json()["agents"]}
+    for child in proposal["children"]:
+        agent = agents[child["assigned_agent_id"]]
+        active = owner_client.post(
+            f"/agents/{agent['id']}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": agent["revision"]},
+        )
+        assert active.status_code == 200
+    approved = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals/{proposal['id']}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+    child = approved.json()["materialized_work_items"][0]
+    child_id, agent_id = child["id"], child["assigned_agent_id"]
+    queued = owner_client.post(f"/work-items/{child_id}/enqueue", headers=headers)
+    assert queued.status_code == 200
+    assert queued.json()["state"] == "queued"
+    assert queued.json()["worker_started"] is False
+    assert owner_client.get("/workers/queue", headers=headers).json()["counts"]["queued"] == 1
+
+    runtime = app.dependency_overrides[get_runtime]()
+    lease = runtime.queue.claim(UUID(agent_id))
+    assert lease is not None and str(lease.work_item_id) == child_id
+    assert runtime.store.get_work_item(UUID(child_id)).state == TaskState.IN_PROGRESS
+    assert runtime.store.verify_audit_chain()
+    runtime.queue.complete(lease)
+
+
+def test_queue_admission_rejects_unassigned_and_inactive_work(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare research", "objective": "Create internal draft",
+        "department": "intelligence-research",
+    }).json()
+    item_id = created["item_id"]
+    owner_client.post(
+        f"/work-items/{item_id}/transition", headers=headers,
+        json={"target_state": "ready"},
+    )
+    rejected = owner_client.post(f"/work-items/{item_id}/enqueue", headers=headers)
+    assert rejected.status_code == 409
+    assert owner_client.get("/workers/queue", headers=headers).json()["total"] == 0
