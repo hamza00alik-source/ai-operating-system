@@ -699,6 +699,8 @@ def enqueue_work_item(
         raise HTTPException(status_code=404, detail="Work item not found.")
     if item.state != TaskState.READY or item.assigned_agent_id is None:
         raise HTTPException(status_code=409, detail="Only READY tasks with an explicit assignee can be queued.")
+    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        raise HTTPException(status_code=503, detail="No owner-configured free inference provider is available; queue admission is blocked.")
     agent = runtime.store.get_agent(item.assigned_agent_id)
     if agent is None or agent.state != AgentState.ACTIVE or agent.department != item.department:
         raise HTTPException(status_code=409, detail="Assigned agent must be active in the task department.")
@@ -737,8 +739,10 @@ def worker_queue_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
     return {
         "counts": counts,
         "total": sum(counts.values()),
-        "worker_process_autostarted": False,
-        "execution_requires_explicit_worker_process": True,
+        "worker_process_autostarted": status.running,
+        "execution_requires_explicit_worker_process": not status.running,
+        "worker_autostart_configured": os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true",
+        "free_provider_ready": bool(runtime.gateway.eligible_providers(request_budget_usd=0.0)),
     }
 
 
