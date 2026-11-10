@@ -2,7 +2,7 @@
 
 A modular, human-supervised foundation for running an AI-powered company.
 
-> Early development: this is a supervised operating-system foundation, not a fully autonomous company. The GitHub discovery worker is implemented as an initial capability; general-purpose AI agent execution, ecommerce, and social integrations are not yet production-connected.
+> Early production deployment: AIOS provides a supervised task/agent runtime, department workflows, technology discovery, a persistent business-scoped AI Brain, and owner-controlled integration adapters. It is not yet a fully autonomous company: external store/social/marketplace accounts still require provider credentials and owner authorization, and the production database switch is pending a verified connection and data migration.
 
 ## Principles
 - Human approval before external or consequential actions.
@@ -73,7 +73,7 @@ The Owner Dashboard includes provider status, a live connection test, and a real
 
 Secrets are not stored in SQLite, returned by status endpoints, or meant to be pasted into the dashboard/chat. Add them only through the hosting environment-variable panel. If no provider is configured, live inference correctly remains unavailable. Provider token counts are returned only when the upstream API reports them; this release does not yet maintain a durable aggregate usage ledger.
 
-The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner or MCP execution runtime.
+The gateway is an inference transport layer used by the bounded multi-specialist execution and CEO-review runtime. It is not an unrestricted MCP or external-action runtime.
 
 ## Agency workforce catalog and owner console
 
@@ -103,9 +103,9 @@ This is deliberately a bounded first execution runtime. It performs text-only re
 
 ## Persistent company AI brain (initial implementation)
 
-The AI Brain is a provider-independent subsystem stored in the same persistent SQLite database as company operations. It automatically records completed agent-run outcomes as experiences, creates proposed reusable memories, and retrieves only owner-approved memories into future lead-specialist prompts. Owners can inspect, approve, or reject proposed memories in the **AI Brain** dashboard section or through `/brain/status`, `/brain/memories`, and the owner-authenticated `POST /brain/memories/{id}/review` endpoint.
+The AI Brain is a provider-independent subsystem with isolated memory for each business environment. It records completed and failed agent outcomes, retrieves only owner-approved memories into future agent context, and runs an autonomous evaluation cycle every six hours. The cycle measures completed/failed/partial run rates by department and creates evidence-labelled reliability or consistency improvement proposals. Owners can inspect, approve, or reject proposed memories in the **AI Brain** dashboard section or through `/brain/status`, `/brain/memories`, the owner-authenticated `POST /brain/learn` endpoint, and `POST /brain/memories/{id}/review`.
 
-This first version uses local lexical retrieval and SQLite; it requires no embedding service, extra model call, or separate training job. It does not train a new neural network, create a foundation model, or eliminate inference compute. It reduces repeated context-building by retaining approved company knowledge, while advanced reasoning still uses the configured model gateway. The owner must review proposed lessons before they can influence future agents. Only successful completed runs are recorded as experiences; failed runs are not treated as lessons.
+The learning loop currently uses deterministic telemetry evaluation and local lexical retrieval; it does not require an extra model call or embedding service. It does not train a new neural network, alter source code, deploy self-modified code, or eliminate inference compute. Failed runs are captured as diagnostic evidence but never promoted as trusted lessons. Improvement proposals require owner review before they can influence future agent context. External actions, spending, publishing, customer commitments, and production code changes remain approval-gated.
 
 
 ## UnoRouter as the pre-launch default provider
