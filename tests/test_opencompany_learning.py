@@ -38,6 +38,7 @@ def test_evaluation_generates_proposal_without_applying_it():
         risk_level="low",
     )
     assert proposal.state is ProposalState.PROPOSED
+    assert proposal.id.int != 0
     assert proposal.based_on_evaluations == (record.id,)
     assert proposal.owner_decision is None
 
