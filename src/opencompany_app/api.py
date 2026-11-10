@@ -7,6 +7,7 @@ performs an external business action.
 from __future__ import annotations
 
 import hmac
+import json
 import os
 from dataclasses import replace
 from functools import lru_cache
@@ -31,7 +32,7 @@ from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.worker_queue import QueueError
 from opencompany_core.manager_ai import ManagerPlanningError, recommend_department_plan
 from opencompany_core.executive_ai import ExecutivePlanningError, create_executive_plan
-from opencompany_core.model_gateway import CostPolicyViolation, NoEligibleProvider, ProviderUnavailable
+from opencompany_core.model_gateway import CostPolicyViolation, ModelRequest, NoEligibleProvider, ProviderUnavailable
 from opencompany_core.collaboration import AgentHandoff, HandoffState, accept_handoff, decline_handoff, deliver_handoff
 from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, OutcomeGrade, ProposalState
 from opencompany_core.github_evolution import GitHubEvolutionError
@@ -97,6 +98,10 @@ class OutcomeEvaluationInput(BaseModel):
     rubric_scores: dict[str, int] = Field(min_length=1, max_length=20)
     evidence_refs: list[str] = Field(min_length=1, max_length=20)
     observations: str = Field(min_length=1, max_length=6000)
+
+
+class LearningAIProposalInput(BaseModel):
+    evaluation_ids: list[UUID] = Field(min_length=1, max_length=5)
 
 
 class ImprovementProposalInput(BaseModel):
@@ -912,6 +917,130 @@ def create_learning_proposal(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"id": str(proposal.id), "state": proposal.state.value, "owner_decision_required": True}
+
+
+@app.post("/learning/ai-proposals", dependencies=[Depends(require_owner_key)])
+def create_ai_learning_proposal(
+    payload: LearningAIProposalInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    all_evaluations = runtime.learning.list_evaluations()
+    by_id = {row["id"]: row for row in all_evaluations}
+    selected = [by_id.get(str(value)) for value in payload.evaluation_ids]
+    if any(item is None for item in selected):
+        raise HTTPException(status_code=404, detail="One or more evaluation records were not found.")
+    evidence_context = []
+    supported_roles = set()
+    for evaluation in selected:
+        deliverables = store.list_deliverables(UUID(evaluation["work_item_id"]))
+        by_deliverable = {item["id"]: item for item in deliverables}
+        excerpts = []
+        for ref in evaluation["evidence_refs"]:
+            if ref.startswith("deliverable:"):
+                artifact = by_deliverable.get(ref.split(":", 1)[1])
+                if artifact:
+                    supported_roles.add(artifact["role_key"])
+                    excerpts.append({
+                        "role_key": artifact["role_key"],
+                        "content_excerpt": artifact["content"][:1800],
+                    })
+        evidence_context.append({
+            "evaluation": evaluation,
+            "deliverables": excerpts,
+        })
+    if not supported_roles:
+        raise HTTPException(status_code=409, detail="Selected evaluations must cite deliverables with identifiable role keys.")
+    prompt = (
+        "OPENCOMPANY EVIDENCE-BASED LEARNING REVIEW\n"
+        "Recommend one narrowly scoped role-learning note based only on the supplied owner evaluations and artifacts. "
+        "Do not claim a permanent code change. Return only JSON with exactly these keys: role_key, note, rationale, "
+        "expected_measurement, risk_level. The role_key must be one of the supplied roles. The note should be a concise "
+        "operating improvement that can be inserted into that role's future prompt only after owner approval.\n"
+        f"Supported role keys: {json.dumps(sorted(supported_roles))}\n"
+        f"Evidence: {json.dumps(evidence_context, ensure_ascii=False)}"
+    )
+    try:
+        model_result = runtime.gateway.complete(
+            ModelRequest(prompt=prompt, request_id=str(uuid4()), max_output_tokens=1800),
+            request_budget_usd=0.0, preferred_provider="unorouter",
+        )
+    except NoEligibleProvider as exc:
+        raise HTTPException(status_code=503, detail="No configured free model provider is available for learning analysis.") from exc
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        raise HTTPException(status_code=502, detail=f"Learning analysis failed safely: {type(exc).__name__}") from exc
+    try:
+        suggestion = json.loads(model_result.text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Learning model did not return valid JSON.") from exc
+    expected_keys = {"role_key", "note", "rationale", "expected_measurement", "risk_level"}
+    if not isinstance(suggestion, dict) or set(suggestion) != expected_keys:
+        raise HTTPException(status_code=422, detail="Learning model returned an invalid proposal shape.")
+    role_key = suggestion["role_key"]
+    if role_key not in supported_roles:
+        raise HTTPException(status_code=422, detail="Learning model selected a role not supported by the evidence.")
+    try:
+        default_workforce().get(role_key)
+        proposal = ImprovementProposal(
+            id=uuid4(), target=role_key, change_summary=suggestion["note"],
+            rationale=suggestion["rationale"],
+            expected_measurement=suggestion["expected_measurement"],
+            risk_level=suggestion["risk_level"],
+            based_on_evaluations=tuple(payload.evaluation_ids),
+            state=ProposalState.PROPOSED,
+        )
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Learning proposal failed validation: {exc}") from exc
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="agent", actor_id="learning-reviewer",
+        action="learning.ai_proposal_created", subject_type="improvement_proposal",
+        subject_id=str(proposal.id), outcome="proposed", correlation_id=str(uuid4()),
+        details={"role_key": role_key, "provider": model_result.provider, "model": model_result.model},
+    )
+    try:
+        runtime.learning.save_proposal(proposal, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "id": str(proposal.id), "target": proposal.target,
+        "change_summary": proposal.change_summary, "rationale": proposal.rationale,
+        "expected_measurement": proposal.expected_measurement, "risk_level": proposal.risk_level,
+        "state": proposal.state.value, "provider": model_result.provider,
+        "model": model_result.model, "owner_approval_required": True,
+        "note_applied": False,
+    }
+
+
+@app.post("/learning/proposals/{proposal_id}/apply-note", dependencies=[Depends(require_owner_key)])
+def apply_approved_learning_proposal(
+    proposal_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    proposal = next(
+        (item for item in runtime.learning.list_proposals() if item["id"] == str(proposal_id)),
+        None,
+    )
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Learning proposal not found.")
+    if proposal["state"] != ProposalState.APPROVED.value:
+        raise HTTPException(status_code=409, detail="Only owner-approved learning proposals can be applied.")
+    try:
+        default_workforce().get(proposal["target"])
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail="Proposal target is not a known workforce role.") from exc
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="learning.approved_note_applied", subject_type="agent_role",
+        subject_id=proposal["target"], outcome="applied", correlation_id=str(uuid4()),
+        details={"proposal_id": str(proposal_id), "evidence_ids": proposal["based_on_evaluations"]},
+    )
+    try:
+        note_id = runtime.learning.apply_proposal_as_note(proposal_id, owner_id="owner", record=event)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"proposal_id": str(proposal_id), "note_id": note_id, "role_key": proposal["target"], "state": "implemented"}
 
 
 @app.get("/learning/proposals", dependencies=[Depends(require_owner_key)])
