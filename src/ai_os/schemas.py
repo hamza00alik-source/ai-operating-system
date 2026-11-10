@@ -10,12 +10,14 @@ class TaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=5000)
     department: str = Field(default="general", min_length=1, max_length=80)
+    business_id: Literal["core", "physical-agency", "physical-brand", "digital-products"] = "core"
 
 class TaskOut(BaseModel):
     id: str
     title: str
     description: str
     department: str
+    business_id: str = "core"
     status: TaskStatus
     created_at: datetime
 
