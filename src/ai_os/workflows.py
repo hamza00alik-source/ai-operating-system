@@ -2,6 +2,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
+import json
 from ai_os.db import connect, initialize_database
 from ai_os.brain import BUSINESS_IDS
 
@@ -48,6 +49,24 @@ TEMPLATES = {
             ("finance", "Validate costs, pricing and financial controls", "Record only evidenced costs and verified revenue inputs, estimate unit economics with assumptions visible, identify free-tier limits and flag any spend. No purchases, payments or financial commitments."),
             ("people-workforce", "Review departmental performance and workload", "Review outputs, missing evidence, workload and capability gaps. Propose role, workflow or training improvements for owner review; do not change permissions autonomously.")
         ]
+    },
+    "parallel-company-operating-cycle": {
+        "name": "Parallel company-wide operating cycle",
+        "description": "Parallel execution with explicit prerequisite gates and strict business isolation.",
+        "steps": [
+            ("executive", "Set objective, scope and owner decision gates", "Define the objective, selected business environment, measurable outcome, exclusions, risks and owner approval gates. Keep all business environments separate."),
+            ("research", "Validate the opportunity with evidence", "Collect dated, attributable evidence about customers, demand, competitors and risks. Separate facts, estimates and hypotheses."),
+            ("product", "Specify the offer and acceptance criteria", "Define the proposed offer, target buyer, deliverables, exclusions, acceptance criteria and assumptions."),
+            ("design", "Prepare creative and production specifications", "Produce a detailed creative brief, visual direction, required assets, file formats and quality criteria."),
+            ("engineering", "Assess technical delivery and integrations", "Define implementation tasks, dependencies, architecture, security and integration requirements. Prefer free/read-only options."),
+            ("legal-compliance", "Review licensing, platform and policy risks", "Identify platform terms, intellectual-property, privacy and advertising-claim risks. Flag qualified legal review."),
+            ("quality-assurance", "Verify deliverables and release readiness", "Create and execute safe tests; record evidence, defects and release blockers. Never mark untested work as passed."),
+            ("marketing", "Prepare audience and campaign materials", "Develop positioning, channel strategy, content calendar and draft creative copy. Draft only."),
+            ("sales-marketplace", "Prepare inbound sales and listing operations", "Prepare listing drafts, pricing hypotheses and enquiry qualification. Do not publish or accept orders."),
+            ("customer-support", "Prepare support and feedback handling", "Create support categories, draft response templates and escalation rules. Do not send messages."),
+            ("finance", "Validate costs, pricing and financial controls", "Record evidenced costs, estimate unit economics with assumptions visible and flag spend. No purchases or payments."),
+            ("people-workforce", "Review departmental performance and workload", "Review outputs, workload and capability gaps. Propose improvements for owner review.")
+        ]
     }
 }
 
@@ -62,7 +81,7 @@ def initialize_workflows() -> None:
         CREATE TABLE IF NOT EXISTS workflow_steps (
             id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL, task_id TEXT NOT NULL,
             sequence_no INTEGER NOT NULL, department TEXT NOT NULL, title TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'blocked', output TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'blocked', output TEXT NOT NULL DEFAULT '', dependencies_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL,
             UNIQUE(workflow_id, sequence_no), UNIQUE(task_id),
             FOREIGN KEY(workflow_id) REFERENCES workflow_instances(id),
             FOREIGN KEY(task_id) REFERENCES tasks(id)
@@ -76,10 +95,13 @@ def initialize_workflows() -> None:
         step_columns = {row["name"] for row in db.execute("PRAGMA table_info(workflow_steps)")}
         if "output" not in step_columns:
             db.execute("ALTER TABLE workflow_steps ADD COLUMN output TEXT NOT NULL DEFAULT ''")
+        if "dependencies_json" not in step_columns:
+            db.execute("ALTER TABLE workflow_steps ADD COLUMN dependencies_json TEXT NOT NULL DEFAULT '[]'")
 
 def list_templates() -> dict:
     return {"templates": [{"id": key, "name": value["name"], "description": value["description"],
-        "step_count": len(value["steps"]), "departments": [s[0] for s in value["steps"]]}
+        "step_count": len(value["steps"]), "departments": [s[0] for s in value["steps"]],
+        "execution_mode": "parallel_dag" if key == "parallel-company-operating-cycle" else "sequential"}
         for key, value in TEMPLATES.items()],
         "execution_policy": "Only the first step is queued. Later steps remain blocked until the preceding step completes. Each step requires an explicit owner-triggered execution."}
 
@@ -97,23 +119,26 @@ def create_workflow(template_id: str, business_id: str = "core") -> dict:
                    (workflow_id, business_id, template_id, template["name"], now))
         for index, (department, title, description) in enumerate(template["steps"], start=1):
             task_id = str(uuid4())
-            status = "queued" if index == 1 else "blocked"
+            dependencies = list(COMPANY_CYCLE_DEPENDENCIES.get(index, ())) if template_id == "parallel-company-operating-cycle" else ([index - 1] if index > 1 else [])
+            status = "queued" if not dependencies else "blocked"
             db.execute("""INSERT INTO tasks(id,title,description,department,business_id,status,created_at)
                 VALUES(?,?,?,?,?,?,?)""", (task_id, title, description, department, business_id, status, now))
             step_id = str(uuid4())
             db.execute("""INSERT INTO workflow_steps
-                (id,workflow_id,task_id,sequence_no,department,title,status,created_at)
-                VALUES(?,?,?,?,?,?,?,?)""",
-                (step_id, workflow_id, task_id, index, department, title, status, now))
+                (id,workflow_id,task_id,sequence_no,department,title,status,dependencies_json,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?)""",
+                (step_id, workflow_id, task_id, index, department, title, status, json.dumps(dependencies), now))
             created.append({"id": step_id, "task_id": task_id, "sequence": index,
-                            "department": department, "title": title, "status": status})
+                            "department": department, "title": title, "status": status, "dependencies": dependencies})
     # Starting a workflow is an owner-authorized request for internal work. Queue only
     # its first step; later steps are queued automatically after successful handoff.
     from ai_os.agent_runtime import create_run
-    create_run(created[0]["task_id"])
+    for item in created:
+        if item["status"] == "queued":
+            create_run(item["task_id"])
     return {"id": workflow_id, "business_id": business_id, "template_id": template_id, "name": template["name"],
             "status": "active", "steps": created,
-            "next_action": "The first department is queued automatically; each next department is queued after successful completion."}
+            "next_action": "All dependency-free departments are queued; dependent departments start when every prerequisite completes."}
 
 def get_workflow(workflow_id: str) -> dict | None:
     initialize_workflows()
@@ -132,9 +157,10 @@ def task_is_runnable(task_id: str) -> bool:
             return True
         return step["status"] == "queued"
 
-def finish_workflow_task(task_id: str, success: bool, output: str = "") -> None:
+def finish_workflow_task(task_id: str, success: bool, output: str = '') -> None:
+    """Complete one node and release all nodes whose prerequisites are satisfied."""
     initialize_workflows()
-    now = datetime.now(timezone.utc).isoformat()
+    newly_queued = []
     with connect() as db:
         step = db.execute("SELECT * FROM workflow_steps WHERE task_id=?", (task_id,)).fetchone()
         if not step or step["status"] == "completed":
@@ -144,21 +170,38 @@ def finish_workflow_task(task_id: str, success: bool, output: str = "") -> None:
             db.execute("UPDATE workflow_instances SET status='blocked' WHERE id=?", (step["workflow_id"],))
             return
         db.execute("UPDATE workflow_steps SET status='completed', output=? WHERE task_id=?", (output[:12000], task_id))
-        following = db.execute("""SELECT * FROM workflow_steps WHERE workflow_id=? AND sequence_no=?
-            AND status='blocked'""", (step["workflow_id"], step["sequence_no"] + 1)).fetchone()
-        if following:
-            db.execute("UPDATE workflow_steps SET status='queued' WHERE id=?", (following["id"],))
-            db.execute("UPDATE tasks SET status='queued', description=description || ? WHERE id=?", ("\n\nPREVIOUS DEPARTMENT HANDOFF (same business/workflow; verify claims):\n" + output[:12000], following["task_id"]))
-        else:
+        rows = db.execute("SELECT * FROM workflow_steps WHERE workflow_id=? ORDER BY sequence_no", (step["workflow_id"],)).fetchall()
+        completed = {row["sequence_no"] for row in rows if row["status"] == "completed"}
+        for candidate in rows:
+            if candidate["status"] != "blocked":
+                continue
+            try:
+                prerequisites = json.loads(candidate["dependencies_json"] or "[]")
+            except (TypeError, ValueError):
+                prerequisites = [candidate["sequence_no"] - 1] if candidate["sequence_no"] > 1 else []
+            if not set(prerequisites).issubset(completed):
+                continue
+            upstream = [row for row in rows if row["sequence_no"] in prerequisites]
+            handoff = "\n\nUPSTREAM DEPARTMENT HANDOFFS (verify claims):\n" + "\n".join(
+                "[" + item["department"] + "] " + (item["output"] or "(No text output recorded.)")[:6000]
+                for item in upstream
+            )
+            db.execute("UPDATE workflow_steps SET status='queued' WHERE id=?", (candidate["id"],))
+            db.execute("UPDATE tasks SET status='queued', description=description || ? WHERE id=?", (handoff, candidate["task_id"]))
+            newly_queued.append(dict(candidate))
+        remaining = db.execute("SELECT COUNT(*) AS n FROM workflow_steps WHERE workflow_id=? AND status!='completed'", (step["workflow_id"],)).fetchone()["n"]
+        if remaining == 0:
             db.execute("UPDATE workflow_instances SET status='completed' WHERE id=?", (step["workflow_id"],))
-    if success:
-        from ai_os.department_collaboration import record_workflow_handoff_message
-        record_workflow_handoff_message(task_id, output)
-        if following:
-            # Queue the next department only after its predecessor completed successfully.
+    if success and newly_queued:
+        from ai_os.department_collaboration import send_message
+        with connect() as db:
+            current = db.execute("SELECT w.business_id,s.department FROM workflow_steps s JOIN workflow_instances w ON w.id=s.workflow_id WHERE s.task_id=?", (task_id,)).fetchone()
+        for candidate in newly_queued:
+            send_message(current["business_id"], current["department"], candidate["department"],
+                         "Workflow dependency handoff", ("Completed upstream output:\n\n" + output)[:12000],
+                         candidate["task_id"])
             from ai_os.agent_runtime import create_run
-            create_run(following["task_id"])
-
+            create_run(candidate["task_id"])
 
 def list_workflows(limit: int = 50, business_id: str = "core") -> list[dict]:
     if business_id not in BUSINESS_IDS:
