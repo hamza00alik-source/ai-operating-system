@@ -161,3 +161,61 @@ def test_etsy_retest_expired_without_refresh_token_requires_reauthorization(oaut
     with pytest.raises(social_oauth.OAuthError, match="no refresh token"):
         social_oauth.verify_etsy_credential(credential, {
             "etsy_api_key": "etsy-key", "etsy_shared_secret": "etsy-shared-secret"})
+
+
+@pytest.mark.parametrize("provider,identity,expected", [
+    ("meta", {"id": "m-1", "name": "Meta Page Owner"}, "Meta Page Owner"),
+    ("tiktok", {"data": {"user": {"open_id": "tt-1", "display_name": "TikTok Owner"}}}, "TikTok Owner"),
+    ("youtube", {"items": [{"id": "yt-1", "snippet": {"title": "YouTube Channel"}}]}, "YouTube Channel"),
+    ("pinterest", {"id": "p-1", "username": "pin-owner"}, "pin-owner"),
+    ("reddit", {"id": "r-1", "name": "reddit-owner"}, "reddit-owner"),
+    ("x", {"data": {"id": "x-1", "name": "X Owner", "username": "x-owner"}}, "X Owner"),
+])
+def test_saved_social_account_verification_is_read_only(oauth_env, monkeypatch, provider, identity, expected):
+    credential = json.dumps({"access_token": "valid-access-token", "expires_at": 4102444800})
+    calls = []
+    def fake_request(endpoint, data=None, headers=None):
+        calls.append((endpoint, data, headers))
+        return identity
+    monkeypatch.setattr(social_oauth, "_request_json", fake_request)
+    result = social_oauth.verify_social_credential(provider, credential, {"read_only": True}, "physical-agency")
+    assert result["connected"] is True
+    assert result["account"] == expected
+    assert result["token_refreshed"] is False
+    assert len(calls) == 1
+    assert calls[0][1] is None
+    assert calls[0][2]["Authorization"] == "Bearer valid-access-token"
+
+
+def test_tiktok_expired_token_refresh_rotates_and_persists(oauth_env, monkeypatch):
+    import time
+    credential = json.dumps({"access_token": "old-access", "refresh_token": "old-refresh",
+                             "expires_at": int(time.time()) - 1})
+    calls, saved = [], {}
+    def fake_request(endpoint, data=None, headers=None):
+        calls.append((endpoint, data, headers))
+        if endpoint == social_oauth.PROVIDERS["tiktok"]["token"]:
+            assert data["grant_type"] == "refresh_token"
+            assert data["client_key"] == "client-id-tiktok"
+            assert data["refresh_token"] == "old-refresh"
+            return {"access_token": "new-access", "refresh_token": "rotated-refresh", "expires_in": 7200, "refresh_expires_in": 15552000}
+        return {"data": {"user": {"open_id": "tt-1", "display_name": "TikTok Owner"}}}
+    monkeypatch.setattr(social_oauth, "_request_json", fake_request)
+    monkeypatch.setattr(social_oauth, "save_business_integration",
+        lambda business_id, provider, secret, config: saved.update(
+            business_id=business_id, provider=provider, secret=json.loads(secret), config=config))
+    result = social_oauth.verify_social_credential("tiktok", credential, {"read_only": True}, "digital-products")
+    assert result["token_refreshed"] is True
+    assert saved["business_id"] == "digital-products"
+    assert saved["secret"]["access_token"] == "new-access"
+    assert saved["secret"]["refresh_token"] == "rotated-refresh"
+    assert saved["secret"]["refresh_expires_at"] > int(time.time())
+    assert calls[-1][2]["Authorization"] == "Bearer new-access"
+
+
+def test_expired_nonrefreshable_social_token_requires_reconnect(oauth_env):
+    import time
+    credential = json.dumps({"access_token": "expired", "expires_at": int(time.time()) - 1})
+    with pytest.raises(social_oauth.OAuthError, match="expired; reconnect"):
+        social_oauth.verify_social_credential("meta", credential, {}, "physical-brand")
+
