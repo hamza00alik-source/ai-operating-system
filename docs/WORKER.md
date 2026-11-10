@@ -12,6 +12,7 @@ Create a second service from the same repository and deployment revision as the 
 - Environment: same `AI_OS_ENV`, `AI_OS_DATABASE_URL`, model-provider configuration and encryption settings as the API
 - Storage: mount the **same persistent volume at the same absolute path** used by the API's SQLite database
 - Poll interval: optional `AI_OS_WORKER_POLL_SECONDS=3`
+- In-process queue consumers: optional `AI_OS_WORKER_CONCURRENCY=2` (clamped to 1–4; default 2)
 
 The API must not use an ephemeral local SQLite file while the worker uses a different filesystem. If the platform cannot share one persistent volume between services, do not deploy this worker design there; first migrate the queue and operational data to a shared server database.
 
@@ -19,10 +20,13 @@ The API must not use an ephemeral local SQLite file while the worker uses a diff
 
 - Development mode retains the in-process worker for local convenience.
 - Non-development API mode does not start an in-process agent worker. Run this dedicated service.
-- Queue claims use one atomic SQLite update to reduce duplicate execution if an API fallback worker and the dedicated worker overlap.
+- Queue claims use one atomic SQLite update, allowing a bounded number of consumer threads inside the single worker replica to claim distinct runs safely.
+- Keep one worker replica. Increase concurrency only within the configured 1–4 thread limit; SQLite remains the shared queue store.
 - On worker startup, runs left in `running` are marked failed and require an owner-requested retry. This avoids silently repeating model work.
 - Graceful SIGTERM/SIGINT stops polling and lets the current task finish before exit.
 - Keep one worker replica. Multi-replica locking, leases, heartbeats, and automatic crash recovery require a server database/queue and are not claimed here.
+- An owner-started workflow automatically queues its first internal task. Each successful step queues only its immediate successor. An owner-created delegation queues its child task. The worker then processes these queued internal tasks automatically.
+- Automatic execution is limited to the existing research/planning agent runtime. It has no browser, shell, filesystem, store, publishing, payment, or customer-contact capability.
 - The worker does not publish content, contact customers, spend money, connect accounts, or make commitments.
 
 ## Verification before production use
