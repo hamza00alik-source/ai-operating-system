@@ -5,9 +5,10 @@ application; this module performs no network requests itself.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Mapping, Protocol
+from typing import Protocol
 
 
 class BillingMode(StrEnum):
@@ -54,8 +55,8 @@ class ProviderPolicy:
     def __post_init__(self) -> None:
         if not self.name.strip() or not self.model.strip():
             raise ValueError("provider name and model are required")
-        if self.max_cost_per_request_usd < 0:
-            raise ValueError("provider cost ceiling cannot be negative")
+        if not math.isfinite(self.max_cost_per_request_usd) or self.max_cost_per_request_usd < 0:
+            raise ValueError("provider cost ceiling must be finite and non-negative")
         if self.billing_mode == BillingMode.FREE_CONFIRMED and self.max_cost_per_request_usd != 0:
             raise ValueError("confirmed-free providers must have a zero cost ceiling")
         if self.billing_mode == BillingMode.PAID_OWNER_APPROVED and self.max_cost_per_request_usd <= 0:
@@ -76,8 +77,8 @@ class ModelResult:
             raise ValueError("model response cannot be empty")
         if not self.provider.strip() or not self.model.strip():
             raise ValueError("model response must identify its provider and model")
-        if self.cost_usd < 0:
-            raise ValueError("reported cost cannot be negative")
+        if not math.isfinite(self.cost_usd) or self.cost_usd < 0:
+            raise ValueError("reported cost must be finite and non-negative")
 
 
 class ModelAdapter(Protocol):
@@ -104,9 +105,13 @@ class ModelGateway:
     def configure(cls, entries: tuple[tuple[ProviderPolicy, ModelAdapter], ...]) -> "ModelGateway":
         return cls(tuple(_ConfiguredProvider(policy, adapter) for policy, adapter in entries))
 
+    @staticmethod
+    def _validate_budget(request_budget_usd: float) -> None:
+        if not math.isfinite(request_budget_usd) or request_budget_usd < 0:
+            raise ValueError("request budget must be finite and non-negative")
+
     def eligible_providers(self, *, request_budget_usd: float = 0.0) -> tuple[str, ...]:
-        if request_budget_usd < 0:
-            raise ValueError("request budget cannot be negative")
+        self._validate_budget(request_budget_usd)
         eligible = []
         for item in self._providers:
             policy = item.policy
@@ -127,8 +132,7 @@ class ModelGateway:
         request_budget_usd: float = 0.0,
         preferred_provider: str | None = None,
     ) -> ModelResult:
-        if request_budget_usd < 0:
-            raise ValueError("request budget cannot be negative")
+        self._validate_budget(request_budget_usd)
         available = [
             item for item in self._providers
             if item.policy.name in self.eligible_providers(request_budget_usd=request_budget_usd)
