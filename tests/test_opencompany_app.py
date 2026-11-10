@@ -1,16 +1,29 @@
+import pytest
 from fastapi.testclient import TestClient
 from uuid import uuid4
 
-from opencompany_app.api import app
+from opencompany_app.api import app, get_store
+from opencompany_core.persistence import SQLiteStore
 
 
 client = TestClient(app)
 
 
-def test_health_reports_read_only_mode():
+@pytest.fixture
+def owner_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
+    store = SQLiteStore(tmp_path / "owner-api.sqlite3")
+    app.dependency_overrides[get_store] = lambda: store
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+    store.close()
+
+
+def test_health_reports_owner_authenticated_mode():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["mode"] == "read-only"
+    assert response.json()["mode"] == "owner-authenticated"
 
 
 def test_workforce_endpoint_exposes_only_original_opencompany_roles():
@@ -58,3 +71,64 @@ def test_plan_preview_rejects_dependency_cycles():
          "department": "operations", "depends_on": [str(first)]},
     ]})
     assert response.status_code == 422
+
+
+def test_company_records_require_owner_authentication(monkeypatch):
+    monkeypatch.delenv("OPENCOMPANY_OWNER_API_KEY", raising=False)
+    response = client.get("/work-items")
+    assert response.status_code == 503
+
+
+def test_wrong_owner_key_is_rejected(owner_client):
+    response = owner_client.get("/work-items", headers={"X-OpenCompany-API-Key": "wrong"})
+    assert response.status_code == 401
+
+
+def test_owner_can_create_and_advance_work_item_with_audit(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare market brief",
+        "objective": "Create a sourced market brief for owner review",
+        "department": "research",
+    })
+    assert created.status_code == 200
+    item_id = created.json()["item_id"]
+    assert created.json()["state"] == "draft"
+
+    for state in ("ready", "queued", "in_progress", "review", "completed"):
+        response = owner_client.post(
+            f"/work-items/{item_id}/transition", headers=headers,
+            json={"target_state": state},
+        )
+        assert response.status_code == 200
+        assert response.json()["state"] == state
+
+    listed = owner_client.get("/work-items", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["state"] == "completed"
+
+    audit = owner_client.get("/audit/verify", headers=headers)
+    assert audit.status_code == 200
+    assert audit.json() == {"event_count": 6, "chain_valid": True}
+
+
+def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    first = owner_client.post("/work-items", headers=headers, json={
+        "title": "Gather source data", "objective": "Collect primary sources",
+        "department": "research",
+    }).json()
+    second = owner_client.post("/work-items", headers=headers, json={
+        "title": "Write evidence brief", "objective": "Synthesize collected sources",
+        "department": "research", "depends_on": [first["item_id"]],
+    }).json()
+    ready = owner_client.post(
+        f"/work-items/{second['item_id']}/transition", headers=headers,
+        json={"target_state": "ready"},
+    )
+    assert ready.status_code == 200
+    queued = owner_client.post(
+        f"/work-items/{second['item_id']}/transition", headers=headers,
+        json={"target_state": "queued"},
+    )
+    assert queued.status_code == 409
