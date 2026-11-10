@@ -20,6 +20,7 @@ from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.owner_sessions import OwnerSessionStore
 from opencompany_core.worker_fleet import WorkerFleet
 from opencompany_core.collaboration_store import HandoffRepository
+from opencompany_core.learning_store import LearningRepository
 
 
 @dataclass(slots=True)
@@ -32,6 +33,7 @@ class OpenCompanyRuntime:
     fleet: WorkerFleet
     gateway: ModelGateway
     handoffs: HandoffRepository
+    learning: LearningRepository
 
     def close(self) -> None:
         # Queue shares the store connection; only the store owns its lifecycle.
@@ -52,6 +54,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     delegations = DelegationRepository(path)
     sessions = OwnerSessionStore(store._connection, store._lock)
     handoffs = HandoffRepository(store._connection, store._lock)
+    learning = LearningRepository(store._connection, store._lock)
     queue = DurableWorkerQueue(
         store._connection,
         max_attempts=int(os.environ.get("OPENCOMPANY_WORKER_MAX_ATTEMPTS", "3")),
@@ -69,4 +72,4 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         preferred_provider="unorouter",
     )
     fleet = WorkerFleet(worker, store)
-    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs)
+    return OpenCompanyRuntime(store=store, queue=queue, worker=worker, delegations=delegations, sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs, learning=learning)
