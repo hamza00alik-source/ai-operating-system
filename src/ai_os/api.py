@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
+from fastapi.responses import HTMLResponse
 from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import (require_api_key, require_owner_key, create_owner_session, revoke_owner_session, SESSION_COOKIE, SESSION_TTL_DAYS)
@@ -27,7 +28,7 @@ from ai_os.department_collaboration import send_message, list_messages, mark_mes
 from ai_os.executive_supervisor import executive_status, supervise_once
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
-from ai_os import platform_integrations
+from ai_os import platform_integrations, social_oauth
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -232,6 +233,41 @@ def connect_business_integration(business_id: str, provider: str, payload: Busin
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except CredentialVaultUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/business-integrations/social/status", dependencies=[Depends(require_owner_key)])
+def get_social_oauth_status():
+    return {"providers": social_oauth.readiness(),
+            "security": "OAuth app secrets remain server-side; account tokens are encrypted in the business vault."}
+
+
+@app.post("/business-integrations/{business_id}/social/{provider}/start", dependencies=[Depends(require_owner_key)])
+def start_social_oauth(business_id: str, provider: str):
+    try:
+        return {"provider": provider, "authorize_url": social_oauth.begin(provider, business_id),
+                "scopes": social_oauth.PROVIDERS[provider]["scopes"],
+                "external_actions": "authorization only; read-oriented scopes"}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except social_oauth.OAuthError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/business-integrations/social/{provider}/callback", response_class=HTMLResponse)
+def complete_social_oauth(provider: str, code: str = Query(default="", max_length=4096),
+                          state: str = Query(default="", max_length=256),
+                          error: str = Query(default="", max_length=300)):
+    if error:
+        return HTMLResponse("<h2>Account connection was cancelled or rejected.</h2><p>Return to the AIOS owner dashboard and try again if intended.</p>", status_code=400)
+    try:
+        result = social_oauth.complete(provider, state, code)
+        return HTMLResponse("<h2>Account connected successfully</h2><p>" +
+            result["provider"] + " · " + result["account"] +
+            "</p><p>Return to the AIOS owner dashboard and refresh the account list.</p>")
+    except (ValueError, social_oauth.OAuthError, CredentialVaultUnavailable) as exc:
+        return HTMLResponse("<h2>Account connection failed</h2><p>" +
+            str(exc).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") +
+            "</p><p>No publishing or other external action was performed.</p>", status_code=400)
 
 
 @app.post("/business-integrations/{business_id}/{provider}/test", dependencies=[Depends(require_owner_key)])
