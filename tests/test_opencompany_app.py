@@ -705,3 +705,73 @@ def test_ai_manager_proposal_requires_active_manager(owner_client):
     )
     assert response.status_code == 409
     assert "explicitly ACTIVE" in response.json()["detail"]
+
+
+class _ExecutivePlannerFakeAdapter:
+    def generate(self, request, *, model):
+        return ModelResult(
+            text='{"rationale":"Research demand first, then use the evidence to shape a product validation plan.","work_items":[{"department":"intelligence-research","title":"Map international buyer demand","objective":"Build a sourced demand and competitor report.","depends_on":[]},{"department":"product-innovation","title":"Prepare product validation plan","objective":"Translate the research findings into product tests and acceptance criteria.","depends_on":[0]}]}',
+            provider="unorouter", model=model, cost_usd=0.0,
+        )
+
+
+def test_active_ceo_creates_atomic_draft_department_plan(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    provisioned = owner_client.post("/agents/bootstrap-executive", headers=headers)
+    assert provisioned.status_code == 200
+    ceo = provisioned.json()
+    activated = owner_client.post(
+        f"/agents/{ceo['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": ceo["revision"]},
+    )
+    assert activated.status_code == 200
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway.configure(((
+        ProviderPolicy(
+            name="unorouter", model="test/free-model:free",
+            billing_mode=BillingMode.FREE_CONFIRMED, max_cost_per_request_usd=0.0,
+        ),
+        _ExecutivePlannerFakeAdapter(),
+    ),))
+    before = owner_client.get("/work-items", headers=headers).json()["count"]
+    response = owner_client.post("/executive/plan", headers=headers, json={
+        "title": "Build a new international digital business",
+        "objective": "Research buyers, validate a product opportunity, and prepare a launch plan.",
+        "max_tasks": 8,
+    })
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created_count"] == 2
+    assert payload["owner_review_required"] is True
+    assert payload["queue_entries_created"] is False
+    assert payload["execution_started"] is False
+    assert all(item["state"] == "draft" for item in payload["items"])
+    assert payload["items"][1]["depends_on"] == [payload["items"][0]["id"]]
+    after = owner_client.get("/work-items", headers=headers).json()["count"]
+    assert after == before + 2
+    assert runtime.store.verify_audit_chain()
+
+
+def test_executive_plan_rejects_forward_or_unknown_dependencies(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    ceo = owner_client.post("/agents/bootstrap-executive", headers=headers).json()
+    owner_client.post(
+        f"/agents/{ceo['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": ceo["revision"]},
+    )
+    runtime = app.dependency_overrides[get_runtime]()
+    class InvalidPlanAdapter:
+        def generate(self, request, *, model):
+            return ModelResult(
+                text='{"rationale":"bad graph","work_items":[{"department":"intelligence-research","title":"First","objective":"First task","depends_on":[1]}]}',
+                provider="unorouter", model=model, cost_usd=0.0,
+            )
+    runtime.gateway = ModelGateway.configure(((
+        ProviderPolicy("unorouter","test/free-model:free",BillingMode.FREE_CONFIRMED,0.0),
+        InvalidPlanAdapter(),
+    ),))
+    response = owner_client.post("/executive/plan", headers=headers, json={
+        "title": "Invalid plan", "objective": "Create a plan", "max_tasks": 3,
+    })
+    assert response.status_code == 422
+    assert owner_client.get("/work-items", headers=headers).json()["count"] == 0
