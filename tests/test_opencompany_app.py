@@ -719,9 +719,10 @@ def test_active_ceo_creates_atomic_draft_department_plan(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     provisioned = owner_client.post("/agents/bootstrap-executive", headers=headers)
     assert provisioned.status_code == 200
-    ceo = provisioned.json()
+    ceo_id = provisioned.json()["agent"]["id"]
+    ceo = next(a for a in owner_client.get("/agents", headers=headers).json()["agents"] if a["id"] == ceo_id)
     activated = owner_client.post(
-        f"/agents/{ceo['id']}/state", headers=headers,
+        f"/agents/{ceo_id}/state", headers=headers,
         json={"target_state": "active", "expected_revision": ceo["revision"]},
     )
     assert activated.status_code == 200
@@ -754,9 +755,11 @@ def test_active_ceo_creates_atomic_draft_department_plan(owner_client):
 
 def test_executive_plan_rejects_forward_or_unknown_dependencies(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
-    ceo = owner_client.post("/agents/bootstrap-executive", headers=headers).json()
+    provisioned = owner_client.post("/agents/bootstrap-executive", headers=headers).json()
+    ceo_id = provisioned["agent"]["id"]
+    ceo = next(a for a in owner_client.get("/agents", headers=headers).json()["agents"] if a["id"] == ceo_id)
     owner_client.post(
-        f"/agents/{ceo['id']}/state", headers=headers,
+        f"/agents/{ceo_id}/state", headers=headers,
         json={"target_state": "active", "expected_revision": ceo["revision"]},
     )
     runtime = app.dependency_overrides[get_runtime]()
