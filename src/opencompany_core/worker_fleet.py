@@ -22,7 +22,7 @@ class WorkerFleetStatus:
 
 
 class WorkerFleet:
-    """Run active assigned profiles only after an explicit owner start command."""
+    """Run owner-admitted tasks after explicit start or owner-configured autostart."""
 
     def __init__(
         self,
