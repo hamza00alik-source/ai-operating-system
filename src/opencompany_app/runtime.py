@@ -45,9 +45,19 @@ class OpenCompanyRuntime:
     usage: ModelUsageRepository
     unorouter_tested_at: str | None = None
 
-    def configure_unorouter(self, configuration: dict[str, str] | None) -> None:
-        # Stop any running workers while credentials or provider routing change.
+    def stop_workers_for_provider_change(self) -> None:
+        """Stop inference before changing provider credentials or routing."""
         self.fleet.stop(timeout_seconds=5.0)
+        if self.fleet.status().running:
+            raise RuntimeError("worker fleet did not stop before provider configuration change")
+
+    def configure_unorouter(
+        self, configuration: dict[str, str] | None, *, workers_already_stopped: bool = False
+    ) -> None:
+        # Never swap provider credentials while an existing worker can still use
+        # the old gateway. The API pre-stops before mutating the encrypted vault.
+        if not workers_already_stopped:
+            self.stop_workers_for_provider_change()
         self.gateway = (
             configured_unorouter_gateway(configuration)
             if configuration is not None else ModelGateway()
