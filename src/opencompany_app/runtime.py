@@ -24,7 +24,7 @@ from opencompany_core.learning_store import LearningRepository
 from opencompany_core.github_evolution import GitHubEvolutionClient
 from opencompany_core.api_anything import ApiAnythingClient
 from opencompany_core.research_broker import ResearchBroker
-from opencompany_core.secret_vault import ProviderSecretVault
+from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
 
 
@@ -84,6 +84,7 @@ class OpenCompanyRuntime:
     def configure_github_evolution(self, token: str | None) -> None:
         if token is None:
             self.github_evolution = None
+            self.secret_vault_errors.pop("github_evolution", None)
             return
         repository = os.environ.get("OPENCOMPANY_GITHUB_REPOSITORY", "").strip()
         base_branch = os.environ.get("OPENCOMPANY_GITHUB_BASE_BRANCH", "clean-room-rebuild").strip()
@@ -140,7 +141,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     )
     try:
         stored_unorouter = secret_vault.get("unorouter")
-    except Exception as exc:
+    except SecretVaultError:
         stored_unorouter = None
         secret_vault_errors["unorouter"] = "Stored UnoRouter credentials cannot be decrypted; replace them in the owner dashboard."
     gateway = (
