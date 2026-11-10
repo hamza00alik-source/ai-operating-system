@@ -67,3 +67,41 @@ Publishing, messaging, listing products, changing prices, fulfilling orders and 
 ## Production verification
 
 A source-code change is not a live connection. After the API Anything service and its private variables are provisioned, verify the dashboard status and read-only site discovery. Verify WordPress and WooCommerce separately from the Business section. No production merge or deployment is implied by a draft PR.
+
+
+## Social OAuth account linking (implemented, awaiting owner app registration)
+
+The Business dashboard now has server-side authorization-code flows for:
+- Meta (Facebook Pages and linked Instagram professional accounts, one Meta app)
+- TikTok
+- YouTube (Google OAuth)
+- Pinterest
+- Reddit
+- X (OAuth 2.0 with PKCE)
+
+Only read-oriented scopes are requested by default. A successful callback verifies the returned account identity and stores the access token, optional refresh token, expiry and granted-scope metadata in the encrypted, business-scoped credential vault. OAuth state is random, single-use, expires after 15 minutes, and is bound to the selected business. X's PKCE verifier is encrypted at rest. No platform publishing, messaging, ad management, listing, purchasing or financial actions are implemented by these OAuth flows.
+
+### Required server variables
+
+Set these only in the AIOS API hosting environment (never GitHub, browser JavaScript or chat):
+
+| Provider | Client ID / key | Client secret | Exact callback variable |
+|---|---|---|---|
+| Meta | `AI_OS_OAUTH_META_CLIENT_ID` | `AI_OS_OAUTH_META_CLIENT_SECRET` | `AI_OS_OAUTH_META_REDIRECT_URI` |
+| TikTok | `AI_OS_OAUTH_TIKTOK_CLIENT_KEY` | `AI_OS_OAUTH_TIKTOK_CLIENT_SECRET` | `AI_OS_OAUTH_TIKTOK_REDIRECT_URI` |
+| YouTube | `AI_OS_OAUTH_GOOGLE_CLIENT_ID` | `AI_OS_OAUTH_GOOGLE_CLIENT_SECRET` | `AI_OS_OAUTH_GOOGLE_REDIRECT_URI` |
+| Pinterest | `AI_OS_OAUTH_PINTEREST_CLIENT_ID` | `AI_OS_OAUTH_PINTEREST_CLIENT_SECRET` | `AI_OS_OAUTH_PINTEREST_REDIRECT_URI` |
+| Reddit | `AI_OS_OAUTH_REDDIT_CLIENT_ID` | `AI_OS_OAUTH_REDDIT_CLIENT_SECRET` | `AI_OS_OAUTH_REDDIT_REDIRECT_URI` |
+| X | `AI_OS_OAUTH_X_CLIENT_ID` | `AI_OS_OAUTH_X_CLIENT_SECRET` | `AI_OS_OAUTH_X_REDIRECT_URI` |
+
+Each redirect variable must be the exact HTTPS callback URL registered with that provider:
+`https://YOUR-AIOS-API-HOST/business-integrations/social/{provider}/callback`
+where provider is `meta`, `tiktok`, `youtube`, `pinterest`, `reddit`, or `x`. The public AIOS API origin must be known and registered before authorization can work. Keep `AI_OS_CREDENTIAL_ENCRYPTION_KEY` configured and backed up; losing it makes stored tokens unrecoverable.
+
+App registration, provider review/approval, redirect URI registration, and environment-variable entry are owner-side prerequisites. Some providers restrict scopes or features until app review/production access is approved. The dashboard reports each app as setup-required until all three variables exist; it does not pretend an account is connected. The OAuth status endpoint is owner-authenticated. Callback state is single-use and short-lived.
+
+**Current limitation:** token refresh and provider-specific publishing endpoints are not yet implemented. An expired token must be re-authorized. Publishing stays out of scope until separate owner-approved action workflows and provider permission review are complete.
+
+## Marketplace account integrations
+
+Marketplace connectors remain unimplemented. The exact marketplace account list has not been confirmed, and providers differ in API access, seller eligibility, OAuth, API keys, and listing/order capabilities. Eldorado.gg was previously mentioned, but that alone is not enough to safely invent an integration contract. Do not paste marketplace passwords into AIOS or use browser-cookie imports as a substitute for official authorization. Add a marketplace only after its exact API/auth documentation and seller account eligibility have been verified.
