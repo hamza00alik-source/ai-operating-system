@@ -75,7 +75,7 @@ def _replace_sqlite_placeholders(statement: str) -> str:
         following = statement[index + 1] if index + 1 < len(statement) else ""
         if line_comment:
             output.append(char)
-            if char == "\\n":
+            if char == "\n":
                 line_comment = False
         elif block_comment:
             output.append(char)
@@ -104,6 +104,13 @@ def _replace_sqlite_placeholders(statement: str) -> str:
             block_comment = True
         elif char == "?":
             output.append("%s")
+        elif char == ":" and following and (following.isalpha() or following == "_") and (index == 0 or statement[index - 1] != ":"):
+            # SQLite accepts :name mappings; psycopg uses %(name)s.
+            end = index + 1
+            while end < len(statement) and (statement[end].isalnum() or statement[end] == "_"):
+                end += 1
+            output.append("%(" + statement[index + 1:end] + ")s")
+            index = end - 1
         else:
             output.append(char)
         index += 1
