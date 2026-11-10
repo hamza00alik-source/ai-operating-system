@@ -137,6 +137,9 @@ Company task stages may use only providers that are configured and explicitly ow
 
 ## Runtime and owner-controlled execution
 
+
+The owner-only `GET /usage/model` endpoint exposes a durable inference-usage ledger (request counts, provider-reported token totals and cost, with the latest 100 secret-free events). Successful specialist calls write to the shared SQLite database; request IDs are idempotent. This is operational accounting, not a substitute for the provider's invoice or account dashboard.
+
 The deployment exposes two distinct probes: `GET /health` is a process-liveness check; `GET /ready` verifies that owner runtime configuration exists and the persistent SQLite database passes `PRAGMA quick_check`. Readiness intentionally does not require a configured model provider, so the owner can open the dashboard and configure UnoRouter after first deployment. Railway's staged healthcheck uses `/ready`.
 
 The independent OpenCompany API and worker now compose around one SQLite connection and transaction boundary. The API does not start workers at import or process startup.
