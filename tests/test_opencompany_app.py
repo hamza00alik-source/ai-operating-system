@@ -996,6 +996,20 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     agent_id = UUID(child_task["assigned_agent_id"])
     role_key = child_record["role_key"]
 
+    # Without a confirmed free provider, the API must not admit work that
+    # cannot execute. A deterministic test gateway then exercises the path.
+    blocked = owner_client.post(
+        f"/work-items/{child_task['id']}/enqueue", headers=headers,
+    )
+    assert blocked.status_code == 503
+
+    runtime = app.dependency_overrides[get_runtime]()
+
+    class ReadyFreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),)
+
+    runtime.gateway = ReadyFreeGateway()
     queued = owner_client.post(
         f"/work-items/{child_task['id']}/enqueue", headers=headers,
     )
@@ -1010,7 +1024,6 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
                 provider="test", model="deterministic", cost_usd=0.0,
             )
 
-    runtime = app.dependency_overrides[get_runtime]()
     runtime.worker.executor = DeterministicExecutor()
     result = runtime.worker.run_once(agent_id, role_key)
     assert result == "completed_review_required"
