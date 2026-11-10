@@ -187,3 +187,21 @@ def test_recovery_preserves_unexpired_live_lease(monkeypatch, tmp_path):
     assert recover_interrupted_runs() == 0
     with connect() as db:
         assert db.execute("SELECT status FROM agent_runs WHERE id='live-run'").fetchone()["status"] == "running"
+
+
+
+def test_expired_agent_lease_cannot_be_renewed(monkeypatch, tmp_path):
+    from ai_os.agent_runtime import claim_next_run, renew_run_lease, _now
+    from ai_os.db import connect, initialize_database
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'expired-renew.db'}")
+    initialize_database()
+    with connect() as db:
+        db.execute("INSERT INTO tasks(id,title,description,department,status,created_at) VALUES(?,?,?,?,?,?)",
+                   ("expired-task", "Expired", "", "research", "queued", _now()))
+        db.execute("INSERT INTO agent_runs(id,task_id,status,created_at) VALUES(?,?,?,?)",
+                   ("expired-run", "expired-task", "queued", _now()))
+    claim_next_run("worker-a")
+    with connect() as db:
+        db.execute("UPDATE agent_runs SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE id='expired-run'")
+    assert renew_run_lease("expired-run", "worker-a") is False
