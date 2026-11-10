@@ -33,6 +33,7 @@ from opencompany_core.manager_ai import ManagerPlanningError, recommend_departme
 from opencompany_core.executive_ai import ExecutivePlanningError, create_executive_plan
 from opencompany_core.model_gateway import CostPolicyViolation, NoEligibleProvider, ProviderUnavailable
 from opencompany_core.collaboration import AgentHandoff, HandoffState, accept_handoff, decline_handoff, deliver_handoff
+from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, OutcomeGrade, ProposalState
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -82,6 +83,33 @@ class WorkItemCreateInput(BaseModel):
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     max_specialists: int = Field(default=5, ge=1, le=5)
+
+
+class OutcomeEvaluationInput(BaseModel):
+    grade: OutcomeGrade
+    rubric_scores: dict[str, int] = Field(min_length=1, max_length=20)
+    evidence_refs: list[str] = Field(min_length=1, max_length=20)
+    observations: str = Field(min_length=1, max_length=6000)
+
+
+class ImprovementProposalInput(BaseModel):
+    target: str = Field(min_length=1, max_length=2000)
+    change_summary: str = Field(min_length=1, max_length=2000)
+    rationale: str = Field(min_length=1, max_length=2000)
+    expected_measurement: str = Field(min_length=1, max_length=2000)
+    risk_level: str = Field(min_length=1, max_length=80)
+    based_on_evaluations: list[UUID] = Field(min_length=1, max_length=20)
+
+
+class LearningDecisionInput(BaseModel):
+    approved: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class LearningNoteInput(BaseModel):
+    role_key: str = Field(min_length=1, max_length=160)
+    note: str = Field(min_length=1, max_length=3000)
+    evidence_refs: list[str] = Field(min_length=1, max_length=20)
 
 
 class HandoffCreateInput(BaseModel):
@@ -740,6 +768,145 @@ def preview_work_item_delegation(
     }
 
     
+@app.post("/work-items/{item_id}/evaluations", dependencies=[Depends(require_owner_key)])
+def create_outcome_evaluation(
+    item_id: UUID,
+    payload: OutcomeEvaluationInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    item = store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    evaluation = OutcomeEvaluation(
+        id=uuid4(), work_item_id=item_id, evaluator="owner",
+        grade=payload.grade, rubric_scores=payload.rubric_scores,
+        evidence_refs=tuple(payload.evidence_refs), observations=payload.observations,
+    )
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="learning.outcome_evaluated", subject_type="work_item",
+        subject_id=str(item_id), outcome=evaluation.grade.value,
+        correlation_id=str(uuid4()),
+        details={"evaluation_id": str(evaluation.id), "rubric_scores": dict(evaluation.rubric_scores)},
+    )
+    try:
+        runtime.learning.save_evaluation(evaluation, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "id": str(evaluation.id), "work_item_id": str(item_id),
+        "grade": evaluation.grade.value, "rubric_scores": dict(evaluation.rubric_scores),
+        "evidence_refs": list(evaluation.evidence_refs),
+        "observations": evaluation.observations, "evaluated_at": evaluation.evaluated_at.isoformat(),
+    }
+
+
+@app.get("/work-items/{item_id}/evaluations", dependencies=[Depends(require_owner_key)])
+def list_outcome_evaluations(
+    item_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    if store.get_work_item(item_id) is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    rows = runtime.learning.list_evaluations(item_id)
+    return {"count": len(rows), "evaluations": rows}
+
+
+@app.post("/learning/proposals", dependencies=[Depends(require_owner_key)])
+def create_learning_proposal(
+    payload: ImprovementProposalInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    proposal = ImprovementProposal(
+        id=uuid4(), target=payload.target, change_summary=payload.change_summary,
+        rationale=payload.rationale, expected_measurement=payload.expected_measurement,
+        risk_level=payload.risk_level, based_on_evaluations=tuple(payload.based_on_evaluations),
+        state=ProposalState.PROPOSED,
+    )
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="learning.improvement_proposed", subject_type="improvement_proposal",
+        subject_id=str(proposal.id), outcome="proposed", correlation_id=str(uuid4()),
+        details={"target": proposal.target, "risk_level": proposal.risk_level},
+    )
+    try:
+        runtime.learning.save_proposal(proposal, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"id": str(proposal.id), "state": proposal.state.value, "owner_decision_required": True}
+
+
+@app.get("/learning/proposals", dependencies=[Depends(require_owner_key)])
+def list_learning_proposals(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    proposals = runtime.learning.list_proposals()
+    return {"count": len(proposals), "proposals": proposals}
+
+
+@app.post("/learning/proposals/{proposal_id}/decision", dependencies=[Depends(require_owner_key)])
+def decide_learning_proposal(
+    proposal_id: UUID,
+    payload: LearningDecisionInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="learning.improvement_decision", subject_type="improvement_proposal",
+        subject_id=str(proposal_id), outcome="approved" if payload.approved else "rejected",
+        correlation_id=str(uuid4()), details={"rationale": payload.rationale},
+    )
+    changed = runtime.learning.decide_proposal(
+        proposal_id, approved=payload.approved, owner_id="owner",
+        rationale=payload.rationale, record=event,
+    )
+    if not changed:
+        raise HTTPException(status_code=409, detail="Proposal not found or already decided.")
+    return {"id": str(proposal_id), "state": "approved" if payload.approved else "rejected"}
+
+
+@app.post("/learning/notes", dependencies=[Depends(require_owner_key)])
+def create_approved_learning_note(
+    payload: LearningNoteInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        default_workforce().get(payload.role_key)
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail="Unknown role key.") from exc
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="learning.role_note_approved", subject_type="agent_role",
+        subject_id=payload.role_key, outcome="approved", correlation_id=str(uuid4()),
+        details={"evidence_refs": payload.evidence_refs},
+    )
+    try:
+        note_id = runtime.learning.save_learning_note(
+            role_key=payload.role_key, note=payload.note,
+            evidence_refs=tuple(payload.evidence_refs), owner_id="owner", record=event,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"id": note_id, "role_key": payload.role_key, "state": "approved"}
+
+
+@app.get("/learning/notes/{role_key}", dependencies=[Depends(require_owner_key)])
+def list_approved_learning_notes(
+    role_key: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        default_workforce().get(role_key)
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail="Unknown role key.") from exc
+    notes = runtime.learning.list_learning_notes(role_key)
+    return {"role_key": role_key, "count": len(notes), "notes": notes}
+
+
 @app.post("/work-items/{item_id}/handoffs", dependencies=[Depends(require_owner_key)])
 def create_agent_handoff(
     item_id: UUID,
