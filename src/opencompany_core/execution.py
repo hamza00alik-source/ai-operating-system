@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from .domain import TaskState, WorkItem
+from .domain import TaskState, WorkItem, _require_utc
 from .model_gateway import ModelGateway, ModelRequest, ModelResult
 from .workforce import RoleCatalog, RoleSpec, default_workforce
 
@@ -33,8 +33,7 @@ class AgentDeliverable:
             raise ValueError("deliverable must identify its role and model source")
         if self.cost_usd < 0:
             raise ValueError("deliverable cost cannot be negative")
-        if self.created_at.tzinfo is None or self.created_at.utcoffset().total_seconds() != 0:
-            raise ValueError("deliverable timestamp must be UTC")
+        _require_utc(self.created_at, "created_at")
 
 
 class AgentExecutor:
