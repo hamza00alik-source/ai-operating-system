@@ -6,9 +6,9 @@ Primary sources: `src/ai_os/db.py` and `src/ai_os/workflows.py`
 
 ## Scope and status
 
-This is a source-derived inventory of the 22 application tables initialized by the current application. It is not a database dump and is not yet an executable baseline migration. The 20 core tables are initialized by `initialize_database()`; two workflow tables are initialized by `initialize_workflows()`.
+This is a source-derived inventory of the 22 application tables initialized by the current application. It is not a database dump. A corresponding standalone PostgreSQL baseline migration is now available at `supabase/migrations/20261110160000_aios_initial_schema.sql`. The 20 core tables are initialized by `initialize_database()`; two workflow tables are initialized by `initialize_workflows()`.
 
-No schema has been applied to the connected Supabase project. That project was previously verified to have zero application tables and zero recorded migrations. Do not point the production Railway service at it until a baseline is generated, tested against disposable PostgreSQL, reviewed, and a rollback/backup plan is approved.
+No schema has been applied to the connected Supabase project. That project was previously verified to have zero application tables and zero recorded migrations. The baseline passed isolated PostgreSQL 16 CI validation (GitHub Actions run #42781234481). Do not point the production Railway service at it until Supabase-specific validation, review, a verified backup/rollback plan, and separate owner approval are complete.
 
 ## Table definitions
 
@@ -48,8 +48,6 @@ Column types below reflect the source DDL. `TEXT` JSON fields are deliberately r
 
 ## Index inventory (23)
 
-The following named indexes are created by application initialization:
-
 | Index | Table | Indexed columns |
 |---|---|---|
 | idx_provider_catalog_category | provider_catalog_entries | category, name |
@@ -76,7 +74,6 @@ The following named indexes are created by application initialization:
 | idx_workflow_steps_workflow | workflow_steps | workflow_id, sequence_no |
 | idx_workflow_instances_scope | workflow_instances | business_id, created_at |
 
-
 ## Backward-compatible schema upgrades in source
 
 The runtime performs conditional ALTER TABLE operations for older persistent databases:
@@ -101,18 +98,17 @@ The compatibility code also creates the business-scope and workflow-scope indexe
 5. The app's PostgreSQL adapter rewrites `PRAGMA table_info`, `INSERT OR IGNORE`, autoincrement DDL, qmark placeholders, and now SQLite named placeholders (`:name`) to psycopg named placeholders (`%(name)s`). It is not a general SQLite-to-PostgreSQL SQL translator; all runtime SQL paths still need integration tests.
 6. PostgreSQL enforces foreign keys; SQLite's default foreign-key enforcement is commonly disabled unless explicitly enabled. Test data creation and deletion paths with PostgreSQL semantics.
 7. The app connects with a privileged database connection. Do not expose database credentials, service-role keys, or this connection to browser code. Do not grant Data API access merely to make the app work; the app uses its backend database adapter.
-8. Supabase's project has an RLS auto-enable event trigger. The baseline must be tested with that trigger present. Do not modify its function grants or event trigger as part of this migration without a separately reviewed remediation.
-9. Keep schema migration execution separate from the production Railway database URL. A migration test must use an isolated local/disposable PostgreSQL database and synthetic data.
+8. Supabase's project has an RLS auto-enable event trigger. The baseline explicitly enables RLS on all 22 application tables. Supabase-specific event-trigger behavior still needs validation on the actual project. Do not modify its function grants or event trigger as part of this migration without a separately reviewed remediation.
+9. Keep schema migration execution separate from the production Railway database URL. The baseline was tested in an isolated PostgreSQL 16 CI service with synthetic data; it has not been run against the connected Supabase project.
 
 ## Known validation gaps
 
-- A standalone PostgreSQL baseline migration has now been generated at `supabase/migrations/20261110160000_aios_initial_schema.sql`. It has not been applied to the connected Supabase project; its isolated CI validation is pending.
-- No local/disposable PostgreSQL migration test has been run.
-- No end-to-end integration test against PostgreSQL has been run.
-- Runtime SQL outside initialization still requires a full compatibility scan and test coverage.
-- A PostgreSQL 16 service-backed CI job has now been added. Its first run is pending; until it passes, PostgreSQL compatibility remains unverified.
-- The 22-table inventory is based on the current source files; future runtime-created tables must be included if found in later source changes.
+- The baseline migration passed isolated PostgreSQL 16 CI validation in GitHub Actions run #42781234481. The test verified 22 public tables, 23 named indexes, RLS enabled on all 22 tables, application initializer compatibility, table metadata inspection, named-parameter task insertion/selection, and discovery scan creation.
+- No migration has been applied to the connected Supabase project.
+- No end-to-end integration test against the actual Supabase project has been run.
+- Runtime SQL outside the tested initialization/task/discovery paths still requires a full compatibility scan and test coverage.
+- The 22-table inventory is based on the inspected source files; future runtime-created tables must be included if found in later source changes.
 
 ## Next safe step
 
-Generate a final-state PostgreSQL baseline from these definitions, add an isolated PostgreSQL CI service/test job, and run it without any Supabase production connection. Only after those checks pass should a separate owner-approved production migration and Railway connection plan be prepared.
+Perform read-only Supabase-specific validation and safely test the Railway-to-Supabase connection without changing the production database target. Review the baseline and backup/rollback plan before seeking separate owner approval for any production migration.
