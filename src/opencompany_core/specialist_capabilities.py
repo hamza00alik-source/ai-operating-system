@@ -52,7 +52,7 @@ _RULES = {
         "regulatory": "regulatory_landscape_scanning",
         "technology": "technology_scanning",
         "opportunity": "opportunity_scoring",
-        "evidence": "evidence_synthesis",
+        "evidence": "evidence_claim_synthesis",
         "source": "source_validation",
         "citation": "citation_auditing",
         "trend": "trend_forecasting",
