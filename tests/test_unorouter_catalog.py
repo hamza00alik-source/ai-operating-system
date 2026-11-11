@@ -10,9 +10,9 @@ from opencompany_core.model_gateway import (
 def test_discovery_intersects_free_online_catalogue_with_key_access(monkeypatch):
     responses = iter([
         {"models": [
-            {"model_name": "alpha", "type": "text", "supported_endpoint_types": ["openai"], "is_free": False, "online": True},
+            {"model_name": "alpha:free", "type": "text", "chat": True, "supported_endpoint_types": ["openai"], "is_free": True, "input_price": 0, "output_price": 0, "fixed_price": 0, "online": True},
             {"model_name": "paid", "type": "text", "supported_endpoint_types": ["openai"], "is_free": False, "online": True},
-            {"model_name": "offline", "type": "text", "supported_endpoint_types": ["openai"], "is_free": True, "online": False},
+            {"model_name": "offline:free", "type": "text", "chat": True, "supported_endpoint_types": ["openai"], "is_free": True, "input_price": 0, "output_price": 0, "fixed_price": 0, "online": False},
         ]},
         {"data": [
             {"id": "alpha:free"},
@@ -39,10 +39,10 @@ def test_catalogue_discovery_fails_closed_when_no_free_models_are_accessible(mon
 def test_discovery_excludes_non_chat_and_non_openai_models(monkeypatch):
     responses = iter([
         {"models": [
-            {"model_name": "chat", "type": "text", "supported_endpoint_types": ["openai"], "online": True},
-            {"model_name": "image", "type": "image", "supported_endpoint_types": ["openai"], "online": True},
-            {"model_name": "embedding", "type": "embedding", "supported_endpoint_types": ["openai"], "online": True},
-            {"model_name": "anthropic-only", "type": "text", "supported_endpoint_types": ["anthropic"], "online": True},
+            {"model_name": "chat:free", "type": "text", "chat": True, "supported_endpoint_types": ["openai"], "is_free": True, "input_price": 0, "output_price": 0, "fixed_price": 0, "online": True},
+            {"model_name": "image:free", "type": "image", "chat": False, "supported_endpoint_types": ["openai"], "is_free": True, "input_price": 0, "output_price": 0, "fixed_price": 0, "online": True},
+            {"model_name": "embedding:free", "type": "embedding", "chat": False, "supported_endpoint_types": ["openai"], "is_free": True, "input_price": 0, "output_price": 0, "fixed_price": 0, "online": True},
+            {"model_name": "anthropic-only:free", "type": "text", "chat": True, "supported_endpoint_types": ["anthropic"], "is_free": True, "input_price": 0, "output_price": 0, "fixed_price": 0, "online": True},
         ]},
         {"data": [
             {"id": "chat:free"}, {"id": "image:free"},
@@ -197,3 +197,20 @@ def test_free_discovery_requires_explicit_zero_price_and_free_flag(monkeypatch):
     monkeypatch.setattr(unorouter_adapter,"_read_json",lambda *a,**k:next(responses))
     monkeypatch.setattr(unorouter_adapter,"_catalog_cache",{})
     assert unorouter_adapter.discover_free_models("test-api-key",force_refresh=True)==("real-free:free",)
+
+
+def test_gateway_globally_blocks_paid_provider_even_with_positive_budget():
+    class PaidAdapter:
+        def generate(self, request, *, model):
+            raise AssertionError("paid adapter must never be invoked")
+    gateway = ModelGateway.configure(((
+        ProviderPolicy(
+            name="paid-provider", model="paid-model",
+            billing_mode=BillingMode.PAID_OWNER_APPROVED,
+            max_cost_per_request_usd=10.0,
+        ),
+        PaidAdapter(),
+    ),))
+    assert gateway.eligible_providers(request_budget_usd=100.0) == ()
+    with pytest.raises(Exception):
+        gateway.complete(ModelRequest("test", "paid-block-test"), request_budget_usd=100.0)
