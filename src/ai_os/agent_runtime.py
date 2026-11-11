@@ -349,6 +349,7 @@ def run_pending_once() -> bool:
     if claimed is None:
         return False
     run_id, task = claimed
+    task_id = task["id"]
     try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
         with connect() as db:
