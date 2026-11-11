@@ -47,6 +47,9 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "Request revision" in response.text
     assert "AI usage &amp; cost ledger" in response.text or "AI usage & cost ledger" in response.text
     assert "loadModelUsage" in response.text
+    assert 'id="unorouter-discover"' in response.text
+    assert 'id="unorouter-model"' in response.text
+    assert "load available free models" in response.text.lower()
     assert 'id="github-evolution-token"' in response.text
     assert "draft pull requests only" in response.text
     assert "loadGitHubEvolutionSettings" in response.text
@@ -101,6 +104,50 @@ def test_provider_status_keeps_unorouter_disabled_without_owner_confirmation(mon
     assert response.status_code == 200
     assert response.json()["gateway_enabled"] is False
     assert response.json()["providers"]["unorouter"]["partial_configuration_detected"] is True
+
+
+def test_unorouter_discovery_requires_owner_and_returns_only_free_models(owner_client, monkeypatch):
+    discovered = [{
+        "id": "provider/model:free", "name": "provider/model:free", "vendor": "Example",
+        "context_length": 32768, "max_output_tokens": 4096,
+    }]
+    monkeypatch.setattr(api_module, "discover_free_models", lambda api_key: discovered if api_key == "valid-api-key-123456" else [])
+    unauthorized = owner_client.post(
+        "/settings/providers/unorouter/discover",
+        json={"api_key": "valid-api-key-123456"},
+    )
+    assert unauthorized.status_code == 401
+
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    response = owner_client.post(
+        "/settings/providers/unorouter/discover",
+        headers=headers,
+        json={"api_key": "valid-api-key-123456"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["models"][0]["id"] == "provider/model:free"
+    assert payload["paid_models_included"] is False
+    assert "valid-api-key-123456" not in response.text
+
+
+def test_unorouter_save_revalidates_model_before_persisting(owner_client, monkeypatch):
+    monkeypatch.setattr(api_module, "discover_free_models", lambda api_key: [])
+    response = owner_client.put(
+        "/settings/providers/unorouter",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+        json={
+            "api_key": "valid-api-key-123456",
+            "model": "provider/model:free",
+            "confirm_free": True,
+        },
+    )
+    assert response.status_code == 409
+    assert owner_client.get(
+        "/settings/providers/unorouter",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+    ).json()["configured"] is False
 
 
 def test_workforce_endpoint_exposes_only_original_opencompany_roles():
