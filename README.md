@@ -24,18 +24,20 @@ This implementation does not import or reuse the legacy AIOS provider code. The 
 - Local-first development; SQLite is the default.
 - Never commit secrets or customer data.
 
-## Quick start
+## Quick start (clean-room OpenCompany runtime)
 Requires Python 3.11+.
 
-\`\`\`bash
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-uvicorn ai_os.api:app --reload
-\`\`\`
+export OPENCOMPANY_OWNER_API_KEY="replace-with-a-long-random-secret"
+export OPENCOMPANY_SECRET_ENCRYPTION_KEY="replace-with-a-separate-random-secret-of-at-least-32-characters"
+export OPENCOMPANY_COOKIE_SECURE="false"  # local HTTP development only
+python main.py
+```
 
-Open http://127.0.0.1:8000/owner for the visual owner console, or http://127.0.0.1:8000/docs for the API.
-
+Open http://127.0.0.1:8000/owner for the owner console, or http://127.0.0.1:8000/docs for the API. Use HTTPS and set `OPENCOMPANY_COOKIE_SECURE=true` in hosted environments. Provider credentials are stored encrypted in SQLite; the dedicated encryption key is required and must be backed up separately from the owner login key. This local command starts the OpenCompany app on the current rebuild branch; it does not deploy or modify the existing production service.
 ## Current starter capabilities
 - Create and list work tasks.
 - Create, list, approve, and reject approval requests.
