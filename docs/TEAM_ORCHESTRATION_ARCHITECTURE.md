@@ -71,3 +71,13 @@ The runtime now applies a deterministic, conservative fulfillment-intent check a
 The dedicated digital-product-launch workflow is restricted to the digital-products environment. Task execution and workflow-detail reads also verify the selected business ID, returning a not-found response rather than exposing another business line's records.
 
 These checks are a safety layer, not a complete semantic classifier or database row-level security system. They deliberately focus on explicit fulfillment language to avoid blocking ordinary cross-channel marketing or research references. They require adversarial testing and further expansion to all customer, finance, credential, integration and artifact endpoints before claiming full business isolation. Unit tests have been added but remain unexecuted while CI is deferred until December 1.
+
+## OpenCompany is an expandable multi-business company
+
+The three current business lines are initial operating units, not a limit on the company's ambition. OpenCompany's company-level objective is to discover, validate, launch and grow any legitimate business opportunity with credible profit potential. New opportunities may include physical products, digital products, software/SaaS, services, content/media, licensing, partnerships, commerce or other viable models.
+
+A persistent business-unit registry now supports owner-controlled creation of additional ventures. Each new unit receives its own stable business ID, business name, business type and operating description. The dashboard loads business selectors from the registry rather than relying on a fixed list. The CEO/agent runtime can build a dedicated scope contract from the registered unit's description, while customer records, financial records, research, credentials and approved memory remain keyed to that business ID.
+
+The three existing physical-agency, own-physical-brand and digital-products units remain distinct with their original restrictions. New venture registration does not itself authorize spending, publishing, purchases, external account changes or customer commitments; those actions remain approval-gated. New ventures are not automatically assumed to be profitable or launched merely because they are registered: research, validation, risk review and owner approval remain required.
+
+The registry is a first expansion step, not a complete venture lifecycle manager. Deactivation/archive controls, venture P&L rollups, opportunity scoring, capital allocation, cross-business portfolio reporting and automated venture launch playbooks remain future work.
