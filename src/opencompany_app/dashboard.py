@@ -96,7 +96,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div class="auth worker-actions"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
   </section>
-  <p class="muted console-footer">This console does not publish content, contact customers, spend money, deploy production, or activate agents. Protected actions remain owner-gated.</p>
+  <p class="muted console-footer">This console does not publish content, contact customers, spend money, or deploy production. Agent activation, task admission, and worker startup remain owner-gated.</p>
 </main>
 <script>
 (() => {
