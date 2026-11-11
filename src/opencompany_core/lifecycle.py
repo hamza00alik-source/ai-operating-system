@@ -48,6 +48,8 @@ def transition_work_item(
         ]
         if unresolved:
             raise StateTransitionError("work cannot be queued until all dependencies are completed")
+        if any(known_items[dependency].business_id != item.business_id for dependency in item.depends_on):
+            raise StateTransitionError("work cannot depend on another business unit")
     if target == TaskState.READY and item.state in {TaskState.BLOCKED, TaskState.FAILED, TaskState.REVIEW}:
         unresolved = [
             dependency for dependency in item.depends_on
@@ -56,4 +58,6 @@ def transition_work_item(
         ]
         if unresolved:
             raise StateTransitionError("work cannot be made ready while dependencies remain incomplete")
+        if any(known_items[dependency].business_id != item.business_id for dependency in item.depends_on):
+            raise StateTransitionError("work cannot depend on another business unit")
     return replace(item, state=target)
