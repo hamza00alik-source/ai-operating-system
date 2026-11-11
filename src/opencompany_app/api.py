@@ -370,7 +370,10 @@ def _record(item: WorkItem, action: str) -> AuditRecord:
         actor_type="owner", actor_id="owner", action=action,
         subject_type="work_item", subject_id=str(item.id),
         outcome="recorded", correlation_id=str(uuid4()),
-        details={"state": item.state.value, "department": item.department},
+        details={
+            "state": item.state.value, "department": item.department,
+            "business_id": item.business_id,
+        },
     )
 
 
@@ -1240,7 +1243,8 @@ def _auto_queue_task(runtime: OpenCompanyRuntime, task: WorkItem, agent, *, acti
         action=action, subject_type="work_item", subject_id=str(task.id),
         outcome="recorded", correlation_id=str(uuid4()),
         details={"agent_id": str(agent.id), "role_key": agent.role_key,
-                 "team_key": agent.team_key, "request_budget_usd": 0.0},
+                 "team_key": agent.team_key, "business_id": task.business_id,
+                 "request_budget_usd": 0.0},
     )
     runtime.queue.enqueue_authorized(
         task, agent.id, {"role_key": agent.role_key, "team_key": agent.team_key}, event,
@@ -1284,7 +1288,8 @@ def enqueue_work_item(
         actor_type="owner", actor_id="owner", action="work_item.queued",
         subject_type="work_item", subject_id=str(item.id), outcome="recorded",
         correlation_id=str(uuid4()),
-        details={"agent_id": str(agent.id), "role_key": agent.role_key, "team_key": agent.team_key},
+        details={"agent_id": str(agent.id), "role_key": agent.role_key,
+                 "team_key": agent.team_key, "business_id": item.business_id},
     )
     try:
         runtime.queue.enqueue_authorized(
