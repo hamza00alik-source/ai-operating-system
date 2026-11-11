@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+
+import pytest
 from uuid import uuid4
 
 from opencompany_core.domain import AuditRecord, TaskState, WorkItem
@@ -56,4 +58,60 @@ def test_evaluation_proposal_decision_and_learning_note_are_durable(tmp_path):
     assert notes[0]["id"] == note_id
     assert "publication dates" in notes[0]["note"]
     assert store.verify_audit_chain()
+    store.close()
+
+
+def test_learning_notes_are_isolated_by_business_unit(tmp_path):
+    store = SQLiteStore(tmp_path / "learning-business-scope.sqlite3")
+    repository = LearningRepository(store._connection, store._lock)
+    agency_item = WorkItem(
+        id=uuid4(), title="Agency outcome", objective="Evaluate supplier research",
+        department="intelligence-research", state=TaskState.COMPLETED,
+        business_id="physical-agency",
+    )
+    digital_item = WorkItem(
+        id=uuid4(), title="Digital outcome", objective="Evaluate product research",
+        department="intelligence-research", state=TaskState.COMPLETED,
+        business_id="digital-products",
+    )
+    store.save_work_item(agency_item)
+    store.save_work_item(digital_item)
+    agency_eval = OutcomeEvaluation(
+        id=uuid4(), work_item_id=agency_item.id, evaluator="owner",
+        grade=OutcomeGrade.SUCCESS, rubric_scores={"evidence": 5},
+        evidence_refs=("source:agency-report",), observations="Supplier evidence was current.",
+    )
+    digital_eval = OutcomeEvaluation(
+        id=uuid4(), work_item_id=digital_item.id, evaluator="owner",
+        grade=OutcomeGrade.SUCCESS, rubric_scores={"evidence": 5},
+        evidence_refs=("source:digital-report",), observations="Buyer evidence was current.",
+    )
+    repository.save_evaluation(agency_eval, audit("learning.evaluated", "work_item", agency_item.id))
+    repository.save_evaluation(digital_eval, audit("learning.evaluated", "work_item", digital_item.id))
+
+    agency_note = repository.save_learning_note(
+        role_key="market_intelligence_analyst",
+        note="Verify supplier certificates and export requirements.",
+        evidence_refs=(f"evaluation:{agency_eval.id}",),
+        owner_id="owner", record=audit("learning.note", "agent_role", "market_intelligence_analyst"),
+        business_id="physical-agency",
+    )
+    digital_note = repository.save_learning_note(
+        role_key="market_intelligence_analyst",
+        note="Verify digital marketplace demand and platform fees.",
+        evidence_refs=(f"evaluation:{digital_eval.id}",),
+        owner_id="owner", record=audit("learning.note", "agent_role", "market_intelligence_analyst"),
+        business_id="digital-products",
+    )
+
+    assert [note["id"] for note in repository.list_learning_notes("market_intelligence_analyst", "physical-agency")] == [agency_note]
+    assert [note["id"] for note in repository.list_learning_notes("market_intelligence_analyst", "digital-products")] == [digital_note]
+    with pytest.raises(ValueError, match="selected business unit"):
+        repository.save_learning_note(
+            role_key="market_intelligence_analyst",
+            note="Cross-business note must be rejected.",
+            evidence_refs=(f"evaluation:{agency_eval.id}",),
+            owner_id="owner", record=audit("learning.note", "agent_role", "market_intelligence_analyst"),
+            business_id="digital-products",
+        )
     store.close()
