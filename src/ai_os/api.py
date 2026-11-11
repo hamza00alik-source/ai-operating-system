@@ -46,7 +46,7 @@ class DepartmentMessageRequest(BaseModel):
 
 
 class DepartmentDelegationRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     from_department: str = Field(min_length=1, max_length=64)
     to_department: str = Field(min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=200)
