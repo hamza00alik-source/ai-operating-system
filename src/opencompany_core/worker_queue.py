@@ -297,6 +297,12 @@ class DurableWorkerQueue:
                 ).fetchone()
                 if task is None or task["state"] != TaskState.READY.value or task["assigned_agent_id"] != str(lease.agent_id):
                     raise QueueError("manager rework task changed or was reassigned before requeue")
+                task_update = self._db.execute(
+                    "UPDATE work_items SET state=? WHERE id=? AND state=? AND assigned_agent_id=?",
+                    (TaskState.QUEUED.value, str(item.id), TaskState.READY.value, str(lease.agent_id)),
+                )
+                if task_update.rowcount != 1:
+                    raise QueueError("manager rework task changed before queue admission")
                 cursor = self._db.execute(
                     """UPDATE worker_queue SET state='queued',attempts=0,payload_json=?,
                        lease_token=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=?
