@@ -57,6 +57,9 @@ app = FastAPI(
     description="Owner-authenticated API for OpenCompany's independently authored operating core.",
 )
 
+from opencompany_app.product_workflow_api import router as product_workflow_router
+app.include_router(product_workflow_router)
+
 # Per-process login throttling. The API key is a bootstrap credential; this
 # protects the session exchange endpoint from unlimited online guessing.
 _LOGIN_FAILURES: dict[str, list[float]] = {}
