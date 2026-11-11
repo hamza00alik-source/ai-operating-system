@@ -171,6 +171,8 @@ def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> di
             not isinstance(rating, (int, float)) or isinstance(rating, bool) or not 0 <= rating <= 5
         ):
             raise ValueError("Assessment rating must be between 0 and 5.")
+def clean_evidence_records(evidence: list) -> list:
+    """Keep distinct HTTPS evidence candidates; this does not verify source content."""
     clean_evidence = []
     seen_urls = set()
     for item in (evidence[:100] if isinstance(evidence, list) else []):
@@ -199,6 +201,10 @@ def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> di
             "claim": str(item.get("claim") or "")[:1000],
             "source_date": str(item.get("source_date") or "")[:80],
         })
+    return clean_evidence
+
+
+    clean_evidence = clean_evidence_records(evidence)
     enriched = dict(assessment)
     # The scorecard's source count must come from evidence records supplied for
     # this assessment, not a free-form source_urls field in the assessment JSON.
