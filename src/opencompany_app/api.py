@@ -2327,7 +2327,7 @@ def manager_review_specialist_work(
             retry_item,
             objective=(
                 retry_item.objective[:10000]
-                + "\\n\\nManager rework request (address before resubmission): "
+                + "\n\nManager rework request (address before resubmission): "
                 + decision.rework_instructions
             )[:12000],
         )
