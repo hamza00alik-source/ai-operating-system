@@ -21,6 +21,8 @@ Each stage stores its assigned OpenCompany role, status, timestamps, input/outpu
 - `POST /product-workflows` — create an internal workflow from a title and brief.
 - `GET /product-workflows` — list workflows.
 - `GET /product-workflows/{id}` — inspect a workflow and its stage evidence.
+- `POST /product-workflows/{id}/generate-blueprint` — when artifact generation is the active stage, create a deterministic zero-cost starter ZIP.
+- `GET /product-workflows/artifacts/{artifact_id}` — download an owner-authenticated generated ZIP.
 - `POST /product-workflows/{id}/stages/{stage}/start` — start the next eligible stage.
 - `POST /product-workflows/{id}/stages/{stage}/complete` — record output, artifact references, and evidence.
 - `POST /product-workflows/{id}/stages/{stage}/block` — record a blocker.
@@ -44,4 +46,6 @@ This prevents an untested claim (for example, visual quality, legal review, mark
 - External actions are disabled in the persisted record.
 - Owner approval only marks the result `approved_internal`; it does not publish, list, sell, contact customers, or authorize spending.
 - The current implementation provides persisted workflow orchestration and evidence capture. It does **not** yet mean autonomous agents have generated the artifacts, run visual or legal reviews, or completed a commercial product.
-- Artifact references are recorded metadata; a managed artifact store, deterministic local generator, package builder, and dashboard UI are follow-on implementation work.
+- The current deterministic generator creates a ZIP containing a product specification, production plan, unexecuted QA checklist, unpublished listing draft, source brief, and manifest. It is a starter blueprint, not a finished commercial product or final game asset.
+- ZIPs are stored under the directory beside the configured SQLite database in `product_artifacts/`. On Railway this is on the persistent `/data` volume when the database uses the configured `/data` path.
+- The dashboard UI, real product-specific source-asset generators, engine/visual test runners, and autonomous agent execution remain follow-on work.
