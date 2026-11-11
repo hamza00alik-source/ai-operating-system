@@ -228,6 +228,66 @@ def decide_opportunity(opportunity_id: str, decision: str, notes: str = "") -> d
     return get_opportunity(opportunity_id)
 
 
+
+def get_research_report(opportunity_id: str) -> dict | None:
+    """Return the latest linked task/run output and safe evidence candidates."""
+    import re
+
+    with connect() as db:
+        opportunity = db.execute(
+            "SELECT id,title,research_task_id,status FROM venture_opportunities WHERE id=?",
+            (opportunity_id,),
+        ).fetchone()
+        if opportunity is None:
+            return None
+        if not opportunity["research_task_id"]:
+            return {
+                "opportunity_id": opportunity_id,
+                "task_id": None,
+                "task_status": None,
+                "run": None,
+                "report_text": "",
+                "source_url_candidates": [],
+                "message": "No research task is linked yet.",
+            }
+        task = db.execute(
+            "SELECT id,title,status,business_id,department FROM tasks WHERE id=?",
+            (opportunity["research_task_id"],),
+        ).fetchone()
+        if task is None or task["business_id"] != "core" or task["department"] != "venture-strategy":
+            raise ValueError("Linked research task failed company-wide scope validation.")
+        run = db.execute(
+            "SELECT id,status,specialist_output,ceo_review,error,created_at,finished_at "
+            "FROM agent_runs WHERE task_id=? ORDER BY created_at DESC LIMIT 1",
+            (task["id"],),
+        ).fetchone()
+    run_data = dict(run) if run else None
+    report_parts = []
+    if run_data:
+        for label, key in (("Specialist report", "specialist_output"), ("CEO review", "ceo_review"), ("Run error", "error")):
+            value = run_data.get(key)
+            if value:
+                report_parts.append(label + ":\n" + str(value)[:30000])
+    report_text = "\n\n---\n\n".join(report_parts)[:60000]
+    urls = list(dict.fromkeys(re.findall(r"https://[^\\s<>\\]\\\"']+", report_text)))
+    return {
+        "opportunity_id": opportunity_id,
+        "opportunity_title": opportunity["title"],
+        "task_id": task["id"],
+        "task_title": task["title"],
+        "task_status": task["status"],
+        "run": {
+            "id": run_data["id"],
+            "status": run_data["status"],
+            "created_at": run_data["created_at"],
+            "finished_at": run_data["finished_at"],
+        } if run_data else None,
+        "report_text": report_text,
+        "source_url_candidates": urls[:100],
+        "source_url_count": len(urls),
+        "notice": "Extracted URLs are candidates only. They have not been independently checked, and report text is not an approved assessment.",
+    }
+
 def mark_launched(opportunity_id: str, business_id: str) -> dict:
     with connect() as db:
         row = db.execute("SELECT status FROM venture_opportunities WHERE id=?", (opportunity_id,)).fetchone()
