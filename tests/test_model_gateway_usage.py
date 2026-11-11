@@ -46,6 +46,7 @@ def test_gateway_records_every_successful_model_call_with_request_identity():
         "request_id": "request-usage-001",
         "work_item_id": "work-item-001",
         "role_key": "market_demand_researcher",
+        "business_id": "core",
         "provider": "unorouter",
         "model": "provider/free-model:free",
         "input_tokens": 12,
