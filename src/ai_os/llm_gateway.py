@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import threading
 import time
@@ -114,6 +115,22 @@ def _resolve(provider_id: str) -> tuple[Provider, dict[str, Any]]:
     if not config["eligible"]:
         raise PermissionError(config["reason"])
     return provider, config
+
+
+def _assert_zero_cost_model_response(data: dict[str, Any], requested_model: str) -> None:
+    """Reject model substitution and any reported non-zero/non-finite charge."""
+    returned_model = str(data.get("model") or requested_model)
+    if returned_model not in {requested_model, requested_model.removesuffix(":free")}:
+        raise RuntimeError("Provider returned a different model than the requested free route.")
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    reported_cost = usage.get("cost", data.get("cost"))
+    if reported_cost is not None:
+        try:
+            cost = float(reported_cost)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Provider returned an invalid cost for a zero-cost route.") from exc
+        if not math.isfinite(cost) or cost != 0.0:
+            raise RuntimeError("Provider reported a non-zero cost for a zero-cost route.")
 
 
 def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
@@ -369,6 +386,8 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
             "model": model, "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2, "max_tokens": 1200
         }, headers, timeout=45)
+        if provider.key == "openrouter":
+            _assert_zero_cost_model_response(data, model)
         choices = data.get("choices") or []
         answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
         usage = data.get("usage") or {}
@@ -421,6 +440,7 @@ def test_unorouter_personal(prompt: str) -> dict[str, Any]:
         {"Authorization": f"Bearer {config['secret']}"},
         timeout=45,
     )
+    _assert_zero_cost_model_response(data, model)
     choices = data.get("choices") or []
     answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
     if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 8:
