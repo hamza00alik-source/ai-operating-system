@@ -210,7 +210,7 @@ def queue_research(opportunity_id: str, task_id: str) -> dict:
 
 
 def clean_evidence_records(evidence: list) -> list:
-    """Keep distinct HTTPS evidence candidates; this does not verify source content."""
+    """Normalize HTTPS evidence; only owner-confirmed reviews count toward launch evidence."""
     clean_evidence = []
     seen_urls = set()
     for item in (evidence[:100] if isinstance(evidence, list) else []):
@@ -238,6 +238,7 @@ def clean_evidence_records(evidence: list) -> list:
             "url": normalized_url,
             "claim": str(item.get("claim") or "")[:1000],
             "source_date": str(item.get("source_date") or "")[:80],
+            "owner_verified": item.get("owner_verified") is True,
         })
     return clean_evidence
 
@@ -256,10 +257,10 @@ def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> di
             raise ValueError("Assessment rating must be between 0 and 5.")
     clean_evidence = clean_evidence_records(evidence)
     enriched = dict(assessment)
-    # The scorecard's source count must come from evidence records supplied for
-    # this assessment, not a free-form source_urls field in the assessment JSON.
-    # HTTPS syntax is not proof that a source exists or supports a claim.
-    enriched["source_urls"] = [item["url"] for item in clean_evidence]
+    # Only sources explicitly confirmed as reviewed by the owner count toward
+    # launch evidence. HTTPS syntax alone is not proof of relevance or accuracy.
+    # Keep unreviewed candidates visible, but do not let them satisfy the source gate.
+    enriched["source_urls"] = [item["url"] for item in clean_evidence if item["owner_verified"]]
     if len(json.dumps(enriched, ensure_ascii=False)) > 20000:
         raise ValueError("Assessment exceeds the 20 KB safe storage limit.")
     enriched["scorecard"] = score_assessment(enriched)
