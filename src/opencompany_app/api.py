@@ -2939,3 +2939,76 @@ def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
         "event_count": store.audit_event_count(),
         "chain_valid": store.verify_audit_chain(),
     }
+
+
+class CommercialSupplierInput(BaseModel):
+    business_id: str
+    name: str = Field(min_length=1, max_length=200)
+    contact_name: str | None = Field(default=None, max_length=200)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=80)
+    country: str | None = Field(default=None, max_length=100)
+    product_categories: list[str] = Field(default_factory=list, max_length=30)
+    notes: str = Field(default="", max_length=3000)
+
+
+class CommercialSupplierStatusInput(BaseModel):
+    status: str
+    confirm_owner_decision: bool
+
+
+@app.post("/commercial/suppliers", dependencies=[Depends(require_owner_key)])
+def create_commercial_supplier(payload: CommercialSupplierInput, store: SQLiteStore = Depends(get_store)) -> dict:
+    if payload.business_id not in {"physical-agency", "physical-brand"}:
+        raise HTTPException(status_code=422, detail="Supplier records belong only to the physical-products agency or own-brand business.")
+    relationship_type = "agency_supplier" if payload.business_id == "physical-agency" else "own_brand_supplier"
+    now = datetime.now(timezone.utc)
+    supplier_id = str(uuid4())
+    record = {
+        "id": supplier_id, "business_id": payload.business_id, "relationship_type": relationship_type,
+        "name": payload.name.strip(), "contact_name": payload.contact_name, "email": payload.email,
+        "phone": payload.phone, "country": payload.country,
+        "product_categories": [value.strip() for value in payload.product_categories if value.strip()],
+        "notes": payload.notes, "created_at": now.isoformat(), "updated_at": now.isoformat(),
+    }
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="commercial.supplier_created", subject_type="commercial_supplier",
+        subject_id=supplier_id, outcome="draft_saved", correlation_id=str(uuid4()),
+        details={"business_id": payload.business_id, "relationship_type": relationship_type, "external_contact_made": False},
+    )
+    try:
+        store.create_commercial_supplier(record, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"supplier_id": supplier_id, "business_id": payload.business_id,
+            "relationship_type": relationship_type, "verification_status": "draft", "external_contact_made": False}
+
+
+@app.get("/commercial/suppliers", dependencies=[Depends(require_owner_key)])
+def list_commercial_suppliers(business_id: str | None = None, store: SQLiteStore = Depends(get_store)) -> dict:
+    if business_id is not None and business_id not in {"physical-agency", "physical-brand"}:
+        raise HTTPException(status_code=422, detail="Supplier records are available only for physical business units.")
+    suppliers = store.list_commercial_suppliers(business_id=business_id)
+    return {"count": len(suppliers), "suppliers": list(suppliers)}
+
+
+@app.post("/commercial/suppliers/{supplier_id}/status", dependencies=[Depends(require_owner_key)])
+def update_commercial_supplier_status(
+    supplier_id: UUID, payload: CommercialSupplierStatusInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if payload.confirm_owner_decision is not True:
+        raise HTTPException(status_code=422, detail="Owner confirmation is required to change supplier verification status.")
+    if payload.status not in {"verified", "blocked"}:
+        raise HTTPException(status_code=422, detail="Supplier status must be verified or blocked.")
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="commercial.supplier_status_changed", subject_type="commercial_supplier",
+        subject_id=str(supplier_id), outcome=payload.status, correlation_id=str(uuid4()),
+        details={"verification_status": payload.status, "external_contact_made": False},
+    )
+    if not store.update_commercial_supplier_status(str(supplier_id), payload.status, event):
+        raise HTTPException(status_code=404, detail="Supplier not found or already blocked.")
+    return {"supplier_id": str(supplier_id), "status": payload.status,
+            "external_contact_made": False, "purchase_or_commitment_created": False}
