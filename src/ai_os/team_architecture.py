@@ -64,8 +64,9 @@ def business_scope_context(business_id: str) -> str:
     selected = (business_id or "core").strip()
     scope = BUSINESS_CONTEXTS.get(selected)
     if scope is None:
-        from ai_os.business_registry import get_business, require_business
-        require_business(selected)
+        from ai_os.business_registry import BUSINESS_IDS, get_business
+        if selected not in BUSINESS_IDS:
+            raise ValueError("Unknown business environment; refusing to execute an unscoped task.")
         item = get_business(selected)
         if not item:
             raise ValueError("Unknown business environment; refusing to execute an unscoped task.")
