@@ -216,7 +216,18 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       const card=document.createElement("article");card.className="item";
       const heading=document.createElement("h3");heading.textContent=p.name+" · "+p.business_id;card.append(heading);
       const detail=document.createElement("p");detail.textContent=p.category+" · "+p.description;card.append(detail);
-      const state=document.createElement("span");state.className="pill";state.textContent="Private draft · "+p.status;card.append(state);
+      const state=document.createElement("span");state.className="pill";state.textContent="Private catalogue · "+p.status;card.append(state);
+      if(p.status==="draft"){
+        const activate=document.createElement("button");activate.textContent="Approve for internal matching";
+        activate.addEventListener("click",async()=>{
+          activate.disabled=true;
+          try{
+            await request("/commercial/products/"+p.id+"/status",{method:"POST",body:JSON.stringify({status:"active",confirm_owner_approval:true})});
+            await loadCommercial();setMessage("Catalogue entry approved for internal matching only. It was not published.","success");
+          }catch(error){setMessage(error.message,"error");activate.disabled=false;}
+        });
+        card.append(activate);
+      }
       byId("commercial-products").append(card);
     });
     ["create-opportunity","create-catalog-product"].forEach(id=>byId(id).disabled=false);
