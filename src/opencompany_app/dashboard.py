@@ -152,7 +152,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       const workItemsUrl=businessFilter?"/work-items?business_id="+encodeURIComponent(businessFilter):"/work-items";
       const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution,apiAnything]=await Promise.all([
         request("/organization/departments"),request("/agents"),request(workItemsUrl),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request(businessFilter?"/learning/proposals?business_id="+encodeURIComponent(businessFilter):"/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request(businessFilter?"/workers/queue?business_id="+encodeURIComponent(businessFilter):"/workers/queue"),request("/workers/status"),request(businessFilter?"/learning/proposals?business_id="+encodeURIComponent(businessFilter):"/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
