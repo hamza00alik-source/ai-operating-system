@@ -32,7 +32,7 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
-from opencompany_core.unorouter_adapter import unorouter_configuration_status
+from opencompany_core.unorouter_adapter import (\n    UNOROUTER_AUTO_FREE_MODEL, discover_free_models, unorouter_configuration_status,\n)
 from opencompany_core.secret_vault import SecretVaultError
 from opencompany_app.provider_settings_ui import OWNER_PROVIDER_SETTINGS_HTML, OWNER_PROVIDER_SETTINGS_JS
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
@@ -670,6 +670,30 @@ def get_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -
         "real_inference_verified": runtime.unorouter_tested_at is not None,
         "last_tested_at": runtime.unorouter_tested_at, "automatic_paid_fallback": False,
         **status,
+    }
+
+
+@app.get("/settings/providers/unorouter/models", dependencies=[Depends(require_owner_key)])
+def list_unorouter_free_models(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Discover every model confirmed free, online, and accessible to the saved key."""
+    try:
+        saved = runtime.secret_vault.get("unorouter")
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored UnoRouter credentials cannot be decrypted.") from exc
+    if not saved:
+        raise HTTPException(status_code=409, detail="Save the UnoRouter API key first.")
+    try:
+        models = discover_free_models(saved["api_key"], force_refresh=True)
+    except ProviderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "provider": "unorouter",
+        "count": len(models),
+        "models": list(models),
+        "routing_mode": "automatic_all_free_models",
+        "catalogue_refresh_seconds": 300,
+        "paid_models_included": False,
+        "paid_fallback": False,
     }
 
 
