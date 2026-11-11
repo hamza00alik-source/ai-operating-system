@@ -49,6 +49,8 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "loadModelUsage" in response.text
     assert 'id="unorouter-discover"' in response.text
     assert 'id="unorouter-model"' in response.text
+    assert "Enter your API key, then load free models" in response.text
+    assert 'id="unorouter-model"' in response.text
     assert "load available free models" in response.text.lower()
     assert 'id="github-evolution-token"' in response.text
     assert "draft pull requests only" in response.text
@@ -650,46 +652,48 @@ def test_invalid_owner_api_key_headers_are_rate_limited(owner_client):
     api_module._clear_login_failures("testclient")
 
 
-def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_client):
+def test_session_login_uses_http_only_cookie_and_restores_across_tabs(owner_client):
     login = owner_client.post("/auth/session", json={"api_key": "test-owner-key"})
     assert login.status_code == 200
     csrf = login.json()["csrf_token"]
     cookie = owner_client.cookies.get("opencompany_session")
-    assert cookie
-    assert "opencompany_session" in login.headers.get("set-cookie", "")
-    assert "httponly" in login.headers.get("set-cookie", "").lower()
-    assert "samesite=strict" in login.headers.get("set-cookie", "").lower()
+    csrf_cookie = owner_client.cookies.get("opencompany_csrf")
+    assert cookie and csrf_cookie
+    set_cookies = "; ".join(login.headers.get_list("set-cookie"))
+    assert "opencompany_session" in set_cookies
+    assert "opencompany_csrf" in set_cookies
+    assert set_cookies.lower().count("httponly") >= 2
+    assert "samesite=strict" in set_cookies.lower()
+    assert "max-age=604800" in set_cookies.lower()
 
-    assert "max-age=604800" in login.headers.get("set-cookie", "").lower()
-
-    # Simulate closing the browser and reopening it with the persistent cookie.
-    with TestClient(app, base_url="https://testserver") as reopened:
-        reopened.cookies.set("opencompany_session", cookie)
+    # Simulate closing/reopening the browser, then opening a second dashboard tab.
+    with TestClient(app, base_url="https://testserver") as reopened, TestClient(app, base_url="https://testserver") as second_tab:
+        for browser in (reopened, second_tab):
+            browser.cookies.set("opencompany_session", cookie)
+            browser.cookies.set("opencompany_csrf", csrf_cookie)
         status = reopened.get("/auth/session")
         assert status.status_code == 200 and status.json()["authenticated"] is True
-        renewed_csrf = status.json()["csrf_token"]
-        assert renewed_csrf and renewed_csrf != csrf
+        restored_csrf = status.json()["csrf_token"]
+        assert restored_csrf == csrf
+        second_status = second_tab.get("/auth/session")
+        assert second_status.status_code == 200
+        assert second_status.json()["csrf_token"] == restored_csrf
+
         blocked = reopened.post("/agents/bootstrap", json={})
         assert blocked.status_code == 401
-        stale_csrf = reopened.post(
-            "/agents/bootstrap",
-            headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
-            json={},
-        )
-        assert stale_csrf.status_code == 401
         allowed = reopened.post(
             "/agents/bootstrap",
-            headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
+            headers={"X-CSRF-Token": restored_csrf, "Origin": "https://testserver"},
             json={},
         )
         assert allowed.status_code == 200
         logout = reopened.post(
             "/auth/logout",
-            headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
+            headers={"X-CSRF-Token": restored_csrf, "Origin": "https://testserver"},
         )
         assert logout.status_code == 200
-        after = reopened.get("/agents")
-        assert after.status_code == 401
+        assert reopened.get("/agents").status_code == 401
+        assert second_tab.get("/auth/session").status_code == 401
 
 
 def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
