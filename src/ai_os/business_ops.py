@@ -128,7 +128,7 @@ def business_summary(business_id: str = "core") -> dict:
         paid_expenses_mtd = db.execute(
             """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
             WHERE business_id=? AND record_type='expense' AND status='owner_confirmed_paid'
-            AND substr(created_at,1,7)=? GROUP BY currency""", (scope, month),
+            AND substr(paid_at,1,7)=? GROUP BY currency""", (scope, month),
         ).fetchall()
         customers = db.execute(
             "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='customer'", (scope,)
@@ -280,10 +280,10 @@ def confirm_expense_paid(expense_id: str, business_id: str = "core") -> dict:
         if row["status"] != "approved_for_manual_payment":
             raise ValueError("Only owner-approved expenses can be marked paid. Approve the expense first.")
         updated = db.execute(
-            """UPDATE business_records SET status='owner_confirmed_paid'
+            """UPDATE business_records SET status='owner_confirmed_paid',paid_at=?
             WHERE id=? AND business_id=? AND record_type='expense'
             AND status='approved_for_manual_payment'""",
-            (expense_id, scope),
+            (now(), expense_id, scope),
         )
         if updated.rowcount != 1:
             raise ValueError("Expense status changed. Refresh the ledger and try again.")
