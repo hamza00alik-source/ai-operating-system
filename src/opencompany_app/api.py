@@ -1024,6 +1024,8 @@ def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
 
 @app.post("/workers/start", dependencies=[Depends(require_owner_key)])
 def start_worker_fleet(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if runtime.unorouter_tested_at is None:
+        raise HTTPException(status_code=409, detail="Run the owner-triggered zero-cost UnoRouter test in this process before starting workers.")
     if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
         raise HTTPException(status_code=503, detail="No owner-configured free inference provider is available; worker start is blocked.")
     started = runtime.fleet.start()
