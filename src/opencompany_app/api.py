@@ -1014,6 +1014,8 @@ def provider_candidates() -> dict:
 
 @app.post("/plans/preview")
 def preview_plan(payload: PlanPreviewInput) -> dict:
+    if any(candidate.business_id not in BUSINESS_UNIT_IDS for candidate in payload.items):
+        raise HTTPException(status_code=422, detail="Plan contains an unknown business unit.")
     try:
         for candidate in payload.items:
             default_organization().get(candidate.department)
