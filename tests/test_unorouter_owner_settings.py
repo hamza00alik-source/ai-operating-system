@@ -323,3 +323,21 @@ def test_unreadable_unorouter_secret_can_be_replaced_or_removed(monkeypatch, tmp
     finally:
         api.app.dependency_overrides.clear()
         recovered.close()
+
+
+def test_process_startup_never_starts_workers_from_saved_provider_credentials_alone(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
+    monkeypatch.setenv("OPENCOMPANY_BOOTSTRAP_WORKFORCE", "false")
+    monkeypatch.setenv("OPENCOMPANY_AUTO_ACTIVATE_WORKFORCE", "false")
+    runtime = create_runtime(str(tmp_path / "startup-verification-gate.sqlite3"))
+    starts = []
+    runtime.gateway.eligible_providers = lambda request_budget_usd=0.0: ("unorouter",)
+    runtime.fleet.start = lambda: starts.append(True) or True
+    monkeypatch.setattr(api, "_default_runtime", lambda: runtime)
+    try:
+        api.initialize_autonomous_runtime()
+        assert starts == []
+        assert runtime.unorouter_tested_at is None
+    finally:
+        runtime.close()
