@@ -545,15 +545,20 @@ def provider_runtime_status(runtime: OpenCompanyRuntime | None = Depends(get_opt
 
 @app.get("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
 def get_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    status = runtime.secret_vault.status("unorouter")
+    configuration_error = None
     try:
         saved = runtime.secret_vault.get("unorouter")
-    except SecretVaultError as exc:
-        raise HTTPException(status_code=503, detail="Stored UnoRouter settings cannot be decrypted; check the server encryption key.") from exc
+    except SecretVaultError:
+        saved = None
+        configuration_error = "Stored UnoRouter credentials cannot be decrypted. Check the stable server encryption key, or replace/remove the saved credentials."
     return {
         "configured": saved is not None, "model": saved["model"] if saved else None,
-        "api_key_present": bool(saved), "real_inference_verified": runtime.unorouter_tested_at is not None,
+        "api_key_present": status["configured"], "credentials_decryptable": saved is not None,
+        "configuration_error": configuration_error or runtime.secret_vault_errors.get("unorouter"),
+        "real_inference_verified": runtime.unorouter_tested_at is not None,
         "last_tested_at": runtime.unorouter_tested_at, "automatic_paid_fallback": False,
-        **runtime.secret_vault.status("unorouter"),
+        **status,
     }
 
 
