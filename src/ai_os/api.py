@@ -1128,7 +1128,7 @@ def post_venture_research(opportunity_id: str):
         task = create_task(TaskCreate(
             title="Venture research: " + opportunity["title"][:150],
             description=description,
-            department="research",
+            department="venture-strategy",
             business_id="core",
         ))
         run = create_run(task["id"])
@@ -1167,8 +1167,9 @@ def post_launch_venture(opportunity_id: str):
     if opportunity["status"] != "launch_approved":
         raise HTTPException(status_code=409, detail="Owner launch approval is required before creating a business unit.")
     revenue_model = opportunity["revenue_model"].lower()
-    business_type = "".join(ch if ch.isalnum() or ch == "-" else "-" for ch in revenue_model).strip("-")
-    business_type = (business_type or "general")[:64]
+    business_type = "".join(ch if ch.isalnum() or ch == "-" else "-" for ch in revenue_model).strip("-")[:60].strip("-")
+    if len(business_type) < 3:
+        business_type = "general"
     try:
         business = create_business(
             opportunity["title"],
