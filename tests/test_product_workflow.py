@@ -382,3 +382,52 @@ def test_blueprint_verifier_reports_passed_and_untested_separately(tmp_path):
     assert "ZIP CRC integrity" in report["passed_checks"]
     assert report["untested_claims"]
     assert artifact["status"] == "blueprint_only_not_a_finished_product"
+
+
+def test_product_ai_stage_runs_only_with_active_role_and_zero_cost_gateway(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from uuid import uuid4
+    from opencompany_app.api import app, get_runtime
+    from opencompany_app.runtime import create_runtime
+    from opencompany_core.domain import AgentProfile, AgentState
+    from opencompany_core.execution import AgentDeliverable
+    from opencompany_core.model_gateway import ModelResult
+    from opencompany_core.organization import default_organization
+    from opencompany_core.workforce import default_workforce
+
+    class FakeGateway:
+        def complete(self, request, *, request_budget_usd, preferred_provider=None):
+            assert request_budget_usd == 0.0
+            assert preferred_provider == "unorouter"
+            return ModelResult("Evidence-led opportunity brief.", "unorouter", "test:free", 0.0, 10, 20)
+
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "product-ai-stage-test-key")
+    runtime = create_runtime(str(tmp_path / "product-ai-stage.sqlite3"))
+    runtime.gateway = FakeGateway()
+    department = default_organization().get("product-innovation")
+    role = default_workforce().get("product_planning_lead")
+    runtime.store.save_agent(AgentProfile(
+        id=uuid4(), name="Product Planning Lead", department=department.key,
+        purpose="Prepare product discovery briefs.", capabilities=role.capabilities,
+        state=AgentState.ACTIVE, role_key=role.key, team_key="management",
+    ))
+    app.dependency_overrides[get_runtime] = lambda: runtime
+    try:
+        with TestClient(app) as client:
+            headers = {"X-OpenCompany-API-Key": "product-ai-stage-test-key"}
+            created = client.post("/product-workflows", headers=headers, json={
+                "title": "Test product", "brief": "Assess an original downloadable product."
+            })
+            assert created.status_code == 200, created.text
+            workflow_id = created.json()["id"]
+            result = client.post(f"/product-workflows/{workflow_id}/run-ai-stage", headers=headers)
+            assert result.status_code == 200, result.text
+            assert result.json()["stage"] == "opportunity_brief"
+            assert result.json()["reported_cost_usd"] == 0.0
+            saved = client.get(f"/product-workflows/{workflow_id}", headers=headers).json()
+            assert saved["stages"][0]["status"] == "completed"
+            assert saved["stages"][0]["output"] == "Evidence-led opportunity brief."
+            assert "reported_cost_usd:0" in saved["stages"][0]["evidence"]
+    finally:
+        app.dependency_overrides.clear()
+        runtime.close()
