@@ -274,6 +274,44 @@ class DurableWorkerQueue:
                     self._db.execute("ROLLBACK")
                 raise
 
+    def requeue_after_manager_review(
+        self, lease: WorkerLease, item: WorkItem, payload: dict, record: AuditRecord,
+    ) -> None:
+        """Atomically reuse the current lease for manager-requested specialist rework."""
+        if item.state != TaskState.READY or item.assigned_agent_id != lease.agent_id:
+            raise QueueError("manager rework must remain READY and assigned to the current specialist")
+        if self._owns_connection:
+            raise QueueError("manager rework requeue requires the shared core-store transaction")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be a JSON object")
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        if len(encoded) > 24000:
+            raise ValueError("payload exceeds 24000 characters")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                task = self._db.execute(
+                    "SELECT state,assigned_agent_id FROM work_items WHERE id=?",
+                    (str(item.id),),
+                ).fetchone()
+                if task is None or task["state"] != TaskState.READY.value or task["assigned_agent_id"] != str(lease.agent_id):
+                    raise QueueError("manager rework task changed or was reassigned before requeue")
+                cursor = self._db.execute(
+                    """UPDATE worker_queue SET state='queued',attempts=0,payload_json=?,
+                       lease_token=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=?
+                       WHERE work_item_id=? AND agent_id=? AND state='leased' AND lease_token=?""",
+                    (encoded, now, str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token)),
+                )
+                if cursor.rowcount != 1:
+                    raise QueueError("manager rework could not reclaim the current worker lease")
+                self._append_audit(record, self._db)
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
+
     def complete(self, lease: WorkerLease) -> None:
         self._finish(lease, "done", None)
 
