@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import threading
 import time
@@ -73,8 +74,14 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         base, model, secret = saved["base_url"], saved["model"], saved["secret"]
         free = saved["free_confirmed"]
     configured = bool(base and model and secret)
-    uno_free_model = provider.key != "unorouter" or model.endswith(":free")
-    eligible = configured and free and uno_free_model and not provider.experimental_only
+    # Only an explicit OpenRouter :free route is admitted to unattended AIOS
+    # company inference. A dashboard checkbox cannot verify arbitrary provider pricing.
+    verified_free_model = (
+        provider.key == "openrouter"
+        and base == "https://openrouter.ai/api/v1"
+        and model.endswith(":free")
+    )
+    eligible = configured and free and verified_free_model and not provider.experimental_only
     return {
         "id": provider.key, "name": provider.label, "protocol": provider.protocol,
         "_secret": secret,
@@ -84,10 +91,7 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
-            "UnoRouter requires an owner-confirmed model ID ending in :free."
-            if provider.key == "unorouter" and not uno_free_model else
-            "Set base URL, model, API secret, and explicitly confirm this endpoint "
-            "is currently free. Paid or unverified endpoints are blocked."
+            "Only an explicitly free OpenRouter model ID ending in :free is enabled for company inference. Other providers remain disabled until zero-cost routing can be independently verified."
         ),
     }
 
@@ -106,6 +110,22 @@ def _resolve(provider_id: str) -> tuple[Provider, dict[str, Any]]:
     if not config["eligible"]:
         raise PermissionError(config["reason"])
     return provider, config
+
+
+def _assert_zero_cost_model_response(data: dict[str, Any], requested_model: str) -> None:
+    """Reject model substitution and any reported non-zero/non-finite charge."""
+    returned_model = str(data.get("model") or requested_model)
+    if returned_model not in {requested_model, requested_model.removesuffix(":free")}:
+        raise RuntimeError("Provider returned a different model than the requested free route.")
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    reported_cost = usage.get("cost", data.get("cost"))
+    if reported_cost is not None:
+        try:
+            cost = float(reported_cost)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Provider returned an invalid cost for a zero-cost route.") from exc
+        if not math.isfinite(cost) or cost != 0.0:
+            raise RuntimeError("Provider reported a non-zero cost for a zero-cost route.")
 
 
 def _post(url: str, payload: dict[str, Any], headers: dict[str, str],
@@ -361,6 +381,8 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
             "model": model, "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2, "max_tokens": 1200
         }, headers, timeout=45)
+        if provider.key == "openrouter":
+            _assert_zero_cost_model_response(data, model)
         choices = data.get("choices") or []
         answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
         usage = data.get("usage") or {}
@@ -389,19 +411,21 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
 
 
 
-def test_unorouter_personal(prompt: str, approve_paid_request: bool = False) -> dict[str, Any]:
-    """Owner-triggered consumer-account test only; never used by task routing."""
+def test_unorouter_personal(prompt: str) -> dict[str, Any]:
+    """Owner-triggered consumer-account test; paid models are never permitted."""
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
         raise ValueError("Enter a test prompt of 1 to 12,000 characters.")
     config = get_provider_credential("unorouter")
-    if not config:
+    if not config or not config.get("secret"):
         raise PermissionError("Save a UnoRouter consumer API key in the owner console first.")
-    model = str(config.get("model", "")).strip()
-    is_free = model.endswith(":free")
-    if is_free and not config.get("free_confirmed"):
-        raise PermissionError("This :free model is not owner-confirmed for free-only routing.")
-    if not is_free and not approve_paid_request:
-        raise PermissionError("This is a paid model. Explicitly approve this specific request before sending it.")
+    if not config.get("free_confirmed"):
+        raise PermissionError("UnoRouter free-only credentials are not owner-confirmed.")
+    from opencompany_core.unorouter_adapter import discover_model_catalog
+    catalog = discover_model_catalog(config["secret"])
+    eligible = [item for item in catalog if item.get("allowed_for_inference") is True]
+    if not eligible:
+        raise PermissionError("No model is verified free, zero-priced, online, chat-capable, and accessible to this key. No prompt was sent.")
+    model = str(eligible[0]["model_id"])
     base = (config.get("base_url") or "https://api.unorouter.com/v1").rstrip("/")
     started = time.monotonic()
     data = _post(
@@ -411,6 +435,7 @@ def test_unorouter_personal(prompt: str, approve_paid_request: bool = False) -> 
         {"Authorization": f"Bearer {config['secret']}"},
         timeout=45,
     )
+    _assert_zero_cost_model_response(data, model)
     choices = data.get("choices") or []
     answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
     if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 8:
@@ -424,10 +449,10 @@ def test_unorouter_personal(prompt: str, approve_paid_request: bool = False) -> 
                   "total_tokens": usage.get("total_tokens"),
                   "reported_by_provider": bool(usage)},
         "mode": "owner_personal_test_only",
-        "model_cost_class": "free" if is_free else "paid",
-        "paid_request_approved": bool(approve_paid_request) if not is_free else False,
+        "model_cost_class": "free",
+        "paid_request_approved": False,
         "company_task_routing": False,
-        "warning": "Consumer-account test only. Do not submit customer, company, confidential, or sensitive personal data. Provider/model-specific data terms apply.",
+        "warning": "Consumer-account test only. Paid models are blocked. Do not submit customer, company, confidential, or sensitive personal data. Provider/model-specific data terms apply.",
         "live": True,
     }
 
