@@ -1307,10 +1307,16 @@ def enqueue_work_item(
 
 
 @app.get("/workers/queue", dependencies=[Depends(require_owner_key)])
-def worker_queue_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
-    counts = runtime.queue.counts()
+def worker_queue_status(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
+    counts = runtime.queue.counts(business_id=business_id)
     status = runtime.fleet.status()
     return {
+        "business_id": business_id or "all",
         "counts": counts,
         "total": sum(counts.values()),
         "worker_process_autostarted": status.running,
