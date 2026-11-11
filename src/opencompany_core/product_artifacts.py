@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 
 MAX_BRIEF_CHARS = 12000
@@ -174,7 +175,20 @@ publication.]
     }
     files["manifest.json"] = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
 
-    temporary = target.with_suffix(".zip.tmp")
+    if target.exists():
+        with zipfile.ZipFile(target, "r") as archive:
+            if archive.testzip() is not None:
+                raise ValueError("An existing generated blueprint ZIP failed integrity check.")
+            file_count = len(archive.namelist())
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        return {
+            "artifact_id": identifier, "file_name": f"{identifier}.zip",
+            "path": str(target), "sha256": digest, "size_bytes": target.stat().st_size,
+            "file_count": file_count, "bundle_type": "product_blueprint_starter_pack",
+            "status": "blueprint_only_not_a_finished_product",
+        }
+
+    temporary = artifact_root / f".{identifier}.{uuid4().hex}.zip.tmp"
     try:
         with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for name, value in files.items():
@@ -188,7 +202,12 @@ publication.]
             bad_file = archive.testzip()
             if bad_file:
                 raise ValueError(f"Generated ZIP failed integrity check: {bad_file}")
-        temporary.replace(target)
+        try:
+            # Hard-link creation is atomic and never overwrites a concurrent
+            # winner for this workflow's immutable artifact identifier.
+            os.link(temporary, target)
+        except FileExistsError:
+            pass
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -203,4 +222,82 @@ publication.]
         "file_count": len(files),
         "bundle_type": manifest["bundle_type"],
         "status": manifest["status"],
+    }
+
+
+def verify_product_blueprint(path: Path) -> dict:
+    """Run deterministic archive, path, manifest and content-integrity checks."""
+    passed: list[str] = []
+    failed: list[str] = []
+    untested = [
+        "visual quality of any future product assets",
+        "functional behavior in the target application or game engine",
+        "intellectual-property and licensing review",
+        "market demand and buyer willingness to pay",
+    ]
+    required = {
+        "README.md", "PRODUCT_SPEC.md", "PRODUCTION_PLAN.md",
+        "QA_CHECKLIST.md", "LISTING_DRAFT.md", "SOURCE_BRIEF.md", "manifest.json",
+    }
+    if not path.is_file():
+        return {
+            "passed_checks": passed,
+            "failed_checks": ["artifact file is missing"],
+            "untested_claims": untested,
+        }
+    if path.stat().st_size > MAX_ARCHIVE_BYTES:
+        failed.append("archive exceeds the 2 MB size limit")
+        return {"passed_checks": passed, "failed_checks": failed, "untested_claims": untested}
+    try:
+        with zipfile.ZipFile(path, "r") as archive:
+            bad_member = archive.testzip()
+            names = archive.namelist()
+            if bad_member:
+                failed.append(f"ZIP CRC check failed for {bad_member}")
+            else:
+                passed.append("ZIP CRC integrity")
+            if len(names) != len(set(names)):
+                failed.append("archive contains duplicate filenames")
+            else:
+                passed.append("unique archive filenames")
+            if any(name.startswith(("/", "\\\\")) or ".." in Path(name).parts for name in names):
+                failed.append("archive contains an unsafe path")
+            else:
+                passed.append("safe relative archive paths")
+            if set(names) != required:
+                failed.append("archive file set does not match the required blueprint structure")
+            else:
+                passed.append("required blueprint files present")
+            total_size = sum(item.file_size for item in archive.infolist())
+            if total_size > 5_000_000:
+                failed.append("uncompressed archive size exceeds 5 MB")
+            else:
+                passed.append("uncompressed archive size within limit")
+            if not failed:
+                manifest = json.loads(archive.read("manifest.json"))
+                declared = {item["path"]: item for item in manifest["files"]}
+                for name in required - {"manifest.json"}:
+                    if name not in declared:
+                        failed.append(f"manifest entry missing for {name}")
+                        continue
+                    data = archive.read(name)
+                    if hashlib.sha256(data).hexdigest() != declared[name]["sha256"]:
+                        failed.append(f"manifest checksum mismatch for {name}")
+                    elif len(data) != declared[name]["size_bytes"]:
+                        failed.append(f"manifest size mismatch for {name}")
+                if not failed:
+                    passed.append("manifest SHA-256 and size checks")
+            if not failed:
+                readme = archive.read("README.md").decode("utf-8")
+                qa = archive.read("QA_CHECKLIST.md").decode("utf-8")
+                if "not a finished commercial product" in readme and "not executed" in qa:
+                    passed.append("scope and untested-claim disclosures present")
+                else:
+                    failed.append("required scope/QA disclosures missing")
+    except (OSError, zipfile.BadZipFile, KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        failed.append(f"archive verification error: {type(exc).__name__}")
+    return {
+        "passed_checks": passed,
+        "failed_checks": failed,
+        "untested_claims": untested,
     }
