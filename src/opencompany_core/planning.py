@@ -28,6 +28,8 @@ class WorkPlan:
             missing = set(item.depends_on) - by_id.keys()
             if missing:
                 raise PlanError(f"work item {item.id} references unknown dependencies")
+            if any(by_id[dependency].business_id != item.business_id for dependency in item.depends_on):
+                raise PlanError("work item dependencies cannot cross business-unit boundaries")
         _assert_acyclic(by_id)
 
     @property
