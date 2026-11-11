@@ -1045,13 +1045,23 @@ fallback.style.display="none";
    const businessId=$("businessScope").value;const scope="?business_id="+encodeURIComponent(businessId);const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"+scope),api("/business/customers"+scope),api("/business/investors"+scope),api("/business/expenses"+scope),api("/business/revenue"+scope)]);
    const verified=revenue.filter(x=>x.verified);
    const mtd=(summary.verified_revenue_mtd_by_currency||[]).map(x=>money(x.total,x.currency)).join(" / ")||"0.00";
-   $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+esc(mtd)+'</strong><span>Verified revenue · MTD</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div>';
+   const paidMtd=(summary.owner_confirmed_paid_expenses_mtd_by_currency||[]).map(x=>money(x.total,x.currency)).join(" / ")||"0.00";
+   const netMtd=(summary.verified_net_cash_movement_mtd_by_currency||[]).map(x=>money(x.net_cash_movement,x.currency)).join(" / ")||"0.00";
+   $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+esc(mtd)+'</strong><span>Verified receipts · MTD</span></div><div class="metric"><strong>'+esc(paidMtd)+'</strong><span>Owner-confirmed paid expenses · MTD</span></div><div class="metric"><strong>'+esc(netMtd)+'</strong><span>Net cash movement · MTD (not profit)</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div><div class="metric"><strong>'+summary.expenses_approved_awaiting_manual_payment+'</strong><span>Approved · awaiting manual payment</span></div>';
    $("customerRows").innerHTML=customers.map(x=>'<tr><td>'+esc(x.title)+'</td><td>'+esc(x.contact||"—")+'</td><td>'+esc(x.notes||"—")+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="4">No customers recorded.</td></tr>';
    $("investorRows").innerHTML=investors.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.organization||"—")+'</td><td>'+esc(x.contact||"—")+'</td><td>'+esc(x.stage)+'</td><td>'+esc(x.notes||"—")+'</td></tr>').join("")||'<tr><td colspan="5">No investor records yet.</td></tr>';
    const rows=[...expenses,...revenue].sort((a,b)=>b.created_at.localeCompare(a.created_at));
-   $("ledgerRows").innerHTML=rows.map(x=>'<tr><td>'+esc(x.record_type)+'</td><td>'+esc(x.title)+'</td><td>'+money(x.amount,x.currency)+'</td><td>'+esc(x.status)+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="5">No ledger entries yet.</td></tr>';
+   $("ledgerRows").innerHTML=rows.map(x=>'<tr><td>'+esc(x.record_type)+'</td><td>'+esc(x.title)+'</td><td>'+money(x.amount,x.currency)+'</td><td>'+esc(x.status)+'</td><td>'+date(x.created_at)+'</td><td>'+(x.record_type==="expense"&&x.status==="approved_for_manual_payment"?'<button class="secondary" data-expense-paid="'+esc(x.id)+'">Confirm already paid</button>':"—")+'</td></tr>').join("")||'<tr><td colspan="6">No ledger entries yet.</td></tr>';
   }catch(e){$("businessMessage").textContent=e.message}
  }
+ $("ledgerRows")?.addEventListener("click",async e=>{
+  const button=e.target.closest("[data-expense-paid]");if(!button)return;
+  const expenseId=button.dataset.expensePaid,businessId=$("businessScope").value;
+  if(!confirm("Confirm that this expense has already been paid? This only updates the ledger; AIOS will not send money."))return;
+  button.disabled=true;
+  try{await api("/business/expenses/"+encodeURIComponent(expenseId)+"/confirm-paid?business_id="+encodeURIComponent(businessId),{method:"POST",body:"{}"});$("businessMessage").textContent="Expense marked paid based on your confirmation. No payment was initiated.";await loadBusiness()}
+  catch(err){$("businessMessage").textContent=err.message;button.disabled=false}
+ });
  $("investorForm").addEventListener("submit",async e=>{e.preventDefault();try{await send("/business/investors",{...formData(e.currentTarget),business_id:$("businessScope").value});e.currentTarget.reset();$("businessMessage").textContent="Investor record saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
  ["customer","revenue","expense"].forEach(kind=>{
   const form=$(kind+"Form");form.addEventListener("submit",async e=>{e.preventDefault();const data={...formData(form),business_id:$("businessScope").value};if(kind==="revenue")data.verified_payment=form.elements.verified_payment.checked;try{await send("/business/"+(kind==="customer"?"customers":(kind==="expense"?"expenses":"revenue")),data);form.reset();$("businessMessage").textContent=kind==="expense"?"Expense recorded for owner approval.":kind==="revenue"?"Revenue record saved; only verified receipts count.":"Customer saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
