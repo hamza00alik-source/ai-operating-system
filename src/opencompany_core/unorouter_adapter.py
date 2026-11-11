@@ -57,8 +57,81 @@ def _read_json(url: str, *, api_key: str | None = None, timeout: int = 12) -> di
         raise ProviderUnavailable("UnoRouter returned an invalid catalogue response.") from exc
 
 
+def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
+    """Import the complete public catalogue, annotating account access and strict free-only eligibility.
+
+    Paid and unsupported entries are retained as research metadata but are never
+    returned as selectable inference routes.
+    """
+    if not api_key or len(api_key) > 512:
+        raise ValueError("a valid UnoRouter API key is required")
+    pricing = _read_json(UNOROUTER_CATALOG_URL)
+    available = _read_json(f"{UNOROUTER_BASE_URL}/models", api_key=api_key)
+    catalog_models = pricing.get("models")
+    key_models = available.get("data")
+    if not isinstance(catalog_models, list) or not isinstance(key_models, list):
+        raise ProviderUnavailable("UnoRouter did not return the expected model catalogue format.")
+    key_ids = {
+        item["id"].strip() for item in key_models
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip()
+    }
+    imported = []
+    for item in catalog_models:
+        if not isinstance(item, dict):
+            continue
+        model_id = item.get("model_name")
+        if not isinstance(model_id, str) or not model_id.strip():
+            continue
+        model_id = model_id.strip()
+        endpoints = item.get("supported_endpoint_types")
+        endpoints = [str(value).strip().casefold() for value in endpoints] if isinstance(endpoints, list) else []
+        input_price = item.get("input_price")
+        output_price = item.get("output_price")
+        fixed_price = item.get("fixed_price")
+        zero_priced = all(
+            isinstance(value, (int, float)) and math.isfinite(float(value)) and float(value) == 0.0
+            for value in (input_price, output_price, fixed_price)
+        )
+        account_access = model_id in key_ids or (model_id.endswith(":free") and model_id.removesuffix(":free") in key_ids)
+        strict_free = (
+            item.get("is_free") is True and zero_priced and model_id.endswith(":free")
+            and item.get("online") is True and item.get("type") == "text"
+            and item.get("chat") is True and "openai" in endpoints and account_access
+        )
+        if strict_free:
+            reason = "eligible_free"
+        elif not account_access:
+            reason = "not_available_to_api_key"
+        elif item.get("online") is not True:
+            reason = "offline"
+        elif item.get("type") != "text" or item.get("chat") is not True or "openai" not in endpoints:
+            reason = "unsupported_for_chat_inference"
+        elif not (item.get("is_free") is True and zero_priced and model_id.endswith(":free")):
+            reason = "paid_or_unverified_pricing"
+        else:
+            reason = "blocked_by_free_only_policy"
+        # Keep a safe, useful subset; do not persist credentials or arbitrary upstream fields.
+        imported.append({
+            "model_id": model_id,
+            "vendor": str(item.get("vendor") or "Unknown"),
+            "type": str(item.get("type") or "unknown"),
+            "tags": [str(tag) for tag in item.get("tags", []) if isinstance(tag, str)] if isinstance(item.get("tags"), list) else [],
+            "online": item.get("online") is True,
+            "chat": item.get("chat") is True,
+            "is_free": item.get("is_free") is True,
+            "input_price": input_price if isinstance(input_price, (int, float)) else None,
+            "output_price": output_price if isinstance(output_price, (int, float)) else None,
+            "fixed_price": fixed_price if isinstance(fixed_price, (int, float)) else None,
+            "supported_endpoint_types": endpoints,
+            "account_access": account_access,
+            "allowed_for_inference": strict_free,
+            "policy_status": reason,
+        })
+    return tuple(imported)
+
+
 def discover_free_models(api_key: str, *, force_refresh: bool = False) -> tuple[str, ...]:
-    """Return free, online models both listed in pricing and accessible to this key."""
+    """Return only models proven free, online, chat-capable, and accessible to this key."""
     if not api_key or len(api_key) > 512:
         raise ValueError("a valid UnoRouter API key is required")
     now = time.monotonic()
@@ -67,50 +140,14 @@ def discover_free_models(api_key: str, *, force_refresh: bool = False) -> tuple[
         cached = _catalog_cache.get(cache_key)
         if cached and not force_refresh and now - cached[0] < CATALOG_CACHE_SECONDS:
             return cached[1]
-
-    pricing = _read_json(UNOROUTER_CATALOG_URL)
-    available = _read_json(f"{UNOROUTER_BASE_URL}/models", api_key=api_key)
-    catalog_models = pricing.get("models")
-    key_models = available.get("data")
-    if not isinstance(catalog_models, list) or not isinstance(key_models, list):
-        raise ProviderUnavailable("UnoRouter did not return the expected model catalogue format.")
-
-    free_catalog_ids: set[str] = set()
-    for item in catalog_models:
-        # This adapter sends OpenAI chat-completion requests, so exclude image,
-        # audio, embedding, and non-OpenAI-only routes before considering them.
-        # UnoRouter's public catalogue lists base model names; the free
-        # variant is exposed separately in /v1/models with a :free suffix.
-        # A base row may therefore have is_free=false while its :free variant
-        # is still a valid zero-cost route. The suffix on the key-visible ID is
-        # the authoritative free-route marker; online gates the base model.
-        if not isinstance(item, dict) or item.get("online") is not True:
-            continue
-        if str(item.get("type", "")).strip().casefold() != "text":
-            continue
-        endpoint_types = item.get("supported_endpoint_types")
-        if not isinstance(endpoint_types, list) or "openai" not in {
-            str(value).strip().casefold() for value in endpoint_types
-        }:
-            continue
-        name = item.get("model_name")
-        if isinstance(name, str) and name.strip():
-            model_id = name.strip()
-            if not model_id.endswith(":free"):
-                model_id += ":free"
-            free_catalog_ids.add(model_id)
-
-    key_model_ids = {
-        item.get("id").strip()
-        for item in key_models
-        if isinstance(item, dict)
-        and isinstance(item.get("id"), str)
-        and item["id"].strip().endswith(":free")
-    }
-    models = tuple(sorted(free_catalog_ids.intersection(key_model_ids)))
+    catalog = discover_model_catalog(api_key)
+    models = tuple(sorted(
+        str(item["model_id"]) for item in catalog
+        if item.get("allowed_for_inference") is True
+    ))
     if not models:
         raise ProviderUnavailable(
-            "No models were confirmed free, online, and accessible to this UnoRouter key."
+            "No models were confirmed free, zero-priced, online, chat-capable, and accessible to this UnoRouter key."
         )
     with _catalog_lock:
         _catalog_cache[cache_key] = (time.monotonic(), models)
