@@ -169,9 +169,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("create-code-pr").disabled=!codeEvolution.enabled;
       byId("code-pr-result").textContent=codeEvolution.enabled?"Verified · "+codeEvolution.repository+" · branch "+codeEvolution.base_branch:(codeEvolution.configured?(codeEvolution.access_verified&&!codeEvolution.provider_verified?"GitHub access verified. Run the live zero-cost UnoRouter test before creating draft PRs.":"Token saved but repository access is not verified. Test GitHub access in Integrations before creating draft PRs."):"GitHub code-evolution credentials are not configured on the server.");
       clear("learning-proposals","No learning proposals yet.");
-      learning.proposals.forEach(proposal=>{
+      learning.proposals.filter(proposal=>!businessFilter || proposal.business_id===businessFilter).forEach(proposal=>{
         const card=document.createElement("article");card.className="item";
-        const title=document.createElement("h3");title.textContent=proposal.target+" · "+proposal.state;card.append(title);
+        const title=document.createElement("h3");title.textContent=(proposal.business_id||"core")+" · "+proposal.target+" · "+proposal.state;card.append(title);
         const summary=document.createElement("p");summary.textContent=proposal.change_summary;card.append(summary);
         const rationale=document.createElement("p");rationale.textContent=proposal.rationale;card.append(rationale);
         if(proposal.state==="proposed"){
@@ -182,7 +182,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
           card.append(approve,reject);
         }else if(proposal.state==="approved"){
           const apply=document.createElement("button");apply.textContent="Apply approved role note";
-          apply.addEventListener("click",async()=>{apply.disabled=true;try{await request("/learning/proposals/"+proposal.id+"/apply-note",{method:"POST",body:"{}"});setMessage("Approved learning note is now available to future "+proposal.target+" tasks.","success");await load();}catch(error){setMessage(error.message,"error");apply.disabled=false;}});
+          apply.addEventListener("click",async()=>{apply.disabled=true;try{await request("/learning/proposals/"+proposal.id+"/apply-note",{method:"POST",body:"{}"});setMessage("Approved learning note is now available to future "+proposal.target+" tasks in "+(proposal.business_id||"core")+".","success");await load();}catch(error){setMessage(error.message,"error");apply.disabled=false;}});
           card.append(apply);
         }
         byId("learning-proposals").append(card);
