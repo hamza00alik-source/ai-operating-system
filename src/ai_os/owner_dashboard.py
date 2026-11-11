@@ -501,6 +501,22 @@ async function api(path,options={}){
  if(!raw)return {};
  try{return JSON.parse(raw)}catch(_){throw Error("The AIOS API returned an invalid JSON response for "+path+".");}
 }
+async function loadVentureOpportunities(){
+ try{
+  const items=await api("/venture-opportunities");
+  $("ventureTotal").textContent=items.length;
+  $("ventureResearch").textContent=items.filter(x=>x.status==="research_queued").length;
+  $("ventureShortlist").textContent=items.filter(x=>x.status==="shortlisted").length;
+  $("ventureLaunched").textContent=items.filter(x=>x.status==="launched").length;
+  $("assessmentOpportunity").innerHTML='<option value="">Select opportunity</option>'+items.filter(x=>x.status!=="launched"&&x.status!=="rejected").map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("");
+  $("ventureRows").innerHTML=items.length?items.map(x=>{
+   const score=x.assessment?.scorecard||{};
+   const scoreText=score.score==null?"Not scored":score.score+"/100 · provisional";
+   const evidence=(x.evidence||[]).length;
+   return '<tr><td><strong>'+esc(x.title)+'</strong><div class="small">'+esc(x.thesis)+'</div></td><td>'+esc(x.customer_segment||"Unknown")+'<div class="small">'+esc(x.revenue_model)+' · '+esc(x.market_scope)+'</div></td><td>'+esc(x.status)+'</td><td>'+esc(scoreText)+'</td><td>'+evidence+' sources</td><td><button class="secondary" data-v-action="research" data-v-id="'+esc(x.id)+'" '+(["research_queued","launch_approved","launched","rejected"].includes(x.status)?"disabled":"")+'>Research</button> <button class="secondary" data-v-action="shortlisted" data-v-id="'+esc(x.id)+'">Shortlist</button> <button class="secondary" data-v-action="launch_approved" data-v-id="'+esc(x.id)+'">Approve launch</button> <button class="secondary" data-v-action="launch" data-v-id="'+esc(x.id)+'" '+(x.status!=="launch_approved"?"disabled":"")+'>Create business</button> <button class="secondary" data-v-action="rejected" data-v-id="'+esc(x.id)+'">Reject</button></td></tr>';
+  }).join(""):'<tr><td colspan="6">No opportunities yet. Add a hypothesis above.</td></tr>';
+ }catch(e){$("ventureMessage").textContent="Portfolio load failed: "+e.message}
+}
 async function loadBusinessUnits(){
  const result=await api("/business-units");const units=result.business_units||[];
  ["taskBusiness","researchBusiness","brainBusiness","businessScope"].forEach(id=>{const select=$(id);if(!select)return;const current=select.value||"core";const options=units.map(b=>"<option value=\'"+esc(b.id)+"\'>"+esc(b.name)+(b.built_in?"":" - venture")+"</option>").join("");select.innerHTML=options;select.value=units.some(b=>b.id===current)?current:"core";});
