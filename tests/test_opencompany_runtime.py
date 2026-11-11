@@ -31,3 +31,67 @@ def test_api_startup_bootstraps_and_activates_all_roles_when_owner_configured(tm
         assert runtime.fleet.status().running is True
         assert runtime.store.verify_audit_chain()
     assert _default_runtime.cache_info().currsize == 0
+
+def test_dependency_context_rejects_cross_business_artifacts():
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from opencompany_app.runtime import _read_dependency_deliverables
+
+    dependency_id = uuid4()
+    prerequisite = SimpleNamespace(
+        business_id="physical-brand",
+        state=SimpleNamespace(value="completed"),
+    )
+
+    class Store:
+        def get_work_item(self, item_id):
+            assert item_id == dependency_id
+            return prerequisite
+
+        def list_deliverables(self, item_id):
+            raise AssertionError("cross-business artifacts must not be loaded")
+
+    item = SimpleNamespace(
+        depends_on=(dependency_id,),
+        business_id="physical-agency",
+    )
+    import pytest
+    with pytest.raises(ValueError, match="another business unit"):
+        _read_dependency_deliverables(Store(), item)
+
+
+def test_dependency_context_returns_business_attribution_for_valid_dependency():
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from opencompany_app.runtime import _read_dependency_deliverables
+
+    dependency_id = uuid4()
+    prerequisite = SimpleNamespace(
+        business_id="physical-brand",
+        state=SimpleNamespace(value="completed"),
+    )
+
+    class Store:
+        def get_work_item(self, item_id):
+            assert item_id == dependency_id
+            return prerequisite
+
+        def list_deliverables(self, item_id):
+            return [{
+                "role_key": "researcher",
+                "content": "Evidence",
+                "provider": "unorouter",
+                "model": "example:free",
+                "cost_usd": 0.0,
+            }]
+
+    item = SimpleNamespace(
+        depends_on=(dependency_id,),
+        business_id="physical-brand",
+    )
+    result = _read_dependency_deliverables(Store(), item)
+    assert result[0]["business_id"] == "physical-brand"
+    assert result[0]["deliverables"][0]["content"] == "Evidence"
+
