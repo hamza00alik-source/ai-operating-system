@@ -199,6 +199,11 @@ class CommercialQuoteDecisionInput(BaseModel):
     acceptance_reference: str | None = Field(default=None, max_length=1000)
 
 
+class CommercialOrderStatusInput(BaseModel):
+    status: str
+    confirm_owner_status: bool
+
+
 class CommercialOrderInput(BaseModel):
     quote_id: UUID
     confirm_owner_order_record: bool
@@ -1470,6 +1475,33 @@ def create_commercial_order(
             raise HTTPException(status_code=409, detail="An order already exists for this quote.") from exc
         raise
     return result
+
+
+@app.post("/commercial/orders/{order_id}/status", dependencies=[Depends(require_owner_key)])
+def update_commercial_order_status(
+    order_id: UUID, payload: CommercialOrderStatusInput,
+    store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if not payload.confirm_owner_status:
+        raise HTTPException(status_code=422, detail="Owner confirmation is required to update order status.")
+    if payload.status not in {"in_progress", "fulfilled", "cancelled"}:
+        raise HTTPException(status_code=422, detail="Unsupported order status.")
+    try:
+        changed = store.update_commercial_order_status(
+            str(order_id), payload.status, AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner", action="commercial.order_status_changed",
+                subject_type="commercial_order", subject_id=str(order_id), outcome=payload.status,
+                correlation_id=str(uuid4()),
+                details={"status": payload.status, "owner_confirmed": True,
+                         "external_fulfilment_triggered": False},
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not changed:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    return {"order_id": str(order_id), "status": payload.status, "external_fulfilment_triggered": False}
 
 
 @app.get("/commercial/orders", dependencies=[Depends(require_owner_key)])
