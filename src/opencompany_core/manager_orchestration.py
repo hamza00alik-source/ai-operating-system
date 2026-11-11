@@ -49,11 +49,11 @@ def plan_department_work(
     item: WorkItem,
     required_capabilities: Iterable[str],
     *,
-    max_specialists: int = 5,
+    max_specialists: int = 15,
 ) -> ManagerDelegationPlan:
     """Choose direct manager handling or a single specialist team for review."""
-    if not 1 <= max_specialists <= 5:
-        raise ValueError("max_specialists must be between 1 and 5")
+    if not 1 <= max_specialists <= 50:
+        raise ValueError("max_specialists must be between 1 and 50")
     requested = tuple(sorted({
         value.strip().casefold() for value in required_capabilities
         if isinstance(value, str) and value.strip()
@@ -100,21 +100,32 @@ def plan_department_work(
         total = sum(score for score, _, _ in members)
         return (-len(coverage), -total, team_key)
 
-    selected_team, members = sorted(by_team.items(), key=team_score)[0]
-    # Select the full capability team, not only the specialists whose tags
-    # directly matched. Team members with adjacent responsibilities can support
-    # the work; their lack of a direct tag match is visible in the plan.
-    team_roles = [
-        workforce.get(role_key)
-        for role_key in specialist_role_keys(item.department)
-        if workforce.get(role_key).team_key == selected_team
-    ]
-    team_roles.sort(key=lambda role: (
-        -sum(1 for capability in requested if capability in {
-            value.casefold() for value in role.capabilities
-        }),
-        role.key,
-    ))
+    # Select across the highest-scoring coherent teams until the requested
+    # bounded workforce size is reached. This lets a department manager use
+    # multiple specialist teams rather than being permanently capped at one
+    # five-person team.
+    selected_roles: list[RoleSpec] = []
+    selected_team_keys: list[str] = []
+    for selected_team, _members in sorted(by_team.items(), key=team_score):
+        team_roles = [
+            workforce.get(role_key)
+            for role_key in specialist_role_keys(item.department)
+            if workforce.get(role_key).team_key == selected_team
+        ]
+        team_roles.sort(key=lambda role: (
+            -sum(1 for capability in requested if capability in {
+                value.casefold() for value in role.capabilities
+            }),
+            role.key,
+        ))
+        remaining = max_specialists - len(selected_roles)
+        if remaining <= 0:
+            break
+        chosen = team_roles[:remaining]
+        if chosen:
+            selected_team_keys.append(selected_team)
+            selected_roles.extend(chosen)
+
     selected = tuple(
         SpecialistSelection(
             role_key=role.key, title=role.title, team_key=role.team_key,
@@ -128,7 +139,7 @@ def plan_department_work(
             ),
             permitted_outputs=role.permitted_outputs,
         )
-        for role in team_roles[:max_specialists]
+        for role in selected_roles
     )
     covered = set(manager_covered) | {
         capability for member in selected for capability in member.matched_capabilities
@@ -138,7 +149,7 @@ def plan_department_work(
     return ManagerDelegationPlan(
         work_item_id=str(item.id), department=item.department,
         manager_role_key=manager.key, manager_title=manager.title,
-        mode=mode, selected_team_key=selected_team if selected else None,
+        mode=mode, selected_team_key=selected_team_keys[0] if len(selected_team_keys) == 1 else None,
         specialists=selected, manager_covered_capabilities=manager_covered,
         uncovered_capabilities=uncovered,
     )
