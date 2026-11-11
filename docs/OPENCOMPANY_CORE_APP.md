@@ -18,6 +18,10 @@ uvicorn opencompany_app.api:app --reload
 
 Supply secrets only through a private environment-variable manager. Use a persistent private volume for the database. The encryption key must remain stable while encrypted provider credentials are stored; rotating it requires re-entering those credentials.
 
+## Company structure
+
+The canonical ownership, business-unit, shared-service, and data-isolation rules are documented in [COMPANY_STRUCTURE.md](COMPANY_STRUCTURE.md). The three commercial businesses are `physical-agency`, `physical-brand`, and `digital-products`; `core` is reserved for genuinely company-wide platform/governance work and is not a fourth commercial business.
+
 ## Internal execution lifecycle
 
 The intended supervised workflow is:
