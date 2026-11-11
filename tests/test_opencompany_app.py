@@ -10,7 +10,7 @@ from opencompany_core.persistence import SQLiteStore
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
-from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy
+from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy, ProviderUnavailable
 from opencompany_core.github_evolution import GitHubPullRequest
 
 
@@ -52,6 +52,7 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "Enter your API key, then load free models" in response.text
     assert 'id="unorouter-model"' in response.text
     assert "load available free models" in response.text.lower()
+    assert "payload.detail" in response.text
     assert 'id="github-evolution-token"' in response.text
     assert "draft pull requests only" in response.text
     assert "loadGitHubEvolutionSettings" in response.text
@@ -1393,3 +1394,28 @@ def test_auto_queue_runs_only_after_owner_approval_and_zero_cost_provider_readin
     )
     assert manager_review.status_code == 200
     assert manager_review.json()["state"] == "completed"
+
+
+class _UnavailableUnoRouterAdapter:
+    def generate(self, request, *, model):
+        raise ProviderUnavailable("UnoRouter returned HTTP 401.")
+
+
+def test_unorouter_test_reports_provider_failure_without_mislabeling_auth(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway.configure((
+        (ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
+         _UnavailableUnoRouterAdapter()),
+    ))
+    runtime.gateway.set_usage_recorder(runtime.usage.record)
+
+    response = owner_client.post("/settings/providers/unorouter/test", headers=headers, json={})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "UnoRouter test failed safely: All eligible providers were unavailable: "
+        "unorouter: UnoRouter returned HTTP 401.. No paid fallback was attempted."
+    )
+    assert runtime.unorouter_tested_at is None
+    assert runtime.fleet.status().running is False
