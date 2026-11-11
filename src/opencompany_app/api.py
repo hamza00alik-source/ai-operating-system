@@ -33,7 +33,7 @@ from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
 from opencompany_core.unorouter_adapter import (
-    UNOROUTER_AUTO_FREE_MODEL, discover_free_models, unorouter_configuration_status,
+    UNOROUTER_AUTO_FREE_MODEL, discover_free_models, discover_model_catalog, unorouter_configuration_status,
 )
 from opencompany_core.secret_vault import SecretVaultError
 from opencompany_app.provider_settings_ui import OWNER_PROVIDER_SETTINGS_HTML, OWNER_PROVIDER_SETTINGS_JS
@@ -741,6 +741,34 @@ def list_unorouter_free_models(runtime: OpenCompanyRuntime = Depends(get_runtime
         "routing_mode": "automatic_all_free_models",
         "catalogue_cache_seconds": 300, "paid_models_included": False,
         "paid_fallback": False,
+    }
+
+
+@app.get("/settings/providers/unorouter/catalog", dependencies=[Depends(require_owner_key)])
+def import_unorouter_catalog(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Import the full live catalogue; paid/unsupported models are visible but hard-blocked."""
+    try:
+        saved = runtime.secret_vault.get("unorouter")
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored UnoRouter credentials cannot be decrypted.") from exc
+    if not saved:
+        raise HTTPException(status_code=409, detail="Save the UnoRouter API key first.")
+    try:
+        catalog = discover_model_catalog(saved["api_key"])
+    except ProviderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=f"UnoRouter full catalogue import failed safely: {exc}") from exc
+    eligible = [item for item in catalog if item["allowed_for_inference"]]
+    blocked = len(catalog) - len(eligible)
+    return {
+        "provider": "unorouter",
+        "source": "live public pricing catalogue intersected with authenticated /v1/models",
+        "total_models": len(catalog),
+        "eligible_free_chat_models": len(eligible),
+        "blocked_models": blocked,
+        "paid_models_included_for_inference": False,
+        "paid_fallback": False,
+        "policy": "FREE_ONLY_ZERO_PRICE_ONLINE_CHAT_KEY_ACCESS_REQUIRED",
+        "models": list(catalog),
     }
 
 
