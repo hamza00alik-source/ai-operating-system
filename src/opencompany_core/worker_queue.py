@@ -143,27 +143,46 @@ class DurableWorkerQueue:
                 ).fetchone()
                 if child is not None:
                     if (
-                        child["state"] != "approved"
+                        child["state"] not in {"approved", "queued"}
                         or child["assigned_agent_id"] != str(agent_id)
                         or child["role_key"] != agent["role_key"]
                         or child["team_key"] != agent["team_key"]
                     ):
-                        raise QueueError("delegated task is not approved or its assignee identity changed")
+                        raise QueueError("delegated task is not approved for re-admission or its assignee identity changed")
                     self._db.execute(
                         "UPDATE delegation_child_tasks SET state='queued' "
-                        "WHERE id=? AND state='approved'",
+                        "WHERE id=? AND state IN ('approved','queued')",
                         (str(item.id),),
                     )
-                self._db.execute(
+                # A work item has one durable queue row for its whole lifecycle.
+                # Allow an owner-reviewed retry/revision to reuse a terminal row,
+                # but never overwrite queued or actively leased work.
+                cursor = self._db.execute(
                     """INSERT INTO worker_queue
-                       (work_item_id,agent_id,payload_json,state,created_at,updated_at)
-                       VALUES(?,?,?,'queued',?,?)""",
+                       (work_item_id,agent_id,payload_json,state,attempts,lease_token,
+                        lease_expires_at,last_error,created_at,updated_at)
+                       VALUES(?,?,?,'queued',0,NULL,NULL,NULL,?,?)
+                       ON CONFLICT(work_item_id) DO UPDATE SET
+                         agent_id=excluded.agent_id,
+                         payload_json=excluded.payload_json,
+                         state='queued',
+                         attempts=0,
+                         lease_token=NULL,
+                         lease_expires_at=NULL,
+                         last_error=NULL,
+                         created_at=excluded.created_at,
+                         updated_at=excluded.updated_at
+                       WHERE worker_queue.state IN ('dead','done')""",
                     (str(item.id), str(agent_id), encoded, now, now),
                 )
-                self._db.execute(
+                if cursor.rowcount != 1:
+                    raise QueueError("work item already has queued or actively leased work")
+                cursor = self._db.execute(
                     "UPDATE work_items SET state=? WHERE id=? AND state=?",
                     (TaskState.QUEUED.value, str(item.id), TaskState.READY.value),
                 )
+                if cursor.rowcount != 1:
+                    raise QueueError("work item changed before queue admission")
                 self._append_audit(record, self._db)
                 self._db.execute("COMMIT")
             except Exception:
