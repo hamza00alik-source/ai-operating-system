@@ -47,7 +47,7 @@ class ProductWorkflowCreate(BaseModel):
 class ProductStageComplete(BaseModel):
     output: str = Field(min_length=1, max_length=12000)
     artifact_refs: list[str] = Field(default_factory=list, max_length=30)
-    evidence: list[str] = Field(default_factory=list, max_length=30)
+    evidence: list[str] = Field(min_length=1, max_length=30)
     qa_result: dict | None = None
 
 
