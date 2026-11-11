@@ -388,10 +388,10 @@ def create_owner_session(
             )
         raise HTTPException(status_code=401, detail="Owner authentication failed.")
     _clear_login_failures(client_key)
-    token, csrf, expires = runtime.sessions.create(lifetime_hours=12)
+    token, csrf, expires = runtime.sessions.create(lifetime_hours=168)
     secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
     response.set_cookie(
-        "opencompany_session", token, max_age=12 * 60 * 60, httponly=True,
+        "opencompany_session", token, max_age=7 * 24 * 60 * 60, httponly=True,
         secure=secure_cookie, samesite="strict", path="/",
     )
     response.headers["Cache-Control"] = "no-store"
