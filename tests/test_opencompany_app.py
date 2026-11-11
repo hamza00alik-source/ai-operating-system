@@ -613,13 +613,23 @@ def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_
     assert "httponly" in login.headers.get("set-cookie", "").lower()
     assert "samesite=strict" in login.headers.get("set-cookie", "").lower()
 
+    assert "max-age=43200" in login.headers.get("set-cookie", "").lower()
+
     status = owner_client.get("/auth/session")
     assert status.status_code == 200 and status.json()["authenticated"] is True
+    renewed_csrf = status.json()["csrf_token"]
+    assert renewed_csrf and renewed_csrf != csrf
     blocked = owner_client.post("/agents/bootstrap", json={})
     assert blocked.status_code == 401
-    allowed = owner_client.post(
+    stale_csrf = owner_client.post(
         "/agents/bootstrap",
         headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
+        json={},
+    )
+    assert stale_csrf.status_code == 403
+    allowed = owner_client.post(
+        "/agents/bootstrap",
+        headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
         json={},
     )
     assert allowed.status_code == 200
