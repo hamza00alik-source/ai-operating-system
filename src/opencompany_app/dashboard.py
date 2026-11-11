@@ -100,6 +100,14 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   </section>
   <section class="panel">
     <div class="row"><h2 class="section-title compact">Work queue</h2><span id="worker-status" class="pill">Workers stopped</span></div>
+    <label for="business-filter">Show business unit</label>
+    <select id="business-filter">
+      <option value="">All business units</option>
+      <option value="core">Core / internal operations</option>
+      <option value="physical-agency">Physical-products agency</option>
+      <option value="physical-brand">Own physical-product brand</option>
+      <option value="digital-products">Digital products business</option>
+    </select>
     <div class="auth worker-actions"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
   </section>
@@ -140,8 +148,10 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
     try{
+      const businessFilter=byId("business-filter").value;
+      const workItemsUrl=businessFilter?"/work-items?business_id="+encodeURIComponent(businessFilter):"/work-items";
       const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution,apiAnything]=await Promise.all([
-        request("/organization/departments"),request("/agents"),request("/work-items"),
+        request("/organization/departments"),request("/agents"),request(workItemsUrl),
         request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
       byId("department-count").textContent=org.count;
@@ -331,6 +341,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       setMessage("Connected. Private records loaded. No agents were activated and no external actions were performed.","success");
     }catch(error){setMessage(error.message,"error");}
   }
+  byId("business-filter").addEventListener("change",()=>{if(csrfToken)load();});
   byId("connect").addEventListener("click",async()=>{
     const apiKey=keyInput.value.trim();
     if(!apiKey){setMessage("Enter the owner API key first.","error");return;}
