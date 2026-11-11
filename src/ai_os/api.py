@@ -784,8 +784,8 @@ def get_workflow_instances(business_id: str = "core"):
 def get_workflow_detail(workflow_id: str, business_id: str = "core"):
     if business_id not in BUSINESS_IDS:
         raise HTTPException(status_code=422, detail="Unknown business environment.")
-    result = get_workflow(workflow_id)
-    if result is None or result.get("business_id") != business_id:
+    result = get_workflow(workflow_id, business_id=business_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="Workflow not found in this business environment.")
     return result
 
