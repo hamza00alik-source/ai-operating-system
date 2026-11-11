@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from ai_os.brain import BUSINESS_IDS
 from ai_os.db import connect
+from ai_os.business_scope import validate_business_task_scope
 
 DEPARTMENTS = {"executive","research","product","design","engineering","legal-compliance",
                "quality-assurance","marketing","sales-marketplace","customer-support","finance","people-workforce"}
@@ -75,6 +76,7 @@ def delegate_task(business_id: str, from_department: str, to_department: str, ti
     if from_department==to_department: raise ValueError("Choose a different receiving department.")
     if not title or len(title)>200: raise ValueError("Delegated task title must contain 1–200 characters.")
     if len(description)>12000: raise ValueError("Delegated task description cannot exceed 12000 characters.")
+    validate_business_task_scope(business_id, title, description)
     now,task_id,delegation_id=_now(),str(uuid4()),str(uuid4())
     with connect() as db:
         if parent_task_id:
