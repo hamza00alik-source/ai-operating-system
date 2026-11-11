@@ -99,7 +99,7 @@ class OwnerLoginInput(BaseModel):
 
 
 class UnoRouterSettingsInput(BaseModel):
-    api_key: str = Field(min_length=16, max_length=512)
+    api_key: str = Field(min_length=8, max_length=512)
     model: str = Field(min_length=3, max_length=200, pattern=r"^[A-Za-z0-9._/-]+:free$")
     confirm_free: bool
 
