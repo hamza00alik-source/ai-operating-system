@@ -113,7 +113,7 @@ class SQLiteStore:
                     PRAGMA user_version = 4;
                     COMMIT;
                 """)
-                return
+                version = 4
             if version == 1:
                 columns = {
                     row["name"] for row in self._connection.execute(
@@ -157,10 +157,10 @@ class SQLiteStore:
                         )
                     self._connection.execute("PRAGMA user_version = 4")
                     self._connection.execute("COMMIT")
+                    version = 4
                 except Exception:
                     self._connection.execute("ROLLBACK")
                     raise
-                return
             if version == 4:
                 try:
                     self._connection.executescript("""
@@ -192,11 +192,11 @@ class SQLiteStore:
                         PRAGMA user_version = 5;
                         COMMIT;
                     """)
+                    version = 5
                 except Exception:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")
                     raise
-                return
             if version == 5:
                 try:
                     self._connection.executescript("""
