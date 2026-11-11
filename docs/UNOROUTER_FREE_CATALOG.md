@@ -14,7 +14,7 @@ The catalogue refreshes every five minutes in-process. The owner can force a ref
 
 ## Routing
 
-The gateway rotates across the discovered free models. If a model is unavailable or rate-limited, it tries another model from the same verified-free pool. It never removes the `:free` suffix, rewrites a paid model ID, selects a paid route, or falls back to another provider.
+The gateway rotates across the discovered free models. If a model is unavailable or rate-limited, it tries up to five other models from the same verified-free pool per request; later requests continue rotating through the wider catalogue. It never removes the `:free` suffix, rewrites a paid model ID, selects a paid route, or falls back to another provider.
 
 Every successful completion must report an explicit provider cost of exactly zero. A missing cost, non-zero cost, unexpected model identity, or invalid response is rejected. The usage ledger records the actual model used.
 
