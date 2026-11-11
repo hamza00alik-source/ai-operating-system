@@ -122,19 +122,17 @@ class ModelGateway:
             raise ValueError("request budget must be finite and non-negative")
 
     def eligible_providers(self, *, request_budget_usd: float = 0.0) -> tuple[str, ...]:
+        """Return only explicitly confirmed-free providers.
+
+        Paid inference is globally disabled for this company runtime. A positive
+        request budget or PAID_OWNER_APPROVED flag cannot override this policy.
+        """
         self._validate_budget(request_budget_usd)
-        eligible = []
-        for item in self._providers:
-            policy = item.policy
-            if policy.billing_mode == BillingMode.FREE_CONFIRMED:
-                eligible.append(policy.name)
-            elif (
-                policy.billing_mode == BillingMode.PAID_OWNER_APPROVED
-                and request_budget_usd > 0
-                and policy.max_cost_per_request_usd <= request_budget_usd
-            ):
-                eligible.append(policy.name)
-        return tuple(eligible)
+        return tuple(
+            item.policy.name for item in self._providers
+            if item.policy.billing_mode == BillingMode.FREE_CONFIRMED
+            and item.policy.max_cost_per_request_usd == 0.0
+        )
 
     def complete(
         self,
