@@ -182,3 +182,15 @@ def test_collaboration_api_requires_owner_for_writes_and_validates_departments(m
         inbox=client.get("/company/collaboration/messages?business_id=physical-agency&department=product",
                          headers={"X-API-Key":"collab-owner-key"})
         assert inbox.status_code==200 and len(inbox.json())==1
+
+
+def test_workflow_detail_lookup_is_scoped_to_business(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'workflow-detail-scope.db'}")
+    from ai_os.workflows import create_workflow, get_workflow, list_workflows
+    agency = create_workflow("company-wide-operating-cycle", business_id="physical-agency")
+    digital = create_workflow("company-wide-operating-cycle", business_id="digital-products")
+    assert get_workflow(agency["id"], business_id="physical-agency")["id"] == agency["id"]
+    assert get_workflow(agency["id"], business_id="digital-products") is None
+    assert get_workflow(digital["id"], business_id="digital-products")["id"] == digital["id"]
+    assert [item["id"] for item in list_workflows(business_id="physical-agency")] == [agency["id"]]
+    assert [item["id"] for item in list_workflows(business_id="digital-products")] == [digital["id"]]
