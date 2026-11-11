@@ -1,3 +1,4 @@
+import json
 import pytest
 
 from opencompany_core import unorouter_adapter
@@ -116,3 +117,30 @@ def test_auto_catalog_adapter_skips_unavailable_free_model(monkeypatch):
     result = adapter.generate(ModelRequest("test", "req-fallback"), model=unorouter_adapter.UNOROUTER_AUTO_FREE_MODEL)
     assert result.model == "beta:free"
     assert seen == ["alpha:free", "beta:free"]
+
+
+
+def test_free_chat_response_without_cost_field_uses_zero_by_free_route(monkeypatch):
+    payload = {
+        "model": "alpha:free",
+        "choices": [{"message": {"content": "OPENCOMPANY_UNOROUTER_OK"}}],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+    }
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self, limit):
+            return json.dumps(payload).encode("utf-8")
+
+    monkeypatch.setattr(unorouter_adapter, "urlopen", lambda *a, **k: Response())
+    adapter = unorouter_adapter.UnoRouterAdapter("test-api-key")
+    result = adapter._generate_one(
+        ModelRequest("test", "req-no-cost-field"), model="alpha:free",
+    )
+    assert result.cost_usd == 0.0
+    assert result.input_tokens == 3
+    assert result.output_tokens == 2
+    assert result.text == "OPENCOMPANY_UNOROUTER_OK"
