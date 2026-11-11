@@ -130,6 +130,17 @@ class OpenRouterFreeAdapter:
         except (URLError, TimeoutError, OSError, ValueError):
             raise ProviderUnavailable("OpenRouter request failed or timed out.") from None
         try:
+            if not isinstance(data, dict):
+                raise ValueError
+            returned_model = str(data.get("model") or self.model)
+            if returned_model not in {self.model, self.model.removesuffix(":free")}:
+                raise ValueError
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            reported_cost = usage.get("cost", data.get("cost"))
+            if reported_cost is not None:
+                cost = float(reported_cost)
+                if cost != 0.0 or not __import__("math").isfinite(cost):
+                    raise ValueError
             content = data["choices"][0]["message"]["content"]
             if isinstance(content, list):
                 content = "".join(
