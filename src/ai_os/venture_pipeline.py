@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
+from urllib.parse import urlsplit
 
 from ai_os.db import connect
 
@@ -171,16 +172,38 @@ def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> di
         ):
             raise ValueError("Assessment rating must be between 0 and 5.")
     clean_evidence = []
-    for item in evidence[:100]:
-        if isinstance(item, dict) and str(item.get("url") or "").startswith("https://"):
-            clean_evidence.append({
-                "url": str(item["url"])[:1000],
-                "claim": str(item.get("claim") or "")[:1000],
-                "source_date": str(item.get("source_date") or "")[:80],
-            })
+    seen_urls = set()
+    for item in (evidence[:100] if isinstance(evidence, list) else []):
+        if not isinstance(item, dict):
+            continue
+        raw_url = str(item.get("url") or "").strip()
+        try:
+            parsed = urlsplit(raw_url)
+            safe_url = (
+                parsed.scheme == "https"
+                and bool(parsed.hostname)
+                and not parsed.username
+                and not parsed.password
+                and len(raw_url) <= 1000
+            )
+        except ValueError:
+            safe_url = False
+        if not safe_url:
+            continue
+        normalized_url = raw_url.rstrip("/")
+        if normalized_url in seen_urls:
+            continue
+        seen_urls.add(normalized_url)
+        clean_evidence.append({
+            "url": normalized_url,
+            "claim": str(item.get("claim") or "")[:1000],
+            "source_date": str(item.get("source_date") or "")[:80],
+        })
     enriched = dict(assessment)
-    if not enriched.get("source_urls"):
-        enriched["source_urls"] = [item["url"] for item in clean_evidence]
+    # The scorecard's source count must come from evidence records supplied for
+    # this assessment, not a free-form source_urls field in the assessment JSON.
+    # HTTPS syntax is not proof that a source exists or supports a claim.
+    enriched["source_urls"] = [item["url"] for item in clean_evidence]
     if len(json.dumps(enriched, ensure_ascii=False)) > 20000:
         raise ValueError("Assessment exceeds the 20 KB safe storage limit.")
     enriched["scorecard"] = score_assessment(enriched)
