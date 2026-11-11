@@ -14,7 +14,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import UUID, uuid4
 
-from .domain import AgentState, AuditRecord, TaskState, WorkItem
+from .domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,9 +346,19 @@ class DurableWorkerQueue:
             ).fetchone()
         return dict(row) if row is not None else None
 
-    def counts(self) -> dict[str, int]:
+    def counts(self, business_id: str | None = None) -> dict[str, int]:
+        if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError("unknown business unit for worker queue counts")
         with self._lock:
-            rows = self._db.execute(
-                "SELECT state,COUNT(*) AS total FROM worker_queue GROUP BY state"
-            ).fetchall()
+            if business_id is None:
+                rows = self._db.execute(
+                    "SELECT state,COUNT(*) AS total FROM worker_queue GROUP BY state"
+                ).fetchall()
+            else:
+                rows = self._db.execute(
+                    """SELECT q.state,COUNT(*) AS total FROM worker_queue q
+                       JOIN work_items w ON w.id=q.work_item_id
+                       WHERE w.business_id=? GROUP BY q.state""",
+                    (business_id,),
+                ).fetchall()
         return {row["state"]: int(row["total"]) for row in rows}
