@@ -1823,6 +1823,8 @@ def create_approved_learning_note(
         default_workforce().get(payload.role_key)
     except LookupError as exc:
         raise HTTPException(status_code=422, detail="Unknown role key.") from exc
+    if payload.business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
     now = datetime.now(timezone.utc)
     event = AuditRecord(
         id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
@@ -1831,8 +1833,6 @@ def create_approved_learning_note(
         details={"evidence_refs": payload.evidence_refs, "business_id": payload.business_id},
     )
     try:
-        if payload.business_id not in BUSINESS_UNIT_IDS:
-            raise ValueError("Unknown business unit.")
         note_id = runtime.learning.save_learning_note(
             role_key=payload.role_key, note=payload.note,
             evidence_refs=tuple(payload.evidence_refs), owner_id="owner", record=event,
