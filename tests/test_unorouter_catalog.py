@@ -167,3 +167,33 @@ def test_auto_catalog_adapter_reaches_models_beyond_old_attempt_limit(monkeypatc
     )
     assert result.model == models[-1]
     assert seen == list(models)
+
+
+def test_full_catalog_import_marks_paid_and_unsupported_models_blocked(monkeypatch):
+    responses = iter([
+        {"models": [
+            {"model_name":"free-chat:free","vendor":"A","type":"text","chat":True,"is_free":True,"online":True,"input_price":0,"output_price":0,"fixed_price":0,"supported_endpoint_types":["openai"]},
+            {"model_name":"paid-chat","vendor":"B","type":"text","chat":True,"is_free":False,"online":True,"input_price":1,"output_price":2,"fixed_price":0,"supported_endpoint_types":["openai"]},
+            {"model_name":"free-image:free","vendor":"C","type":"image","chat":False,"is_free":True,"online":True,"input_price":0,"output_price":0,"fixed_price":0,"supported_endpoint_types":["openai"]},
+        ]},
+        {"data":[{"id":"free-chat:free"},{"id":"paid-chat"},{"id":"free-image:free"}]},
+    ])
+    monkeypatch.setattr(unorouter_adapter,"_read_json",lambda *a,**k:next(responses))
+    catalog=unorouter_adapter.discover_model_catalog("test-api-key")
+    assert len(catalog)==3
+    assert [x["model_id"] for x in catalog if x["allowed_for_inference"]]==["free-chat:free"]
+    assert next(x for x in catalog if x["model_id"]=="paid-chat")["policy_status"]=="paid_or_unverified_pricing"
+    assert next(x for x in catalog if x["model_id"]=="free-image:free")["policy_status"]=="unsupported_for_chat_inference"
+
+
+def test_free_discovery_requires_explicit_zero_price_and_free_flag(monkeypatch):
+    responses=iter([
+        {"models":[
+            {"model_name":"false-free:free","type":"text","chat":True,"is_free":False,"online":True,"input_price":0,"output_price":0,"fixed_price":0,"supported_endpoint_types":["openai"]},
+            {"model_name":"real-free:free","type":"text","chat":True,"is_free":True,"online":True,"input_price":0,"output_price":0,"fixed_price":0,"supported_endpoint_types":["openai"]},
+        ]},
+        {"data":[{"id":"false-free:free"},{"id":"real-free:free"}]},
+    ])
+    monkeypatch.setattr(unorouter_adapter,"_read_json",lambda *a,**k:next(responses))
+    monkeypatch.setattr(unorouter_adapter,"_catalog_cache",{})
+    assert unorouter_adapter.discover_free_models("test-api-key",force_refresh=True)==("real-free:free",)
