@@ -47,5 +47,16 @@ def test_manager_escalates_when_no_specialist_matches_required_capabilities():
 def test_manager_team_size_is_bounded():
     import pytest
 
-    with pytest.raises(ValueError, match="between 1 and 5"):
-        plan_department_work(item(), ["market"], max_specialists=6)
+    with pytest.raises(ValueError, match="between 1 and 50"):
+        plan_department_work(item(), ["market"], max_specialists=51)
+
+
+
+def test_manager_can_select_multiple_specialist_teams_for_large_work_items():
+    plan = plan_department_work(item(), ["intelligence_research"], max_specialists=15)
+    assert plan.mode == DelegationMode.SPECIALIST_TEAM
+    assert len(plan.specialists) == 15
+    team_keys = {member.team_key for member in plan.specialists}
+    assert len(team_keys) == 3
+    assert len({member.role_key for member in plan.specialists}) == 15
+    assert plan.selected_team_key is None
