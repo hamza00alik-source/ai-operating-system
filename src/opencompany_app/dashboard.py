@@ -121,7 +121,12 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     if(method!=="GET" && method!=="HEAD" && csrfToken) headers.set("X-CSRF-Token",csrfToken);
     if(options.body) headers.set("Content-Type","application/json");
     const response=await fetch(path,{...options,headers,credentials:"same-origin",cache:"no-store"});
-    if(!response.ok) throw new Error(response.status===401?"Owner key rejected.":response.status===503?"Owner authentication is not configured on the server.":"Request failed ("+response.status+").");
+    if(!response.ok){
+      let detail="";
+      try{const payload=await response.json();if(typeof payload.detail==="string")detail=payload.detail;}catch{}
+      if(!detail) detail=response.status===401?"Owner key rejected.":"Request failed ("+response.status+").";
+      throw new Error(detail);
+    }
     return response.json();
   };
   async function load(){
