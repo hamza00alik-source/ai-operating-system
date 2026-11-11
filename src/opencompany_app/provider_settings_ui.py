@@ -6,10 +6,11 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
   <p class="muted">Enter your private API key here. It is sent only to this OpenCompany server, encrypted before database storage, and never displayed again. Choose a model whose ID ends with :free. No paid fallback is allowed. Encryption requires the dedicated server-side OPENCOMPANY_SECRET_ENCRYPTION_KEY (at least 32 characters); it never falls back to the owner API key. Keep this key backed up and stable or re-enter credentials after losing or rotating it.</p>
   <label for="unorouter-api-key">UnoRouter API key</label>
   <input id="unorouter-api-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste private API key">
-  <label for="unorouter-model">Free model ID</label>
-  <input id="unorouter-model" maxlength="200" autocomplete="off" placeholder="e.g. provider/model:free">
+  <label for="unorouter-model">Available free models (loaded from your API key)</label>
+  <select id="unorouter-model"><option value="">Enter your API key, then load free models</option></select>
   <label class="confirmation-label"><input id="unorouter-confirm-free" type="checkbox"> I confirm this selected model is listed as free by UnoRouter. Stop if the provider reports any charge.</label>
   <div class="auth">
+    <button id="unorouter-discover" type="button">Load available free models</button>
     <button id="unorouter-save" type="button">Save encrypted credentials</button>
     <button id="unorouter-test" type="button" disabled>Test free connection</button>
     <button id="unorouter-remove" type="button" disabled>Remove credentials</button>
@@ -57,15 +58,51 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
           :"No saved UnoRouter credentials. The provider gateway remains disabled.");
       byId("unorouter-test").disabled=!status.configured;
       byId("unorouter-remove").disabled=!status.api_key_present;
-      if(status.configured) byId("unorouter-model").value=status.model||"";
+      if(status.configured && status.model){
+        const select=byId("unorouter-model");
+        if(!Array.from(select.options).some(option=>option.value===status.model)){
+          const option=document.createElement("option");option.value=status.model;option.textContent=status.model+" · currently saved";select.append(option);
+        }
+        select.value=status.model;
+      }
     }catch(error){byId("unorouter-detail").textContent=error.message;}
   }
   byId("unorouter-refresh").addEventListener("click",loadUnoRouterSettings);
+  byId("unorouter-api-key").addEventListener("input",()=>{
+    const select=byId("unorouter-model");
+    select.replaceChildren();
+    const option=document.createElement("option");option.value="";option.textContent="Load free models for this API key";select.append(option);
+  });
+  byId("unorouter-discover").addEventListener("click",async()=>{
+    const apiKey=byId("unorouter-api-key").value.trim();
+    if(!apiKey){setMessage("Enter your UnoRouter API key first.","error");return;}
+    const button=byId("unorouter-discover");button.disabled=true;
+    byId("unorouter-detail").textContent="Checking the API key and loading models confirmed free and online by UnoRouter…";
+    try{
+      const result=await request("/settings/providers/unorouter/discover",{method:"POST",body:JSON.stringify({api_key:apiKey})});
+      const select=byId("unorouter-model");select.replaceChildren();
+      const models=Array.isArray(result.models)?result.models:[];
+      const placeholder=document.createElement("option");placeholder.value="";
+      placeholder.textContent=models.length?"Choose a free model":"No free, online models are currently available to this key";
+      select.append(placeholder);
+      for(const model of models){
+        if(typeof model.id!=="string")continue;
+        const option=document.createElement("option");option.value=model.id;
+        option.textContent=model.id+(model.vendor?" · "+model.vendor:"");
+        select.append(option);
+      }
+      if(models.length){select.value=models[0].id;}
+      byId("unorouter-detail").textContent=models.length
+        ?String(models.length)+" free, online model(s) are available to this API key. Paid models were excluded. Choose one, confirm the free-only condition, then save."
+        :"The key was accepted, but no model passed the live free/online pricing checks. Nothing was saved.";
+    }catch(error){byId("unorouter-detail").textContent=error.message;setMessage(error.message,"error");}
+    finally{button.disabled=false;}
+  });
   byId("unorouter-save").addEventListener("click",async()=>{
     const apiKey=byId("unorouter-api-key").value.trim();
     const model=byId("unorouter-model").value.trim();
     const confirmed=byId("unorouter-confirm-free").checked;
-    if(!apiKey||!model||!confirmed){setMessage("Enter the API key and free model ID, then confirm the model is free.","error");return;}
+    if(!apiKey||!model||!confirmed){setMessage("Enter the API key, load and select a free model, then confirm the free-only condition.","error");return;}
     if(!model.endsWith(":free")){setMessage("Only model IDs ending in :free are accepted.","error");return;}
     byId("unorouter-save").disabled=true;
     try{
