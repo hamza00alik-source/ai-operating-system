@@ -260,7 +260,7 @@ def verify_product_blueprint(path: Path) -> dict:
                 failed.append("archive contains duplicate filenames")
             else:
                 passed.append("unique archive filenames")
-            if any(name.startswith(("/", "\\\\")) or ".." in Path(name).parts for name in names):
+            if any(name.startswith("/") or chr(92) in name or ".." in Path(name).parts for name in names):
                 failed.append("archive contains an unsafe path")
             else:
                 passed.append("safe relative archive paths")
