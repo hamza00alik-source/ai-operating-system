@@ -286,6 +286,7 @@ def test_product_workflow_api_generates_and_serves_owner_authenticated_blueprint
                         artifact_refs=[], evidence=["recorded"],
                     )
 
+            repo.start_stage(workflow_id, "artifact_generation")
             generated = client.post(f"/product-workflows/{workflow_id}/generate-blueprint", headers=headers)
             assert generated.status_code == 200, generated.text
             payload = generated.json()
