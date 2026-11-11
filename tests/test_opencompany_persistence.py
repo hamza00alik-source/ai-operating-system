@@ -110,5 +110,30 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     ).fetchall()}
     version = store._connection.execute("PRAGMA user_version").fetchone()[0]
     assert {"role_key", "team_key"} <= columns
-    assert version == 3
+    work_item_columns = {row["name"] for row in store._connection.execute("PRAGMA table_info(work_items)").fetchall()}
+    assert "business_id" in work_item_columns
+    assert version == 4
+    store.close()
+
+
+def test_work_items_round_trip_and_filter_by_business_unit(tmp_path):
+    store = SQLiteStore(tmp_path / "business-scope.sqlite3")
+    agency = WorkItem(
+        uuid4(), "Agency supplier research", "Research third-party suppliers",
+        "intelligence-research", business_id="physical-agency",
+    )
+    brand = WorkItem(
+        uuid4(), "Own-brand product research", "Research own-brand demand",
+        "intelligence-research", business_id="physical-brand",
+    )
+    digital = WorkItem(
+        uuid4(), "Digital product research", "Research downloadable products",
+        "intelligence-research", business_id="digital-products",
+    )
+    for item in (agency, brand, digital):
+        store.save_work_item(item)
+    assert store.get_work_item(agency.id).business_id == "physical-agency"
+    assert store.list_work_items(business_id="physical-agency") == (agency,)
+    assert store.list_work_items(business_id="physical-brand") == (brand,)
+    assert store.list_work_items(business_id="digital-products") == (digital,)
     store.close()
