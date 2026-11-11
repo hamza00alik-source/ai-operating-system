@@ -116,10 +116,20 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
   });
   byId("unorouter-test").addEventListener("click",async()=>{
     byId("unorouter-test").disabled=true;
+    setMessage("Starting the zero-cost UnoRouter test…");
     try{
-      const result=await request("/settings/providers/unorouter/test",{method:"POST",body:"{}"});
-      const workerMessage=result.worker_started?"Worker fleet started automatically.":(result.worker_autostart_enabled?"Worker fleet did not start; check the owner worker controls.":"Worker autostart is disabled.");
-      setMessage("UnoRouter test succeeded: "+result.model+" · "+result.cost_usd+" USD reported cost. "+workerMessage,"success");
+      const started=await request("/settings/providers/unorouter/test",{method:"POST",body:"{}"});
+      if(!started.job_id) throw new Error("The server did not return a test job ID.");
+      let result=started;
+      const deadline=Date.now()+90000;
+      while(result.status==="queued"||result.status==="running"){
+        if(Date.now()>=deadline) throw new Error("The test is still running on the server. Refresh status before starting another test.");
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        result=await request("/settings/providers/unorouter/test/"+encodeURIComponent(started.job_id));
+      }
+      if(result.status!=="succeeded"||result.success!==true) throw new Error(result.error||"UnoRouter test did not complete successfully.");
+      const workerMessage=result.worker_started?"Worker fleet started automatically.":(result.worker_autostart_enabled?"Worker autostart is enabled but the fleet did not start.":"Worker autostart is disabled.");
+      setMessage("UnoRouter test succeeded: "+result.model+" · "+result.cost_usd+" USD · "+result.input_tokens+"/"+result.output_tokens+" tokens. "+workerMessage,"success");
       await load();
     }catch(error){setMessage(error.message,"error");}
     finally{byId("unorouter-test").disabled=false;}
