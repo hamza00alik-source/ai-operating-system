@@ -49,6 +49,7 @@ def recommend_department_plan(
         f"Manager role: {manager.title}\n"
         f"Department mission: {department.mission}\n"
         f"Manager operating procedure:\n{manager_steps}\n"
+        f"Business unit: {item.business_id}. Keep all context inside this business unit.\n"
         f"Work item title: {item.title}\n"
         f"Work item objective: {item.objective}\n"
         "Select the smallest useful set of exact capability identifiers from the allowed catalogue. "
