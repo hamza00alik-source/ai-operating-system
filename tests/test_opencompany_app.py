@@ -626,7 +626,7 @@ def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_
         headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
         json={},
     )
-    assert stale_csrf.status_code == 403
+    assert stale_csrf.status_code == 401
     allowed = owner_client.post(
         "/agents/bootstrap",
         headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
@@ -635,7 +635,7 @@ def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_
     assert allowed.status_code == 200
     logout = owner_client.post(
         "/auth/logout",
-        headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
+        headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
     )
     assert logout.status_code == 200
     after = owner_client.get("/agents")
