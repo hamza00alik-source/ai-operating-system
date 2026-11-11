@@ -34,6 +34,20 @@ _RULES = {
         "assumptions": "strategic_assumption_testing",
         "workflow": "executive_workflow_design",
         "roadmap": "strategic_roadmapping",
+        "strategy": "enterprise_strategy",
+        "cross-department": "cross_department_program_delivery",
+        "executive research": "executive_research_synthesis",
+        "owner escalation": "owner_escalation_triage",
+        "management information": "management_information_systems",
+        "execution readiness": "execution_readiness_assessment",
+        "kpi": "kpi_architecture",
+        "executive quality": "executive_quality_assurance",
+        "business model": "business_model_analysis",
+        "cross-functional": "cross_functional_delivery",
+        "executive knowledge": "executive_knowledge_management",
+        "enterprise planning": "enterprise_planning",
+        "management review": "management_review_facilitation",
+
     },
     "intelligence-research": {
         "market": "market_demand_analysis",
@@ -69,6 +83,8 @@ _RULES = {
         "intent": "purchase_intent_analysis",
         "purchase": "purchase_intent_analysis",
         "due diligence": "opportunity_due_diligence",
+        "product category": "product_category_mapping"
+
     },
     "product-innovation": {
         "discovery": "product_discovery",
@@ -100,6 +116,19 @@ _RULES = {
         "onboarding": "product_onboarding_design",
         "retention": "product_retention_analysis",
         "sunset": "product_sunset_planning",
+        "innovation scouting": "innovation_scanning",
+        "portfolio": "product_portfolio_management",
+        "product strategy": "product_strategy",
+        "jobs to be done": "jobs_to_be_done_research",
+        "opportunity": "product_opportunity_analysis",
+        "workflow": "product_workflow_architecture",
+        "accessibility": "product_accessibility_design",
+        "localization": "product_localization_planning",
+        "supportability": "product_supportability_analysis",
+        "feedback": "product_feedback_analysis",
+        "adoption": "product_adoption_strategy",
+        "metrics": "product_metrics_design"
+
     },
     "engineering-ai-systems": {
         "backend": "backend_service_engineering",
@@ -144,6 +173,11 @@ _RULES = {
         "chaos": "chaos_testing",
         "accessibility": "accessibility_testing",
         "incident": "incident_response",
+        "developer experience": "developer_experience_engineering",
+        "documentation": "technical_documentation_engineering",
+        "workflow state": "workflow_state_management",
+        "cloud runtime": "cloud_runtime_operations"
+
     },
     "media-creative-production": {
         "creative": "creative_direction",
@@ -188,6 +222,9 @@ _RULES = {
         "consistency": "visual_consistency_review",
         "version": "creative_version_control",
         "cost": "media_production_costing",
+        "production workflow": "production_workflow_management",
+        "art direction": "art_direction"
+
     },
     "marketing-audience-growth": {
         "audience": "audience_research",
@@ -224,6 +261,8 @@ _RULES = {
         "attribution": "marketing_attribution",
         "trust": "audience_trust_analysis",
         "repurposing": "content_repurposing_strategy",
+        "compliance": "marketing_compliance_review"
+
     },
     "revenue-partnerships": {
         "marketplace": "marketplace_operations",
@@ -257,6 +296,10 @@ _RULES = {
         "channel": "channel_profitability",
         "refund": "refund_exposure_analysis",
         "risk": "commercial_risk_assessment",
+        "product data": "product_data_quality",
+        "inbound lead": "inbound_lead_research",
+        "due diligence": "partner_due_diligence"
+
     },
     "customer-operations": {
         "feedback": "customer_feedback_analysis",
@@ -289,6 +332,13 @@ _RULES = {
         "eligibility": "returns_eligibility_analysis",
         "promise": "customer_promise_compliance",
         "privacy": "customer_privacy_review",
+        "operational documentation": "operations_documentation",
+        "customer operations": "customer_operations_management",
+        "tutorial": "product_tutorial_development",
+        "churn": "customer_churn_analysis",
+        "customer success": "customer_success_management",
+        "handoff": "operational_handoff_design"
+
     },
     "finance-risk": {
         "cost": "cost_accounting",
@@ -317,6 +367,17 @@ _RULES = {
         "anomaly": "cost_anomaly_detection",
         "scenario": "financial_scenario_modelling",
         "risk": "risk_reporting",
+        "contribution margin": "contribution_margin_analysis",
+        "cash conversion": "cash_conversion_analysis",
+        "working capital": "working_capital_management",
+        "revenue recognition": "revenue_recognition_analysis",
+        "free tier quota": "free_tier_quota_management",
+        "vendor concentration": "vendor_concentration_risk",
+        "business exposure": "business_exposure_assessment",
+        "open source licence": "open_source_license_compliance",
+        "terms change": "commercial_terms_change_monitoring",
+        "financial evidence": "financial_evidence_review"
+
     },
     "organizational-learning-quality": {
         "performance": "agent_performance_evaluation",
@@ -345,6 +406,22 @@ _RULES = {
         "cross-team": "cross_team_quality",
         "release": "independent_release_review",
         "evidence": "evidence_quality_assessment",
+        "task routing": "agent_task_routing_evaluation",
+        "role coverage": "specialist_role_coverage_audit",
+        "decision quality": "manager_decision_quality_evaluation",
+        "acceptance rubric": "task_acceptance_rubric_design",
+        "citation completeness": "citation_completeness_review",
+        "hallucination": "hallucination_pattern_detection",
+        "output usability": "output_usability_evaluation",
+        "bottleneck": "workflow_bottleneck_analysis",
+        "operational experiment": "operational_experiment_design",
+        "memory provenance": "memory_provenance_audit",
+        "evaluation case": "evaluation_case_curation",
+        "adversarial": "adversarial_testing",
+        "action boundary": "autonomous_action_boundary_testing",
+        "availability": "agent_availability_analysis",
+        "interdepartmental": "interdepartmental_quality_audit"
+
     },
 }
 
