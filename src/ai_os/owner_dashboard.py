@@ -818,7 +818,7 @@ $("logoutButton").onclick=async()=>{try{await fetch("/auth/session",{method:"DEL
 fetch("/auth/session",{credentials:"same-origin"}).then(r=>r.json()).then(s=>{if(s.authenticated)startDashboard();else showLogin()}).catch(()=>showLogin("Sign in to continue."));
 </script><script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-(()=>{
+(async()=>{
 const canvas=document.getElementById("officeCanvas"),fallback=document.getElementById("officeFallback");
 if(!canvas)return;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x070e1b);scene.fog=new THREE.Fog(0x070e1b,28,58);
@@ -967,7 +967,7 @@ fallback.style.display="none";
 })().catch(e=>{const f=document.getElementById("officeFallback");if(f)f.textContent="3D office could not start: "+e.message;});
 </script>
 <script>
-(function(){
+(async function(){
  const formData=form=>Object.fromEntries(new FormData(form).entries());
  const send=async(path,body)=>api(path,{method:"POST",body:JSON.stringify(body)});
  const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
