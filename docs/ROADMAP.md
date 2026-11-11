@@ -94,7 +94,9 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] Link each venture opportunity to its queued task and latest agent run; expose specialist output, CEO review and run errors in an owner-only report viewer.
 - [x] Extract HTTPS URL candidates from the report for owner review without treating them as verified evidence or auto-approving assessments.
 - [ ] Add primary-source web research retrieval, citation-quality checks and dated source refresh.
-- [ ] Generate conservative/base/upside financial models with explicit assumptions, startup cash requirements and break-even analysis.
+- [x] Generate conservative/base/upside financial models with explicit assumptions, startup cash requirements and break-even analysis.
+- [x] Track owner-confirmed paid expenses separately from approved-but-unpaid expenses; calculate per-currency verified net cash movement by payment month without initiating payments.
+- [x] Add a report-to-assessment draft handoff that copies report text and URL candidates but leaves ratings, source verification and saving to the owner.
 - [ ] Track validation experiments, customer interviews and willingness-to-pay evidence without autonomous customer outreach.
 - [ ] Add portfolio-level P&L, opportunity comparison, capital allocation and scale/pivot/close recommendations.
 - [ ] Add scheduled discovery scans and recurring executive opportunity reviews, with no paid model or external action fallback.
