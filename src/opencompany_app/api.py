@@ -212,7 +212,7 @@ class ExecutivePlanInput(BaseModel):
 
 
 class ManagerProposalInput(BaseModel):
-    max_specialists: int = Field(default=5, ge=1, le=5)
+    max_specialists: int = Field(default=15, ge=1, le=50)
 
 
 class WorkItemTransitionInput(BaseModel):
