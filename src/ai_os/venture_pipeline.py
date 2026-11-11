@@ -159,18 +159,6 @@ def queue_research(opportunity_id: str, task_id: str) -> dict:
     return get_opportunity(opportunity_id)
 
 
-def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> dict:
-    if not isinstance(assessment, dict):
-        raise ValueError("Assessment must be a structured object.")
-    ratings = assessment.get("ratings") or {}
-    if not isinstance(ratings, dict):
-        raise ValueError("Assessment ratings must be an object with six named dimensions.")
-    for key in DIMENSIONS:
-        rating = ratings.get(key)
-        if rating is not None and (
-            not isinstance(rating, (int, float)) or isinstance(rating, bool) or not 0 <= rating <= 5
-        ):
-            raise ValueError("Assessment rating must be between 0 and 5.")
 def clean_evidence_records(evidence: list) -> list:
     """Keep distinct HTTPS evidence candidates; this does not verify source content."""
     clean_evidence = []
@@ -204,6 +192,18 @@ def clean_evidence_records(evidence: list) -> list:
     return clean_evidence
 
 
+def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> dict:
+    if not isinstance(assessment, dict):
+        raise ValueError("Assessment must be a structured object.")
+    ratings = assessment.get("ratings") or {}
+    if not isinstance(ratings, dict):
+        raise ValueError("Assessment ratings must be an object with six named dimensions.")
+    for key in DIMENSIONS:
+        rating = ratings.get(key)
+        if rating is not None and (
+            not isinstance(rating, (int, float)) or isinstance(rating, bool) or not 0 <= rating <= 5
+        ):
+            raise ValueError("Assessment rating must be between 0 and 5.")
     clean_evidence = clean_evidence_records(evidence)
     enriched = dict(assessment)
     # The scorecard's source count must come from evidence records supplied for
