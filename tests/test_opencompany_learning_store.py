@@ -44,6 +44,8 @@ def test_evaluation_proposal_decision_and_learning_note_are_durable(tmp_path):
         risk_level="low", based_on_evaluations=(evaluation.id,),
     )
     repository.save_proposal(proposal, audit("learning.proposed", "improvement_proposal", proposal.id))
+    assert repository.list_proposals("core")[0]["id"] == str(proposal.id)
+    assert repository.list_proposals("physical-agency") == []
     assert repository.decide_proposal(
         proposal.id, approved=True, owner_id="owner",
         rationale="Approved as role guidance.", record=audit("learning.approved", "improvement_proposal", proposal.id),
