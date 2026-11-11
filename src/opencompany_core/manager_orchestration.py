@@ -51,7 +51,7 @@ def plan_department_work(
     *,
     max_specialists: int = 15,
 ) -> ManagerDelegationPlan:
-    """Choose direct manager handling or a single specialist team for review."""
+    """Choose manager handling or a bounded multi-team specialist plan for review."""
     if not 1 <= max_specialists <= 50:
         raise ValueError("max_specialists must be between 1 and 50")
     requested = tuple(sorted({
