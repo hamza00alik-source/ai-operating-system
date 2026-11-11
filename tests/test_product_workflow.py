@@ -179,3 +179,40 @@ def test_automated_qa_requires_separate_pass_fail_and_untested_lists(tmp_path):
             pass
     finally:
         store.close()
+
+
+def test_product_workflow_api_requires_owner_and_persists_created_job(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from opencompany_app.api import app, get_runtime
+    from opencompany_app.runtime import create_runtime
+
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "product-test-owner-key")
+    runtime = create_runtime(str(tmp_path / "product-api.sqlite3"))
+    app.dependency_overrides[get_runtime] = lambda: runtime
+    try:
+        with TestClient(app) as client:
+            denied = client.post("/product-workflows", json={
+                "title": "API test", "brief": "Create an internal product workflow."
+            })
+            assert denied.status_code == 401
+
+            created = client.post(
+                "/product-workflows",
+                headers={"X-OpenCompany-API-Key": "product-test-owner-key"},
+                json={"title": "API test", "brief": "Create an internal product workflow."},
+            )
+            assert created.status_code == 200
+            payload = created.json()
+            assert payload["title"] == "API test"
+            assert payload["cost_ceiling_usd"] == 0
+            assert payload["external_actions_enabled"] is False
+
+            listed = client.get(
+                "/product-workflows",
+                headers={"X-OpenCompany-API-Key": "product-test-owner-key"},
+            )
+            assert listed.status_code == 200
+            assert listed.json()["count"] == 1
+    finally:
+        app.dependency_overrides.clear()
+        runtime.close()
