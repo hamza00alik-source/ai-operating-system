@@ -68,15 +68,15 @@ class OwnerSessionStore:
             return bool(csrf and hmac.compare_digest(row["csrf_hash"], _hash(csrf)))
         return True
 
-    def rotate_csrf(self, token: str) -> tuple[str, datetime] | None:
-        """Issue a fresh CSRF token after a browser reload without changing the session."""
+    def rotate_csrf(self, token: str, current_csrf: str | None = None) -> tuple[str, datetime] | None:
+        """Restore a browser's shared CSRF cookie, rotating only if it is missing or invalid."""
         if not token or len(token) > 256:
             return None
         now = datetime.now(timezone.utc)
         csrf = secrets.token_urlsafe(32)
         with self._lock:
             row = self._db.execute(
-                "SELECT expires_at,revoked_at FROM owner_sessions WHERE token_hash=?",
+                "SELECT csrf_hash,expires_at,revoked_at FROM owner_sessions WHERE token_hash=?",
                 (_hash(token),),
             ).fetchone()
             if row is None or row["revoked_at"] is not None:
@@ -87,6 +87,8 @@ class OwnerSessionStore:
                 return None
             if expires <= now:
                 return None
+            if current_csrf and hmac.compare_digest(row["csrf_hash"], _hash(current_csrf)):
+                return current_csrf, expires
             self._db.execute(
                 "UPDATE owner_sessions SET csrf_hash=? WHERE token_hash=?",
                 (_hash(csrf), _hash(token)),
