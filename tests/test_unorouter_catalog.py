@@ -122,7 +122,7 @@ def test_auto_catalog_adapter_skips_unavailable_free_model(monkeypatch):
 
 def test_free_chat_response_without_cost_field_uses_zero_by_free_route(monkeypatch):
     payload = {
-        "model": "alpha:free",
+        "model": "alpha",
         "choices": [{"message": {"content": "OPENCOMPANY_UNOROUTER_OK"}}],
         "usage": {"prompt_tokens": 3, "completion_tokens": 2},
     }
@@ -144,3 +144,4 @@ def test_free_chat_response_without_cost_field_uses_zero_by_free_route(monkeypat
     assert result.input_tokens == 3
     assert result.output_tokens == 2
     assert result.text == "OPENCOMPANY_UNOROUTER_OK"
+    assert result.model == "alpha:free"
