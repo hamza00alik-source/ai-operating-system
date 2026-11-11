@@ -131,3 +131,37 @@ def test_investor_relationship_management(monkeypatch):
         listing = client.get("/business/investors", headers=headers)
         assert listing.status_code == 200
         assert any(x["id"] == created.json()["id"] for x in listing.json())
+
+
+
+def test_code_assets_and_license_offers_are_business_isolated(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    headers = {"X-API-Key": "test-owner-key"}
+    with TestClient(app) as client:
+        asset = client.post("/code-assets", headers=headers, json={
+            "business_id": "digital-products",
+            "name": "Digital product source",
+            "ownership_status": "verified",
+            "dependency_review": "passed",
+        })
+        assert asset.status_code == 201
+        assert asset.json()["business_id"] == "digital-products"
+        digital_assets = client.get("/code-assets?business_id=digital-products", headers=headers)
+        agency_assets = client.get("/code-assets?business_id=physical-agency", headers=headers)
+        assert any(item["id"] == asset.json()["id"] for item in digital_assets.json())
+        assert all(item["id"] != asset.json()["id"] for item in agency_assets.json())
+
+        cross_business_offer = client.post("/code-assets/license-offers", headers=headers, json={
+            "business_id": "physical-agency", "asset_id": asset.json()["id"],
+            "buyer": "Agency buyer", "terms": "Draft offer only.",
+        })
+        assert cross_business_offer.status_code == 404
+        offer = client.post("/code-assets/license-offers", headers=headers, json={
+            "business_id": "digital-products", "asset_id": asset.json()["id"],
+            "buyer": "Digital buyer", "terms": "Draft offer only.",
+        })
+        assert offer.status_code == 201
+        assert offer.json()["business_id"] == "digital-products"
+        agency_offers = client.get("/code-assets/license-offers?business_id=physical-agency", headers=headers)
+        assert all(item["id"] != offer.json()["id"] for item in agency_offers.json())
