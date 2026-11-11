@@ -158,44 +158,65 @@ class GitHubEvolutionClient:
         base_sha = base_ref["object"]["sha"]
         base_commit = self._request("GET", f"/git/commits/{base_sha}")
         branch = f"feat/opencompany-evolution-{uuid4().hex[:12]}"
-        self._request("POST", "/git/refs", {
-            "ref": f"refs/heads/{branch}", "sha": base_sha,
-        })
-        tree_entries = []
-        for path, content in sorted(files.items()):
-            blob = self._request("POST", "/git/blobs", {
-                "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-                "encoding": "base64",
+        branch_created = False
+        draft_confirmed = False
+        try:
+            self._request("POST", "/git/refs", {
+                "ref": f"refs/heads/{branch}", "sha": base_sha,
             })
-            tree_entries.append({
-                "path": path, "mode": "100644", "type": "blob", "sha": blob["sha"],
+            branch_created = True
+            tree_entries = []
+            for path, content in sorted(files.items()):
+                blob = self._request("POST", "/git/blobs", {
+                    "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+                    "encoding": "base64",
+                })
+                tree_entries.append({
+                    "path": path, "mode": "100644", "type": "blob", "sha": blob["sha"],
+                })
+            tree = self._request("POST", "/git/trees", {
+                "base_tree": base_commit["tree"]["sha"], "tree": tree_entries,
             })
-        tree = self._request("POST", "/git/trees", {
-            "base_tree": base_commit["tree"]["sha"], "tree": tree_entries,
-        })
-        commit = self._request("POST", "/git/commits", {
-            "message": f"AI proposal: {title}",
-            "tree": tree["sha"], "parents": [base_sha],
-        })
-        self._request("PATCH", f"/git/refs/heads/{urllib.parse.quote(branch, safe='/')}", {
-            "sha": commit["sha"], "force": False,
-        })
-        body = (
-            "## OpenCompany AI-generated code proposal\n\n"
-            f"{summary}\n\n"
-            "### Verification\n"
-            "- GitHub Actions must pass before this change is considered.\n"
-            "- Human owner review is required before merging into the rebuild branch.\n"
-            "- This PR does not merge, deploy, change production, or modify secrets.\n"
-        )
-        pr = self._request("POST", "/pulls", {
-            "title": title, "head": branch, "base": self.base_branch, "body": body,
-            "draft": True,
-        })
-        return GitHubPullRequest(
-            number=int(pr["number"]), url=pr["html_url"], branch=branch,
-            commit_sha=commit["sha"], title=title,
-        )
+            commit = self._request("POST", "/git/commits", {
+                "message": f"AI proposal: {title}",
+                "tree": tree["sha"], "parents": [base_sha],
+            })
+            self._request("PATCH", f"/git/refs/heads/{urllib.parse.quote(branch, safe='/')}", {
+                "sha": commit["sha"], "force": False,
+            })
+            body = (
+                "## OpenCompany AI-generated code proposal\n\n"
+                f"{summary}\n\n"
+                "### Verification\n"
+                "- GitHub Actions must pass before this change is considered.\n"
+                "- Human owner review is required before merging into the rebuild branch.\n"
+                "- This PR does not merge, deploy, change production, or modify secrets.\n"
+            )
+            pr = self._request("POST", "/pulls", {
+                "title": title, "head": branch, "base": self.base_branch, "body": body,
+                "draft": True,
+            })
+            number = pr.get("number")
+            if not isinstance(number, int) or number < 1:
+                raise GitHubEvolutionError("GitHub did not return a valid draft pull request number")
+            if pr.get("draft") is not True:
+                try:
+                    self._request("PATCH", f"/pulls/{number}", {"state": "closed"})
+                except GitHubEvolutionError:
+                    pass
+                raise GitHubEvolutionError("GitHub did not confirm draft status; the pull request was closed where possible")
+            draft_confirmed = True
+            return GitHubPullRequest(
+                number=number, url=pr["html_url"], branch=branch,
+                commit_sha=commit["sha"], title=title,
+            )
+        except Exception:
+            if branch_created and not draft_confirmed:
+                try:
+                    self._request("DELETE", f"/git/refs/heads/{urllib.parse.quote(branch, safe='/')}")
+                except GitHubEvolutionError:
+                    pass
+            raise
 
     def get_pull_request(self, number: int) -> dict:
         if not 1 <= number <= 2_147_483_647:
