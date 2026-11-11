@@ -256,17 +256,30 @@ class SQLiteStore:
                 self._connection.execute("ROLLBACK")
                 raise
 
-    def activate_all_draft_agents_with_audit(self) -> int:
-        """Atomically activate all provisioned, catalogue-bound draft profiles."""
+    def activate_all_draft_agents_with_audit(
+        self, *, department: str | None = None, team_key: str | None = None
+    ) -> int:
+        """Atomically activate draft profiles within an optional owner-selected scope."""
+        if team_key is not None and department is None:
+            raise ValueError("team-scoped activation requires a department")
         correlation_id = str(uuid4())
         now = datetime.now(timezone.utc)
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
+                clauses = ["state=?"]
+                parameters: list[str] = [AgentState.DRAFT.value]
+                if department is not None:
+                    clauses.append("department=?")
+                    parameters.append(department)
+                if team_key is not None:
+                    clauses.append("team_key=?")
+                    parameters.append(team_key)
                 rows = self._connection.execute(
                     """SELECT id,department,role_key,team_key,revision
-                       FROM agent_profiles WHERE state=? ORDER BY department,role_key,id""",
-                    (AgentState.DRAFT.value,),
+                       FROM agent_profiles WHERE """ + " AND ".join(clauses) +
+                    " ORDER BY department,role_key,id",
+                    tuple(parameters),
                 ).fetchall()
                 for row in rows:
                     if not row["department"] or not row["role_key"] or not row["team_key"]:
@@ -285,7 +298,7 @@ class SQLiteStore:
                         outcome="active", correlation_id=correlation_id,
                         details={
                             "department": row["department"], "role_key": row["role_key"],
-                            "team_key": row["team_key"], "activation_policy": "owner-approved-runtime-config",
+                            "team_key": row["team_key"], "activation_policy": "owner-approved-scoped-activation",
                         },
                     )
                     previous = self._connection.execute(
