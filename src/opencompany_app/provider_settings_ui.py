@@ -3,7 +3,7 @@
 OWNER_PROVIDER_SETTINGS_HTML = r"""
 <section class="panel" id="unorouter-settings">
   <div class="row"><h2 class="section-title compact">UnoRouter free AI provider</h2><span id="unorouter-state" class="pill">Not configured</span></div>
-  <p class="muted">Enter your UnoRouter API key once. OpenCompany automatically discovers the models your key can access, intersects them with UnoRouter's online catalogue and key-visible :free model IDs, and rotates across eligible free models. The catalogue refreshes every five minutes. Paid models are excluded and paid fallback is disabled. Encryption uses OPENCOMPANY_SECRET_ENCRYPTION_KEY, which must remain stable.</p>
+  <p class="muted">Enter your private API key here. It is sent only to this OpenCompany server, encrypted before database storage, and never displayed again. Choose a model whose ID ends with :free. No paid fallback is allowed. Encryption requires the dedicated server-side OPENCOMPANY_SECRET_ENCRYPTION_KEY (at least 32 characters); it never falls back to the owner API key. Keep this key backed up and stable or re-enter credentials after losing or rotating it.</p>
   <label for="unorouter-api-key">UnoRouter API key</label>
   <input id="unorouter-api-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste inference API key (sk-…)">
   <p class="muted">Use the inference API key shown on UnoRouter's Tokens page. Do not use the separate account API-access token from Settings → Security.</p>
