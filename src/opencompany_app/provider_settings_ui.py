@@ -5,16 +5,19 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
   <div class="row"><h2 class="section-title compact">UnoRouter free AI provider</h2><span id="unorouter-state" class="pill">Not configured</span></div>
   <p class="muted">Enter your private API key here. It is sent only to this OpenCompany server, encrypted before database storage, and never displayed again. Choose a model whose ID ends with :free. No paid fallback is allowed. Encryption requires the dedicated server-side OPENCOMPANY_SECRET_ENCRYPTION_KEY (at least 32 characters); it never falls back to the owner API key. Keep this key backed up and stable or re-enter credentials after losing or rotating it.</p>
   <label for="unorouter-api-key">UnoRouter API key</label>
-  <input id="unorouter-api-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste private API key">
-  <label for="unorouter-model">Free model ID</label>
-  <input id="unorouter-model" maxlength="200" autocomplete="off" placeholder="e.g. provider/model:free">
-  <label class="confirmation-label"><input id="unorouter-confirm-free" type="checkbox"> I confirm this selected model is listed as free by UnoRouter. Stop if the provider reports any charge.</label>
+  <input id="unorouter-api-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste inference API key (sk-…)">
+  <p class="muted">Use the inference API key shown on UnoRouter's Tokens page. Do not use the separate account API-access token from Settings → Security.</p>
+  <label for="unorouter-model">Model routing</label>
+  <input id="unorouter-model" maxlength="200" autocomplete="off" readonly value="unorouter/free-catalog:free">
+  <label class="confirmation-label"><input id="unorouter-confirm-free" type="checkbox"> I confirm OpenCompany may use only online catalogue models exposed to my key with the :free suffix. Stop if any request reports a charge.</label>
   <div class="auth">
     <button id="unorouter-save" type="button">Save encrypted credentials</button>
     <button id="unorouter-test" type="button" disabled>Test free connection</button>
     <button id="unorouter-remove" type="button" disabled>Remove credentials</button>
     <button id="unorouter-refresh" type="button">Refresh status</button>
+    <button id="unorouter-discover" type="button" disabled>Discover all free models</button>
   </div>
+  <p id="unorouter-model-catalogue" class="muted" aria-live="polite">Free model catalogue has not been loaded.</p>
   <p id="unorouter-detail" class="muted" aria-live="polite">Credentials are not configured.</p>
   <p class="muted">Connection testing sends one short prompt. After a successful zero-cost test, the worker fleet starts automatically only when owner-configured autostart is enabled. Paid fallback is never used.</p>
 </section>
@@ -49,31 +52,41 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
   async function loadUnoRouterSettings(){
     try{
       const status=await request("/settings/providers/unorouter");
-      byId("unorouter-state").textContent=status.configuration_error?"Recovery needed":(status.configured?"Credentials saved · "+(status.model||"free model"):"Not configured");
+      byId("unorouter-state").textContent=status.configuration_error?"Recovery needed":(status.configured?"Credentials saved · all free models":"Not configured");
       byId("unorouter-detail").textContent=status.configuration_error
         ?status.configuration_error
         :(status.configured
-          ?"Encrypted credentials are saved on the server. API key: hidden. Model: "+status.model+". Live inference: "+(status.real_inference_verified?"verified":"not yet tested")+"."
+          ?"Encrypted credentials are saved. API key: hidden. Routing: automatic discovery and rotation across all confirmed-free models. Live inference: "+(status.real_inference_verified?"verified":"not yet tested")+"."
           :"No saved UnoRouter credentials. The provider gateway remains disabled.");
       byId("unorouter-test").disabled=!status.configured;
+      byId("unorouter-discover").disabled=!status.configured;
       byId("unorouter-remove").disabled=!status.api_key_present;
-      if(status.configured) byId("unorouter-model").value=status.model||"";
+      byId("unorouter-model").value="unorouter/free-catalog:free";
     }catch(error){byId("unorouter-detail").textContent=error.message;}
   }
   byId("unorouter-refresh").addEventListener("click",loadUnoRouterSettings);
+  byId("unorouter-discover").addEventListener("click",async()=>{
+    byId("unorouter-discover").disabled=true;
+    byId("unorouter-model-catalogue").textContent="Refreshing UnoRouter's live catalogue and checking models available to your key…";
+    try{
+      const result=await request("/settings/providers/unorouter/models");
+      byId("unorouter-model-catalogue").textContent="Found "+result.count+" confirmed-free, online models: "+result.models.join(", ")+". OpenCompany will rotate among them automatically; paid models excluded.";
+    }catch(error){byId("unorouter-model-catalogue").textContent="Catalogue discovery failed: "+error.message;}
+    finally{byId("unorouter-discover").disabled=false;}
+  });
   byId("unorouter-save").addEventListener("click",async()=>{
     const apiKey=byId("unorouter-api-key").value.trim();
-    const model=byId("unorouter-model").value.trim();
+    const model="unorouter/free-catalog:free";
     const confirmed=byId("unorouter-confirm-free").checked;
     if(!apiKey||!model||!confirmed){setMessage("Enter the API key and free model ID, then confirm the model is free.","error");return;}
-    if(!model.endsWith(":free")){setMessage("Only model IDs ending in :free are accepted.","error");return;}
     byId("unorouter-save").disabled=true;
     try{
       await request("/settings/providers/unorouter",{method:"PUT",body:JSON.stringify({api_key:apiKey,model,confirm_free:confirmed})});
       byId("unorouter-api-key").value="";
       byId("unorouter-confirm-free").checked=false;
-      setMessage("UnoRouter credentials encrypted and saved. Run the connection test; workers can start only after successful free-provider verification when autostart is enabled.","success");
+      setMessage("UnoRouter key saved once. Discover the full free catalogue, then test the connection. Paid models and paid fallback remain disabled.","success");
       await load();
+      byId("unorouter-discover").disabled=false;
     }catch(error){setMessage(error.message,"error");}
     finally{byId("unorouter-save").disabled=false;}
   });
@@ -92,7 +105,8 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
     byId("unorouter-remove").disabled=true;
     try{
       await request("/settings/providers/unorouter",{method:"DELETE"});
-      byId("unorouter-api-key").value="";byId("unorouter-model").value="";byId("unorouter-confirm-free").checked=false;
+      byId("unorouter-api-key").value="";byId("unorouter-model").value="unorouter/free-catalog:free";byId("unorouter-confirm-free").checked=false;
+      byId("unorouter-model-catalogue").textContent="Free model catalogue has not been loaded.";
       setMessage("UnoRouter credentials removed. No paid fallback was enabled.","success");
       await load();
     }catch(error){setMessage(error.message,"error");byId("unorouter-remove").disabled=false;}
