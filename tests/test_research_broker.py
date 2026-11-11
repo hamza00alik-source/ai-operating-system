@@ -11,7 +11,9 @@ from opencompany_core.organization import default_organization
 class SelectionAdapter:
     def __init__(self, text):
         self.text = text
+        self.requests = []
     def generate(self, request, *, model):
+        self.requests.append(request)
         return ModelResult(self.text, "unorouter", model, 0.0)
 
 
@@ -86,3 +88,21 @@ def test_role_department_is_resolved_from_team_and_leadership_function():
     manager_like = workforce.get("market_intelligence_analyst")
     assert specialist.department == "engineering-ai-systems"
     assert manager_like.department == "intelligence-research"
+
+
+def test_research_model_request_keeps_selected_business_unit():
+    client = FakeResearchClient()
+    adapter = SelectionAdapter('{"site":"hacker-news","op":"search","args":{"query":"supplier demand"}}')
+    gateway = ModelGateway.configure(((
+        ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
+        adapter,
+    ),))
+    item = WorkItem(
+        id=uuid4(), title="Research agency supplier demand",
+        objective="Find public evidence about suppliers.", department="intelligence-research",
+        business_id="physical-agency",
+    )
+    role = default_workforce().get("market_intelligence_analyst")
+    outcome = ResearchBroker(client, gateway).collect(role, item)
+    assert outcome.reason == "read-only research completed"
+    assert adapter.requests[0].business_id == "physical-agency"
