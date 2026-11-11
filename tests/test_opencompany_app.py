@@ -1485,3 +1485,50 @@ def test_saved_unorouter_catalogue_refresh_uses_server_key_without_reentry(owner
     assert payload["models"] == ["alpha:free", "beta:free"]
     assert payload["paid_fallback"] is False
     assert "saved-inference-key-never-return-this" not in response.text
+
+
+def test_owner_work_item_workflow_view_reports_lifecycle_and_next_action(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post(
+        "/work-items",
+        headers=headers,
+        json={
+            "title": "Workflow visibility check",
+            "objective": "Verify the owner can inspect the full internal task lifecycle.",
+            "department": "intelligence-research",
+            "depends_on": [],
+        },
+    )
+    assert created.status_code == 200
+    item_id = created.json()["item_id"]
+
+    response = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["work_item"]["id"] == item_id
+    assert payload["work_item"]["state"] == "draft"
+    assert payload["next_action"] == "owner_review_and_mark_ready"
+    assert payload["prerequisites"] == []
+    assert payload["dependents"] == []
+    assert payload["queue"] is None
+    assert payload["deliverables"] == []
+    assert payload["counts"]["deliverables"] == 0
+
+
+def test_work_item_workflow_view_requires_owner_authentication(owner_client):
+    created = owner_client.post(
+        "/work-items",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+        json={
+            "title": "Private workflow",
+            "objective": "Check private workflow visibility.",
+            "department": "intelligence-research",
+            "depends_on": [],
+        },
+    )
+    assert created.status_code == 200
+
+    response = owner_client.get(f"/work-items/{created.json()['item_id']}/workflow")
+
+    assert response.status_code == 404
