@@ -2315,7 +2315,7 @@ def manager_review_specialist_work(
         updated = replace(
             retry_item,
             objective=(
-                retry_item.objective
+                retry_item.objective[:10000]
                 + "\\n\\nManager rework request (address before resubmission): "
                 + decision.rework_instructions
             )[:12000],
