@@ -144,8 +144,13 @@ class ProductWorkflowRepository:
                 raise ProductWorkflowError("Automated QA requires passed_checks, failed_checks, and untested_claims.")
             if any(not isinstance(qa_result[key], list) for key in required):
                 raise ProductWorkflowError("Automated QA result fields must be lists.")
-            if any(not isinstance(item, str) or not item.strip() for key in required for item in qa_result[key]):
-                raise ProductWorkflowError("Automated QA entries must be non-empty strings.")
+            if any(len(qa_result[key]) > 30 for key in required):
+                raise ProductWorkflowError("Automated QA lists are limited to 30 entries each.")
+            if any(
+                not isinstance(item, str) or not item.strip() or len(item) > 1000
+                for key in required for item in qa_result[key]
+            ):
+                raise ProductWorkflowError("Automated QA entries must be non-empty strings of at most 1000 characters.")
         action = "qa_fail" if stage_key == "automated_qa" and qa_result["failed_checks"] else "complete"
         return self._mutate_stage(
             workflow_id, stage_key, action,
