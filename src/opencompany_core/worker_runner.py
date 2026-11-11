@@ -149,14 +149,16 @@ class OpenCompanyWorker:
             and review_result.get("auto_queue_enabled") is True
             and review_result.get("free_provider_ready") is True
         ):
-            self.queue.requeue_after_manager_review(
+            requeued = self.queue.requeue_after_manager_review(
                 lease, item, lease.payload,
                 self._audit(
-                    lease, "manager.rework_auto_requeued",
-                    {"role_key": role_key, "request_budget_usd": 0.0},
+                    lease,
+                    "manager.rework_auto_requeued" if lease.attempt < self.queue.max_attempts else "manager.rework_retry_limit_reached",
+                    {"role_key": role_key, "request_budget_usd": 0.0,
+                     "attempt": lease.attempt, "max_attempts": self.queue.max_attempts},
                 ),
             )
-            return "manager_rework_requeued"
+            return "manager_rework_requeued" if requeued else "manager_rework_limit_reached"
         self.queue.complete(lease)
         if item and item.state == TaskState.COMPLETED:
             return "completed_manager_review"
