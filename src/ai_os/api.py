@@ -1100,12 +1100,12 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision, business
     if scoped is None:
         raise HTTPException(status_code=404, detail="Approval request not found in this business environment.")
     try:
-        result = decide_approval(approval_id, payload)
+        result = decide_approval(approval_id, payload, business_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
-    business_ops.apply_expense_approval(approval_id, payload.decision)
+    business_ops.apply_expense_approval(approval_id, payload.decision, business_id)
     return result
 
 
