@@ -137,3 +137,25 @@ def test_work_items_round_trip_and_filter_by_business_unit(tmp_path):
     assert store.list_work_items(business_id="physical-brand") == (brand,)
     assert store.list_work_items(business_id="digital-products") == (digital,)
     store.close()
+
+
+def test_work_item_business_unit_cannot_be_changed_after_creation(tmp_path):
+    store = SQLiteStore(tmp_path / "immutable-business-scope.sqlite3")
+    item_id = uuid4()
+    agency = WorkItem(
+        item_id, "Agency task", "Research a supplier", "research",
+        business_id="physical-agency",
+    )
+    store.save_work_item(agency)
+    changed = WorkItem(
+        item_id, "Agency task", "Research a supplier", "research",
+        business_id="physical-brand",
+    )
+    try:
+        store.save_work_item(changed)
+    except ValueError as exc:
+        assert "immutable" in str(exc)
+    else:
+        raise AssertionError("business scope must not be mutable after task creation")
+    assert store.get_work_item(item_id).business_id == "physical-agency"
+    store.close()
