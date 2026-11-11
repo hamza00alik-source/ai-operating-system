@@ -613,7 +613,7 @@ def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_
     assert "httponly" in login.headers.get("set-cookie", "").lower()
     assert "samesite=strict" in login.headers.get("set-cookie", "").lower()
 
-    assert "max-age=43200" in login.headers.get("set-cookie", "").lower()
+    assert "max-age=604800" in login.headers.get("set-cookie", "").lower()
 
     # Simulate closing the browser and reopening it with the persistent cookie.
     with TestClient(app, base_url="https://testserver") as reopened:
