@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from .domain import WorkItem
 from .model_gateway import ModelGateway, ModelRequest
+from .workforce import default_workforce
 
 
 class ManagerReviewError(ValueError):
@@ -35,6 +36,12 @@ def review_specialist_deliverables(
     """Review bounded specialist evidence using the manager's role identity."""
     if not manager_role_key.strip() or not deliverables:
         raise ManagerReviewError("manager identity and at least one deliverable are required")
+    manager_role = default_workforce().get(manager_role_key)
+    if manager_role.department != item.department or manager_role.team_key != "management":
+        raise ManagerReviewError("manager role does not belong to this department's management team")
+    playbook = manager_role.playbook
+    workflow = "\\n".join(playbook.workflow_steps) if playbook else "Follow the department's standard review procedure."
+    rubric = "\\n".join(playbook.quality_rubric) if playbook else "Assess relevance, evidence, completeness, consistency, and risk."
     evidence = []
     for row in deliverables[:8]:
         if not isinstance(row, dict) or not row.get("content") or not row.get("role_key"):
