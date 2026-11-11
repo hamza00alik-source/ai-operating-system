@@ -135,13 +135,13 @@ class OpenRouterFreeAdapter:
                 raise ValueError
             returned_model = str(data.get("model") or self.model)
             if returned_model not in {self.model, self.model.removesuffix(":free")}:
-                raise ValueError
+                raise ProviderUnavailable("OpenRouter returned a different model than the requested free route.")
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
             reported_cost = usage.get("cost", data.get("cost"))
             if reported_cost is not None:
                 cost = float(reported_cost)
                 if cost != 0.0 or not math.isfinite(cost):
-                    raise ValueError
+                    raise ProviderUnavailable("OpenRouter reported a non-zero or invalid cost for a free route.")
             content = data["choices"][0]["message"]["content"]
             if isinstance(content, list):
                 content = "".join(
