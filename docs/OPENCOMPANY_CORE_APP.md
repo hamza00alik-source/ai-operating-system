@@ -59,6 +59,8 @@ Owner-authenticated:
 - `POST /work-items/{id}/handoffs`, `GET /work-items/{id}/handoffs`, and handoff accept/decline/deliver routes — internal agent collaboration.
 - `POST /work-items/{id}/evaluations`, `POST /learning/proposals`, `POST /learning/ai-proposals`, and learning decision/note routes — evidence-based quality improvement.
 - `GET /usage/model?business_id=...` — durable secret-free model usage ledger, filterable by business unit.
+- `GET /workers/queue?business_id=...` and `GET /learning/proposals?business_id=...` — business-scoped operational queue and learning views.
+- CEO plans, manager-generated child tasks, specialist research/model requests, evaluations, approved learning notes, and model usage retain the originating work item's business-unit identity.
 - `GET /audit/verify` — verify the local audit hash chain.
 - Provider settings, read-only API Anything research, and isolated GitHub code-evolution routes are owner-authenticated.
 
