@@ -29,11 +29,11 @@ def recommend_department_plan(
     item: WorkItem,
     gateway: ModelGateway,
     *,
-    max_specialists: int = 5,
+    max_specialists: int = 15,
 ) -> ManagerRecommendation:
     """Ask the manager model to select exact catalogue capabilities, then validate locally."""
-    if not 1 <= max_specialists <= 5:
-        raise ValueError("max_specialists must be between 1 and 5")
+    if not 1 <= max_specialists <= 50:
+        raise ValueError("max_specialists must be between 1 and 50")
     department = default_organization().get(item.department)
     workforce = default_workforce()
     manager = workforce.get(department.manager_role_key)
