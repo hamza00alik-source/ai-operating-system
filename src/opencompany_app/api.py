@@ -817,7 +817,7 @@ def _run_unorouter_test(runtime: OpenCompanyRuntime, job_id: str) -> None:
         }
     except (ProviderUnavailable, CostPolicyViolation) as exc:
         # Adapter diagnostics are deliberately bounded and contain no credentials.
-        reason = " ".join(str(exc).split())[:240] or type(exc).__name__
+        reason = " ".join(str(exc).split())[:600] or type(exc).__name__
         outcome = {
             "status": "failed", "success": False,
             "error": f"UnoRouter test failed safely: {reason}. No paid fallback was attempted.",
