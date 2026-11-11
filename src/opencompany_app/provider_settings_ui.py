@@ -15,9 +15,10 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
     <button id="unorouter-test" type="button" disabled>Test free connection</button>
     <button id="unorouter-remove" type="button" disabled>Remove credentials</button>
     <button id="unorouter-refresh" type="button">Refresh status</button>
-    <button id="unorouter-discover" type="button" disabled>Discover all free models</button>
+    <button id="unorouter-discover" type="button" disabled>Import full model catalogue</button>
   </div>
-  <p id="unorouter-model-catalogue" class="muted" aria-live="polite">Free model catalogue has not been loaded.</p>
+  <p id="unorouter-model-catalogue" class="muted" aria-live="polite">Full UnoRouter catalogue has not been imported. Paid and unsupported models will be shown as blocked.</p>
+  <details id="unorouter-catalog-details"><summary>View imported catalogue</summary><div id="unorouter-catalog-rows"></div></details>
   <p id="unorouter-detail" class="muted" aria-live="polite">Credentials are not configured.</p>
   <p class="muted">Connection testing sends one short prompt. After a successful zero-cost test, workers start only if owner-configured autostart is enabled. Paid fallback is never used.</p>
 </section>
@@ -67,7 +68,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
   byId("unorouter-refresh").addEventListener("click",loadUnoRouterSettings);
   byId("unorouter-discover").addEventListener("click",async()=>{
     byId("unorouter-discover").disabled=true;
-    byId("unorouter-model-catalogue").textContent="Refreshing the live free-model catalogue using the saved key…";
+    byId("unorouter-model-catalogue").textContent="Importing the complete live UnoRouter catalogue and checking every entry against strict free-only rules…";
     try{
       const result=await request("/settings/providers/unorouter/models");
       byId("unorouter-model-catalogue").textContent="Found "+result.count+" confirmed-free, online models: "+result.models.join(", ")+". OpenCompany will rotate across them automatically; paid models excluded.";
@@ -114,7 +115,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
     byId("unorouter-remove").disabled=true;
     try{
       await request("/settings/providers/unorouter",{method:"DELETE"});
-      byId("unorouter-api-key").value="";byId("unorouter-model").value="unorouter/free-catalog:free";byId("unorouter-confirm-free").checked=false;byId("unorouter-model-catalogue").textContent="Free model catalogue has not been loaded.";
+      byId("unorouter-api-key").value="";byId("unorouter-model").value="unorouter/free-catalog:free";byId("unorouter-confirm-free").checked=false;byId("unorouter-model-catalogue").textContent="Full UnoRouter catalogue has not been imported.";byId("unorouter-catalog-rows").replaceChildren();
       setMessage("UnoRouter credentials removed. No paid fallback was enabled.","success");
       await load();
     }catch(error){setMessage(error.message,"error");byId("unorouter-remove").disabled=false;}
