@@ -95,7 +95,7 @@ _RULES = {
         "intent": "purchase_intent_analysis",
         "purchase": "purchase_intent_analysis",
         "due diligence": "opportunity_due_diligence",
-        "product category": "product_category_mapping"
+        "product category": "product_category_mapping",
 
         "buyer objection": "buyer_objection_research",
         "market entry": "market_entry_analysis",
@@ -148,7 +148,7 @@ _RULES = {
         "supportability": "product_supportability_analysis",
         "feedback": "product_feedback_analysis",
         "adoption": "product_adoption_strategy",
-        "metrics": "product_metrics_design"
+        "metrics": "product_metrics_design",
 
         "feature economics": "feature_economics",
         "prototype test": "prototype_testing",
@@ -207,7 +207,7 @@ _RULES = {
         "developer experience": "developer_experience_engineering",
         "documentation": "technical_documentation_engineering",
         "workflow state": "workflow_state_management",
-        "cloud runtime": "cloud_runtime_operations"
+        "cloud runtime": "cloud_runtime_operations",
 
         "api integration": "api_integration_engineering",
         "agent evaluation": "agent_evaluation_engineering",
@@ -259,7 +259,7 @@ _RULES = {
         "version": "creative_version_control",
         "cost": "media_production_costing",
         "production workflow": "production_workflow_management",
-        "art direction": "art_direction"
+        "art direction": "art_direction",
 
         "creative researcher": "creative_research",
         "creative performance": "creative_performance_analysis",
@@ -305,7 +305,7 @@ _RULES = {
         "attribution": "marketing_attribution",
         "trust": "audience_trust_analysis",
         "repurposing": "content_repurposing_strategy",
-        "compliance": "marketing_compliance_review"
+        "compliance": "marketing_compliance_review",
 
         "content quality": "content_quality_editing",
         "content brief": "content_brief_architecture",
@@ -353,7 +353,7 @@ _RULES = {
         "risk": "commercial_risk_assessment",
         "product data": "product_data_quality",
         "inbound lead": "inbound_lead_research",
-        "due diligence": "partner_due_diligence"
+        "due diligence": "partner_due_diligence",
 
         "marketplace category": "marketplace_category_analysis",
         "marketplace fee": "marketplace_fee_analysis",
@@ -407,7 +407,7 @@ _RULES = {
         "tutorial": "product_tutorial_development",
         "churn": "customer_churn_analysis",
         "customer success": "customer_success_management",
-        "handoff": "operational_handoff_design"
+        "handoff": "operational_handoff_design",
 
         "feedback taxonomist": "customer_feedback_taxonomy",
         "support workflow": "support_workflow_analysis",
@@ -459,7 +459,7 @@ _RULES = {
         "business exposure": "business_exposure_assessment",
         "open source licence": "open_source_license_compliance",
         "terms change": "commercial_terms_change_monitoring",
-        "financial evidence": "financial_evidence_review"
+        "financial evidence": "financial_evidence_review",
 
         "pricing sensitivity": "pricing_sensitivity_analysis",
         "control testing": "control_testing",
@@ -513,7 +513,7 @@ _RULES = {
         "adversarial": "adversarial_testing",
         "action boundary": "autonomous_action_boundary_testing",
         "availability": "agent_availability_analysis",
-        "interdepartmental": "interdepartmental_quality_audit"
+        "interdepartmental": "interdepartmental_quality_audit",
 
         "delegation outcome": "delegation_outcome_analysis",
         "response grounding": "model_response_grounding_audit",
