@@ -1699,7 +1699,10 @@ def create_ai_learning_proposal(
     )
     try:
         model_result = runtime.gateway.complete(
-            ModelRequest(prompt=prompt, request_id=str(uuid4()), max_output_tokens=1800),
+            ModelRequest(
+                prompt=prompt, request_id=str(uuid4()), max_output_tokens=1800,
+                business_id=business_id,
+            ),
             request_budget_usd=0.0, preferred_provider="unorouter",
         )
     except NoEligibleProvider as exc:
