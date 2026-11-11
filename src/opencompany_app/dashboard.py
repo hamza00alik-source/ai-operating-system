@@ -15,6 +15,7 @@ h1{font-size:clamp(1.5rem,4vw,2.1rem);margin:0}.muted{color:#9aa8c7}.panel{backg
 .auth{display:flex;gap:10px;flex-wrap:wrap}.auth input{flex:1;min-width:180px;background:#0b1428;border:1px solid #405071;color:#fff;border-radius:10px;padding:12px;font-size:16px}
 button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:700;padding:12px 16px;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
 textarea,#product-title{width:100%;margin:7px 0 12px;background:#0b1428;border:1px solid #405071;color:#fff;border-radius:10px;padding:12px;font:inherit;max-width:100%}
+#product-workflows a{display:inline-block;margin:8px 0;color:#a9caff}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}.metric{background:#0e172b;border:1px solid #293a5a;border-radius:12px;padding:14px}.metric strong{display:block;font-size:1.8rem;margin-top:5px}
 .list{display:grid;gap:10px;margin-top:12px}.item{background:#0e172b;border:1px solid #293a5a;border-radius:12px;padding:13px}.item h3{font-size:1rem;margin:0 0 7px}.item p{margin:5px 0;color:#b7c3dc;line-height:1.45;font-size:.92rem}
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.pill{font-size:.75rem;border-radius:999px;background:#263653;color:#cfe0ff;padding:5px 9px}
@@ -166,7 +167,7 @@ textarea,#product-title{width:100%;margin:7px 0 12px;background:#0b1428;border:1
           const artifactId=ref.slice("artifact://".length);
           const link=document.createElement("a");link.href="/product-workflows/artifacts/"+encodeURIComponent(artifactId);
           link.textContent="Download generated blueprint ZIP";link.addEventListener("click",()=>{});
-          link.style.display="inline-block";link.style.margin="8px 0";link.style.color="#a9caff";card.append(link);
+          card.append(link);
         }
       });
       const active=workflow.stages.find(stage=>stage.status==="in_progress");
