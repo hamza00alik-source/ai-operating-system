@@ -223,6 +223,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       quoteForm.append(productSelect);
       const quoteTitle=document.createElement("input");quoteTitle.maxLength=200;quoteTitle.placeholder="Quote title";quoteTitle.value="Proposal for "+o.customer_name;quoteForm.append(quoteTitle);
       const currency=document.createElement("input");currency.maxLength=3;currency.value="USD";currency.placeholder="ISO currency code";quoteForm.append(currency);
+      const exponent=document.createElement("input");exponent.type="number";exponent.min="0";exponent.max="3";exponent.value="2";exponent.placeholder="Currency decimal places (0, 2 or 3)";quoteForm.append(exponent);
       const quantity=document.createElement("input");quantity.type="number";quantity.min="1";quantity.max="10000";quantity.value="1";quantity.placeholder="Quantity";quoteForm.append(quantity);
       const unitPrice=document.createElement("input");unitPrice.type="number";unitPrice.min="1";unitPrice.step="1";unitPrice.placeholder="Unit price in minor units (e.g. 1250 = 12.50)";quoteForm.append(unitPrice);
       const terms=document.createElement("textarea");terms.rows=2;terms.maxLength=4000;terms.placeholder="Quote terms, validity, exclusions and delivery assumptions";quoteForm.append(terms);
@@ -237,7 +238,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         try{
           const selected=activeProducts.find(p=>p.id===productSelect.value);
           await request("/commercial/quotes",{method:"POST",body:JSON.stringify({
-            opportunity_id:o.id,title:quoteTitle.value.trim(),currency:currency.value.toUpperCase(),terms:terms.value.trim(),
+            opportunity_id:o.id,title:quoteTitle.value.trim(),currency:currency.value.toUpperCase(),currency_exponent:Number(exponent.value),terms:terms.value.trim(),
             items:[{product_id:selected.id,description:selected.name+" — "+selected.description,quantity:q,unit_price_minor:price}]
           })});
           await loadCommercial();setMessage("Draft quote saved under "+o.business_id+". It was not sent to the customer.","success");
@@ -269,7 +270,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     quotes.quotes.forEach(q=>{
       const card=document.createElement("article");card.className="item";
       const heading=document.createElement("h3");heading.textContent=q.title+" · "+q.business_id;card.append(heading);
-      const detail=document.createElement("p");detail.textContent=q.customer_name+" · "+q.currency+" "+(q.subtotal_minor/100).toFixed(2)+" · "+q.items.length+" line(s)";card.append(detail);
+      const detail=document.createElement("p");detail.textContent=q.customer_name+" · "+q.currency+" "+(q.subtotal_minor/(10**q.currency_exponent)).toFixed(q.currency_exponent)+" · "+q.items.length+" line(s)";card.append(detail);
       const state=document.createElement("span");state.className="pill";state.textContent=q.status;card.append(state);
       const lines=document.createElement("p");lines.textContent=q.items.map(i=>i.description+" × "+i.quantity).join(" | ");card.append(lines);
       if(q.status==="draft"){
