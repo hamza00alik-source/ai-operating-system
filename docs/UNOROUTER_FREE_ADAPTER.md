@@ -4,7 +4,9 @@ UnoRouter is a first-class inference provider in the independently authored Open
 
 ## Owner configuration
 
-Set these private server environment variables in the OpenCompany hosting environment:
+For owner-managed configuration, open the dashboard's UnoRouter panel, enter the API key, and choose **Load available free models**. OpenCompany validates the key against `GET https://api.unorouter.com/v1/models`, then intersects the returned IDs with `GET https://api.unorouter.com/api/pricing/catalog`. Only key-accessible models with `is_free=true`, `online=true`, zero input/output prices, and an ID ending in `:free` appear. Select one and confirm free-only use. The server repeats this check immediately before saving, so stale or newly paid/offline models are rejected.
+
+Environment-based configuration remains available for controlled deployments:
 
 - `OPENCOMPANY_UNOROUTER_API_KEY` — API key from the owner's UnoRouter account.
 - `OPENCOMPANY_UNOROUTER_FREE_MODEL` — exact account-accessible model ID ending in `:free`.
