@@ -197,6 +197,18 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       const heading=document.createElement("h3");heading.textContent=o.customer_name+" · "+o.business_id;card.append(heading);
       const need=document.createElement("p");need.textContent=o.customer_need;card.append(need);
       const stage=document.createElement("span");stage.className="pill";stage.textContent=o.stage;card.append(stage);
+      const matching=document.createElement("button");matching.textContent="View this business's active catalogue";
+      matching.addEventListener("click",async()=>{
+        matching.disabled=true;
+        try{
+          const result=await request("/commercial/opportunities/"+o.id+"/catalogue");
+          const listing=document.createElement("pre");listing.style.whiteSpace="pre-wrap";listing.style.overflowWrap="anywhere";
+          listing.textContent=result.count?JSON.stringify(result.products.map(p=>({name:p.name,category:p.category,description:p.description})),null,2):"No active catalogue entries in "+result.business_id+". Drafts and other businesses are excluded.";
+          card.append(listing);
+        }catch(error){setMessage(error.message,"error");}
+        finally{matching.disabled=false;}
+      });
+      card.append(matching);
     byId("commercial-opportunities").append(card);
     });
     clear("commercial-products","No catalogue drafts yet.");
