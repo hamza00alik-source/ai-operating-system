@@ -204,6 +204,7 @@ class LearningNoteInput(BaseModel):
     role_key: str = Field(min_length=1, max_length=160)
     note: str = Field(min_length=1, max_length=3000)
     evidence_refs: list[str] = Field(min_length=1, max_length=20)
+    business_id: str = "core"
 
 
 class HandoffCreateInput(BaseModel):
@@ -1674,10 +1675,14 @@ def create_ai_learning_proposal(
             "evaluation": evaluation,
             "deliverables": excerpts,
         })
+    if len({item["business_id"] for item in selected}) != 1:
+        raise HTTPException(status_code=409, detail="Learning analysis cannot combine evidence from different business units.")
     if not supported_roles:
         raise HTTPException(status_code=409, detail="Selected evaluations must cite deliverables with identifiable role keys.")
+    business_id = selected[0]["business_id"]
     prompt = (
         "OPENCOMPANY EVIDENCE-BASED LEARNING REVIEW\n"
+        f"Business unit: {business_id}. Use only evidence from this business unit.\n"
         "Recommend one narrowly scoped role-learning note based only on the supplied owner evaluations and artifacts. "
         "Do not claim a permanent code change. Return only JSON with exactly these keys: role_key, note, rationale, "
         "expected_measurement, risk_level. The role_key must be one of the supplied roles. The note should be a concise "
@@ -1729,6 +1734,7 @@ def create_ai_learning_proposal(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {
         "id": str(proposal.id), "target": proposal.target,
+        "business_id": business_id,
         "change_summary": proposal.change_summary, "rationale": proposal.rationale,
         "expected_measurement": proposal.expected_measurement, "risk_level": proposal.risk_level,
         "state": proposal.state.value, "provider": model_result.provider,
@@ -1813,26 +1819,32 @@ def create_approved_learning_note(
         details={"evidence_refs": payload.evidence_refs},
     )
     try:
+        if payload.business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError("Unknown business unit.")
         note_id = runtime.learning.save_learning_note(
             role_key=payload.role_key, note=payload.note,
             evidence_refs=tuple(payload.evidence_refs), owner_id="owner", record=event,
+            business_id=payload.business_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"id": note_id, "role_key": payload.role_key, "state": "approved"}
+    return {"id": note_id, "role_key": payload.role_key, "business_id": payload.business_id, "state": "approved"}
 
 
 @app.get("/learning/notes/{role_key}", dependencies=[Depends(require_owner_key)])
 def list_approved_learning_notes(
     role_key: str,
+    business_id: str = "core",
     runtime: OpenCompanyRuntime = Depends(get_runtime),
 ) -> dict:
     try:
         default_workforce().get(role_key)
     except LookupError as exc:
         raise HTTPException(status_code=422, detail="Unknown role key.") from exc
-    notes = runtime.learning.list_learning_notes(role_key)
-    return {"role_key": role_key, "count": len(notes), "notes": notes}
+    if business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
+    notes = runtime.learning.list_learning_notes(role_key, business_id=business_id)
+    return {"role_key": role_key, "business_id": business_id, "count": len(notes), "notes": notes}
 
 
 @app.post("/work-items/{item_id}/handoffs", dependencies=[Depends(require_owner_key)])
