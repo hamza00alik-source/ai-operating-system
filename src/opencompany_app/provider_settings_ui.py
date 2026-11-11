@@ -19,11 +19,11 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
   <p class="muted">Connection testing sends one short prompt. After a successful zero-cost test, the worker fleet starts automatically only when owner-configured autostart is enabled. Paid fallback is never used.</p>
 </section>
 <section class="panel" id="github-evolution-settings">
-  <div class="row"><h2 class="section-title" style="margin:0">GitHub code evolution</h2><span id="github-evolution-state" class="pill">Not connected</span></div>
+  <div class="row"><h2 class="section-title compact">GitHub code evolution</h2><span id="github-evolution-state" class="pill">Not connected</span></div>
   <p class="muted">Save a fine-grained GitHub token here, encrypted on the server. Grant repository access with Contents: Read and write, Pull requests: Read and write, and Metadata: Read. This integration creates isolated draft pull requests only; it cannot merge or deploy.</p>
   <label for="github-evolution-token">GitHub fine-grained token</label>
   <input id="github-evolution-token" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste private GitHub token">
-  <label style="display:flex;gap:10px;align-items:center;margin:12px 0"><input id="github-evolution-confirm" type="checkbox"> I authorize draft pull request creation only. I retain merge and deployment approval.</label>
+  <label class="confirmation-label"><input id="github-evolution-confirm" type="checkbox"> I authorize draft pull request creation only. I retain merge and deployment approval.</label>
   <div class="auth">
     <button id="github-evolution-save" type="button">Save encrypted token</button>
     <button id="github-evolution-test" type="button" disabled>Test repository access</button>
@@ -33,7 +33,7 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
   <p id="github-evolution-detail" class="muted" aria-live="polite">Code evolution is not connected.</p>
 </section>
 <section class="panel" id="model-usage">
-  <div class="row"><h2 class="section-title" style="margin:0">AI usage & cost ledger</h2><button id="usage-refresh" type="button">Refresh usage</button></div>
+  <div class="row"><h2 class="section-title compact">AI usage & cost ledger</h2><button id="usage-refresh" type="button">Refresh usage</button></div>
   <div class="row">
     <div><strong id="usage-requests">0</strong><p class="muted">Successful requests</p></div>
     <div><strong id="usage-cost">0.000000</strong><p class="muted">Reported USD cost</p></div>
