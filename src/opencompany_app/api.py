@@ -188,6 +188,7 @@ class CommercialQuoteInput(BaseModel):
     opportunity_id: UUID
     title: str = Field(min_length=1, max_length=200)
     currency: str = Field(min_length=3, max_length=3)
+    currency_exponent: int = Field(default=2, ge=0, le=3)
     terms: str = Field(min_length=1, max_length=4000)
     items: list[CommercialQuoteLineInput] = Field(min_length=1, max_length=100)
 
@@ -1375,7 +1376,8 @@ def create_commercial_quote(
     record = {
         "id": quote_id, "opportunity_id": str(payload.opportunity_id),
         "business_id": opportunity["business_id"], "title": payload.title.strip(),
-        "currency": currency, "subtotal_minor": subtotal, "terms": payload.terms.strip(),
+        "currency": currency, "currency_exponent": payload.currency_exponent,
+        "subtotal_minor": subtotal, "terms": payload.terms.strip(),
         "created_at": now, "updated_at": now,
     }
     items = [{
@@ -1390,7 +1392,8 @@ def create_commercial_quote(
             subject_type="commercial_quote", subject_id=quote_id, outcome="draft",
             correlation_id=str(uuid4()),
             details={"business_id": opportunity["business_id"], "opportunity_id": str(payload.opportunity_id),
-                     "currency": currency, "subtotal_minor": subtotal},
+                     "currency": currency, "currency_exponent": payload.currency_exponent,
+                     "subtotal_minor": subtotal},
         ))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
