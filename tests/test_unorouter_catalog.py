@@ -68,3 +68,15 @@ def test_gateway_accepts_only_free_dynamic_model_identity():
     result = gateway.complete(ModelRequest("test", "req-dynamic"))
     assert result.model == "alpha:free"
     assert result.cost_usd == 0.0
+
+
+def test_catalogue_auth_error_explains_inference_key_requirement(monkeypatch):
+    from urllib.error import HTTPError
+    import io
+
+    def reject(*args, **kwargs):
+        raise HTTPError("https://api.unorouter.com/v1/models", 401, "unauthorized", {}, io.BytesIO(b"private"))
+
+    monkeypatch.setattr(unorouter_adapter, "urlopen", reject)
+    with pytest.raises(unorouter_adapter.ProviderUnavailable, match="inference API key"):
+        unorouter_adapter._read_json("https://api.unorouter.com/v1/models", api_key="wrong-token")
