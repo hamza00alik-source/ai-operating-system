@@ -180,6 +180,12 @@ def connect():
 def initialize_database() -> None:
     with connect() as connection:
         connection.executescript("""
+        CREATE TABLE IF NOT EXISTS business_units (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, business_type TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_business_units_status ON business_units(status, created_at);
         CREATE TABLE IF NOT EXISTS tasks (
             id TEXT PRIMARY KEY, title TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
