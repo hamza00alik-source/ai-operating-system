@@ -83,3 +83,16 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] AI may collaborate internally, generate code proposals, and open isolated draft PRs when explicitly configured.
 - [ ] AI-generated code changes are not auto-merged or deployed; production release remains owner-controlled.
 - [ ] External write permissions remain disabled until each platform connection is authenticated and scoped; publishing, customer contact, purchases, payments, and commitments require explicit owner approval.
+
+
+## Company-wide venture discovery and growth
+- [x] Add owner-controlled opportunity intake across any legitimate revenue model.
+- [x] Add persistent opportunity lifecycle and source-backed assessment storage.
+- [x] Route research tasks through a dedicated Venture Discovery & Growth company department mapped to existing specialist catalogue pools.
+- [x] Add provisional six-dimension scorecard and block launch approval without complete ratings and at least three HTTPS sources.
+- [x] Require explicit owner approval before creating a separate business unit from an opportunity.
+- [ ] Add primary-source web research retrieval, citation-quality checks and dated source refresh.
+- [ ] Generate conservative/base/upside financial models with explicit assumptions, startup cash requirements and break-even analysis.
+- [ ] Track validation experiments, customer interviews and willingness-to-pay evidence without autonomous customer outreach.
+- [ ] Add portfolio-level P&L, opportunity comparison, capital allocation and scale/pivot/close recommendations.
+- [ ] Add scheduled discovery scans and recurring executive opportunity reviews, with no paid model or external action fallback.
