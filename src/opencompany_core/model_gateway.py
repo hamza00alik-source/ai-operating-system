@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from .domain import BUSINESS_UNIT_IDS
+
 
 class BillingMode(StrEnum):
     DISABLED = "disabled"
@@ -36,6 +38,7 @@ class ModelRequest:
     max_output_tokens: int = 1200
     work_item_id: str = "system"
     role_key: str = "system"
+    business_id: str = "core"
 
     def __post_init__(self) -> None:
         if not self.prompt.strip():
@@ -44,6 +47,8 @@ class ModelRequest:
             raise ValueError("request_id cannot be empty")
         if not self.work_item_id.strip() or not self.role_key.strip():
             raise ValueError("model request accounting identity cannot be empty")
+        if self.business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError("model request business unit is unknown")
         if not 1 <= self.max_output_tokens <= 16000:
             raise ValueError("max_output_tokens must be between 1 and 16000")
 
@@ -178,6 +183,7 @@ class ModelGateway:
                         "request_id": request.request_id,
                         "work_item_id": request.work_item_id,
                         "role_key": request.role_key,
+                        "business_id": request.business_id,
                         "provider": result.provider,
                         "model": result.model,
                         "input_tokens": result.input_tokens,
