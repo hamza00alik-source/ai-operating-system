@@ -45,6 +45,16 @@ class TaskState(StrEnum):
     CANCELLED = "cancelled"
 
 
+class BusinessUnit(StrEnum):
+    CORE = "core"
+    PHYSICAL_AGENCY = "physical-agency"
+    PHYSICAL_BRAND = "physical-brand"
+    DIGITAL_PRODUCTS = "digital-products"
+
+
+BUSINESS_UNIT_IDS = frozenset(item.value for item in BusinessUnit)
+
+
 class AttemptState(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -98,12 +108,15 @@ class WorkItem:
     assigned_agent_id: UUID | None = None
     depends_on: tuple[UUID, ...] = ()
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    business_id: str = BusinessUnit.CORE.value
 
     def __post_init__(self) -> None:
         _require_text(self.title, "title", maximum=240)
         _require_text(self.objective, "objective", maximum=12000)
         _require_text(self.department, "department", maximum=80)
         _require_utc(self.created_at, "created_at")
+        if self.business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError(f"unknown business unit: {self.business_id}")
         if self.id in self.depends_on:
             raise ValueError("a work item cannot depend on itself")
         if len(set(self.depends_on)) != len(self.depends_on):
