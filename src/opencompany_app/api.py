@@ -463,6 +463,13 @@ def readiness(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
             if result is None or str(result[0]).casefold() != "ok":
                 raise RuntimeError("database integrity check failed")
             connection.execute("SELECT 1").fetchone()
+            # A readable database is not necessarily writable (for example,
+            # when a persistent volume is mounted with the wrong owner).
+            # Acquire and release a write transaction so readiness catches
+            # that deployment failure before owner login attempts to create
+            # a session or other state.
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("ROLLBACK")
         fleet = runtime.fleet.status()
     except Exception as exc:
         # Keep internal database and filesystem diagnostics out of public probes.
