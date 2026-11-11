@@ -1,8 +1,9 @@
 """UnoRouter adapter with automatic discovery and rotation across every free model.
 
 The automatic catalogue is the intersection of UnoRouter's live public pricing
-catalogue and the models exposed to the owner's API key. Only entries explicitly
-marked free, online, and suffixed :free are eligible. No paid fallback exists.
+catalogue and the models exposed to the owner's API key. Only online catalogue
+entries with a key-visible :free model ID are eligible. The public base-row
+is_free flag does not determine whether a separate :free variant exists. No paid fallback exists.
 """
 from __future__ import annotations
 
