@@ -1567,3 +1567,56 @@ def test_running_work_item_cannot_be_cancelled_without_queue_aware_recovery(owne
 
     assert response.status_code == 409
     assert "queue-aware cancellation" in response.json()["detail"]
+
+
+def test_work_items_are_created_and_listed_inside_selected_business_unit(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    agency = owner_client.post(
+        "/work-items", headers=headers,
+        json={
+            "title": "Agency supplier qualification",
+            "objective": "Assess a third-party supplier.",
+            "department": "intelligence-research",
+            "business_id": "physical-agency",
+        },
+    )
+    assert agency.status_code == 200
+    item_id = agency.json()["item_id"]
+    assert agency.json()["business_id"] == "physical-agency"
+
+    agency_list = owner_client.get("/work-items?business_id=physical-agency", headers=headers)
+    digital_list = owner_client.get("/work-items?business_id=digital-products", headers=headers)
+    workflow = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+
+    assert agency_list.status_code == 200
+    assert [item["id"] for item in agency_list.json()["items"]] == [item_id]
+    assert digital_list.status_code == 200
+    assert all(item["business_id"] == "digital-products" for item in digital_list.json()["items"])
+    assert workflow.status_code == 200
+    assert workflow.json()["work_item"]["business_id"] == "physical-agency"
+
+    cross_business = owner_client.post(
+        "/work-items", headers=headers,
+        json={
+            "title": "Cross-business dependency",
+            "objective": "This must be rejected.",
+            "department": "intelligence-research",
+            "business_id": "digital-products",
+            "depends_on": [item_id],
+        },
+    )
+    assert cross_business.status_code == 422
+
+
+def test_unknown_business_unit_is_rejected(owner_client):
+    response = owner_client.post(
+        "/work-items",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+        json={
+            "title": "Unknown business",
+            "objective": "Must not be persisted.",
+            "department": "intelligence-research",
+            "business_id": "unregistered-business",
+        },
+    )
+    assert response.status_code == 422
