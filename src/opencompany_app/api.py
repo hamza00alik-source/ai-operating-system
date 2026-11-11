@@ -177,6 +177,32 @@ class CommercialProductInput(BaseModel):
     category: str = Field(min_length=1, max_length=120)
 
 
+class CommercialQuoteLineInput(BaseModel):
+    product_id: UUID
+    description: str = Field(min_length=1, max_length=500)
+    quantity: int = Field(ge=1, le=10000)
+    unit_price_minor: int = Field(ge=1, le=9_000_000_000_000_000)
+
+
+class CommercialQuoteInput(BaseModel):
+    opportunity_id: UUID
+    title: str = Field(min_length=1, max_length=200)
+    currency: str = Field(min_length=3, max_length=3)
+    terms: str = Field(min_length=1, max_length=4000)
+    items: list[CommercialQuoteLineInput] = Field(min_length=1, max_length=100)
+
+
+class CommercialQuoteDecisionInput(BaseModel):
+    status: str
+    confirm_owner_decision: bool
+    acceptance_reference: str | None = Field(default=None, max_length=1000)
+
+
+class CommercialOrderInput(BaseModel):
+    quote_id: UUID
+    confirm_owner_order_record: bool
+
+
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     max_specialists: int = Field(default=15, ge=1, le=50)
@@ -1329,6 +1355,126 @@ def list_commercial_products(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"count": len(records), "products": records}
+
+
+@app.post("/commercial/quotes", dependencies=[Depends(require_owner_key)])
+def create_commercial_quote(
+    payload: CommercialQuoteInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    currency = payload.currency.upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise HTTPException(status_code=422, detail="Currency must be a three-letter ISO code.")
+    opportunity = store.get_commercial_opportunity(str(payload.opportunity_id))
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Commercial opportunity not found.")
+    subtotal = sum(item.quantity * item.unit_price_minor for item in payload.items)
+    if subtotal <= 0 or subtotal > 9_000_000_000_000_000:
+        raise HTTPException(status_code=422, detail="Quote total is outside the supported range.")
+    now = datetime.now(timezone.utc).isoformat()
+    quote_id = str(uuid4())
+    record = {
+        "id": quote_id, "opportunity_id": str(payload.opportunity_id),
+        "business_id": opportunity["business_id"], "title": payload.title.strip(),
+        "currency": currency, "subtotal_minor": subtotal, "terms": payload.terms.strip(),
+        "created_at": now, "updated_at": now,
+    }
+    items = [{
+        "id": str(uuid4()), "product_id": str(item.product_id),
+        "description": item.description.strip(), "quantity": item.quantity,
+        "unit_price_minor": item.unit_price_minor,
+    } for item in payload.items]
+    try:
+        result = store.create_commercial_quote(record, items, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner", action="commercial.quote_created",
+            subject_type="commercial_quote", subject_id=quote_id, outcome="draft",
+            correlation_id=str(uuid4()),
+            details={"business_id": opportunity["business_id"], "opportunity_id": str(payload.opportunity_id),
+                     "currency": currency, "subtotal_minor": subtotal},
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"quote_id": quote_id, **result, "sent": False}
+
+
+@app.get("/commercial/quotes", dependencies=[Depends(require_owner_key)])
+def list_commercial_quotes(
+    opportunity_id: UUID | None = None, business_id: str | None = None,
+    store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        quotes = store.list_commercial_quotes(
+            opportunity_id=str(opportunity_id) if opportunity_id else None,
+            business_id=business_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(quotes), "quotes": quotes}
+
+
+@app.post("/commercial/quotes/{quote_id}/decision", dependencies=[Depends(require_owner_key)])
+def decide_commercial_quote(
+    quote_id: UUID, payload: CommercialQuoteDecisionInput,
+    store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if not payload.confirm_owner_decision:
+        raise HTTPException(status_code=422, detail="Owner confirmation is required.")
+    if payload.status not in {"approved_for_delivery", "accepted", "rejected", "void"}:
+        raise HTTPException(status_code=422, detail="Unsupported quote decision.")
+    if payload.status == "accepted" and not (payload.acceptance_reference and payload.acceptance_reference.strip()):
+        raise HTTPException(status_code=422, detail="Record a customer acceptance evidence reference before marking accepted.")
+    try:
+        changed = store.update_commercial_quote_status(
+            str(quote_id), payload.status, payload.acceptance_reference.strip() if payload.acceptance_reference else None,
+            AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner", action="commercial.quote_status_changed",
+                subject_type="commercial_quote", subject_id=str(quote_id), outcome=payload.status,
+                correlation_id=str(uuid4()),
+                details={"status": payload.status, "owner_confirmed": True,
+                         "acceptance_evidence_recorded": bool(payload.acceptance_reference)},
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not changed:
+        raise HTTPException(status_code=404, detail="Quote not found.")
+    return {"quote_id": str(quote_id), "status": payload.status, "sent": False}
+
+
+@app.post("/commercial/orders", dependencies=[Depends(require_owner_key)])
+def create_commercial_order(
+    payload: CommercialOrderInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if not payload.confirm_owner_order_record:
+        raise HTTPException(status_code=422, detail="Owner confirmation is required to create an order record.")
+    order_id = str(uuid4())
+    try:
+        result = store.create_commercial_order(order_id, str(payload.quote_id), AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner", action="commercial.order_recorded",
+            subject_type="commercial_order", subject_id=order_id, outcome="awaiting_owner_fulfilment",
+            correlation_id=str(uuid4()), details={"quote_id": str(payload.quote_id), "owner_confirmed": True},
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        # A duplicate order for the same accepted quote is a conflict, not a second sale.
+        if "UNIQUE constraint failed" in str(exc):
+            raise HTTPException(status_code=409, detail="An order already exists for this quote.") from exc
+        raise
+    return result
+
+
+@app.get("/commercial/orders", dependencies=[Depends(require_owner_key)])
+def list_commercial_orders(
+    business_id: str | None = None, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        orders = store.list_commercial_orders(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(orders), "orders": orders}
 
 
 @app.get("/work-items", dependencies=[Depends(require_owner_key)])
