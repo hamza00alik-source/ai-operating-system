@@ -130,6 +130,30 @@ def test_unorouter_is_eligible_for_prelaunch_aios_when_free_confirmed(monkeypatc
     assert status["model"] == "example-model:free"
     assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
 
+
+def test_unorouter_discovery_only_key_is_eligible_when_free_only_confirmed(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "uno-discovery-key", "model": "__catalog_only__",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
+    } if provider == "unorouter" else None)
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
+    assert status["configured"] is True
+    assert status["free_confirmed"] is True
+    assert status["eligible"] is True
+    assert status["model"] == "__catalog_only__"
+    assert "uno-discovery-key" not in json.dumps(status)
+
+
+def test_unorouter_discovery_only_key_is_blocked_without_free_confirmation(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "uno-discovery-key", "model": "__catalog_only__",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": False
+    } if provider == "unorouter" else None)
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
+    assert status["configured"] is True
+    assert status["eligible"] is False
+
+
 def test_unorouter_catalog_lists_free_and_paid_and_preserves_exact_ids(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
         "secret": "catalog-key", "model": "gpt-oss-120b:free",
