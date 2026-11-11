@@ -118,7 +118,15 @@ class OpenCompanyWorker:
         """Run the internal quality gate when explicitly enabled; defer safely on failure."""
         enabled = os.environ.get("OPENCOMPANY_AUTO_MANAGER_REVIEW", "false").strip().casefold() in {"1", "true", "yes", "on"}
         if not enabled:
-            return
+            return None
+        item = self.store.get_work_item(lease.work_item_id)
+        if item is None:
+            return None
+        department = default_organization().get(item.department)
+        # Department managers and the CEO must remain subject to owner review;
+        # this gate is only for specialist deliverables, never manager self-review.
+        if role_key in {department.manager_role_key, "chief_executive_orchestrator"}:
+            return None
         error_type = None
         try:
             if self.manager_review_callback is None:
