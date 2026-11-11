@@ -7,7 +7,7 @@ boundary. Importing this module never starts a worker.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from opencompany_core.execution import AgentExecutor
@@ -235,7 +235,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
             return "manager_approved"
         # Rejected drafts return to the same specialist with explicit rework.
         updated = store.get_work_item(work_item_id)
-        updated = __import__("dataclasses").replace(
+        updated = replace(
             updated,
             objective=(updated.objective + "\\n\\nManager rework request: " + decision.rework_instructions)[:12000],
         )
