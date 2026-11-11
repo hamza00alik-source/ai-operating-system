@@ -18,6 +18,10 @@ def _finish(repo, workflow, stage):
         output=f"Completed {stage}",
         artifact_refs=[f"artifact://{stage}/v1"],
         evidence=[f"test evidence for {stage}"],
+        qa_result=(
+            {"passed_checks": ["archive integrity"], "failed_checks": [], "untested_claims": ["visual quality"]}
+            if stage == "automated_qa" else None
+        ),
     )
 
 
@@ -39,6 +43,10 @@ def test_product_workflow_is_persisted_zero_cost_and_owner_gated(tmp_path):
                 repo.complete_stage(
                     workflow["id"], stage,
                     output=f"Completed {stage}", artifact_refs=[], evidence=["captured"],
+                    qa_result=(
+                        {"passed_checks": ["archive integrity"], "failed_checks": [], "untested_claims": ["visual quality"]}
+                        if stage == "automated_qa" else None
+                    ),
                 )
 
         ready = repo.get(workflow["id"])
@@ -96,6 +104,77 @@ def test_product_workflow_rejects_missing_evidence_and_unknown_stage(tmp_path):
         try:
             repo.start_stage(workflow["id"], "publish_listing")
             assert False, "unknown stage must fail"
+        except ProductWorkflowError:
+            pass
+    finally:
+        store.close()
+
+
+def test_failed_qa_can_return_work_to_production_without_claiming_completion(tmp_path):
+    store, repo = _repo(tmp_path)
+    try:
+        workflow = repo.create("QA rework product", "A product that needs QA rework.")
+        for stage in STAGES[:4]:
+            current = repo.get(workflow["id"])["stages"][STAGES.index(stage)]
+            if current["status"] == "in_progress":
+                repo.complete_stage(
+                    workflow["id"], stage, output="Done", artifact_refs=[], evidence=["recorded"],
+                    qa_result=(
+                        {"passed_checks": ["manifest"], "failed_checks": [], "untested_claims": ["visual"]}
+                        if stage == "automated_qa" else None
+                    ),
+                )
+            else:
+                repo.start_stage(workflow["id"], stage)
+                repo.complete_stage(
+                    workflow["id"], stage, output="Done", artifact_refs=[], evidence=["recorded"],
+                    qa_result=(
+                        {"passed_checks": ["manifest"], "failed_checks": [], "untested_claims": ["visual"]}
+                        if stage == "automated_qa" else None
+                    ),
+                )
+        repo.start_stage(workflow["id"], "automated_qa")
+        blocked = repo.block_stage(workflow["id"], "automated_qa", "Archive integrity failed.")
+        assert blocked["status"] == "blocked"
+        reworked = repo.return_to_production(workflow["id"], "Rebuild archive with valid manifest.")
+        assert reworked["status"] == "in_progress"
+        assert reworked["stages"][3]["status"] == "in_progress"
+        assert reworked["stages"][4]["status"] == "pending"
+        assert reworked["stages"][3]["blockers"]
+    finally:
+        store.close()
+
+
+def test_automated_qa_requires_separate_pass_fail_and_untested_lists(tmp_path):
+    store, repo = _repo(tmp_path)
+    try:
+        workflow = repo.create("QA evidence product", "QA report contract.")
+        repo.complete_stage(
+            workflow["id"], "opportunity_brief", output="Brief done",
+            artifact_refs=[], evidence=["brief recorded"],
+        )
+        repo.start_stage(workflow["id"], "product_specification")
+        repo.complete_stage(
+            workflow["id"], "product_specification", output="Spec done",
+            artifact_refs=[], evidence=["spec recorded"],
+        )
+        repo.start_stage(workflow["id"], "production_plan")
+        repo.complete_stage(
+            workflow["id"], "production_plan", output="Plan done",
+            artifact_refs=[], evidence=["plan recorded"],
+        )
+        repo.start_stage(workflow["id"], "artifact_generation")
+        repo.complete_stage(
+            workflow["id"], "artifact_generation", output="Artifacts generated",
+            artifact_refs=["artifact://package/source"], evidence=["file manifest"],
+        )
+        repo.start_stage(workflow["id"], "automated_qa")
+        try:
+            repo.complete_stage(
+                workflow["id"], "automated_qa", output="QA passed",
+                artifact_refs=[], evidence=["some checks"], qa_result=None,
+            )
+            assert False, "QA must distinguish passed, failed and untested claims"
         except ProductWorkflowError:
             pass
     finally:
