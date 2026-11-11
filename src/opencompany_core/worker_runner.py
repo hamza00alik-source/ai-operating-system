@@ -71,8 +71,13 @@ class OpenCompanyWorker:
                 if any(value["role_key"] == role_key for value in saved):
                     if existing_item.state == TaskState.REVIEW:
                         self._attempt_manager_review(lease, role_key)
+                    final_item = self.store.get_work_item(lease.work_item_id)
                     self.queue.complete(lease)
-                    return "completed_manager_review" if existing_item.state == TaskState.COMPLETED else "completed_review_required"
+                    if final_item and final_item.state == TaskState.COMPLETED:
+                        return "completed_manager_review"
+                    if final_item and final_item.state == TaskState.READY:
+                        return "manager_rework_requested"
+                    return "completed_review_required"
             deliverable = self._execute_lease(lease, role_key)
             # A retry of the same work/role must address the same artifact key.
             # This lets a durable sink safely deduplicate after a crash between
@@ -98,7 +103,11 @@ class OpenCompanyWorker:
             self._attempt_manager_review(lease, role_key)
             self.queue.complete(lease)
             reviewed_item = self.store.get_work_item(lease.work_item_id)
-            return "completed_manager_review" if reviewed_item and reviewed_item.state == TaskState.COMPLETED else "completed_review_required"
+            if reviewed_item and reviewed_item.state == TaskState.COMPLETED:
+                return "completed_manager_review"
+            if reviewed_item and reviewed_item.state == TaskState.READY:
+                return "manager_rework_requested"
+            return "completed_review_required"
         except Exception as exc:
             # Do not leak exception text into persistent queue metadata.
             queue_state = None
