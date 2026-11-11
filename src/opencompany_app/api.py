@@ -156,6 +156,22 @@ class WorkItemCreateInput(BaseModel):
     business_id: str = "core"
 
 
+
+class CommercialOpportunityInput(BaseModel):
+    business_id: str
+    customer_name: str = Field(min_length=1, max_length=200)
+    customer_contact: str | None = Field(default=None, max_length=320)
+    customer_need: str = Field(min_length=1, max_length=4000)
+    scope_confirmed: bool
+
+
+class CommercialProductInput(BaseModel):
+    business_id: str
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=4000)
+    category: str = Field(min_length=1, max_length=120)
+
+
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     max_specialists: int = Field(default=15, ge=1, le=50)
@@ -1178,6 +1194,93 @@ def bootstrap_specialists(store: SQLiteStore = Depends(get_store)) -> dict:
         ],
         "execution_started": False,
     }
+
+
+
+@app.post("/commercial/opportunities", dependencies=[Depends(require_owner_key)])
+def create_commercial_opportunity(
+    payload: CommercialOpportunityInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    from datetime import datetime, timezone
+    allowed = {"physical-agency", "physical-brand", "digital-products"}
+    if payload.business_id not in allowed:
+        raise HTTPException(status_code=422, detail="A customer opportunity must select exactly one commercial business unit; core is internal only.")
+    if not payload.scope_confirmed:
+        raise HTTPException(status_code=422, detail="Confirm that this opportunity covers only the customer's stated need in the selected business.")
+    now = datetime.now(timezone.utc).isoformat()
+    opportunity_id = str(uuid4())
+    record = {
+        "id": opportunity_id, "business_id": payload.business_id,
+        "customer_name": payload.customer_name.strip(),
+        "customer_contact": payload.customer_contact.strip() if payload.customer_contact else None,
+        "customer_need": payload.customer_need.strip(), "stage": "new",
+        "created_at": now, "updated_at": now,
+    }
+    try:
+        store.create_commercial_opportunity(record)
+        store.append_audit_record(AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner", action="commercial.opportunity_created",
+            subject_type="commercial_opportunity", subject_id=opportunity_id,
+            outcome="recorded", correlation_id=str(uuid4()),
+            details={"business_id": payload.business_id, "scope_confirmed": True},
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"opportunity_id": opportunity_id, "business_id": payload.business_id, "stage": "new"}
+
+
+@app.get("/commercial/opportunities", dependencies=[Depends(require_owner_key)])
+def list_commercial_opportunities(
+    business_id: str | None = None, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        records = store.list_commercial_opportunities(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(records), "opportunities": records}
+
+
+@app.post("/commercial/products", dependencies=[Depends(require_owner_key)])
+def create_commercial_product(
+    payload: CommercialProductInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    from datetime import datetime, timezone
+    allowed = {"physical-agency", "physical-brand", "digital-products"}
+    if payload.business_id not in allowed:
+        raise HTTPException(status_code=422, detail="Catalogue entries must belong to one commercial business unit; core is internal only.")
+    now = datetime.now(timezone.utc).isoformat()
+    product_id = str(uuid4())
+    record = {
+        "id": product_id, "business_id": payload.business_id,
+        "name": payload.name.strip(), "description": payload.description.strip(),
+        "category": payload.category.strip(), "status": "draft",
+        "created_at": now, "updated_at": now,
+    }
+    try:
+        store.create_commercial_product(record)
+        store.append_audit_record(AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner", action="commercial.product_created",
+            subject_type="commercial_product", subject_id=product_id,
+            outcome="draft", correlation_id=str(uuid4()),
+            details={"business_id": payload.business_id, "status": "draft"},
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"product_id": product_id, "business_id": payload.business_id, "status": "draft", "published": False}
+
+
+@app.get("/commercial/products", dependencies=[Depends(require_owner_key)])
+def list_commercial_products(
+    business_id: str | None = None, status: str | None = None,
+    store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        records = store.list_commercial_products(business_id=business_id, status=status)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(records), "products": records}
 
 
 @app.get("/work-items", dependencies=[Depends(require_owner_key)])
