@@ -63,6 +63,7 @@ _LOGIN_FAILURES: dict[str, list[float]] = {}
 _LOGIN_LOCK = Lock()
 _LOGIN_WINDOW_SECONDS = 900
 _LOGIN_MAX_FAILURES = 5
+_LOGIN_MAX_TRACKED_CLIENTS = 10_000
 
 
 def _login_retry_after(client_key: str, *, failed: bool = False) -> int:
@@ -74,6 +75,12 @@ def _login_retry_after(client_key: str, *, failed: bool = False) -> int:
                 _LOGIN_FAILURES[key] = fresh
             else:
                 _LOGIN_FAILURES.pop(key, None)
+        if client_key not in _LOGIN_FAILURES and len(_LOGIN_FAILURES) >= _LOGIN_MAX_TRACKED_CLIENTS:
+            oldest_key = min(
+                _LOGIN_FAILURES,
+                key=lambda key: _LOGIN_FAILURES[key][-1] if _LOGIN_FAILURES[key] else now,
+            )
+            _LOGIN_FAILURES.pop(oldest_key, None)
         attempts = _LOGIN_FAILURES.setdefault(client_key, [])
         if failed:
             attempts.append(now)
