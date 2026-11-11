@@ -49,7 +49,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
   async function loadUnoRouterSettings(){
     try{
       const status=await request("/settings/providers/unorouter");
-      byId("unorouter-state").textContent=status.configured?"Credentials saved · "+(status.model||"free model"):"Not configured";
+      byId("unorouter-state").textContent=status.configuration_error?"Recovery needed":(status.configured?"Credentials saved · "+(status.model||"free model"):"Not configured");
       byId("unorouter-detail").textContent=status.configuration_error
         ?status.configuration_error
         :(status.configured
@@ -103,7 +103,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
   async function loadGitHubEvolutionSettings(){
     try{
       const status=await request("/settings/integrations/github-evolution");
-      byId("github-evolution-state").textContent=status.configured?"Connected · "+(status.repository||"repository"):"Not connected";
+      byId("github-evolution-state").textContent=status.configuration_error?"Recovery needed":(status.configured?"Connected · "+(status.repository||"repository"):"Not connected");
       byId("github-evolution-detail").textContent=status.configuration_error
         ?status.configuration_error
         :(status.configured
