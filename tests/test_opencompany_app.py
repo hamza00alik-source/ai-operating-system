@@ -585,6 +585,13 @@ def test_owner_session_login_is_rate_limited_after_five_failed_attempts(owner_cl
     api_module._clear_login_failures("testclient")
 
 
+def test_manager_proposal_api_accepts_expanded_specialist_team_limit():
+    assert api_module.ManagerProposalInput().max_specialists == 15
+    assert api_module.ManagerProposalInput(max_specialists=50).max_specialists == 50
+    with pytest.raises(Exception):
+        api_module.ManagerProposalInput(max_specialists=51)
+
+
 def test_invalid_owner_api_key_headers_are_rate_limited(owner_client):
     api_module._clear_login_failures("testclient")
     for _ in range(4):
