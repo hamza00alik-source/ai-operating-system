@@ -110,7 +110,7 @@ def test_manager_rework_reuses_current_lease_and_requeues_atomically(tmp_path):
     agent = AgentProfile(
         id=agent_id, name="Marketplace Specialist", department="revenue-partnerships",
         purpose="Prepare marketplace research", capabilities=("research",),
-        state=AgentState.ACTIVE, role_key="marketplace_operations_analyst",
+        state=AgentState.ACTIVE, role_key="revenue_partnerships__marketplace_category_analyst",
         team_key="revenue-partnerships__team_1",
     )
     store.save_agent_with_audit(agent, AuditRecord(
