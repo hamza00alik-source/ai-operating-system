@@ -298,7 +298,7 @@ def initialize_database() -> None:
             title TEXT NOT NULL, amount REAL, currency TEXT NOT NULL DEFAULT 'USD',
             status TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0,
             approval_id TEXT, contact TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL, paid_at TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_business_records_type_created ON business_records(record_type, created_at);
         CREATE TABLE IF NOT EXISTS investor_contacts (
@@ -408,6 +408,9 @@ def initialize_database() -> None:
         business_columns = {row["name"] for row in connection.execute("PRAGMA table_info(business_records)")}
         if "approval_id" not in business_columns:
             connection.execute("ALTER TABLE business_records ADD COLUMN approval_id TEXT")
+        if "paid_at" not in business_columns:
+            connection.execute("ALTER TABLE business_records ADD COLUMN paid_at TEXT")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_business_records_paid_scope ON business_records(business_id, record_type, status, paid_at)")
         # Existing tasks and memories remain in core; never copy legacy knowledge into business brains.
         for table_name in ("tasks", "brain_experiences", "brain_memories"):
             table_columns = {row["name"] for row in connection.execute("PRAGMA table_info(" + table_name + ")")}
