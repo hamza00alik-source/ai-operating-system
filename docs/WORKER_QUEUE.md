@@ -10,6 +10,8 @@ WorkerSupervisor supplies a foreground polling loop with graceful stop-event han
 
 This is not yet a production worker deployment. A production artifact store, supervised deployment configuration, persistent volume/backup strategy, owner dashboard, production authentication, monitoring, and integration tests against the target deployment remain release requirements. The supervisor itself grants no shell, browser, external integration, or protected-action authority.
 
+Queue admission also verifies that every prerequisite belongs to the same business unit as the task. A dependency from another business is rejected even if it is completed.
+
 ## Owner-reviewed re-admission
 
 A work item has one durable queue row across its lifecycle. After the owner rejects a review draft and returns the item to READY, or transitions a dead-lettered FAILED item back to READY, the same queue row may be reused. Re-admission resets the exhausted attempt counter and clears the previous lease/error fields. It is permitted only when the prior queue row is terminal (done or dead); an existing queued or leased row cannot be overwritten. The task-state change, queue re-admission, delegated-child state check, and owner audit event remain inside the same transaction.
