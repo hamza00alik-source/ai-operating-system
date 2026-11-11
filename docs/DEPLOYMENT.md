@@ -41,10 +41,12 @@ backup and encryption key should be stored separately with restricted access.
 
 ## Optional integrations and worker controls
 
-- UnoRouter can be configured through the owner dashboard. The selected model
-  must end in `:free`; paid fallback is disabled and the gateway uses a zero
-  request budget. A successful owner-authorized live inference test is
-  required before workers can start.
+- UnoRouter can be configured through the owner dashboard: enter the API key,
+  load the key-accessible model list, and choose from models confirmed free,
+  online, and zero-priced by the live pricing catalogue. Saving revalidates
+  the choice. Paid fallback is disabled and the gateway uses a zero request
+  budget. A successful owner-authorized live inference test is required before
+  workers can start.
 - If provider credentials are supplied by environment instead of the owner
   dashboard, use `OPENCOMPANY_UNOROUTER_API_KEY`,
   `OPENCOMPANY_UNOROUTER_FREE_MODEL` (must end in `:free`), and
