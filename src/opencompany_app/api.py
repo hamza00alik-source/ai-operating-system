@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
-from opencompany_core.domain import AgentState, AuditRecord, TaskState, WorkItem
+from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.lifecycle import StateTransitionError, transition_work_item
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.planning import PlanError, WorkPlan, action_requires_owner_approval
@@ -128,6 +128,7 @@ class PlanItemInput(BaseModel):
     department: str = Field(min_length=1, max_length=80)
     state: TaskState = TaskState.READY
     depends_on: tuple[UUID, ...] = ()
+    business_id: str = "core"
 
 
 class PlanPreviewInput(BaseModel):
@@ -150,6 +151,7 @@ class WorkItemCreateInput(BaseModel):
     objective: str = Field(min_length=1, max_length=12000)
     department: str = Field(min_length=1, max_length=80)
     depends_on: tuple[UUID, ...] = ()
+    business_id: str = "core"
 
 
 class DelegationPreviewInput(BaseModel):
@@ -220,6 +222,7 @@ class ExecutivePlanInput(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     objective: str = Field(min_length=1, max_length=12000)
     max_tasks: int = Field(default=8, ge=1, le=10)
+    business_id: str = "core"
 
 
 class ManagerProposalInput(BaseModel):
@@ -1016,6 +1019,7 @@ def preview_plan(payload: PlanPreviewInput) -> dict:
         WorkItem(
             id=item.id, title=item.title, objective=item.objective,
             department=item.department, state=item.state, depends_on=item.depends_on,
+            business_id=item.business_id,
         )
         for item in payload.items
     )
@@ -1160,14 +1164,20 @@ def bootstrap_specialists(store: SQLiteStore = Depends(get_store)) -> dict:
 
 
 @app.get("/work-items", dependencies=[Depends(require_owner_key)])
-def list_work_items(store: SQLiteStore = Depends(get_store)) -> dict:
-    items = store.list_work_items(limit=1000)
+def list_work_items(
+    business_id: str | None = None, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        items = store.list_work_items(business_id=business_id, limit=1000)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "count": len(items),
         "items": [
             {
                 "id": str(item.id), "title": item.title, "objective": item.objective,
-                "department": item.department, "state": item.state.value,
+                "department": item.department, "business_id": item.business_id,
+                "state": item.state.value,
                 "assigned_agent_id": str(item.assigned_agent_id) if item.assigned_agent_id else None,
                 "depends_on": [str(value) for value in item.depends_on],
                 "created_at": item.created_at.isoformat(),
@@ -1185,18 +1195,20 @@ def create_work_item(
         default_organization().get(payload.department)
     except LookupError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if payload.business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
     item = WorkItem(
         id=uuid4(), title=payload.title, objective=payload.objective,
         department=payload.department, state=TaskState.DRAFT,
-        depends_on=payload.depends_on,
+        depends_on=payload.depends_on, business_id=payload.business_id,
     )
-    existing = store.list_work_items(limit=1000)
+    existing = store.list_work_items(business_id=payload.business_id, limit=1000)
     try:
         WorkPlan(tuple(existing) + (item,))
     except PlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     store.save_work_item_with_audit(item, _record(item, "work_item.created"))
-    return {"item_id": str(item.id), "state": item.state.value}
+    return {"item_id": str(item.id), "state": item.state.value, "business_id": item.business_id}
 
 
 def _auto_queue_approved_work_enabled() -> bool:
@@ -1957,7 +1969,8 @@ def create_executive_work_plan(
         raise HTTPException(status_code=409, detail="The Chief Executive Orchestrator must be provisioned and explicitly ACTIVE.")
     try:
         plan = create_executive_plan(
-            payload.title, payload.objective, runtime.gateway, max_tasks=payload.max_tasks
+            payload.title, payload.objective, runtime.gateway,
+            max_tasks=payload.max_tasks, business_id=payload.business_id,
         )
     except NoEligibleProvider as exc:
         raise HTTPException(status_code=503, detail="No owner-configured free model provider is available for CEO planning.") from exc
@@ -1971,6 +1984,8 @@ def create_executive_work_plan(
         ) from exc
     except ExecutivePlanningError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if payload.business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)
     records = tuple(
@@ -1978,7 +1993,8 @@ def create_executive_work_plan(
             id=uuid4(), occurred_at=now, actor_type="agent", actor_id=str(ceo.id),
             action="executive.draft_work_item_created", subject_type="work_item",
             subject_id=str(item.id), outcome="drafted", correlation_id=correlation_id,
-            details={"provider": plan.provider, "model": plan.model, "plan_title": payload.title},
+            details={"provider": plan.provider, "model": plan.model,
+                     "plan_title": payload.title, "business_id": item.business_id},
         )
         for item in plan.work_items
     )
@@ -1988,6 +2004,7 @@ def create_executive_work_plan(
         raise HTTPException(status_code=409, detail=f"Could not persist the complete executive plan: {type(exc).__name__}") from exc
     return {
         "plan_title": payload.title,
+        "business_id": payload.business_id,
         "rationale": plan.rationale,
         "provider": plan.provider,
         "model": plan.model,
@@ -1995,7 +2012,8 @@ def create_executive_work_plan(
         "items": [
             {
                 "id": str(item.id), "title": item.title, "objective": item.objective,
-                "department": item.department, "state": item.state.value,
+                "department": item.department, "business_id": item.business_id,
+                "state": item.state.value,
                 "depends_on": [str(value) for value in item.depends_on],
             }
             for item in plan.work_items
@@ -2180,6 +2198,7 @@ def approve_work_item_delegation_proposal(
         task = WorkItem(
             id=UUID(child["id"]), title=child["title"], objective=child["objective"],
             department=parent.department, state=TaskState.READY, assigned_agent_id=agent.id,
+            business_id=parent.business_id,
         )
         tasks.append(task)
         events.append(AuditRecord(
@@ -2459,7 +2478,8 @@ def get_work_item_workflow(
     return {
         "work_item": {
             "id": str(item.id), "title": item.title, "objective": item.objective,
-            "department": item.department, "state": item.state.value,
+            "department": item.department, "business_id": item.business_id,
+            "state": item.state.value,
             "assigned_agent_id": str(item.assigned_agent_id) if item.assigned_agent_id else None,
             "depends_on": [str(value) for value in item.depends_on],
             "created_at": item.created_at.isoformat(),
