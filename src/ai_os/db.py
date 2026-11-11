@@ -308,7 +308,7 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_investor_contacts_stage ON investor_contacts(stage, created_at);
         CREATE TABLE IF NOT EXISTS code_assets (
-            id TEXT PRIMARY KEY, name TEXT NOT NULL, repository_url TEXT NOT NULL DEFAULT '',
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', name TEXT NOT NULL, repository_url TEXT NOT NULL DEFAULT '',
             path TEXT NOT NULL DEFAULT '', asset_type TEXT NOT NULL DEFAULT 'source_code',
             ownership_status TEXT NOT NULL DEFAULT 'unverified', license TEXT NOT NULL DEFAULT 'unknown',
             dependency_review TEXT NOT NULL DEFAULT 'not_reviewed', token_estimate INTEGER,
@@ -317,7 +317,7 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_code_assets_created ON code_assets(created_at);
         CREATE TABLE IF NOT EXISTS license_offers (
-            id TEXT PRIMARY KEY, asset_id TEXT NOT NULL, buyer TEXT NOT NULL,
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', asset_id TEXT NOT NULL, buyer TEXT NOT NULL,
             terms TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft_pending_owner_approval',
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
             FOREIGN KEY(asset_id) REFERENCES code_assets(id)
@@ -397,12 +397,14 @@ def initialize_database() -> None:
         if "review_updated_at" not in columns:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_updated_at TEXT")
         # Add explicit business ownership to operational records. Legacy rows remain in core.
-        for table_name in ("approvals", "business_records", "investor_contacts", "research_sources"):
+        for table_name in ("approvals", "business_records", "investor_contacts", "research_sources", "code_assets", "license_offers"):
             scoped_columns = {row["name"] for row in connection.execute("PRAGMA table_info(" + table_name + ")")}
             if "business_id" not in scoped_columns:
                 connection.execute("ALTER TABLE " + table_name + " ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_business_records_scope ON business_records(business_id, record_type, created_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_investor_contacts_scope ON investor_contacts(business_id, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_code_assets_scope ON code_assets(business_id, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_license_offers_scope ON license_offers(business_id, created_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_research_sources_scope ON research_sources(business_id, captured_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_approvals_scope ON approvals(business_id, status, created_at)")
         business_columns = {row["name"] for row in connection.execute("PRAGMA table_info(business_records)")}
