@@ -38,6 +38,29 @@ def initialize_database() -> None:
             created_at TEXT NOT NULL, decided_at TEXT,
             FOREIGN KEY(task_id) REFERENCES tasks(id)
         );
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE,
+            transport TEXT NOT NULL DEFAULT 'streamable_http',
+            credential_env_json TEXT NOT NULL DEFAULT '[]',
+            capabilities_json TEXT NOT NULL DEFAULT '[]',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL,
+            actor_id TEXT, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL,
+            details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_events_created
+            ON audit_events(created_at DESC, id DESC);
+        CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+        BEFORE UPDATE ON audit_events BEGIN
+            SELECT RAISE(ABORT, 'audit events are immutable');
+        END;
+        CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
+        BEFORE DELETE ON audit_events BEGIN
+            SELECT RAISE(ABORT, 'audit events are immutable');
+        END;
         CREATE TABLE IF NOT EXISTS discovery_scans (
             id TEXT PRIMARY KEY, categories TEXT NOT NULL, status TEXT NOT NULL,
             created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT,

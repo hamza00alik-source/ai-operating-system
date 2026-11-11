@@ -249,7 +249,7 @@ th{background:#101b2c}
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Your AI company, workforce, research pipeline and approvals — in one supervised workspace.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><span id="apiHealth" class="tag">Checking API…</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a><a href="#business" data-view="business">Business</a><a href="#code-assets" data-view="code-assets">Code Assets</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#mcp" data-view="mcp">MCP Integrations</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a><a href="#business" data-view="business">Business</a><a href="#code-assets" data-view="code-assets">Code Assets</a></nav>
 <section class="command-stage" aria-label="AI employee command stage">
  <div class="stage-head"><div><div class="eyebrow">Neural command deck / workforce visualization</div><div class="stage-title">Meet the AI workforce</div><div class="stage-note">Stylized role representations generated from the live workforce catalogue — not fabricated active-worker status.</div></div><span id="stageRuntime" class="stage-indicator">Runtime status loading</span></div>
  <div id="employeeStage" class="employee-stage"><div class="stage-empty">Loading real specialist roles from the AIOS workforce catalogue…</div></div>
@@ -357,6 +357,21 @@ th{background:#101b2c}
 <div id="businessMessage" class="status" role="status"></div>
 <h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div><h3>Investors & partners</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Organization</th><th>Contact</th><th>Stage</th><th>Notes</th></tr></thead><tbody id="investorRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+</section>
+<section id="mcp" class="panel section" data-view-panel="mcp">
+<h2>MCP server integrations</h2>
+<p class="small">Register remote MCP endpoints for future supervised agent access. Servers start disabled. Credentials are referenced by environment-variable name only; enter secret values in private deployment environment settings, never here or in GitHub. Connection tests are read-only and never call a tool.</p>
+<div class="panel"><h3>Register a server</h3>
+<form id="mcpRegistryForm" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));align-items:start">
+<input name="name" required maxlength="120" placeholder="Server name">
+<input name="endpoint" required type="url" maxlength="2048" placeholder="https://mcp.example.com/mcp">
+<input name="credential_env" maxlength="500" placeholder="Credential env var names, comma-separated">
+<input name="capabilities" maxlength="500" placeholder="Declared capabilities, comma-separated">
+<button type="submit">Register disabled server</button></form>
+<div class="small">HTTPS only. DNS must resolve exclusively to public IP addresses when tested. Ports 443 and 8443 are accepted. New servers are never enabled automatically.</div></div>
+<div class="toolbar section"><strong>Registered servers</strong><button id="mcpRefresh" class="secondary" type="button">Refresh</button><span id="mcpStatus" class="small">Not loaded.</span></div>
+<div class="scroll"><table><thead><tr><th>Server</th><th>Endpoint</th><th>Credentials</th><th>Capabilities</th><th>State</th><th>Actions</th></tr></thead><tbody id="mcpRows"><tr><td colspan="6">Load server registry.</td></tr></tbody></table></div>
+<h3>Read-only connection test</h3><pre id="mcpTestOutput" style="max-height:360px;overflow:auto;white-space:pre-wrap;background:#091323;padding:12px;border-radius:10px">No connection test executed.</pre>
 </section>
 <section id="code-assets" class="panel section" data-view-panel="code-assets">
 <h2>Code Asset Management & Licensing</h2>
@@ -770,6 +785,25 @@ fallback.style.display="none";
  if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets();
  window.addEventListener("hashchange",()=>{if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets()});
 })();
+
+async function loadMcpServers(){
+ const status=$("mcpStatus"),rows=$("mcpRows");if(!rows)return;status.textContent="Loading registry…";
+ try{const data=await api("/integrations/mcp/servers");
+ rows.innerHTML=data.length?data.map(s=>'<tr><td><strong>'+esc(s.name)+'</strong><div class="small">'+esc(s.id)+'</div></td><td>'+esc(s.endpoint)+'</td><td>'+esc((s.credential_env||[]).join(", ")||"None")+'</td><td>'+esc((s.declared_capabilities||[]).join(", ")||"Not declared")+'</td><td><span class="pill '+(s.enabled?"good":"warn")+'">'+(s.enabled?"Enabled":"Disabled")+'</span></td><td><button class="secondary" type="button" data-mcp-action="toggle" data-id="'+esc(s.id)+'" data-enabled="'+(!s.enabled)+'">'+(s.enabled?"Disable":"Enable")+'</button> <button class="secondary" type="button" data-mcp-action="test" data-id="'+esc(s.id)+'" '+(!s.enabled?"disabled":"")+'>Read-only test</button></td></tr>').join(""):'<tr><td colspan="6">No MCP servers registered.</td></tr>';
+ status.textContent=data.length+" server(s) · registry only; no tools executed";
+ }catch(e){status.textContent=e.message}
+}
+async function toggleMcpServer(id,enabled){try{await api("/integrations/mcp/servers/"+encodeURIComponent(id)+"/enabled",{method:"POST",body:JSON.stringify({enabled})});await loadMcpServers()}catch(e){$("mcpStatus").textContent=e.message}}
+async function testMcpServer(id){$("mcpTestOutput").textContent="Running read-only initialize/tools-list handshake…";try{const result=await api("/integrations/mcp/servers/"+encodeURIComponent(id)+"/test",{method:"POST"});$("mcpTestOutput").textContent=JSON.stringify(result,null,2)}catch(e){$("mcpTestOutput").textContent=e.message}}
+document.getElementById("mcpRegistryForm")?.addEventListener("submit",async event=>{
+ event.preventDefault();const form=event.currentTarget,values=new FormData(form),split=name=>String(values.get(name)||"").split(",").map(v=>v.trim()).filter(Boolean);
+ const payload={name:String(values.get("name")||"").trim(),endpoint:String(values.get("endpoint")||"").trim(),credential_env:split("credential_env"),declared_capabilities:split("capabilities"),enabled:false};
+ try{await api("/integrations/mcp/servers",{method:"POST",body:JSON.stringify(payload)});form.reset();$("mcpStatus").textContent="Registered disabled. Configure its referenced secret privately before enabling.";await loadMcpServers()}catch(e){$("mcpStatus").textContent=e.message}
+});
+document.getElementById("mcpRows")?.addEventListener("click",event=>{const button=event.target.closest("button[data-mcp-action]");if(!button)return;if(button.dataset.mcpAction==="toggle")toggleMcpServer(button.dataset.id,button.dataset.enabled==="true");if(button.dataset.mcpAction==="test")testMcpServer(button.dataset.id)});
+document.getElementById("mcpRefresh")?.addEventListener("click",loadMcpServers);
+document.querySelector('nav.main-nav a[data-view="mcp"]')?.addEventListener("click",loadMcpServers);
+if(location.hash==="#mcp")loadMcpServers();
 </script>
 </body></html>
 """

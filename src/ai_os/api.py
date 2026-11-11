@@ -15,7 +15,7 @@ from ai_os.db import initialize_database
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, ApprovalOut, TaskCreate, TaskOut
 from ai_os.service import create_approval, create_task, decide_approval, list_approvals, list_tasks
 from ai_os.discovery import create_scan, list_scans, list_candidates, github_api_status, sync_free_api_catalog, list_free_api_catalog, run_pending_once as run_discovery_pending_once
-from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision
+from ai_os.schemas import DiscoveryScanCreate, CandidateReviewDecision, MCPServerCreate, MCPServerOut, MCPServerEnable
 from ai_os.db import connect
 from datetime import datetime, timezone
 from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, generate_with_fallback, test_provider, test_unorouter_personal
@@ -25,6 +25,8 @@ from ai_os.brain import brain_status, list_memories, review_memory
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
+from ai_os.mcp_registry import create_mcp_server, list_mcp_servers, set_mcp_server_enabled
+from ai_os.mcp_client import probe_mcp_server
 from ai_os import business_ops
 from pydantic import BaseModel, Field
 
@@ -723,6 +725,45 @@ def post_candidate_review(payload: CandidateReviewDecision):
     return {"repository_url": url, "review_state": payload.decision, "review_notes": payload.notes.strip(), "review_updated_at": updated, "side_effects": "none"}
 
 
+
+
+@app.post("/integrations/mcp/servers", response_model=MCPServerOut, status_code=201, dependencies=[Depends(require_owner_key)])
+def post_mcp_server(payload: MCPServerCreate):
+    try:
+        return create_mcp_server(payload, actor_id="owner")
+    except ValueError as exc:
+        raise HTTPException(status_code=409 if "already registered" in str(exc) else 422, detail=str(exc)) from exc
+
+
+@app.get("/integrations/mcp/servers", response_model=list[MCPServerOut], dependencies=[Depends(require_owner_key)])
+def get_mcp_servers():
+    return list_mcp_servers()
+
+
+@app.post("/integrations/mcp/servers/{server_id}/enabled", response_model=MCPServerOut, dependencies=[Depends(require_owner_key)])
+def post_mcp_server_enabled(server_id: str, payload: MCPServerEnable):
+    result = set_mcp_server_enabled(server_id, payload.enabled, actor_id="owner")
+    if result is None:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    return result
+
+
+@app.post("/integrations/mcp/servers/{server_id}/test", dependencies=[Depends(require_owner_key)])
+def post_mcp_server_test(server_id: str):
+    """Owner-triggered, read-only MCP handshake and tool discovery. Never invokes a tool."""
+    server = next((item for item in list_mcp_servers() if item["id"] == server_id), None)
+    if server is None:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    if not server["enabled"]:
+        raise HTTPException(status_code=409, detail="Enable this MCP server before testing its connection")
+    try:
+        return probe_mcp_server(server_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 class WebsiteApiCallRequest(BaseModel):
