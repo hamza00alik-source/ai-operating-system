@@ -43,6 +43,7 @@ def test_business_records_distinguish_verified_revenue_and_pending_expenses(monk
         )
         assert confirmed_paid.status_code == 200
         assert confirmed_paid.json()["status"] == "owner_confirmed_paid"
+        assert confirmed_paid.json()["paid_at"]
         repeated = client.post(
             f"/business/expenses/{expense.json()['id']}/confirm-paid?business_id=core",
             json={}, headers=headers
@@ -72,7 +73,7 @@ def test_business_records_distinguish_verified_revenue_and_pending_expenses(monk
         assert paid_usd["total"] >= 12.5
         net_usd = next(x for x in summary.json()["verified_net_cash_movement_mtd_by_currency"] if x["currency"] == "USD")
         assert net_usd["net_cash_movement"] >= 12.5
-        assert summary.json()["expenses_approved_awaiting_manual_payment"] >= 0
+        assert summary.json()["expenses_approved_awaiting_manual_payment"] == 0
 
 
 def test_code_asset_license_offer_requires_ownership_and_dependency_review(monkeypatch):
