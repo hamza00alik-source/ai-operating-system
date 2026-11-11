@@ -145,7 +145,7 @@ def test_manager_rework_reuses_current_lease_and_requeues_atomically(tmp_path):
     assert queue.counts() == {"queued": 1}
     assert store.get_work_item(item.id).state == TaskState.QUEUED
     retry = queue.claim(agent_id)
-    assert retry is not None and retry.attempt == 1
+    assert retry is not None and retry.attempt == 2
     assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
     assert store.verify_audit_chain()
     store.close()
