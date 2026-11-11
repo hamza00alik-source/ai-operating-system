@@ -160,7 +160,7 @@ class AgentExecutor:
             prompt=self._build_prompt(role, item, notes, research_context, prerequisite_context),
             request_id=str(uuid4()),
             max_output_tokens=self._max_output_tokens,
-            work_item_id=str(item.id), role_key=role.key,
+            work_item_id=str(item.id), role_key=role.key, business_id=item.business_id,
         )
         result: ModelResult = self._gateway.complete(
             request,
