@@ -10,7 +10,8 @@ The endpoint is owner-authenticated. The owner dashboard/operator invokes it; th
 
 ## Decision behavior
 
-- The manager model receives the work objective and bounded specialist deliverables as untrusted evidence.
+- The manager model receives the registered manager role's mission, workflow, quality rubric, work objective, and specialist deliverables as untrusted evidence.
+- Evidence is capped at eight deliverables, 6,000 characters per deliverable, and 24,000 combined characters. Oversized evidence is rejected rather than silently truncated.
 - The response must be strict JSON with an explicit boolean decision, rationale, and (when rejected) actionable rework instructions.
 - Invalid, incomplete, or ambiguous model output fails closed; it does not approve the work.
 - Accepted specialist work moves to COMPLETED through the existing audited review transition. If all approved delegation prerequisites are complete and automatic queue admission is enabled, the manager synthesis task can be queued.
