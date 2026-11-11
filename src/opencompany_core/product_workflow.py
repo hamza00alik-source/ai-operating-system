@@ -201,7 +201,11 @@ class ProductWorkflowRepository:
                     if final["status"] == "pending":
                         final["status"] = "in_progress"
                         final["started_at"] = self._now()
-                    status = "awaiting_owner_review" if final["status"] == "completed" else "in_progress"
+                    status = (
+                        "blocked" if final["status"] == "blocked"
+                        else "awaiting_owner_review" if final["status"] == "completed"
+                        else "in_progress"
+                    )
                 else:
                     status = "blocked" if any(item["status"] == "blocked" for item in stages) else "in_progress"
                 now = self._now()
