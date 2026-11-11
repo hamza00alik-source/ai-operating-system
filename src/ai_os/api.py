@@ -25,6 +25,7 @@ from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recov
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory, run_learning_cycle
 from ai_os.business_registry import create_business, list_businesses, refresh_business_ids
+from ai_os import venture_pipeline
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.executive_supervisor import executive_status, supervise_once, executive_supervisor_loop
@@ -247,6 +248,25 @@ class ResearchSourceRequest(BaseModel):
 class BrainMemoryReview(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     note: str = Field(default="", max_length=1000)
+
+
+class VentureOpportunityCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=160)
+    thesis: str = Field(min_length=20, max_length=6000)
+    customer_segment: str = Field(default="", max_length=500)
+    problem: str = Field(default="", max_length=1000)
+    revenue_model: str = Field(default="unknown", max_length=100)
+    market_scope: str = Field(default="global", max_length=120)
+
+
+class VentureAssessmentRequest(BaseModel):
+    assessment: dict = Field(default_factory=dict)
+    evidence: list[dict] = Field(default_factory=list, max_length=100)
+
+
+class VentureDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(shortlisted|launch_approved|rejected|paused)$")
+    notes: str = Field(default="", max_length=3000)
 
 
 class CodeEvolutionRequest(BaseModel):
@@ -1060,6 +1080,106 @@ def post_approval_decision(approval_id: str, payload: ApprovalDecision, business
         raise HTTPException(status_code=404, detail="Approval request not found")
     business_ops.apply_expense_approval(approval_id, payload.decision)
     return result
+
+
+@app.get("/venture-opportunities", dependencies=[Depends(require_api_key)])
+def get_venture_opportunities(status: str | None = None):
+    if status and status not in venture_pipeline.STATUSES:
+        raise HTTPException(status_code=422, detail="Unknown opportunity status.")
+    return venture_pipeline.list_opportunities(status)
+
+
+@app.get("/venture-opportunities/{opportunity_id}", dependencies=[Depends(require_api_key)])
+def get_venture_opportunity(opportunity_id: str):
+    result = venture_pipeline.get_opportunity(opportunity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    return result
+
+
+@app.post("/venture-opportunities", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_venture_opportunity(payload: VentureOpportunityCreate):
+    try:
+        return venture_pipeline.create_opportunity(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/research", status_code=202, dependencies=[Depends(require_owner_key)])
+def post_venture_research(opportunity_id: str):
+    opportunity = venture_pipeline.get_opportunity(opportunity_id)
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    description = (
+        "COMPANY-WIDE VENTURE OPPORTUNITY RESEARCH. This is portfolio research, not work for an existing business unit. "
+        "Do not assume the opportunity is viable. Research the thesis, target customer, problem severity and willingness to pay; "
+        "market size with sourced methodology; competitors and substitutes; pricing and revenue model; startup and recurring costs; "
+        "unit economics and break-even assumptions; distribution channels and acquisition costs; operational feasibility; "
+        "legal/regulatory/IP risks; and a low-cost validation experiment. Compare at least three credible source URLs where possible. "
+        "Separate dated sourced facts, estimates, hypotheses and unknowns. Never invent figures, sources, customer demand or profit. "
+        "Return the six-dimension 0-5 scorecard (demand, competition, economics, distribution, execution, risk), explain every rating, "
+        "include HTTPS source URLs and dates, give conservative/base/upside economics only when assumptions are explicit, and recommend "
+        "validate, defer or reject. No spending, publishing, customer commitments or account changes.\n\n"
+        f"OPPORTUNITY: {opportunity['title']}\nTHESIS: {opportunity['thesis']}\n"
+        f"CUSTOMER SEGMENT: {opportunity['customer_segment']}\nPROBLEM: {opportunity['problem']}\n"
+        f"REVENUE MODEL: {opportunity['revenue_model']}\nMARKET SCOPE: {opportunity['market_scope']}\n"
+    )
+    try:
+        task = create_task(TaskCreate(
+            title="Venture research: " + opportunity["title"][:150],
+            description=description,
+            department="research",
+            business_id="core",
+        ))
+        run = create_run(task["id"])
+        result = venture_pipeline.queue_research(opportunity_id, task["id"])
+        return {"opportunity": result, "task": task, "agent_run": run,
+                "execution_policy": "Free-confirmed models only; no paid fallback; no external side effects."}
+    except (ValueError, LookupError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/assessment", dependencies=[Depends(require_owner_key)])
+def post_venture_assessment(opportunity_id: str, payload: VentureAssessmentRequest):
+    try:
+        return venture_pipeline.save_assessment(opportunity_id, payload.assessment, payload.evidence)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/decision", dependencies=[Depends(require_owner_key)])
+def post_venture_decision(opportunity_id: str, payload: VentureDecisionRequest):
+    try:
+        return venture_pipeline.decide_opportunity(opportunity_id, payload.decision, payload.notes)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/launch", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_launch_venture(opportunity_id: str):
+    opportunity = venture_pipeline.get_opportunity(opportunity_id)
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    if opportunity["status"] != "launch_approved":
+        raise HTTPException(status_code=409, detail="Owner launch approval is required before creating a business unit.")
+    revenue_model = opportunity["revenue_model"].lower()
+    business_type = "".join(ch if ch.isalnum() or ch == "-" else "-" for ch in revenue_model).strip("-")
+    business_type = (business_type or "general")[:64]
+    try:
+        business = create_business(
+            opportunity["title"],
+            business_type,
+            "Created from owner-approved venture opportunity. " + opportunity["thesis"],
+        )
+        result = venture_pipeline.mark_launched(opportunity_id, business["id"])
+        return {"opportunity": result, "business_unit": business,
+                "side_effects": "A separate business unit was registered. No money was spent, no listings were published, and no external account or customer was contacted."}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/discovery/status", dependencies=[Depends(require_api_key)])
