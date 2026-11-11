@@ -7,9 +7,10 @@ and remain review-required; a missing sink fails closed.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Callable, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5, uuid4
 
 from .domain import AuditRecord, TaskState
@@ -41,6 +42,7 @@ class OpenCompanyWorker:
         *,
         request_budget_usd: float = 0.0,
         preferred_provider: str | None = None,
+        manager_review_callback: Callable[[UUID], object] | None = None,
     ) -> None:
         if artifact_sink is None:
             raise WorkerConfigurationError("a durable artifact sink is required")
@@ -52,6 +54,7 @@ class OpenCompanyWorker:
         self.artifact_sink = artifact_sink
         self.request_budget_usd = request_budget_usd
         self.preferred_provider = preferred_provider
+        self.manager_review_callback = manager_review_callback
 
     def available_agent_ids(self) -> tuple[UUID, ...]:
         """Return only assignees with queued work or expired leases."""
@@ -63,11 +66,13 @@ class OpenCompanyWorker:
             return "idle"
         try:
             existing_item = self.store.get_work_item(lease.work_item_id)
-            if existing_item is not None and existing_item.state == TaskState.REVIEW:
+            if existing_item is not None and existing_item.state in {TaskState.REVIEW, TaskState.COMPLETED}:
                 saved = self.store.list_deliverables(lease.work_item_id)
                 if any(value["role_key"] == role_key for value in saved):
-                    self.queue.complete(lease)
-                    return "completed_review_required"
+                    review_result = None
+                    if existing_item.state == TaskState.REVIEW:
+                        review_result = self._attempt_manager_review(lease, role_key)
+                    return self._finish_after_manager_review(lease, role_key, review_result)
             deliverable = self._execute_lease(lease, role_key)
             # A retry of the same work/role must address the same artifact key.
             # This lets a durable sink safely deduplicate after a crash between
@@ -90,8 +95,8 @@ class OpenCompanyWorker:
             )
             if not saved:
                 raise WorkerConfigurationError("work item is no longer in progress")
-            self.queue.complete(lease)
-            return "completed_review_required"
+            review_result = self._attempt_manager_review(lease, role_key)
+            return self._finish_after_manager_review(lease, role_key, review_result)
         except Exception as exc:
             # Do not leak exception text into persistent queue metadata.
             queue_state = None
@@ -108,6 +113,58 @@ class OpenCompanyWorker:
             else:
                 self.store.append_audit_record(failure_event)
             raise
+
+    def _attempt_manager_review(self, lease: WorkerLease, role_key: str) -> object | None:
+        """Run the internal quality gate when explicitly enabled; defer safely on failure."""
+        enabled = os.environ.get("OPENCOMPANY_AUTO_MANAGER_REVIEW", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return None
+        item = self.store.get_work_item(lease.work_item_id)
+        if item is None:
+            return None
+        department = default_organization().get(item.department)
+        # Department managers and the CEO must remain subject to owner review;
+        # this gate is only for specialist deliverables, never manager self-review.
+        if role_key in {department.manager_role_key, "chief_executive_orchestrator"}:
+            return None
+        error_type = None
+        try:
+            if self.manager_review_callback is None:
+                raise WorkerConfigurationError("manager review callback is not configured")
+            return self.manager_review_callback(lease.work_item_id)
+        except Exception as exc:
+            error_type = type(exc).__name__
+        self.store.append_audit_record(self._audit(
+            lease, "manager.review_deferred",
+            {"role_key": role_key, "error_type": error_type, "task_state": "review"},
+        ))
+
+    def _finish_after_manager_review(
+        self, lease: WorkerLease, role_key: str, review_result: object | None,
+    ) -> str:
+        item = self.store.get_work_item(lease.work_item_id)
+        if (
+            item is not None and item.state == TaskState.READY
+            and isinstance(review_result, dict)
+            and review_result.get("auto_queue_enabled") is True
+            and review_result.get("free_provider_ready") is True
+        ):
+            requeued = self.queue.requeue_after_manager_review(
+                lease, item, lease.payload,
+                self._audit(
+                    lease,
+                    "manager.rework_auto_requeued" if lease.attempt < self.queue.max_attempts else "manager.rework_retry_limit_reached",
+                    {"role_key": role_key, "request_budget_usd": 0.0,
+                     "attempt": lease.attempt, "max_attempts": self.queue.max_attempts},
+                ),
+            )
+            return "manager_rework_requeued" if requeued else "manager_rework_limit_reached"
+        self.queue.complete(lease)
+        if item and item.state == TaskState.COMPLETED:
+            return "completed_manager_review"
+        if item and item.state == TaskState.READY:
+            return "manager_rework_requested"
+        return "completed_review_required"
 
     def _execute_lease(self, lease: WorkerLease, role_key: str) -> AgentDeliverable:
         item = self.store.get_work_item(lease.work_item_id)
