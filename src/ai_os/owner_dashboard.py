@@ -422,7 +422,7 @@ th{background:#101b2c}
 <p class="small">Enter owner-reviewed assumptions for conservative, base and upside cases. All three scenarios use the same currency. This is arithmetic, not a forecast or proof of demand; no spending or external action occurs.</p>
 <form id="ventureFinancialForm">
 <label for="financialOpportunity">Opportunity</label><select id="financialOpportunity" name="opportunity_id" required style="width:100%;margin:6px 0"><option value="">Select opportunity</option></select>
-<label for="financialCurrency">Currency label (display only)</label><input id="financialCurrency" name="financialCurrency" maxlength="12" value="USD" placeholder="e.g. USD, PKR, EUR" style="width:100%;margin:6px 0">
+<label for="financialCurrency">Currency label (display only)</label><input id="financialCurrency" name="financialCurrency" maxlength="12" required placeholder="e.g. USD, PKR, EUR" style="width:100%;margin:6px 0">
 <div class="scenario-grid"><fieldset class="scenario-card"><legend>Conservative case</legend>
 <label>Sales per month<input name="conservative_monthly_sales" type="number" min="0" step="1" required value="10"></label>
 <label>Average price per sale<input name="conservative_average_price" type="number" min="0" step="0.01" required></label>
