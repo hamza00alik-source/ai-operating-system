@@ -202,6 +202,32 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         const badge=document.createElement("span");badge.className="pill";badge.textContent=w.state;row.append(badge);
         card.append(row);
         const detail=document.createElement("p");detail.textContent=w.department+" · "+w.objective;card.append(detail);
+        const workflowButton=document.createElement("button");workflowButton.textContent="Workflow details";
+        workflowButton.addEventListener("click",async()=>{
+          workflowButton.disabled=true;
+          try{
+            const result=await request("/work-items/"+w.id+"/workflow");
+            const panel=document.createElement("pre");
+            panel.style.whiteSpace="pre-wrap";panel.style.overflowWrap="anywhere";
+            panel.style.maxHeight="360px";panel.style.overflow="auto";
+            panel.textContent=JSON.stringify({
+              next_action:result.next_action,
+              prerequisites:result.prerequisites,
+              dependents:result.dependents,
+              queue:result.queue,
+              delegation_proposals:(result.delegation_proposals||[]).map(p=>({id:p.id,status:p.status,mode:p.mode,children:p.children})),
+              handoffs:(result.handoffs||[]).map(h=>({id:h.id,state:h.state,purpose:h.purpose})),
+              deliverables:result.deliverables,
+              counts:result.counts
+            },null,2);
+            const existing=card.querySelector("[data-workflow-details]");
+            if(existing)existing.remove();
+            panel.dataset.workflowDetails="true";card.append(panel);
+            setMessage("Workflow state loaded from the live API.","success");
+          }catch(error){setMessage(error.message,"error");}
+          finally{workflowButton.disabled=false;}
+        });
+        card.append(workflowButton);
         if((w.state==="draft" || w.state==="ready") && !w.assigned_agent_id){
           const managerButton=document.createElement("button");managerButton.textContent="Ask department manager";
           managerButton.addEventListener("click",async()=>{
