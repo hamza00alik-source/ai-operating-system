@@ -270,6 +270,7 @@ def test_code_evolution_requires_read_only_github_access_verification(monkeypatc
                   "confirm_draft_pr_only": True},
         )
         assert saved.status_code == 200
+        runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
         runtime.github_evolution.verify_access = lambda: {
             "authenticated": True, "username": "test-owner",
             "repository_access": True, "repository": "hamza00alik-source/ai-operating-system",
