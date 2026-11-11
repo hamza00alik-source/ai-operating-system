@@ -57,6 +57,14 @@ def test_api_anything_rejects_invalid_site_operation_and_large_arguments():
 
 
 
+def test_api_anything_batch_rejects_oversized_and_non_json_arguments():
+    client = ApiAnythingClient("https://api.example", "secret", transport=lambda *a, **k: Response({}))
+    with pytest.raises(ValueError, match="8000 characters"):
+        client.call_batch([{"site": "github", "op": "search", "args": {"q": "x" * 9000}}])
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        client.call_batch([{"site": "github", "op": "search", "args": {"q": object()}}])
+
+
 def test_api_anything_rejects_cleartext_external_urls_and_accepts_private_network_http():
     with pytest.raises(ValueError, match="must use HTTPS"):
         ApiAnythingClient("http://api.example.com", "secret-token")
