@@ -1006,6 +1006,30 @@ def activate_workforce_scope(
                 detail="Team key is not registered in the selected department.",
             )
 
+    for profile in store.list_agents(limit=1000):
+        if (
+            profile.state != AgentState.DRAFT
+            or profile.department != payload.department
+            or (payload.team_key is not None and profile.team_key != payload.team_key)
+        ):
+            continue
+        if profile.role_key not in department.role_keys:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Draft profile has an unregistered department role: {profile.role_key}",
+            )
+        role = default_workforce().get(profile.role_key)
+        expected_team = (
+            "executive" if profile.role_key == "chief_executive_orchestrator"
+            else "management" if profile.role_key == department.manager_role_key
+            else role.team_key
+        )
+        if profile.team_key != expected_team:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Draft profile role/team identity is inconsistent: {profile.role_key}",
+            )
+
     try:
         activated = store.activate_all_draft_agents_with_audit(
             department=payload.department, team_key=payload.team_key,
