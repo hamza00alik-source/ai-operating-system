@@ -179,6 +179,9 @@ def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypa
         "secret": "uno-test-secret", "model": "sample-model:free",
         "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
     } if provider == "unorouter" else None)
+    monkeypatch.setattr("opencompany_core.unorouter_adapter.discover_model_catalog", lambda key: (
+        {"model_id": "sample-model:free", "allowed_for_inference": True},
+    ))
     class FakeResponse:
         def __enter__(self): return self
         def __exit__(self, *args): return False
