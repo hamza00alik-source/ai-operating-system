@@ -178,11 +178,20 @@ class LearningRepository:
                     self._db.execute("ROLLBACK")
                 raise
 
-    def list_proposals(self) -> list[dict]:
+    def list_proposals(self, business_id: str | None = None) -> list[dict]:
+        if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError("unknown business unit for proposal lookup")
         with self._lock:
-            rows = self._db.execute(
-                "SELECT * FROM improvement_proposals ORDER BY created_at DESC,id LIMIT 500"
-            ).fetchall()
+            if business_id is None:
+                rows = self._db.execute(
+                    "SELECT * FROM improvement_proposals ORDER BY created_at DESC,id LIMIT 500"
+                ).fetchall()
+            else:
+                rows = self._db.execute(
+                    """SELECT * FROM improvement_proposals WHERE business_id=?
+                       ORDER BY created_at DESC,id LIMIT 500""",
+                    (business_id,),
+                ).fetchall()
         return [{
             "id": row["id"], "target": row["target"],
             "change_summary": row["change_summary"], "rationale": row["rationale"],
