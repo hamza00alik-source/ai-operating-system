@@ -128,3 +128,5 @@ The owner API now provides private, owner-authenticated commercial records:
 - Creating the first quote advances its opportunity to the proposal stage; recording an accepted-quote order advances the opportunity to won. Both stage changes are part of the same transaction as the quote/order audit record.
 
 - Lost and on-hold opportunities cannot receive new quotes. An accepted quote cannot be voided after its order record exists, and duplicate order creation is rejected.
+
+- Order status can be changed only through owner-confirmed, audited transitions: awaiting owner fulfilment → in progress → fulfilled, with cancellation allowed before completion. These status updates are records only and never trigger external fulfilment.
