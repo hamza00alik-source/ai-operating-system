@@ -76,7 +76,12 @@ def discover_free_models(api_key: str, *, force_refresh: bool = False) -> tuple[
 
     free_catalog_ids: set[str] = set()
     for item in catalog_models:
-        if not isinstance(item, dict) or item.get("is_free") is not True or item.get("online") is not True:
+        # UnoRouter's public catalogue lists base model names; the free
+        # variant is exposed separately in /v1/models with a :free suffix.
+        # A base row may therefore have is_free=false while its :free variant
+        # is still a valid zero-cost route. The suffix on the key-visible ID is
+        # the authoritative free-route marker; online gates the base model.
+        if not isinstance(item, dict) or item.get("online") is not True:
             continue
         name = item.get("model_name")
         if isinstance(name, str) and name.strip():
