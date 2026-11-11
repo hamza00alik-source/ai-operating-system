@@ -103,6 +103,46 @@ def get_opportunity(opportunity_id: str) -> dict | None:
     return _decode(row) if row else None
 
 
+def reserve_research(opportunity_id: str) -> str:
+    """Atomically reserve one research run so duplicate clicks cannot queue duplicates."""
+    eligible = {"idea", "shortlisted", "assessed", "paused"}
+    with connect() as db:
+        row = db.execute("SELECT status FROM venture_opportunities WHERE id=?", (opportunity_id,)).fetchone()
+        if row is None:
+            raise LookupError("Venture opportunity not found.")
+        previous = row["status"]
+        if previous not in eligible:
+            raise ValueError("This opportunity is not eligible for a new research run.")
+        changed = db.execute(
+            "UPDATE venture_opportunities SET status='research_queued',research_task_id=NULL,updated_at=? WHERE id=? AND status=?",
+            (_now(), opportunity_id, previous),
+        )
+        if changed.rowcount != 1:
+            raise ValueError("Another research run has already reserved this opportunity.")
+    return previous
+
+
+def attach_research_task(opportunity_id: str, task_id: str) -> dict:
+    with connect() as db:
+        changed = db.execute(
+            "UPDATE venture_opportunities SET research_task_id=?,updated_at=? WHERE id=? AND status='research_queued' AND research_task_id IS NULL",
+            (task_id, _now(), opportunity_id),
+        )
+        if changed.rowcount != 1:
+            raise ValueError("Research reservation expired or was already attached.")
+    return get_opportunity(opportunity_id)
+
+
+def cancel_research_reservation(opportunity_id: str, previous_status: str) -> None:
+    if previous_status not in {"idea", "shortlisted", "assessed", "paused"}:
+        return
+    with connect() as db:
+        db.execute(
+            "UPDATE venture_opportunities SET status=?,updated_at=? WHERE id=? AND status='research_queued' AND research_task_id IS NULL",
+            (previous_status, _now(), opportunity_id),
+        )
+
+
 def queue_research(opportunity_id: str, task_id: str) -> dict:
     with connect() as db:
         row = db.execute("SELECT * FROM venture_opportunities WHERE id=?", (opportunity_id,)).fetchone()
