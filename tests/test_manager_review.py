@@ -5,6 +5,7 @@ import pytest
 from opencompany_core.domain import TaskState, WorkItem
 from opencompany_core.manager_review import ManagerReviewError, review_specialist_deliverables
 from opencompany_core.model_gateway import ModelResult
+from opencompany_core.workforce import default_workforce
 
 
 class FakeGateway:
@@ -48,6 +49,10 @@ def test_manager_accepts_valid_specialist_deliverable():
     assert decision.approved is True
     assert decision.rework_instructions == ""
     assert gateway.request.role_key == "market_intelligence_analyst"
+    manager_role = default_workforce().get("market_intelligence_analyst")
+    assert manager_role.mission in gateway.request.prompt
+    assert manager_role.playbook.workflow_steps[0] in gateway.request.prompt
+    assert manager_role.playbook.quality_rubric[0] in gateway.request.prompt
 
 
 def test_manager_requests_specific_rework():
@@ -80,4 +85,30 @@ def test_manager_requires_deliverable_evidence():
     with pytest.raises(ManagerReviewError):
         review_specialist_deliverables(
             _item(), "market_intelligence_analyst", (), FakeGateway("{}")
+        )
+
+
+
+def test_manager_rejects_role_from_another_department():
+    with pytest.raises(ManagerReviewError):
+        review_specialist_deliverables(
+            _item(), "financial_control_analyst", _evidence(), FakeGateway("{}")
+        )
+
+
+def test_manager_fails_closed_instead_of_truncating_large_deliverables():
+    oversized = ({
+        "role_key": "market_research_analyst",
+        "content": "x" * 6001,
+    },)
+    with pytest.raises(ManagerReviewError):
+        review_specialist_deliverables(
+            _item(), "market_intelligence_analyst", oversized, FakeGateway("{}")
+        )
+
+
+def test_manager_rejects_more_than_eight_deliverables():
+    with pytest.raises(ManagerReviewError):
+        review_specialist_deliverables(
+            _item(), "market_intelligence_analyst", _evidence() * 9, FakeGateway("{}")
         )
