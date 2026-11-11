@@ -225,13 +225,13 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       const currency=document.createElement("input");currency.maxLength=3;currency.value="USD";currency.placeholder="ISO currency code";quoteForm.append(currency);
       const exponent=document.createElement("input");exponent.type="number";exponent.min="0";exponent.max="3";exponent.value="2";exponent.placeholder="Currency decimal places (0, 2 or 3)";quoteForm.append(exponent);
       const quantity=document.createElement("input");quantity.type="number";quantity.min="1";quantity.max="10000";quantity.value="1";quantity.placeholder="Quantity";quoteForm.append(quantity);
-      const unitPrice=document.createElement("input");unitPrice.type="number";unitPrice.min="1";unitPrice.step="1";unitPrice.placeholder="Unit price in minor units (e.g. 1250 = 12.50)";quoteForm.append(unitPrice);
+      const unitPrice=document.createElement("input");unitPrice.type="number";unitPrice.min="1";unitPrice.step="1";unitPrice.placeholder="Unit price in minor units (decimal places set above)";quoteForm.append(unitPrice);
       const terms=document.createElement("textarea");terms.rows=2;terms.maxLength=4000;terms.placeholder="Quote terms, validity, exclusions and delivery assumptions";quoteForm.append(terms);
       const makeQuote=document.createElement("button");makeQuote.textContent="Save quote as draft";
       makeQuote.disabled=!activeProducts.length;
       makeQuote.addEventListener("click",async()=>{
         const q=Number(quantity.value),price=Number(unitPrice.value);
-        if(!productSelect.value||!quoteTitle.value.trim()||!/^[A-Za-z]{3}$/.test(currency.value)||!Number.isInteger(q)||q<1||!Number.isInteger(price)||price<1||!terms.value.trim()){
+        if(!productSelect.value||!quoteTitle.value.trim()||!/^[A-Za-z]{3}$/.test(currency.value)||!Number.isInteger(q)||q<1||!Number.isInteger(price)||price<1||![0,2,3].includes(Number(exponent.value))||!terms.value.trim()){
           setMessage("Complete the product, title, ISO currency, quantity, minor-unit price and terms.","error");return;
         }
         makeQuote.disabled=true;
