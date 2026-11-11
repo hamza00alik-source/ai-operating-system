@@ -551,6 +551,7 @@ async function loadVentureOpportunities(){
   $("ventureShortlist").textContent=items.filter(x=>x.status==="shortlisted").length;
   $("ventureLaunched").textContent=items.filter(x=>x.status==="launched").length;
   $("assessmentOpportunity").innerHTML='<option value="">Select opportunity</option>'+items.filter(x=>x.status!=="launched"&&x.status!=="rejected").map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("");
+  $("financialOpportunity").innerHTML='<option value="">Select opportunity</option>'+items.filter(x=>x.status!=="launched"&&x.status!=="rejected").map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("");
   $("ventureRows").innerHTML=items.length?items.map(x=>{
    const score=x.assessment?.scorecard||{};
    const scoreText=score.score==null?"Not scored":score.score+"/100 · provisional";
