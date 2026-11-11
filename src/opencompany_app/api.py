@@ -2353,12 +2353,16 @@ def review_work_item(
 ) -> dict:
     from datetime import datetime, timezone
 
+    reviewed_item = store.get_work_item(item_id)
+    if reviewed_item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
     action = "work_item.review_approved" if payload.approved else "work_item.review_rejected"
     event = AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
         actor_id="owner", action=action, subject_type="work_item",
         subject_id=str(item_id), outcome="recorded", correlation_id=str(uuid4()),
-        details={"approved": payload.approved, "rationale": payload.rationale},
+        details={"approved": payload.approved, "rationale": payload.rationale,
+                 "business_id": reviewed_item.business_id},
     )
     try:
         state = store.review_work_item_with_audit(
@@ -2388,7 +2392,8 @@ def review_work_item(
             actor_id="owner", action="learning.review_outcome_recorded",
             subject_type="work_item", subject_id=str(item_id),
             outcome=evaluation.grade.value, correlation_id=str(uuid4()),
-            details={"evaluation_id": str(evaluation.id)},
+            details={"evaluation_id": str(evaluation.id),
+                     "business_id": reviewed_item.business_id},
         )
         runtime.learning.save_evaluation(evaluation, learning_event)
         evaluation_id = str(evaluation.id)
