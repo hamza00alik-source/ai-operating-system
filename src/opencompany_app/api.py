@@ -1984,6 +1984,8 @@ def create_executive_work_plan(
     store: SQLiteStore = Depends(get_store),
 ) -> dict:
     """Ask the active CEO orchestrator to decompose an owner objective into draft tasks."""
+    if payload.business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
     ceo = next(
         (agent for agent in store.list_agents(limit=1000)
          if agent.role_key == "chief_executive_orchestrator"),
@@ -2008,8 +2010,6 @@ def create_executive_work_plan(
         ) from exc
     except ExecutivePlanningError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if payload.business_id not in BUSINESS_UNIT_IDS:
-        raise HTTPException(status_code=422, detail="Unknown business unit.")
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)
     records = tuple(
