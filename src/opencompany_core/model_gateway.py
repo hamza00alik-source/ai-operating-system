@@ -164,7 +164,15 @@ class ModelGateway:
             except ProviderUnavailable as exc:
                 failures.append(f"{item.policy.name}: {exc}")
                 continue
-            if result.provider != item.policy.name or result.model != item.policy.model:
+            dynamic_free_catalog = (
+                item.policy.name == "unorouter"
+                and item.policy.model == "unorouter/free-catalog:free"
+                and isinstance(result.model, str)
+                and result.model.endswith(":free")
+            )
+            if result.provider != item.policy.name or (
+                result.model != item.policy.model and not dynamic_free_catalog
+            ):
                 raise CostPolicyViolation("adapter response identity does not match selected provider")
             if self._usage_recorder is not None:
                 try:
