@@ -1,4 +1,4 @@
-from ai_os.venture_pipeline import DIMENSIONS, clean_evidence_records, score_assessment
+from ai_os.venture_pipeline import DIMENSIONS, build_financial_scenarios, clean_evidence_records, score_assessment
 
 
 def test_venture_score_is_not_created_from_incomplete_ratings():
@@ -62,3 +62,44 @@ def test_assessment_source_count_uses_only_normalized_evidence_records():
         "source_urls": [item["url"] for item in evidence],
     })
     assert result["source_count"] == 2
+
+
+
+def test_financial_scenarios_calculate_profit_and_break_even_from_explicit_inputs():
+    assumptions = {
+        "monthly_sales": 20,
+        "average_price": 100,
+        "variable_cost_per_sale": 40,
+        "monthly_fixed_cost": 500,
+        "monthly_marketing_cost": 100,
+        "startup_cost": 300,
+    }
+    result = build_financial_scenarios({
+        "conservative": assumptions,
+        "base": assumptions,
+        "upside": assumptions,
+    })
+    base = result["scenarios"]["base"]
+    assert base["monthly_revenue"] == 2000
+    assert base["monthly_operating_profit_before_tax"] == 600
+    assert base["break_even_sales_per_month"] == 10
+    assert base["first_month_net_cash_after_startup"] == 300
+
+
+def test_financial_scenarios_reject_missing_or_loss_making_unit_economics():
+    assumptions = {
+        "monthly_sales": 10,
+        "average_price": 20,
+        "variable_cost_per_sale": 20,
+        "monthly_fixed_cost": 0,
+        "monthly_marketing_cost": 0,
+        "startup_cost": 0,
+    }
+    try:
+        build_financial_scenarios({
+            "conservative": assumptions, "base": assumptions, "upside": assumptions,
+        })
+    except ValueError as exc:
+        assert "positive contribution" in str(exc)
+    else:
+        raise AssertionError("Loss-making unit economics must be rejected")
