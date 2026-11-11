@@ -123,6 +123,35 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     </div>
   </section>
   <section class="panel">
+    <h2 class="section-title">Supplier relationships · separate physical businesses</h2>
+    <p class="muted">Agency suppliers are third-party manufacturers/suppliers represented by the agency. Own-brand suppliers belong only to your separate brand supply chain. Records stay private; saving or verifying does not contact, purchase from, or commit any supplier.</p>
+    <div class="grid">
+      <div class="item">
+        <label for="supplier-business">Owning business</label>
+        <select id="supplier-business">
+          <option value="physical-agency">Physical-products agency · third-party supplier</option>
+          <option value="physical-brand">Own physical-product brand · own supply chain</option>
+        </select>
+        <label for="supplier-name">Supplier / manufacturer name</label>
+        <input id="supplier-name" maxlength="200" placeholder="Company name">
+        <label for="supplier-contact">Contact person (optional)</label>
+        <input id="supplier-contact" maxlength="200" placeholder="Contact name">
+        <label for="supplier-email">Email (optional)</label>
+        <input id="supplier-email" type="email" maxlength="320" placeholder="Email address">
+        <label for="supplier-phone">Phone (optional)</label>
+        <input id="supplier-phone" maxlength="80" placeholder="Phone number">
+        <label for="supplier-country">Country (optional)</label>
+        <input id="supplier-country" maxlength="100" placeholder="Country">
+        <label for="supplier-categories">Product categories (comma-separated)</label>
+        <input id="supplier-categories" maxlength="1000" placeholder="Pink salt, edible salt, salt lamps">
+        <label for="supplier-notes">Private notes</label>
+        <textarea id="supplier-notes" rows="2" maxlength="3000" placeholder="Evidence still needed, certifications to check, etc."></textarea>
+        <button id="create-supplier" disabled>Save private supplier draft</button>
+      </div>
+      <div><h3>Supplier register</h3><div id="commercial-suppliers" class="list"><p class="muted">Connect to load supplier records.</p></div></div>
+    </div>
+  </section>
+  <section class="panel">
     <div class="row"><h2 class="section-title">External research connector</h2><span id="api-anything-status" class="pill">Not configured</span></div>
     <p class="muted">API Anything is connected in read-only tier-one mode. This console can discover public operations and call them without browser automation or write permissions.</p>
     <label for="research-query">Search available research operations</label>
@@ -192,9 +221,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     return response.json();
   };
   async function loadCommercial(){
-    const [opportunities,products,quotes,orders]=await Promise.all([
+    const [opportunities,products,quotes,orders,suppliers]=await Promise.all([
       request("/commercial/opportunities"),request("/commercial/products"),
-      request("/commercial/quotes"),request("/commercial/orders")
+      request("/commercial/quotes"),request("/commercial/orders"),request("/commercial/suppliers")
     ]);
     clear("commercial-opportunities","No customer opportunities recorded.");
     opportunities.opportunities.forEach(o=>{
@@ -329,7 +358,38 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       }
       byId("commercial-orders").append(card);
     });
-    ["create-opportunity","create-catalog-product"].forEach(id=>byId(id).disabled=false);
+    clear("commercial-suppliers","No supplier relationships recorded.");
+    suppliers.suppliers.forEach(supplier=>{
+      const card=document.createElement("article");card.className="item";
+      const heading=document.createElement("h3");heading.textContent=supplier.name+" · "+supplier.business_id;card.append(heading);
+      const meta=document.createElement("p");
+      meta.textContent=[supplier.relationship_type,supplier.country,supplier.product_categories.join(", ")].filter(Boolean).join(" · ");
+      card.append(meta);
+      if(supplier.contact_name||supplier.email||supplier.phone){
+        const contact=document.createElement("p");contact.textContent=[supplier.contact_name,supplier.email,supplier.phone].filter(Boolean).join(" · ");card.append(contact);
+      }
+      if(supplier.notes){const notes=document.createElement("p");notes.textContent=supplier.notes;card.append(notes);}
+      const state=document.createElement("span");state.className="pill";state.textContent=supplier.verification_status;card.append(state);
+      if(supplier.verification_status==="draft"||supplier.verification_status==="verified"){
+        const verify=document.createElement("button");verify.textContent="Mark verified";
+        verify.addEventListener("click",async()=>{
+          if(!confirm("Confirm you have independently checked this supplier's identity and evidence? This only changes the private record; it does not confirm stock, quality, pricing, or export eligibility."))return;
+          verify.disabled=true;
+          try{await request("/commercial/suppliers/"+supplier.id+"/status",{method:"POST",body:JSON.stringify({status:"verified",confirm_owner_decision:true})});await loadCommercial();}
+          catch(error){setMessage(error.message,"error");verify.disabled=false;}
+        });
+        const block=document.createElement("button");block.textContent="Block supplier";
+        block.addEventListener("click",async()=>{
+          if(!confirm("Block this supplier record? This prevents it from being marked verified later."))return;
+          block.disabled=true;
+          try{await request("/commercial/suppliers/"+supplier.id+"/status",{method:"POST",body:JSON.stringify({status:"blocked",confirm_owner_decision:true})});await loadCommercial();}
+          catch(error){setMessage(error.message,"error");block.disabled=false;}
+        });
+        card.append(verify,block);
+      }
+      byId("commercial-suppliers").append(card);
+    });
+    ["create-opportunity","create-catalog-product","create-supplier"].forEach(id=>byId(id).disabled=false);
   }
   async function load(){
     byId("provision").disabled=true;
@@ -670,6 +730,24 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision-specialists").disabled=true;
     try{const result=await request("/agents/bootstrap-specialists",{method:"POST",body:"{}"});setMessage(result.count+" specialist profiles saved as drafts. No workers were started.","success");await load();}
     catch(error){setMessage(error.message,"error");byId("provision-specialists").disabled=false;}
+  });
+  byId("create-supplier").addEventListener("click",async()=>{
+    const name=byId("supplier-name").value.trim();
+    if(!name){setMessage("Enter a supplier or manufacturer name.","error");return;}
+    const button=byId("create-supplier");button.disabled=true;
+    try{
+      await request("/commercial/suppliers",{method:"POST",body:JSON.stringify({
+        business_id:byId("supplier-business").value,name,
+        contact_name:byId("supplier-contact").value.trim()||null,
+        email:byId("supplier-email").value.trim()||null,
+        phone:byId("supplier-phone").value.trim()||null,
+        country:byId("supplier-country").value.trim()||null,
+        product_categories:byId("supplier-categories").value.split(",").map(v=>v.trim()).filter(Boolean),
+        notes:byId("supplier-notes").value.trim()
+      })});
+      ["supplier-name","supplier-contact","supplier-email","supplier-phone","supplier-country","supplier-categories","supplier-notes"].forEach(id=>byId(id).value="");
+      await loadCommercial();setMessage("Private supplier draft saved. No supplier was contacted.","success");
+    }catch(error){setMessage(error.message,"error");button.disabled=false;}
   });
   // Restore the HttpOnly cookie session on every page load. Never persist the API key or CSRF token in browser storage.
   (async()=>{
