@@ -397,6 +397,10 @@ def create_owner_session(
         "opencompany_session", token, max_age=7 * 24 * 60 * 60, httponly=True,
         secure=secure_cookie, samesite="strict", path="/",
     )
+    response.set_cookie(
+        "opencompany_csrf", csrf, max_age=7 * 24 * 60 * 60, httponly=True,
+        secure=secure_cookie, samesite="strict", path="/",
+    )
     response.headers["Cache-Control"] = "no-store"
     return {"authenticated": True, "csrf_token": csrf, "expires_at": expires.isoformat()}
 
@@ -406,14 +410,20 @@ def owner_session_status(
     response: Response,
     runtime: OpenCompanyRuntime = Depends(get_runtime),
     opencompany_session: str | None = Cookie(default=None),
+    opencompany_csrf: str | None = Cookie(default=None),
 ) -> dict:
-    """Restore browser session state and rotate its in-memory CSRF token."""
+    """Restore the same CSRF token across tabs; rotate only if its cookie is missing or invalid."""
     if not opencompany_session:
         raise HTTPException(status_code=401, detail="Owner browser session is missing.")
-    renewed = runtime.sessions.rotate_csrf(opencompany_session)
+    renewed = runtime.sessions.rotate_csrf(opencompany_session, opencompany_csrf)
     if renewed is None:
         raise HTTPException(status_code=401, detail="Owner browser session has expired or been revoked.")
     csrf, expires = renewed
+    secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
+    response.set_cookie(
+        "opencompany_csrf", csrf, max_age=7 * 24 * 60 * 60, httponly=True,
+        secure=secure_cookie, samesite="strict", path="/",
+    )
     response.headers["Cache-Control"] = "no-store"
     return {
         "authenticated": True, "session_type": "owner",
@@ -431,6 +441,7 @@ def revoke_owner_session(
     if opencompany_session:
         runtime.sessions.revoke(opencompany_session)
     response.delete_cookie("opencompany_session", path="/", httponly=True, samesite="strict")
+    response.delete_cookie("opencompany_csrf", path="/", httponly=True, samesite="strict")
     response.headers["Cache-Control"] = "no-store"
     return {"authenticated": False, "revoked": bool(opencompany_session)}
 
