@@ -277,6 +277,8 @@ def confirm_expense_paid(expense_id: str, business_id: str = "core") -> dict:
             raise LookupError("Expense not found in this business environment.")
         if row["status"] == "owner_confirmed_paid":
             return dict(row)
+        if row["amount"] is None:
+            raise ValueError("Add an amount before confirming an expense as paid.")
         if row["status"] != "approved_for_manual_payment":
             raise ValueError("Only owner-approved expenses can be marked paid. Approve the expense first.")
         updated = db.execute(
