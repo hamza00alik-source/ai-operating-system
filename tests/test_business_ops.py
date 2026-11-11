@@ -72,7 +72,10 @@ def test_business_records_distinguish_verified_revenue_and_pending_expenses(monk
         paid_usd = next(x for x in summary.json()["owner_confirmed_paid_expenses_by_currency"] if x["currency"] == "USD")
         assert paid_usd["total"] >= 12.5
         net_usd = next(x for x in summary.json()["verified_net_cash_movement_mtd_by_currency"] if x["currency"] == "USD")
-        assert net_usd["net_cash_movement"] >= 12.5
+        assert net_usd["owner_confirmed_paid_expenses"] > 0
+        assert net_usd["net_cash_movement"] == round(
+            net_usd["verified_revenue"] - net_usd["owner_confirmed_paid_expenses"], 2
+        )
         assert summary.json()["expenses_approved_awaiting_manual_payment"] == 0
 
 
