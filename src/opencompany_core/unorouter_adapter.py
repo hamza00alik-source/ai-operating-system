@@ -92,7 +92,7 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
             isinstance(value, (int, float)) and math.isfinite(float(value)) and float(value) == 0.0
             for value in (input_price, output_price, fixed_price)
         )
-        account_access = model_id in key_ids or (model_id.endswith(":free") and model_id.removesuffix(":free") in key_ids)
+        account_access = model_id in key_ids
         strict_free = (
             item.get("is_free") is True and zero_priced and model_id.endswith(":free")
             and item.get("online") is True and item.get("type") == "text"
@@ -114,7 +114,10 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
         imported.append({
             "model_id": model_id,
             "vendor": str(item.get("vendor") or "Unknown"),
+            "vendor_id": item.get("vendor_id") if isinstance(item.get("vendor_id"), int) else None,
+            "icon": str(item.get("icon") or ""),
             "type": str(item.get("type") or "unknown"),
+            "release_ts": item.get("release_ts") if isinstance(item.get("release_ts"), int) else None,
             "tags": [str(tag) for tag in item.get("tags", []) if isinstance(tag, str)] if isinstance(item.get("tags"), list) else [],
             "online": item.get("online") is True,
             "chat": item.get("chat") is True,
@@ -122,6 +125,18 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
             "input_price": input_price if isinstance(input_price, (int, float)) else None,
             "output_price": output_price if isinstance(output_price, (int, float)) else None,
             "fixed_price": fixed_price if isinstance(fixed_price, (int, float)) else None,
+            "original_input_price": item.get("original_input_price") if isinstance(item.get("original_input_price"), (int, float)) else None,
+            "original_output_price": item.get("original_output_price") if isinstance(item.get("original_output_price"), (int, float)) else None,
+            "original_fixed_price": item.get("original_fixed_price") if isinstance(item.get("original_fixed_price"), (int, float)) else None,
+            "is_fixed_price": item.get("is_fixed_price") is True,
+            "own_purpose": {
+                "trains_or_retains": item.get("own_purpose", {}).get("trains_or_retains"),
+                "consent_required": item.get("own_purpose", {}).get("consent_required"),
+                "countries": [str(country) for country in item.get("own_purpose", {}).get("countries", []) if isinstance(country, str)],
+            } if isinstance(item.get("own_purpose"), dict) else None,
+            "uptime_24h": item.get("uptime_24h") if isinstance(item.get("uptime_24h"), (int, float)) else None,
+            "success_rate": item.get("success_rate") if isinstance(item.get("success_rate"), (int, float)) else None,
+            "avg_latency_ms": item.get("avg_latency_ms") if isinstance(item.get("avg_latency_ms"), (int, float)) else None,
             "supported_endpoint_types": endpoints,
             "account_access": account_access,
             "allowed_for_inference": strict_free,
