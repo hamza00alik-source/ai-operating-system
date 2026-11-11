@@ -269,7 +269,7 @@ def get_research_report(opportunity_id: str) -> dict | None:
             if value:
                 report_parts.append(label + ":\n" + str(value)[:30000])
     report_text = "\n\n---\n\n".join(report_parts)[:60000]
-    urls = list(dict.fromkeys(re.findall(r"https://[^\\s<>\\]\\\"']+", report_text)))
+    urls = list(dict.fromkeys(value.rstrip(".,;:)]}") for value in re.findall(r"https://\S+", report_text)))
     return {
         "opportunity_id": opportunity_id,
         "opportunity_title": opportunity["title"],
