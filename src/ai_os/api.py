@@ -235,7 +235,6 @@ def session_status(request: Request):
 class ModelRunRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=8000)
-    approve_paid_request: bool = False
 
 
 class ResearchSourceRequest(BaseModel):
@@ -441,7 +440,7 @@ def get_unorouter_catalog():
 def post_unorouter_personal_test(payload: ModelRunRequest):
     """Owner-only consumer-account experiment; deliberately outside company routing."""
     try:
-        return test_unorouter_personal(payload.prompt, payload.approve_paid_request)
+        return test_unorouter_personal(payload.prompt)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PermissionError as exc:
