@@ -333,6 +333,17 @@ class DurableWorkerQueue:
             ).fetchall()
         return tuple(UUID(row["agent_id"]) for row in rows)
 
+    def get_entry(self, work_item_id: UUID) -> dict | None:
+        """Return secret-free queue lifecycle metadata for one work item."""
+        with self._lock:
+            row = self._db.execute(
+                """SELECT work_item_id,agent_id,state,attempts,lease_expires_at,
+                          last_error,created_at,updated_at
+                   FROM worker_queue WHERE work_item_id=?""",
+                (str(work_item_id),),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     def counts(self) -> dict[str, int]:
         with self._lock:
             rows = self._db.execute(
