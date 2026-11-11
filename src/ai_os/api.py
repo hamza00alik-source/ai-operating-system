@@ -264,6 +264,10 @@ class VentureAssessmentRequest(BaseModel):
     evidence: list[dict] = Field(default_factory=list, max_length=100)
 
 
+class VentureFinancialModelRequest(BaseModel):
+    scenarios: dict = Field(default_factory=dict)
+
+
 class VentureDecisionRequest(BaseModel):
     decision: str = Field(pattern="^(shortlisted|launch_approved|rejected|paused)$")
     notes: str = Field(default="", max_length=3000)
@@ -1156,6 +1160,16 @@ def get_venture_research_report(opportunity_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail="Venture opportunity not found.")
     return result
+
+
+@app.post("/venture-opportunities/{opportunity_id}/financial-model", dependencies=[Depends(require_owner_key)])
+def post_venture_financial_model(opportunity_id: str, payload: VentureFinancialModelRequest):
+    if venture_pipeline.get_opportunity(opportunity_id) is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    try:
+        return venture_pipeline.build_financial_scenarios(payload.scenarios)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/venture-opportunities/{opportunity_id}/assessment", dependencies=[Depends(require_owner_key)])
