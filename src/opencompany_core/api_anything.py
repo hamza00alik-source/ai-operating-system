@@ -18,8 +18,17 @@ class ApiAnythingClient:
     """Only health, discovery and tier-1 read calls are exposed; no write endpoint exists."""
 
     def __init__(self, base_url: str, token: str, *, transport: Callable | None = None) -> None:
-        if not base_url.startswith("http://") and not base_url.startswith("https://"):
-            raise ValueError("API Anything base URL must be HTTP(S)")
+        parsed = urllib.parse.urlsplit(base_url)
+        if parsed.scheme != "https":
+            # Plain HTTP is permitted only on loopback or Railway's private
+            # service network. Never send a bearer token to an arbitrary
+            # clear-text endpoint.
+            host = (parsed.hostname or "").casefold().rstrip(".")
+            trusted_private_http = host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".railway.internal")
+            if parsed.scheme != "http" or not trusted_private_http:
+                raise ValueError("API Anything must use HTTPS except for loopback or Railway private-network URLs")
+        if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("API Anything base URL must be an origin/path without credentials, query, or fragment")
         if not token or len(token) > 512:
             raise ValueError("API Anything bearer token is required")
         self.base_url = base_url.rstrip("/")
