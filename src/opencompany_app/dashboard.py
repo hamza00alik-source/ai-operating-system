@@ -166,7 +166,42 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         byId("learning-proposals").append(card);
       });
       clear("departments","No departments returned.");
-      org.departments.forEach(d=>addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)"));
+      org.departments.forEach(d=>{
+        addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)");
+        const departmentCard=byId("departments").lastElementChild;
+        const draftProfiles=agents.agents.filter(a=>a.department===d.key && a.state==="draft");
+        if(!draftProfiles.length)return;
+        const departmentButton=document.createElement("button");
+        departmentButton.textContent="Activate all "+draftProfiles.length+" draft profile(s) in department";
+        departmentButton.addEventListener("click",async()=>{
+          departmentButton.disabled=true;
+          try{
+            const result=await request("/agents/activate",{method:"POST",body:JSON.stringify({department:d.key})});
+            setMessage(result.activated_count+" profiles activated in "+d.name+". Workers were not started and no tasks were queued.","success");
+            await load();
+          }catch(error){setMessage(error.message,"error");departmentButton.disabled=false;}
+        });
+        departmentCard.append(departmentButton);
+        const byTeam=new Map();
+        draftProfiles.forEach(profile=>{
+          if(!byTeam.has(profile.team_key))byTeam.set(profile.team_key,[]);
+          byTeam.get(profile.team_key).push(profile);
+        });
+        byTeam.forEach((profiles,teamKey)=>{
+          const teamButton=document.createElement("button");
+          teamButton.style.margin="8px 6px 0 0";
+          teamButton.textContent="Activate "+teamKey+" ("+profiles.length+")";
+          teamButton.addEventListener("click",async()=>{
+            teamButton.disabled=true;
+            try{
+              const result=await request("/agents/activate",{method:"POST",body:JSON.stringify({department:d.key,team_key:teamKey})});
+              setMessage(result.activated_count+" profiles activated in "+d.name+" / "+teamKey+". Workers were not started.","success");
+              await load();
+            }catch(error){setMessage(error.message,"error");teamButton.disabled=false;}
+          });
+          departmentCard.append(teamButton);
+        });
+      });
       clear("agents","No agent profiles yet. Provision the CEO, managers and specialists first.");
       agents.agents.forEach(a=>{
         const card=document.createElement("article");card.className="item";
