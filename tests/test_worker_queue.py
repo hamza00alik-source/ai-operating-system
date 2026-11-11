@@ -100,3 +100,72 @@ def test_shared_store_claim_is_atomic_and_expired_final_lease_dead_letters(tmp_p
     assert store.get_work_item(item.id).state == TaskState.FAILED
     assert store.verify_audit_chain()
     store.close()
+
+
+def test_authorized_re_admission_reuses_done_and_dead_queue_rows(tmp_path):
+    store = SQLiteStore(tmp_path / "re_admission.sqlite3")
+    agent_id = uuid4()
+    agent = AgentProfile(
+        id=agent_id, name="Research Specialist", department="intelligence-research",
+        purpose="Prepare evidence", capabilities=("research",), state=AgentState.ACTIVE,
+        role_key="market_intelligence_analyst", team_key="intelligence-research__team_1",
+    )
+    store.save_agent(agent)
+    queue = DurableWorkerQueue(
+        store._connection, lock=store._lock, max_attempts=1, lease_seconds=30,
+    )
+
+    def make_item(title):
+        item = WorkItem(
+            id=uuid4(), title=title, objective="Prepare an internal draft",
+            department="intelligence-research", state=TaskState.READY,
+            assigned_agent_id=agent_id,
+        )
+        store.save_work_item(item)
+        return item
+
+    def admit(item):
+        queue.enqueue_authorized(
+            item, agent_id, {"role_key": agent.role_key, "team_key": agent.team_key},
+            AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner", action="work_item.queued",
+                subject_type="work_item", subject_id=str(item.id),
+                outcome="recorded", correlation_id=str(uuid4()),
+            ),
+        )
+
+    completed_item = make_item("Retry after review")
+    admit(completed_item)
+    first = queue.claim(agent_id)
+    assert first is not None
+    queue.complete(first)
+    with store._lock:
+        store._connection.execute(
+            "UPDATE work_items SET state=? WHERE id=?",
+            (TaskState.READY.value, str(completed_item.id)),
+        )
+    admit(store.get_work_item(completed_item.id))
+    second = queue.claim(agent_id)
+    assert second is not None and second.work_item_id == completed_item.id
+    assert second.attempt == 1
+    queue.complete(second)
+
+    failed_item = make_item("Retry after failure")
+    admit(failed_item)
+    failed_attempt = queue.claim(agent_id)
+    assert failed_attempt is not None
+    assert queue.fail(failed_attempt, "provider_unavailable") == "dead"
+    with store._lock:
+        store._connection.execute(
+            "UPDATE work_items SET state=? WHERE id=?",
+            (TaskState.READY.value, str(failed_item.id)),
+        )
+    admit(store.get_work_item(failed_item.id))
+    retried = queue.claim(agent_id)
+    assert retried is not None and retried.work_item_id == failed_item.id
+    assert retried.attempt == 1
+    queue.complete(retried)
+    assert queue.counts() == {"done": 2}
+    assert store.verify_audit_chain()
+    store.close()
