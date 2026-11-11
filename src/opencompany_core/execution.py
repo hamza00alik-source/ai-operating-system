@@ -172,6 +172,7 @@ class AgentExecutor:
                 "request_id": request.request_id,
                 "work_item_id": str(item.id),
                 "role_key": role.key,
+                "business_id": item.business_id,
                 "provider": result.provider,
                 "model": result.model,
                 "input_tokens": result.input_tokens,
