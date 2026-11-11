@@ -46,6 +46,8 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "Approve draft" in response.text
     assert "Request revision" in response.text
     assert "Workflow details" in response.text
+    assert 'id="executive-business"' in response.text
+    assert 'id="business-filter"' in response.text
     assert "Retry failed task" in response.text
     assert "Cancel task" in response.text
     assert 'request("/work-items/"+w.id+"/workflow")' in response.text
