@@ -136,7 +136,7 @@ class WorkItemCreateInput(BaseModel):
 
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
-    max_specialists: int = Field(default=5, ge=1, le=5)
+    max_specialists: int = Field(default=15, ge=1, le=50)
 
 
 class ApiAnythingCallInput(BaseModel):
@@ -1182,6 +1182,7 @@ def preview_work_item_delegation(
         },
         "mode": plan.mode.value,
         "selected_team_key": plan.selected_team_key,
+        "selected_team_keys": list(dict.fromkeys(specialist.team_key for specialist in plan.specialists)),
         "specialists": [
             {
                 "role_key": specialist.role_key,
