@@ -62,3 +62,12 @@ This is a prompt-level execution guardrail in addition to the existing database-
 ## Verification boundary
 
 A code commit is not proof of a passing test, successful Railway deployment, working provider inference, connected marketplace, or autonomous operation. Record each separately and only mark a capability verified after observing its actual test or runtime evidence.
+
+
+## Deterministic business-line intake controls
+
+The runtime now applies a deterministic, conservative fulfillment-intent check at task intake and internal delegation. Physical-agency and physical-brand tasks are rejected when their wording explicitly asks to substitute a digital deliverable for an order. Digital-products tasks are rejected when they explicitly promise physical goods, inventory, manufacturing or shipping. Unknown business IDs fail closed.
+
+The dedicated digital-product-launch workflow is restricted to the digital-products environment. Task execution and workflow-detail reads also verify the selected business ID, returning a not-found response rather than exposing another business line's records.
+
+These checks are a safety layer, not a complete semantic classifier or database row-level security system. They deliberately focus on explicit fulfillment language to avoid blocking ordinary cross-channel marketing or research references. They require adversarial testing and further expansion to all customer, finance, credential, integration and artifact endpoints before claiming full business isolation. Unit tests have been added but remain unexecuted while CI is deferred until December 1.
