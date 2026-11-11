@@ -227,7 +227,13 @@ class WorkItemReviewInput(BaseModel):
 
 @lru_cache(maxsize=1)
 def _default_runtime() -> OpenCompanyRuntime:
-    return create_runtime()
+    runtime = create_runtime()
+    # Resolve the API-level manager-review workflow lazily to avoid an import
+    # cycle while ensuring background workers use the same audited review path.
+    runtime.worker.manager_review_callback = lambda item_id: manager_review_specialist_work(
+        item_id, runtime=runtime, store=runtime.store,
+    )
+    return runtime
 
 
 @app.on_event("startup")
