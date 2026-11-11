@@ -291,3 +291,35 @@ def test_code_evolution_requires_read_only_github_access_verification(monkeypatc
     finally:
         api.app.dependency_overrides.clear()
         runtime.close()
+
+
+def test_unreadable_unorouter_secret_can_be_replaced_or_removed(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "original-encryption-key-at-least-32-chars")
+    path = str(tmp_path / "unreadable-secret.sqlite3")
+    runtime = create_runtime(path)
+    runtime.secret_vault.put("unorouter", {"api_key":"private-unorouter-token-123456","model":"qwen/model:free"})
+    runtime.close()
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "rotated-encryption-key-at-least-32-chars")
+    recovered = create_runtime(path)
+    api.app.dependency_overrides[api.get_runtime] = lambda: recovered
+    client = TestClient(api.app)
+    headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
+    try:
+        status = client.get("/settings/providers/unorouter", headers=headers)
+        assert status.status_code == 200
+        assert status.json()["api_key_present"] is True
+        assert status.json()["credentials_decryptable"] is False
+        assert status.json()["configuration_error"]
+        replaced = client.put(
+            "/settings/providers/unorouter", headers=headers,
+            json={"api_key":"replacement-unorouter-token-123456","model":"qwen/model:free","confirm_free":True},
+        )
+        assert replaced.status_code == 200
+        assert recovered.secret_vault.get("unorouter")["api_key"] == "replacement-unorouter-token-123456"
+        removed = client.delete("/settings/providers/unorouter", headers=headers)
+        assert removed.status_code == 200
+        assert recovered.secret_vault.status("unorouter")["configured"] is False
+    finally:
+        api.app.dependency_overrides.clear()
+        recovered.close()
