@@ -240,6 +240,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
             const existing=card.querySelector("[data-workflow-details]");
             if(existing)existing.remove();
             panel.dataset.workflowDetails="true";card.append(panel);
+            const previousHandoffActions=card.querySelector("[data-handoff-actions]");
+            if(previousHandoffActions)previousHandoffActions.remove();
             const handoffActions=document.createElement("div");
             handoffActions.className="stack";
             (result.handoffs||[]).forEach(h=>{
@@ -256,7 +258,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
                     actionButton.disabled=true;
                     try{
                       await request("/handoffs/"+h.id+"/"+action,{method:"POST",body:"{}"});
-                      setMessage("Handoff "+action+"ed. Refreshing workflow.","success");
+                      setMessage("Handoff "+(action==="accept"?"accepted":"declined")+". Refreshing workflow.","success");
                       workflowButton.click();
                     }catch(error){setMessage(error.message,"error");actionButton.disabled=false;}
                   });
