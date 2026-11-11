@@ -167,7 +167,9 @@ def run_ai_product_stage(workflow_id: UUID, request: Request) -> dict:
         "next_stage": next((stage["key"] for stage in updated["stages"] if stage["status"] == "in_progress"), None),
         "output": result.text,
     }
-\n\n@router.post("/{workflow_id}/generate-blueprint")
+
+
+@router.post("/{workflow_id}/generate-blueprint")
 def generate_blueprint(workflow_id: UUID, request: Request) -> dict:
     """Generate a zero-cost starter ZIP; this is not a finished commercial product."""
     runtime = _runtime_for_request(request)
