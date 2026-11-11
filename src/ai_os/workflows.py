@@ -141,13 +141,24 @@ def create_workflow(template_id: str, business_id: str = "core") -> dict:
             "status": "active", "steps": created,
             "next_action": "All dependency-free departments are queued; dependent departments start when every prerequisite completes."}
 
-def get_workflow(workflow_id: str) -> dict | None:
+def get_workflow(workflow_id: str, business_id: str | None = None) -> dict | None:
     initialize_workflows()
+    if business_id is not None and business_id not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
     with connect() as db:
-        workflow = db.execute("SELECT * FROM workflow_instances WHERE id=?", (workflow_id,)).fetchone()
+        if business_id is None:
+            workflow = db.execute("SELECT * FROM workflow_instances WHERE id=?", (workflow_id,)).fetchone()
+        else:
+            workflow = db.execute(
+                "SELECT * FROM workflow_instances WHERE id=? AND business_id=?",
+                (workflow_id, business_id),
+            ).fetchone()
         if not workflow:
             return None
-        steps = db.execute("SELECT * FROM workflow_steps WHERE workflow_id=? ORDER BY sequence_no", (workflow_id,)).fetchall()
+        steps = db.execute(
+            "SELECT * FROM workflow_steps WHERE workflow_id=? ORDER BY sequence_no",
+            (workflow_id,),
+        ).fetchall()
     return {**dict(workflow), "steps": [dict(step) for step in steps]}
 
 def task_is_runnable(task_id: str) -> bool:
@@ -210,4 +221,4 @@ def list_workflows(limit: int = 50, business_id: str = "core") -> list[dict]:
     initialize_workflows()
     with connect() as db:
         rows = db.execute("SELECT id FROM workflow_instances WHERE business_id=? ORDER BY created_at DESC LIMIT ?", (business_id, max(1, min(limit, 100)))).fetchall()
-    return [item for row in rows if (item := get_workflow(row["id"])) is not None]
+    return [item for row in rows if (item := get_workflow(row["id"], business_id)) is not None]
