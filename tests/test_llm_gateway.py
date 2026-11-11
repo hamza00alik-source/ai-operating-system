@@ -279,3 +279,26 @@ def test_unorouter_company_generate_is_blocked_even_when_consumer_key_is_configu
     monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
     with pytest.raises(PermissionError, match="personal tests"):
         llm_gateway.generate("unorouter", "Draft an internal company report")
+
+
+def test_zero_cost_response_rejects_reported_charge():
+    with pytest.raises(RuntimeError, match="non-zero cost"):
+        llm_gateway._assert_zero_cost_model_response(
+            {"model": "provider/model", "usage": {"cost": 0.001}},
+            "provider/model:free",
+        )
+
+
+def test_zero_cost_response_rejects_model_substitution():
+    with pytest.raises(RuntimeError, match="different model"):
+        llm_gateway._assert_zero_cost_model_response(
+            {"model": "provider/paid-model"},
+            "provider/model:free",
+        )
+
+
+def test_zero_cost_response_accepts_free_route_without_cost_field():
+    llm_gateway._assert_zero_cost_model_response(
+        {"model": "provider/model"},
+        "provider/model:free",
+    )
