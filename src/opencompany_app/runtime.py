@@ -232,12 +232,80 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         if state is None:
             return "completed_review_required"
         if decision.approved:
-            return "manager_approved"
+            # Once the last specialist dependency is approved, automatically
+            # admit its already-approved manager synthesis task when the
+            # owner has enabled zero-cost auto-queueing.
+            queued_synthesis_ids = []
+            auto_queue_enabled = os.environ.get(
+                "OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK", "false"
+            ).strip().casefold() in {"1", "true", "yes", "on"}
+            if auto_queue_enabled and gateway.eligible_providers(request_budget_usd=0.0):
+                completed_ids = {
+                    value.id for value in store.list_work_items(limit=1000)
+                    if value.state == TaskState.COMPLETED
+                }
+                for candidate in store.list_work_items(limit=1000):
+                    if (
+                        candidate.state != TaskState.READY
+                        or work_item_id not in candidate.depends_on
+                        or candidate.assigned_agent_id is None
+                        or not set(candidate.depends_on).issubset(completed_ids)
+                    ):
+                        continue
+                    proposals = delegations.list_for_parent(candidate.id)
+                    if not any(value["status"] == "approved" for value in proposals):
+                        continue
+                    synthesis_manager = store.get_agent(candidate.assigned_agent_id)
+                    expected_role = default_organization().get(candidate.department).manager_role_key
+                    if (
+                        synthesis_manager is None
+                        or synthesis_manager.state != AgentState.ACTIVE
+                        or synthesis_manager.department != candidate.department
+                        or synthesis_manager.role_key != expected_role
+                        or synthesis_manager.team_key != "management"
+                    ):
+                        store.append_audit_record(AuditRecord(
+                            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                            actor_type="system", actor_id="opencompany-manager-review",
+                            action="manager.synthesis_queue_blocked",
+                            subject_type="work_item", subject_id=str(candidate.id),
+                            outcome="blocked", correlation_id=str(event.correlation_id),
+                            details={"reason": "manager_profile_not_active_or_valid"},
+                        ))
+                        continue
+                    try:
+                        queue.enqueue_authorized(
+                            candidate, synthesis_manager.id,
+                            {"source": "automatic_manager_synthesis",
+                             "manager_role_key": synthesis_manager.role_key},
+                            AuditRecord(
+                                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                                actor_type="agent", actor_id=str(manager.id),
+                                action="manager.synthesis_auto_queued",
+                                subject_type="work_item", subject_id=str(candidate.id),
+                                outcome="queued", correlation_id=str(event.correlation_id),
+                                details={"assigned_manager_id": str(synthesis_manager.id),
+                                         "request_budget_usd": 0.0},
+                            ),
+                        )
+                        queued_synthesis_ids.append(str(candidate.id))
+                    except Exception as exc:
+                        store.append_audit_record(AuditRecord(
+                            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                            actor_type="system", actor_id="opencompany-manager-review",
+                            action="manager.synthesis_queue_unavailable",
+                            subject_type="work_item", subject_id=str(candidate.id),
+                            outcome="failed", correlation_id=str(event.correlation_id),
+                            details={"error_type": type(exc).__name__},
+                        ))
+            return "manager_approved" if not queued_synthesis_ids else (
+                "manager_approved_synthesis_queued:" + ",".join(queued_synthesis_ids)
+            )
         # Rejected drafts return to the same specialist with explicit rework.
         updated = store.get_work_item(work_item_id)
         updated = replace(
             updated,
-            objective=(updated.objective + "\\n\\nManager rework request: " + decision.rework_instructions)[:12000],
+            objective=(updated.objective + "\n\nManager rework request: " + decision.rework_instructions)[:12000],
         )
         rework_event = AuditRecord(
             id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
