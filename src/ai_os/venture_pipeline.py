@@ -57,6 +57,55 @@ def score_assessment(assessment: dict) -> dict:
     }
 
 
+def build_financial_scenarios(scenarios: dict) -> dict:
+    """Calculate transparent scenario economics from owner-reviewed assumptions."""
+    if not isinstance(scenarios, dict):
+        raise ValueError("Provide conservative, base and upside scenario assumptions.")
+    required = (
+        "monthly_sales", "average_price", "variable_cost_per_sale",
+        "monthly_fixed_cost", "monthly_marketing_cost", "startup_cost",
+    )
+    results = {}
+    for label in ("conservative", "base", "upside"):
+        values = scenarios.get(label)
+        if not isinstance(values, dict):
+            raise ValueError("Missing " + label + " scenario assumptions.")
+        clean = {}
+        for key in required:
+            value = values.get(key)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+                raise ValueError(label + "." + key + " must be a non-negative number.")
+            clean[key] = float(value)
+        if clean["monthly_sales"] != int(clean["monthly_sales"]):
+            raise ValueError(label + ".monthly_sales must be a whole number.")
+        contribution = clean["average_price"] - clean["variable_cost_per_sale"]
+        if contribution <= 0:
+            raise ValueError(label + " scenario must have positive contribution per sale.")
+        monthly_revenue = clean["monthly_sales"] * clean["average_price"]
+        monthly_variable_cost = clean["monthly_sales"] * clean["variable_cost_per_sale"]
+        monthly_operating_cost = monthly_variable_cost + clean["monthly_fixed_cost"] + clean["monthly_marketing_cost"]
+        monthly_operating_profit = monthly_revenue - monthly_operating_cost
+        break_even_sales = math.ceil(
+            (clean["monthly_fixed_cost"] + clean["monthly_marketing_cost"]) / contribution
+        )
+        results[label] = {
+            "assumptions": clean,
+            "monthly_revenue": round(monthly_revenue, 2),
+            "monthly_variable_cost": round(monthly_variable_cost, 2),
+            "monthly_operating_cost": round(monthly_operating_cost, 2),
+            "monthly_operating_profit_before_tax": round(monthly_operating_profit, 2),
+            "break_even_sales_per_month": break_even_sales,
+            "first_month_net_cash_after_startup": round(monthly_operating_profit - clean["startup_cost"], 2),
+            "profitable_at_assumed_volume": monthly_operating_profit > 0,
+        }
+    return {
+        "scenarios": results,
+        "method": "Revenue less variable, fixed and marketing costs; break-even excludes startup cost and tax.",
+        "warning": "Illustrative arithmetic only. All inputs require owner review and independent evidence; excludes financing, tax, refunds, working-capital timing and other unentered costs.",
+        "currency": "owner_input_currency",
+    }
+
+
 def create_opportunity(payload: dict) -> dict:
     title = " ".join(str(payload.get("title") or "").split())[:160]
     thesis = str(payload.get("thesis") or "").strip()[:6000]
