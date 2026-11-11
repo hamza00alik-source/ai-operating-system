@@ -22,6 +22,7 @@ Each stage stores its assigned OpenCompany role, status, timestamps, input/outpu
 - `GET /product-workflows` — list workflows.
 - `GET /product-workflows/{id}` — inspect a workflow and its stage evidence.
 - `POST /product-workflows/{id}/generate-blueprint` — when artifact generation is the active stage, create a deterministic zero-cost starter ZIP.
+- `POST /product-workflows/{id}/run-automated-qa` — when automated QA is active, validate ZIP integrity, required files, safe paths, manifest checksums and scope disclosures.
 - `GET /product-workflows/artifacts/{artifact_id}` — download an owner-authenticated generated ZIP.
 - `POST /product-workflows/{id}/stages/{stage}/start` — start the next eligible stage.
 - `POST /product-workflows/{id}/stages/{stage}/complete` — record output, artifact references, and evidence.
@@ -38,7 +39,7 @@ Completing `automated_qa` requires three separate arrays:
 - `failed_checks`
 - `untested_claims`
 
-This prevents an untested claim (for example, visual quality, legal review, market demand, or engine compatibility) from being presented as a passed automated check.
+Failed automated checks block the workflow and preserve failure evidence; the owner can return the job to production for rework. The current automated runner validates the generated blueprint archive only. It explicitly leaves visual quality, engine behavior, IP/licensing and market demand untested, so these claims cannot be represented as passed checks.
 
 ## Safety and current scope
 
