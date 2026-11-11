@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -72,6 +73,7 @@ _LOGIN_MAX_TRACKED_CLIENTS = 10_000
 _UNOROUTER_TESTS: dict[str, dict] = {}
 _UNOROUTER_TESTS_LOCK = Lock()
 _UNOROUTER_TESTS_MAX = 50
+_LOGGER = logging.getLogger(__name__)
 
 
 def _login_retry_after(client_key: str, *, failed: bool = False) -> int:
@@ -250,7 +252,8 @@ def initialize_autonomous_runtime() -> None:
         return
     bootstrap_enabled = os.environ.get("OPENCOMPANY_BOOTSTRAP_WORKFORCE", "false").casefold() == "true"
     activate_enabled = os.environ.get("OPENCOMPANY_AUTO_ACTIVATE_WORKFORCE", "false").casefold() == "true"
-    if not (bootstrap_enabled or activate_enabled):
+    autostart_enabled = _worker_autostart_enabled()
+    if not (bootstrap_enabled or activate_enabled or autostart_enabled):
         return
     runtime = _default_runtime()
     if bootstrap_enabled:
@@ -259,9 +262,17 @@ def initialize_autonomous_runtime() -> None:
         bootstrap_executive_orchestrator(runtime.store)
     if activate_enabled:
         runtime.store.activate_all_draft_agents_with_audit()
-    # Never start inference at process boot from saved credentials alone.
-    # The owner must run the live zero-cost provider test in this process;
-    # that verified action is the only path to start_workers_if_ready().
+    # Autostart is an explicit owner-controlled deployment setting. The gateway
+    # still enforces the live strict-free catalogue and a zero-dollar request
+    # budget for every inference call; unavailable free models fail closed.
+    if autostart_enabled:
+        try:
+            if runtime.gateway.eligible_providers(request_budget_usd=0.0):
+                runtime.fleet.start()
+            else:
+                _LOGGER.warning("Worker autostart was requested but no confirmed-free provider is configured.")
+        except Exception:
+            _LOGGER.exception("Worker autostart could not initialize safely; workers remain stopped.")
 
 
 @app.on_event("shutdown")
