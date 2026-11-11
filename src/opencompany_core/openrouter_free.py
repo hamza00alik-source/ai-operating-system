@@ -6,6 +6,7 @@ no paid fallback and reserves quota before every outbound attempt.
 from __future__ import annotations
 
 import json
+import math
 from contextlib import closing
 import os
 import sqlite3
@@ -139,7 +140,7 @@ class OpenRouterFreeAdapter:
             reported_cost = usage.get("cost", data.get("cost"))
             if reported_cost is not None:
                 cost = float(reported_cost)
-                if cost != 0.0 or not __import__("math").isfinite(cost):
+                if cost != 0.0 or not math.isfinite(cost):
                     raise ValueError
             content = data["choices"][0]["message"]["content"]
             if isinstance(content, list):
