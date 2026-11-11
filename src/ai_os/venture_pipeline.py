@@ -36,11 +36,14 @@ def score_assessment(assessment: dict) -> dict:
     if not isinstance(ratings, dict):
         return {"score": None, "coverage": 0, "dimensions": list(DIMENSIONS), "label": "not_scored"}
     valid = {key: ratings.get(key) for key in DIMENSIONS
-             if isinstance(ratings.get(key), (int, float)) and 0 <= ratings[key] <= 5}
+             if isinstance(ratings.get(key), (int, float))
+             and not isinstance(ratings.get(key), bool) and 0 <= ratings[key] <= 5}
     coverage = len(valid)
     if coverage != len(DIMENSIONS):
         return {"score": None, "coverage": coverage, "dimensions": list(DIMENSIONS), "label": "incomplete_assessment"}
     sources = assessment.get("source_urls") or []
+    if not isinstance(sources, list):
+        sources = []
     verified_urls = [url for url in sources if isinstance(url, str) and url.startswith("https://")]
     score = round(sum(float(valid[key]) for key in DIMENSIONS) / len(DIMENSIONS) * 20, 1)
     return {
@@ -118,10 +121,15 @@ def queue_research(opportunity_id: str, task_id: str) -> dict:
 def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> dict:
     if not isinstance(assessment, dict):
         raise ValueError("Assessment must be a structured object.")
+    ratings = assessment.get("ratings") or {}
+    if not isinstance(ratings, dict):
+        raise ValueError("Assessment ratings must be an object with six named dimensions.")
     for key in DIMENSIONS:
-        rating = (assessment.get("ratings") or {}).get(key)
-        if rating is not None and (not isinstance(rating, (int, float)) or not 0 <= rating <= 5):
-            raise ValueError(f"Assessment rating '{key}' must be between 0 and 5.")
+        rating = ratings.get(key)
+        if rating is not None and (
+            not isinstance(rating, (int, float)) or isinstance(rating, bool) or not 0 <= rating <= 5
+        ):
+            raise ValueError("Assessment rating must be between 0 and 5.")
     clean_evidence = []
     for item in evidence[:100]:
         if isinstance(item, dict) and str(item.get("url") or "").startswith("https://"):
