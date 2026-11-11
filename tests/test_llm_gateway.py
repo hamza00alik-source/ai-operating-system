@@ -199,7 +199,10 @@ def test_unorouter_personal_test_rejects_paid_model(monkeypatch):
         "secret": "uno-test-secret", "model": "paid-model",
         "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
     })
-    with pytest.raises(PermissionError):
+    monkeypatch.setattr("opencompany_core.unorouter_adapter.discover_model_catalog", lambda key: (
+        {"model_id": "paid-model", "allowed_for_inference": False},
+    ))
+    with pytest.raises(PermissionError, match="No model is verified free"):
         llm_gateway.test_unorouter_personal("test")
 
 
