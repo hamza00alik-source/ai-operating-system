@@ -20,7 +20,7 @@ from uuid import UUID, uuid4
 from urllib.parse import urlsplit
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
@@ -64,6 +64,12 @@ _LOGIN_LOCK = Lock()
 _LOGIN_WINDOW_SECONDS = 900
 _LOGIN_MAX_FAILURES = 5
 _LOGIN_MAX_TRACKED_CLIENTS = 10_000
+
+# In-memory, owner-authenticated async provider-test jobs. The inference request
+# may outlive browser/proxy request timeouts; clients poll the job instead.
+_UNOROUTER_TESTS: dict[str, dict] = {}
+_UNOROUTER_TESTS_LOCK = Lock()
+_UNOROUTER_TESTS_MAX = 50
 
 
 def _login_retry_after(client_key: str, *, failed: bool = False) -> int:
@@ -742,36 +748,110 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
             "billing_mode": "free_confirmed", "automatic_paid_fallback": False, "live_inference_tested": False}
 
 
-@app.post("/settings/providers/unorouter/test", dependencies=[Depends(require_owner_key)])
-def test_unorouter_connection(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+def _worker_autostart_enabled() -> bool:
+    return os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _run_unorouter_test(runtime: OpenCompanyRuntime, job_id: str) -> None:
+    with _UNOROUTER_TESTS_LOCK:
+        job = _UNOROUTER_TESTS.get(job_id)
+        if job is None:
+            return
+        job["status"] = "running"
     try:
         result = runtime.gateway.complete(
             ModelRequest(prompt="Reply with exactly: OPENCOMPANY_UNOROUTER_OK",
                          request_id=f"owner-unorouter-test-{uuid4()}", max_output_tokens=24),
             request_budget_usd=0.0, preferred_provider="unorouter",
         )
-    except NoEligibleProvider as exc:
-        raise HTTPException(status_code=503, detail="No confirmed-free UnoRouter model is configured and available.") from exc
-    except (ProviderUnavailable, CostPolicyViolation) as exc:
-        # ProviderUnavailable messages from the adapter contain only bounded,
-        # non-secret diagnostics (HTTP status or transport exception class).
-        reason = " ".join(str(exc).split())[:240] or type(exc).__name__
-        raise HTTPException(status_code=502, detail=f"UnoRouter test failed safely: {reason}. No paid fallback was attempted.") from exc
-    if result.text.strip() != "OPENCOMPANY_UNOROUTER_OK":
-        raise HTTPException(status_code=502, detail="UnoRouter returned an unexpected test response; connection was not marked verified.")
-    runtime.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
-    worker_started = False
-    worker_start_error = None
-    try:
-        worker_started = runtime.start_workers_if_ready()
-    except Exception as exc:
-        worker_start_error = type(exc).__name__
-    return {"success": True, "provider": result.provider, "model": result.model, "cost_usd": result.cost_usd,
+        if result.text.strip() != "OPENCOMPANY_UNOROUTER_OK":
+            raise ProviderUnavailable("UnoRouter returned an unexpected test response.")
+        runtime.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
+        worker_started = False
+        worker_start_error = None
+        try:
+            worker_started = runtime.start_workers_if_ready()
+        except Exception as exc:
+            worker_start_error = type(exc).__name__
+        outcome = {
+            "status": "succeeded", "success": True, "provider": result.provider,
+            "model": result.model, "cost_usd": result.cost_usd,
             "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
             "output_preview": result.text[:160], "tested_at": runtime.unorouter_tested_at,
-            "worker_autostart_enabled": os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"},
+            "worker_autostart_enabled": _worker_autostart_enabled(),
             "worker_started": worker_started, "worker_start_error": worker_start_error,
-            "paid_fallback": False}
+            "paid_fallback": False,
+        }
+    except NoEligibleProvider:
+        outcome = {
+            "status": "failed", "success": False,
+            "error": "No confirmed-free UnoRouter model is configured and available.",
+            "provider": "unorouter", "model": None, "cost_usd": 0.0,
+            "input_tokens": 0, "output_tokens": 0, "output_preview": None,
+            "worker_autostart_enabled": _worker_autostart_enabled(),
+            "worker_started": False, "worker_start_error": None, "paid_fallback": False,
+        }
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        # Adapter diagnostics are deliberately bounded and contain no credentials.
+        reason = " ".join(str(exc).split())[:240] or type(exc).__name__
+        outcome = {
+            "status": "failed", "success": False,
+            "error": f"UnoRouter test failed safely: {reason}. No paid fallback was attempted.",
+            "provider": "unorouter", "model": None, "cost_usd": 0.0,
+            "input_tokens": 0, "output_tokens": 0, "output_preview": None,
+            "worker_autostart_enabled": _worker_autostart_enabled(),
+            "worker_started": False, "worker_start_error": None, "paid_fallback": False,
+        }
+    except Exception as exc:
+        outcome = {
+            "status": "failed", "success": False,
+            "error": f"UnoRouter test failed safely ({type(exc).__name__}). No paid fallback was attempted.",
+            "provider": "unorouter", "model": None, "cost_usd": 0.0,
+            "input_tokens": 0, "output_tokens": 0, "output_preview": None,
+            "worker_autostart_enabled": _worker_autostart_enabled(),
+            "worker_started": False, "worker_start_error": None, "paid_fallback": False,
+        }
+    with _UNOROUTER_TESTS_LOCK:
+        if job_id in _UNOROUTER_TESTS:
+            _UNOROUTER_TESTS[job_id].update(outcome)
+
+
+@app.post("/settings/providers/unorouter/test", dependencies=[Depends(require_owner_key)])
+def test_unorouter_connection(
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> JSONResponse:
+    # A browser/proxy can close a long-running inference request. Start the
+    # bounded zero-dollar test in a background task and let the owner poll it.
+    with _UNOROUTER_TESTS_LOCK:
+        active = next((
+            job for job in reversed(list(_UNOROUTER_TESTS.values()))
+            if job.get("status") in {"queued", "running"}
+        ), None)
+        if active is not None:
+            return JSONResponse(status_code=202, content={
+                "job_id": active["job_id"], "status": active["status"],
+            })
+        job_id = str(uuid4())
+        _UNOROUTER_TESTS[job_id] = {"job_id": job_id, "status": "queued"}
+        while len(_UNOROUTER_TESTS) > _UNOROUTER_TESTS_MAX:
+            oldest = next(iter(_UNOROUTER_TESTS))
+            if _UNOROUTER_TESTS[oldest].get("status") in {"queued", "running"}:
+                break
+            _UNOROUTER_TESTS.pop(oldest, None)
+    return JSONResponse(
+        status_code=202,
+        content={"job_id": job_id, "status": "queued"},
+        background=BackgroundTask(_run_unorouter_test, runtime, job_id),
+    )
+
+
+@app.get("/settings/providers/unorouter/test/{job_id}", dependencies=[Depends(require_owner_key)])
+def get_unorouter_test_status(job_id: UUID) -> dict:
+    with _UNOROUTER_TESTS_LOCK:
+        job = _UNOROUTER_TESTS.get(str(job_id))
+        if job is None:
+            raise HTTPException(status_code=404, detail="UnoRouter test job was not found or has expired.")
+        return dict(job)
 
 
 @app.delete("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
