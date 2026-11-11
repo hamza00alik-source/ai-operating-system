@@ -309,6 +309,24 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       const heading=document.createElement("h3");heading.textContent=o.customer_name+" · "+o.business_id;card.append(heading);
       const detail=document.createElement("p");detail.textContent="Order "+o.id+" · Quote "+o.quote_id;card.append(detail);
       const state=document.createElement("span");state.className="pill";state.textContent=o.status;card.append(state);
+      const next=o.status==="awaiting_owner_fulfilment"?"in_progress":o.status==="in_progress"?"fulfilled":null;
+      if(next){
+        const action=document.createElement("button");action.textContent=next==="in_progress"?"Mark work in progress":"Record fulfilment complete";
+        action.addEventListener("click",async()=>{
+          if(!confirm("Confirm order "+o.id+" should be marked "+next+"? This records your status only; it does not contact suppliers, take payment, or trigger shipment."))return;
+          action.disabled=true;
+          try{await request("/commercial/orders/"+o.id+"/status",{method:"POST",body:JSON.stringify({status:next,confirm_owner_status:true})});await loadCommercial();setMessage("Order status updated. No external fulfilment action was triggered.","success");}
+          catch(error){setMessage(error.message,"error");action.disabled=false;}
+        });card.append(action);
+      }
+      if(o.status==="awaiting_owner_fulfilment"||o.status==="in_progress"){
+        const cancel=document.createElement("button");cancel.textContent="Cancel order record";
+        cancel.addEventListener("click",async()=>{
+          if(!confirm("Cancel this internal order record? This does not contact the customer or supplier."))return;
+          try{await request("/commercial/orders/"+o.id+"/status",{method:"POST",body:JSON.stringify({status:"cancelled",confirm_owner_status:true})});await loadCommercial();}
+          catch(error){setMessage(error.message,"error");}
+        });card.append(cancel);
+      }
       byId("commercial-orders").append(card);
     });
     ["create-opportunity","create-catalog-product"].forEach(id=>byId(id).disabled=false);
