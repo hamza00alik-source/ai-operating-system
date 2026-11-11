@@ -420,11 +420,12 @@ def owner_dashboard() -> HTMLResponse:
     # fresh nonce rather than allowing arbitrary inline script execution.
     nonce = secrets.token_urlsafe(18)
     html = re.sub(r"<script(?=[\s>])", f'<script nonce="{nonce}"', html)
+    html = re.sub(r"<style(?=[\s>])", f'<style nonce="{nonce}"', html)
     response = HTMLResponse(html)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = (
         f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
-        "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+        f"style-src 'self' 'nonce-{nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self'; "
         "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; "
         "form-action 'self'; object-src 'none'"
     )
