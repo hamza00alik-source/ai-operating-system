@@ -21,7 +21,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 
 def _json(value: Any) -> str:
@@ -92,6 +92,7 @@ class SQLiteStore:
                         title TEXT NOT NULL,
                         objective TEXT NOT NULL,
                         department TEXT NOT NULL,
+                        business_id TEXT NOT NULL DEFAULT 'core',
                         state TEXT NOT NULL,
                         assigned_agent_id TEXT,
                         dependencies_json TEXT NOT NULL,
@@ -109,7 +110,7 @@ class SQLiteStore:
                         ON work_items(state, created_at);
                     CREATE TABLE IF NOT EXISTS deliverables (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id), role_key TEXT NOT NULL, content TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, cost_usd REAL NOT NULL CHECK(cost_usd >= 0), created_at TEXT NOT NULL, review_required INTEGER NOT NULL CHECK(review_required IN (0,1)));
                     CREATE INDEX IF NOT EXISTS idx_deliverables_work_item ON deliverables(work_item_id, created_at);
-                    PRAGMA user_version = 3;
+                    PRAGMA user_version = 4;
                     COMMIT;
                 """)
                 return
@@ -137,6 +138,24 @@ class SQLiteStore:
                     self._connection.execute("CREATE TABLE IF NOT EXISTS deliverables (id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(id), role_key TEXT NOT NULL, content TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, cost_usd REAL NOT NULL CHECK(cost_usd >= 0), created_at TEXT NOT NULL, review_required INTEGER NOT NULL CHECK(review_required IN (0,1)))")
                     self._connection.execute("CREATE INDEX IF NOT EXISTS idx_deliverables_work_item ON deliverables(work_item_id, created_at)")
                     self._connection.execute("PRAGMA user_version = 3")
+                    self._connection.execute("COMMIT")
+                    version = 3
+                except Exception:
+                    self._connection.execute("ROLLBACK")
+                    raise
+            if version == 3:
+                columns = {
+                    row["name"] for row in self._connection.execute(
+                        "PRAGMA table_info(work_items)"
+                    ).fetchall()
+                }
+                self._connection.execute("BEGIN IMMEDIATE")
+                try:
+                    if "business_id" not in columns:
+                        self._connection.execute(
+                            "ALTER TABLE work_items ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'"
+                        )
+                    self._connection.execute("PRAGMA user_version = 4")
                     self._connection.execute("COMMIT")
                 except Exception:
                     self._connection.execute("ROLLBACK")
@@ -325,15 +344,15 @@ class SQLiteStore:
         with self._lock:
             self._connection.execute(
                 """INSERT INTO work_items
-                   (id,title,objective,department,state,assigned_agent_id,dependencies_json,created_at)
-                   VALUES(?,?,?,?,?,?,?,?)
+                   (id,title,objective,department,business_id,state,assigned_agent_id,dependencies_json,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                      title=excluded.title, objective=excluded.objective,
-                     department=excluded.department, state=excluded.state,
+                     department=excluded.department, business_id=excluded.business_id, state=excluded.state,
                      assigned_agent_id=excluded.assigned_agent_id,
                      dependencies_json=excluded.dependencies_json,
                      created_at=excluded.created_at""",
-                (str(item.id), item.title, item.objective, item.department, item.state.value,
+                (str(item.id), item.title, item.objective, item.department, item.business_id, item.state.value,
                  str(item.assigned_agent_id) if item.assigned_agent_id else None,
                  _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
             )
@@ -345,15 +364,15 @@ class SQLiteStore:
             try:
                 self._connection.execute(
                     """INSERT INTO work_items
-                       (id,title,objective,department,state,assigned_agent_id,dependencies_json,created_at)
-                       VALUES(?,?,?,?,?,?,?,?)
+                       (id,title,objective,department,business_id,state,assigned_agent_id,dependencies_json,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(id) DO UPDATE SET
                          title=excluded.title, objective=excluded.objective,
-                         department=excluded.department, state=excluded.state,
+                         department=excluded.department, business_id=excluded.business_id, state=excluded.state,
                          assigned_agent_id=excluded.assigned_agent_id,
                          dependencies_json=excluded.dependencies_json,
                          created_at=excluded.created_at""",
-                    (str(item.id), item.title, item.objective, item.department, item.state.value,
+                    (str(item.id), item.title, item.objective, item.department, item.business_id, item.state.value,
                      str(item.assigned_agent_id) if item.assigned_agent_id else None,
                      _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
                 )
@@ -390,9 +409,9 @@ class SQLiteStore:
                 for item in items:
                     self._connection.execute(
                         """INSERT INTO work_items
-                           (id,title,objective,department,state,assigned_agent_id,dependencies_json,created_at)
-                           VALUES(?,?,?,?,?,?,?,?)""",
-                        (str(item.id), item.title, item.objective, item.department,
+                           (id,title,objective,department,business_id,state,assigned_agent_id,dependencies_json,created_at)
+                           VALUES(?,?,?,?,?,?,?,?,?)""",
+                        (str(item.id), item.title, item.objective, item.department, item.business_id,
                          item.state.value, str(item.assigned_agent_id) if item.assigned_agent_id else None,
                          _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
                     )
@@ -443,7 +462,7 @@ class SQLiteStore:
                     raise ValueError("materialized tasks do not match the proposal's draft children")
                 if parent_update is not None:
                     parent_row = self._connection.execute(
-                        "SELECT state,assigned_agent_id,department FROM work_items WHERE id=?",
+                        "SELECT state,assigned_agent_id,department,business_id FROM work_items WHERE id=?",
                         (str(parent_update.id),),
                     ).fetchone()
                     if (
@@ -451,6 +470,8 @@ class SQLiteStore:
                         or parent_row["state"] != TaskState.DRAFT.value
                         or parent_row["assigned_agent_id"] is not None
                         or parent_row["department"] != parent_update.department
+                        or parent_row["business_id"] != parent_update.business_id
+                        or any(item.business_id != parent_update.business_id for item in items)
                         or parent_update.state != TaskState.READY
                         or parent_update.assigned_agent_id is None
                         or set(parent_update.depends_on) != {item.id for item in items}
@@ -470,9 +491,9 @@ class SQLiteStore:
                 for item in items:
                     self._connection.execute(
                         """INSERT INTO work_items
-                           (id,title,objective,department,state,assigned_agent_id,dependencies_json,created_at)
-                           VALUES(?,?,?,?,?,?,?,?)""",
-                        (str(item.id), item.title, item.objective, item.department, item.state.value,
+                           (id,title,objective,department,business_id,state,assigned_agent_id,dependencies_json,created_at)
+                           VALUES(?,?,?,?,?,?,?,?,?)""",
+                        (str(item.id), item.title, item.objective, item.department, item.business_id, item.state.value,
                          str(item.assigned_agent_id) if item.assigned_agent_id else None,
                          _json([str(value) for value in item.depends_on]), item.created_at.isoformat()),
                     )
@@ -671,21 +692,32 @@ class SQLiteStore:
             assigned_agent_id=UUID(row["assigned_agent_id"]) if row["assigned_agent_id"] else None,
             depends_on=tuple(UUID(value) for value in json.loads(row["dependencies_json"])),
             created_at=datetime.fromisoformat(row["created_at"]),
+            business_id=row["business_id"] if "business_id" in row.keys() else "core",
         )
 
-    def list_work_items(self, *, state: TaskState | None = None, limit: int = 100) -> tuple[WorkItem, ...]:
+    def list_work_items(
+        self, *, state: TaskState | None = None, business_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[WorkItem, ...]:
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
+        clauses, values = [], []
+        if state is not None:
+            clauses.append("state=?")
+            values.append(state.value)
+        if business_id is not None:
+            from .domain import BUSINESS_UNIT_IDS
+            if business_id not in BUSINESS_UNIT_IDS:
+                raise ValueError(f"unknown business unit: {business_id}")
+            clauses.append("business_id=?")
+            values.append(business_id)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        values.append(limit)
         with self._lock:
-            if state is None:
-                rows = self._connection.execute(
-                    "SELECT id FROM work_items ORDER BY created_at,id LIMIT ?", (limit,)
-                ).fetchall()
-            else:
-                rows = self._connection.execute(
-                    "SELECT id FROM work_items WHERE state=? ORDER BY created_at,id LIMIT ?",
-                    (state.value, limit),
-                ).fetchall()
+            rows = self._connection.execute(
+                f"SELECT id FROM work_items{where} ORDER BY created_at,id LIMIT ?",
+                tuple(values),
+            ).fetchall()
         return tuple(self.get_work_item(UUID(row["id"])) for row in rows)
 
     def append_audit_record(self, record: AuditRecord) -> str:
