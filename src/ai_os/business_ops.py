@@ -169,9 +169,13 @@ def business_summary(business_id: str = "core") -> dict:
         "net_cash_policy": "Net cash movement is calculated separately per currency from verified receipts minus owner-confirmed paid expenses. It is not accounting profit and excludes other cash flows.",
     }
 
-def list_assets(limit: int = 500) -> list[dict]:
+def list_assets(limit: int = 500, business_id: str = "core") -> list[dict]:
+    scope = _scope(business_id)
     with connect() as db:
-        rows = db.execute("SELECT * FROM code_assets ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 1000)),)).fetchall()
+        rows = db.execute(
+            "SELECT * FROM code_assets WHERE business_id=? ORDER BY created_at DESC LIMIT ?",
+            (scope, max(1, min(limit, 1000))),
+        ).fetchall()
     return [dict(x) for x in rows]
 
 
@@ -190,7 +194,8 @@ def create_asset(payload: dict) -> dict:
         if token_estimate < 0:
             raise ValueError("Token estimate cannot be negative.")
     item = {
-        "id": str(uuid4()), "name": name, "repository_url": repo_url,
+        "id": str(uuid4()), "business_id": _scope(payload.get("business_id", "core")),
+        "name": name, "repository_url": repo_url,
         "path": asset_path, "asset_type": _clean(payload.get("asset_type", "source_code"), 50),
         "ownership_status": _clean(payload.get("ownership_status", "unverified"), 50),
         "license": _clean(payload.get("license", "unknown"), 100),
@@ -204,21 +209,23 @@ def create_asset(payload: dict) -> dict:
     with connect() as db:
         db.execute(
             """INSERT INTO code_assets
-            (id,name,repository_url,path,asset_type,ownership_status,license,dependency_review,
+            (id,business_id,name,repository_url,path,asset_type,ownership_status,license,dependency_review,
              token_estimate,token_method,git_history_tokens,notes,created_at,updated_at)
-            VALUES (:id,:name,:repository_url,:path,:asset_type,:ownership_status,:license,
+            VALUES (:id,:business_id,:name,:repository_url,:path,:asset_type,:ownership_status,:license,
              :dependency_review,:token_estimate,:token_method,:git_history_tokens,:notes,:created_at,:updated_at)""",
             item,
         )
     return item
 
 
-def list_license_offers(limit: int = 200) -> list[dict]:
+def list_license_offers(limit: int = 200, business_id: str = "core") -> list[dict]:
+    scope = _scope(business_id)
     with connect() as db:
         rows = db.execute(
             """SELECT o.*, a.name AS asset_name FROM license_offers o
-            LEFT JOIN code_assets a ON a.id=o.asset_id ORDER BY o.created_at DESC LIMIT ?""",
-            (max(1, min(limit, 500)),),
+            LEFT JOIN code_assets a ON a.id=o.asset_id AND a.business_id=o.business_id
+            WHERE o.business_id=? ORDER BY o.created_at DESC LIMIT ?""",
+            (scope, max(1, min(limit, 500))),
         ).fetchall()
     return [dict(x) for x in rows]
 
@@ -227,10 +234,11 @@ def create_license_offer(payload: dict) -> dict:
     asset_id = _clean(payload.get("asset_id"), 80)
     buyer = _clean(payload.get("buyer"), 180)
     terms = _clean(payload.get("terms"), 3000)
+    scope = _scope(payload.get("business_id", "core"))
     if not asset_id or not buyer or not terms:
         raise ValueError("Asset, prospective buyer and draft terms are required.")
     with connect() as db:
-        asset = db.execute("SELECT * FROM code_assets WHERE id=?", (asset_id,)).fetchone()
+        asset = db.execute("SELECT * FROM code_assets WHERE id=? AND business_id=?", (asset_id, scope)).fetchone()
         if asset is None:
             raise LookupError("Code asset not found.")
         if asset["ownership_status"].casefold() not in {"verified", "owner_confirmed"}:
@@ -238,25 +246,25 @@ def create_license_offer(payload: dict) -> dict:
         if asset["dependency_review"].casefold() not in {"passed", "reviewed_clear"}:
             raise ValueError("Licensing is blocked until third-party dependency review is clear.")
         offer = {
-            "id": str(uuid4()), "asset_id": asset_id, "buyer": buyer,
+            "id": str(uuid4()), "business_id": scope, "asset_id": asset_id, "buyer": buyer,
             "terms": terms, "status": "draft_pending_owner_approval",
             "created_at": now(), "updated_at": now(),
         }
         db.execute(
             """INSERT INTO license_offers
-            (id,asset_id,buyer,terms,status,created_at,updated_at)
-            VALUES (:id,:asset_id,:buyer,:terms,:status,:created_at,:updated_at)""",
+            (id,business_id,asset_id,buyer,terms,status,created_at,updated_at)
+            VALUES (:id,:business_id,:asset_id,:buyer,:terms,:status,:created_at,:updated_at)""",
             offer,
         )
         approval = {
-            "id": str(uuid4()), "task_id": None,
+            "id": str(uuid4()), "task_id": None, "business_id": scope,
             "action": "review_code_license_offer",
             "details": f"Review draft licensing offer {offer['id']} for asset {asset['name']} and prospective buyer {buyer}. No code or repository has been shared.",
             "status": "pending", "created_at": now(), "decided_at": None,
         }
         db.execute(
-            """INSERT INTO approvals (id,task_id,action,details,status,created_at,decided_at)
-            VALUES (:id,:task_id,:action,:details,:status,:created_at,:decided_at)""",
+            """INSERT INTO approvals (id,task_id,business_id,action,details,status,created_at,decided_at)
+            VALUES (:id,:task_id,:business_id,:action,:details,:status,:created_at,:decided_at)""",
             approval,
         )
     return {**offer, "approval_id": approval["id"], "external_sharing": False}
