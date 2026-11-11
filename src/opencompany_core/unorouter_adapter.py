@@ -78,12 +78,21 @@ def discover_free_models(api_key: str, *, force_refresh: bool = False) -> tuple[
 
     free_catalog_ids: set[str] = set()
     for item in catalog_models:
+        # This adapter sends OpenAI chat-completion requests, so exclude image,
+        # audio, embedding, and non-OpenAI-only routes before considering them.
         # UnoRouter's public catalogue lists base model names; the free
         # variant is exposed separately in /v1/models with a :free suffix.
         # A base row may therefore have is_free=false while its :free variant
         # is still a valid zero-cost route. The suffix on the key-visible ID is
         # the authoritative free-route marker; online gates the base model.
         if not isinstance(item, dict) or item.get("online") is not True:
+            continue
+        if str(item.get("type", "")).strip().casefold() != "text":
+            continue
+        endpoint_types = item.get("supported_endpoint_types")
+        if not isinstance(endpoint_types, list) or "openai" not in {
+            str(value).strip().casefold() for value in endpoint_types
+        }:
             continue
         name = item.get("model_name")
         if isinstance(name, str) and name.strip():
