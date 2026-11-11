@@ -40,6 +40,10 @@ def _read_json(url: str, *, api_key: str | None = None, timeout: int = 20) -> di
             if len(raw) > MAX_RESPONSE_BYTES:
                 raise ProviderUnavailable("UnoRouter catalogue response exceeded the configured size limit.")
     except HTTPError as exc:
+        if api_key and exc.code in {401, 403}:
+            raise ProviderUnavailable(
+                "UnoRouter rejected this credential. Use the inference API key from the Tokens page (usually starts with sk-), not the separate account API-access token."
+            ) from exc
         raise ProviderUnavailable(f"UnoRouter catalogue returned HTTP {exc.code}.") from exc
     except (URLError, TimeoutError, OSError) as exc:
         raise ProviderUnavailable(f"UnoRouter catalogue connection failed ({type(exc).__name__}).") from exc
