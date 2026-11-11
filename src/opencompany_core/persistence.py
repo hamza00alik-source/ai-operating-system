@@ -200,20 +200,38 @@ class SQLiteStore:
             raise RuntimeError(f"unsupported database schema version: {version}")
 
 
-    def create_commercial_opportunity(self, record: dict[str, Any]) -> None:
+    def create_commercial_opportunity(self, record: dict[str, Any], audit: AuditRecord) -> str:
         """Create one customer opportunity scoped to exactly one commercial business."""
         allowed = {"physical-agency", "physical-brand", "digital-products"}
         if record.get("business_id") not in allowed:
             raise ValueError("opportunities must belong to one commercial business unit")
         with self._lock:
-            self._connection.execute(
-                """INSERT INTO commercial_opportunities
-                   (id,business_id,customer_name,customer_contact,customer_need,stage,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?)""",
-                (record["id"], record["business_id"], record["customer_name"],
-                 record.get("customer_contact"), record["customer_need"],
-                 record.get("stage", "new"), record["created_at"], record["updated_at"]),
-            )
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._connection.execute(
+                    """INSERT INTO commercial_opportunities
+                       (id,business_id,customer_name,customer_contact,customer_need,stage,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    (record["id"], record["business_id"], record["customer_name"],
+                     record.get("customer_contact"), record["customer_need"],
+                     record.get("stage", "new"), record["created_at"], record["updated_at"]),
+                )
+                previous = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                payload = _audit_payload(audit, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    "INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audit.id), audit.occurred_at.isoformat(), _json(payload), previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return event_hash
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
 
     def list_commercial_opportunities(
         self, *, business_id: str | None = None, limit: int = 500
@@ -235,20 +253,38 @@ class SQLiteStore:
             rows = self._connection.execute(sql, tuple(values)).fetchall()
         return tuple(dict(row) for row in rows)
 
-    def create_commercial_product(self, record: dict[str, Any]) -> None:
+    def create_commercial_product(self, record: dict[str, Any], audit: AuditRecord) -> str:
         """Create a draft catalogue entry inside exactly one commercial unit."""
         allowed = {"physical-agency", "physical-brand", "digital-products"}
         if record.get("business_id") not in allowed:
             raise ValueError("catalogue products must belong to one commercial business unit")
         with self._lock:
-            self._connection.execute(
-                """INSERT INTO commercial_products
-                   (id,business_id,name,description,category,status,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?)""",
-                (record["id"], record["business_id"], record["name"],
-                 record["description"], record["category"], record.get("status", "draft"),
-                 record["created_at"], record["updated_at"]),
-            )
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._connection.execute(
+                    """INSERT INTO commercial_products
+                       (id,business_id,name,description,category,status,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    (record["id"], record["business_id"], record["name"],
+                     record["description"], record["category"], record.get("status", "draft"),
+                     record["created_at"], record["updated_at"]),
+                )
+                previous = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                payload = _audit_payload(audit, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    "INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audit.id), audit.occurred_at.isoformat(), _json(payload), previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return event_hash
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
 
     def list_commercial_products(
         self, *, business_id: str | None = None, status: str | None = None, limit: int = 500
