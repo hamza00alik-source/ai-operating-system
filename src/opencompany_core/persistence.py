@@ -207,6 +207,7 @@ class SQLiteStore:
                             business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
                             title TEXT NOT NULL,
                             currency TEXT NOT NULL CHECK(length(currency)=3),
+                            currency_exponent INTEGER NOT NULL CHECK(currency_exponent BETWEEN 0 AND 3),
                             subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor > 0),
                             terms TEXT NOT NULL,
                             status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved_for_delivery','accepted','rejected','void')),
@@ -440,10 +441,10 @@ class SQLiteStore:
                     raise ValueError("quote subtotal does not match its line items")
                 self._connection.execute(
                     """INSERT INTO commercial_quotes
-                       (id,opportunity_id,business_id,title,currency,subtotal_minor,terms,status,created_at,updated_at)
-                       VALUES(?,?,?,?,?,?,?,'draft',?,?)""",
+                       (id,opportunity_id,business_id,title,currency,currency_exponent,subtotal_minor,terms,status,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,'draft',?,?)""",
                     (record["id"], record["opportunity_id"], business_id, record["title"],
-                     record["currency"], subtotal, record["terms"], record["created_at"], record["updated_at"]),
+                     record["currency"], record["currency_exponent"], subtotal, record["terms"], record["created_at"], record["updated_at"]),
                 )
                 for item in items:
                     self._connection.execute(
@@ -454,6 +455,10 @@ class SQLiteStore:
                          item["quantity"], item["unit_price_minor"],
                          item["quantity"] * item["unit_price_minor"]),
                     )
+                self._connection.execute(
+                    "UPDATE commercial_opportunities SET stage='proposal',updated_at=? WHERE id=?",
+                    (record["created_at"], record["opportunity_id"]),
+                )
                 previous = self._connection.execute(
                     "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
                 ).fetchone()
@@ -564,6 +569,10 @@ class SQLiteStore:
                     (order_id, quote_id, quote["opportunity_id"], quote["business_id"],
                      quote["customer_name"], datetime.now(timezone.utc).isoformat(),
                      datetime.now(timezone.utc).isoformat()),
+                )
+                self._connection.execute(
+                    "UPDATE commercial_opportunities SET stage='won',updated_at=? WHERE id=?",
+                    (datetime.now(timezone.utc).isoformat(), quote["opportunity_id"]),
                 )
                 previous = self._connection.execute(
                     "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
