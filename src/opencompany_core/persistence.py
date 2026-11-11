@@ -606,6 +606,50 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def update_commercial_order_status(
+        self, order_id: str, status: str, audit: AuditRecord
+    ) -> bool:
+        if status not in {"in_progress", "fulfilled", "cancelled"}:
+            raise ValueError("unsupported order status")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                order = self._connection.execute(
+                    "SELECT status FROM commercial_orders WHERE id=?", (order_id,)
+                ).fetchone()
+                if order is None:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                current = order["status"]
+                allowed = {
+                    "awaiting_owner_fulfilment": {"in_progress", "cancelled"},
+                    "in_progress": {"fulfilled", "cancelled"},
+                    "fulfilled": set(),
+                    "cancelled": set(),
+                }
+                if status not in allowed[current]:
+                    raise ValueError("invalid order status transition")
+                self._connection.execute(
+                    "UPDATE commercial_orders SET status=?,updated_at=? WHERE id=?",
+                    (status, datetime.now(timezone.utc).isoformat(), order_id),
+                )
+                previous = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                payload = _audit_payload(audit, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    "INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audit.id), audit.occurred_at.isoformat(), _json(payload), previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def list_commercial_orders(self, *, business_id: str | None = None) -> tuple[dict[str, Any], ...]:
         if business_id is not None and business_id not in {"physical-agency", "physical-brand", "digital-products"}:
             raise ValueError("unknown commercial business unit")
