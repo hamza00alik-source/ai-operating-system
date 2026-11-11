@@ -526,7 +526,7 @@ async function loadVentureReport(id){
   meta.textContent=(report.opportunity_title||"Opportunity")+" · task: "+(report.task_status||"not queued")+" · agent run: "+(report.run?.status||"not started");
   text.textContent=report.report_text||report.message||"The linked run has not produced a report yet.";
   const urls=report.source_url_candidates||[];
-  sources.textContent=urls.length?"Extracted URL candidates (review each before using): "+urls.join(" · "):"No HTTPS source URLs were extracted.";
+  sources.innerHTML=urls.length?"Extracted URL candidates (review each before using): "+urls.map(url=>'<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(url)+'</a>').join(" · "):"No HTTPS source URLs were extracted.";
  }catch(e){meta.textContent="Report unavailable: "+e.message;text.textContent=""}
 }
 async function loadBusinessUnits(){
