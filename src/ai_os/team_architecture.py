@@ -61,9 +61,20 @@ BUSINESS_CONTEXTS = {
 
 def business_scope_context(business_id: str) -> str:
     """Return the mandatory scope contract for one known business environment."""
-    scope = BUSINESS_CONTEXTS.get((business_id or "core").strip())
+    selected = (business_id or "core").strip()
+    scope = BUSINESS_CONTEXTS.get(selected)
     if scope is None:
-        raise ValueError("Unknown business environment; refusing to execute an unscoped task.")
+        from ai_os.business_registry import get_business, require_business
+        require_business(selected)
+        item = get_business(selected)
+        if not item:
+            raise ValueError("Unknown business environment; refusing to execute an unscoped task.")
+        scope = {
+            "name": item["name"],
+            "scope": item.get("description") or ("Independent business unit of type " + item["business_type"] + "."),
+            "allowed": "Research, validation, product/service development, marketing, sales, delivery, customer support, finance and operations appropriate to this registered business model.",
+            "never": "Do not assume this business may fulfil another business unit orders or share its customers, finances, credentials, operations or private memory. Do not make spending, publishing, purchase, account or external customer commitments without owner approval."
+        }
     return (
         "MANDATORY BUSINESS SCOPE — " + scope["name"] + "\n"
         "Permitted scope: " + scope["scope"] + "\n"
