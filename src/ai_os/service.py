@@ -4,11 +4,13 @@ from uuid import uuid4
 from ai_os.db import connect
 from ai_os.schemas import ApprovalCreate, ApprovalDecision, TaskCreate
 from ai_os.brain import BUSINESS_IDS
+from ai_os.business_scope import validate_business_task_scope
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 def create_task(payload: TaskCreate) -> dict:
+    validate_business_task_scope(payload.business_id, payload.title, payload.description)
     task = {"id": str(uuid4()), "title": payload.title,
             "description": payload.description, "department": payload.department,
             "business_id": payload.business_id, "status": "queued", "created_at": _now()}
