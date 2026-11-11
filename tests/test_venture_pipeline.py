@@ -27,3 +27,11 @@ def test_non_https_sources_do_not_count_toward_launch_evidence():
     assert result["source_count"] == 1
     assert result["score"] == 80
     assert "not independently verified" in result["warning"]
+
+def test_boolean_values_are_not_accepted_as_ratings():
+    result = score_assessment({
+        "ratings": {dimension: 4 for dimension in DIMENSIONS} | {"demand": True},
+        "source_urls": ["https://example.com/one", "https://example.com/two", "https://example.com/three"],
+    })
+    assert result["score"] is None
+    assert result["coverage"] == 5
