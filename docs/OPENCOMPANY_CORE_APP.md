@@ -82,7 +82,7 @@ The API and in-process worker fleet share one SQLite database connection and tra
 
 Queue leases are atomic and token-checked. Expired leases are recovered within a bounded retry ceiling; exhausted work is dead-lettered. An owner may return a FAILED item to READY, or request revision of a review item. The terminal queue row may then be reused for re-admission, with attempt and stale lease/error state reset. Existing queued or leased work cannot be overwritten. The owner console exposes retry for FAILED work and cancellation for unqueued work. State-only cancellation of QUEUED or IN_PROGRESS work is rejected because it would leave an orphaned queue row or active provider call; queue-aware cooperative cancellation remains a release task.
 
-The fleet may be started explicitly from the owner console. Optional autostart remains gated by the configured owner-approved provider verification in the current process; saved credentials alone do not authorize inference at process boot.
+The fleet may be started explicitly from the owner console after a successful owner-triggered zero-cost provider test. Alternatively, the owner may explicitly set `OPENCOMPANY_WORKER_AUTOSTART=true`; on restart, the API starts the in-process fleet only when the owner key is configured and the gateway reports a zero-cost eligible provider. Every model request is still checked by the strict free-only gateway and fails closed if the live free catalogue or key access is unavailable. Autostart never grants external-action authority.
 
 ## Integrations and limits
 
