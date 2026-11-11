@@ -1,12 +1,15 @@
 """Owner-authenticated API for the Product & R&D workflow."""
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from opencompany_core.product_workflow import ProductWorkflowError, ProductWorkflowRepository
+from opencompany_core.product_artifacts import generate_product_blueprint
 
 
 def _runtime_for_request(request: Request):
@@ -79,6 +82,65 @@ def create_product_workflow(payload: ProductWorkflowCreate, request: Request) ->
 def list_product_workflows(request: Request, limit: int = 50) -> dict:
     items = _run(repository(request).list, limit)
     return {"count": len(items), "workflows": items}
+
+
+@router.post("/{workflow_id}/generate-blueprint")
+def generate_blueprint(workflow_id: UUID, request: Request) -> dict:
+    """Generate a zero-cost starter ZIP; this is not a finished commercial product."""
+    runtime = _runtime_for_request(request)
+    repo = repository(request)
+    workflow = repo.get(workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Product workflow not found.")
+    stage = workflow["stages"][3]
+    if stage["status"] != "in_progress":
+        raise HTTPException(status_code=409, detail="Artifact generation must be the active workflow stage.")
+    artifact_root = Path(runtime.store.database).expanduser().resolve().parent / "product_artifacts"
+    try:
+        artifact = generate_product_blueprint(
+            workflow_id=workflow_id,
+            title=workflow["title"],
+            brief=workflow["brief"],
+            artifact_root=artifact_root,
+        )
+        repo.complete_stage(
+            workflow_id,
+            "artifact_generation",
+            output=(
+                "Generated a deterministic product blueprint starter ZIP. "
+                "This is not a finished product; source assets and product-specific QA remain outstanding."
+            ),
+            artifact_refs=[f"artifact://{artifact['artifact_id']}"],
+            evidence=[
+                f"sha256:{artifact['sha256']}",
+                f"zip_integrity:passed",
+                f"file_count:{artifact['file_count']}",
+                "scope:blueprint_only",
+            ],
+        )
+    except (ValueError, ProductWorkflowError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "workflow_id": str(workflow_id),
+        "artifact": {key: value for key, value in artifact.items() if key != "path"},
+        "download_path": f"/product-workflows/artifacts/{artifact['artifact_id']}",
+        "next_stage": "automated_qa",
+        "notice": "Blueprint starter pack only; it is not a finished or QA-approved commercial product.",
+    }
+
+
+@router.get("/artifacts/{artifact_id}")
+def download_product_artifact(artifact_id: UUID, request: Request):
+    runtime = _runtime_for_request(request)
+    artifact_root = Path(runtime.store.database).expanduser().resolve().parent / "product_artifacts"
+    path = artifact_root / f"{artifact_id}.zip"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Product artifact not found.")
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=f"opencompany-product-blueprint-{artifact_id}.zip",
+    )
 
 
 @router.get("/{workflow_id}")
