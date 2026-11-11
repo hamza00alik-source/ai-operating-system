@@ -116,3 +116,11 @@ The owner API now provides private, owner-authenticated commercial records:
 - An owner can explicitly approve a draft catalogue entry for internal matching; the approval is audited and does not publish or list the product externally. An opportunity's matching-catalogue endpoint filters strictly to that opportunity's own business unit and returns active entries only.
 - These are initial records, not a complete CRM, quoting, order, inventory, payment, supplier, or marketplace system. Customer contact, publishing, pricing commitments, orders, and cross-business referrals remain unavailable until separately designed and owner-approved.
 - No cross-selling or substitution feature exists. A second independently requested category must be represented as a separate opportunity with its own business unit and scope confirmation.
+
+### Proposals, quotations, and orders
+
+- A quote belongs to one opportunity and inherits its immutable business unit. Every quote line must reference an active catalogue item from that same unit; mixed-business quotes are rejected in the persistence layer.
+- Quote amounts are stored as integer minor currency units. Quotes begin as drafts. Owner approval moves a quote to `approved_for_delivery`, which means it is ready for manual owner delivery only; the application does not send it.
+- Customer acceptance is recorded only after an owner confirms acceptance and supplies an evidence reference. A quote can be accepted only after it was approved for delivery.
+- An order record can be created only from an accepted quote, requires explicit owner confirmation, and is unique per quote. This records an order awaiting owner fulfilment; it does not take payment, contact the customer, commit a supplier, or start fulfilment.
+- Quote, decision, and order writes are transactional with their tamper-evident audit events. Orders and quotes retain their opportunity's business unit.
