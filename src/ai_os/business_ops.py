@@ -302,15 +302,17 @@ def confirm_expense_paid(expense_id: str, business_id: str = "core") -> dict:
             (expense_id, scope),
         ).fetchone()
     return dict(result)
-def apply_expense_approval(approval_id: str, decision: str) -> None:
-    """Mirror a completed owner decision onto the linked expense ledger row."""
+def apply_expense_approval(approval_id: str, decision: str, business_id: str = "core") -> None:
+    """Mirror a completed owner decision only onto this business's linked expense row."""
+    scope = _scope(business_id)
     status = {"approved": "approved_for_manual_payment", "rejected": "rejected_by_owner"}.get(decision)
     if status is None:
         return
     with connect() as db:
         db.execute(
-            "UPDATE business_records SET status=? WHERE approval_id=? AND record_type='expense'",
-            (status, approval_id),
+            """UPDATE business_records SET status=? WHERE approval_id=?
+            AND business_id=? AND record_type='expense'""",
+            (status, approval_id, scope),
         )
 
 
