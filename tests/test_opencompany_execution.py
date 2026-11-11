@@ -181,3 +181,21 @@ def test_dependent_execution_fails_closed_without_prerequisite_reader():
     with pytest.raises(ValueError, match="dependency reader"):
         AgentExecutor(gateway).execute("market_intelligence_analyst", parent)
     assert adapter.request is None
+
+
+def test_specialist_prompt_and_usage_are_scoped_to_work_item_business():
+    adapter = CapturingAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    item = WorkItem(
+        uuid4(), "Assess own-brand demand",
+        "Prepare an evidence-based demand assessment",
+        "research", state=TaskState.IN_PROGRESS, business_id="physical-brand",
+    )
+    events = []
+    AgentExecutor(gateway, usage_recorder=events.append).execute(
+        "market_intelligence_analyst", item,
+    )
+    assert "Business unit: physical-brand" in adapter.request.prompt
+    assert events[0]["business_id"] == "physical-brand"
