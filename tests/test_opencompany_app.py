@@ -49,9 +49,9 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "loadModelUsage" in response.text
     assert 'id="unorouter-discover"' in response.text
     assert 'id="unorouter-model"' in response.text
-    assert "Enter your API key, then load free models" in response.text
+    assert "automatic rotation across online models" in response.text
     assert 'id="unorouter-model"' in response.text
-    assert "load available free models" in response.text.lower()
+    assert "discover all free models" in response.text.lower()
     assert "payload.detail" in response.text
     assert 'id="github-evolution-token"' in response.text
     assert "draft pull requests only" in response.text
