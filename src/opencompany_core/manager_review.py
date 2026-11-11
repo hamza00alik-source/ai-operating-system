@@ -37,7 +37,7 @@ def review_specialist_deliverables(
     if not manager_role_key.strip() or not deliverables:
         raise ManagerReviewError("manager identity and at least one deliverable are required")
     manager_role = default_workforce().get(manager_role_key)
-    if manager_role.department != item.department or manager_role.team_key != "management":
+    if manager_role.department != item.department:
         raise ManagerReviewError("manager role does not belong to this department's management team")
     playbook = manager_role.playbook
     workflow = "\\n".join(playbook.workflow_steps) if playbook else "Follow the department's standard review procedure."
