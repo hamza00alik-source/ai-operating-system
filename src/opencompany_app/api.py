@@ -312,8 +312,18 @@ def require_owner_key(
                 if not valid_origin:
                     raise HTTPException(status_code=403, detail="Owner session requests must use the same origin.")
             return "owner"
+    client_key = request.client.host if request.client else "unknown"
     if x_opencompany_api_key and hmac.compare_digest(x_opencompany_api_key, expected):
+        _clear_login_failures(client_key)
         return "owner"
+    if x_opencompany_api_key:
+        retry_after = _login_retry_after(client_key, failed=True)
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many failed owner authentication attempts. Try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
     raise HTTPException(status_code=401, detail="Owner authentication failed.")
 
 
