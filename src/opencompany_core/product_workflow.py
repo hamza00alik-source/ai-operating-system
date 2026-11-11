@@ -146,8 +146,9 @@ class ProductWorkflowRepository:
                 raise ProductWorkflowError("Automated QA result fields must be lists.")
             if any(not isinstance(item, str) or not item.strip() for key in required for item in qa_result[key]):
                 raise ProductWorkflowError("Automated QA entries must be non-empty strings.")
+        action = "qa_fail" if stage_key == "automated_qa" and qa_result["failed_checks"] else "complete"
         return self._mutate_stage(
-            workflow_id, stage_key, "complete",
+            workflow_id, stage_key, action,
             output=output, artifact_refs=artifact_refs, evidence=evidence,
             qa_result=qa_result,
         )
@@ -190,6 +191,16 @@ class ProductWorkflowRepository:
                     stage["evidence"] = values["evidence"]
                     if stage_key == "automated_qa":
                         stage["qa_result"] = values["qa_result"]
+                    stage["completed_at"] = self._now()
+                elif action == "qa_fail":
+                    if stage_key != "automated_qa" or stage["status"] != "in_progress":
+                        raise ProductWorkflowError("Only an active automated QA stage can record failed checks.")
+                    stage["status"] = "blocked"
+                    stage["output"] = values["output"]
+                    stage["artifact_refs"] = values["artifact_refs"]
+                    stage["evidence"] = values["evidence"]
+                    stage["qa_result"] = values["qa_result"]
+                    stage["blockers"].extend(values["qa_result"]["failed_checks"])
                     stage["completed_at"] = self._now()
                 elif action == "block":
                     if stage["status"] not in {"pending", "in_progress"}:
