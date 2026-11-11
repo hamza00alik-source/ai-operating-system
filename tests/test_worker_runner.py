@@ -262,3 +262,44 @@ def test_manager_review_failure_is_audited_and_does_not_lose_deliverable(tmp_pat
     assert store.verify_audit_chain()
     queue.close()
     store.close()
+
+
+def test_worker_requeues_same_lease_after_manager_requests_rework(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from opencompany_core.domain import AgentProfile, AgentState
+
+    store = SQLiteStore(tmp_path / "shared-worker-review.sqlite3")
+    agent_id = uuid4()
+    agent = AgentProfile(
+        id=agent_id, name="Marketplace Specialist", department="revenue-partnerships",
+        purpose="Prepare marketplace research", capabilities=("research",),
+        state=AgentState.ACTIVE, role_key="marketplace_operations_analyst",
+        team_key="revenue-partnerships__team_1",
+    )
+    item = WorkItem(
+        id=uuid4(), title="Prepare marketplace research", objective="Research options",
+        department="revenue-partnerships", state=TaskState.QUEUED,
+        assigned_agent_id=agent_id,
+    )
+    store.save_agent(agent)
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue(item.id, agent_id, {"role_key": agent.role_key, "team_key": agent.team_key})
+
+    def request_rework(item_id):
+        current = store.get_work_item(item_id)
+        store.save_work_item(replace(current, state=TaskState.READY))
+        return {"auto_queue_enabled": True, "free_provider_ready": True}
+
+    monkeypatch.setenv("OPENCOMPANY_AUTO_MANAGER_REVIEW", "true")
+    worker = OpenCompanyWorker(
+        queue, store, FakeExecutor(), MemorySink(), manager_review_callback=request_rework,
+    )
+    assert worker.run_once(agent_id, agent.role_key) == "manager_rework_requeued"
+    assert queue.counts() == {"queued": 1}
+    assert store.get_work_item(item.id).state == TaskState.QUEUED
+    retry = queue.claim(agent_id)
+    assert retry is not None and retry.attempt == 1
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+    assert store.verify_audit_chain()
+    store.close()
