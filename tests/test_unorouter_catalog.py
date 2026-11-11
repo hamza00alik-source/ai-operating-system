@@ -9,9 +9,9 @@ from opencompany_core.model_gateway import (
 def test_discovery_intersects_free_online_catalogue_with_key_access(monkeypatch):
     responses = iter([
         {"models": [
-            {"model_name": "alpha", "is_free": False, "online": True},
-            {"model_name": "paid", "is_free": False, "online": True},
-            {"model_name": "offline", "is_free": True, "online": False},
+            {"model_name": "alpha", "type": "text", "supported_endpoint_types": ["openai"], "is_free": False, "online": True},
+            {"model_name": "paid", "type": "text", "supported_endpoint_types": ["openai"], "is_free": False, "online": True},
+            {"model_name": "offline", "type": "text", "supported_endpoint_types": ["openai"], "is_free": True, "online": False},
         ]},
         {"data": [
             {"id": "alpha:free"},
@@ -26,13 +26,31 @@ def test_discovery_intersects_free_online_catalogue_with_key_access(monkeypatch)
 
 def test_catalogue_discovery_fails_closed_when_no_free_models_are_accessible(monkeypatch):
     responses = iter([
-        {"models": [{"model_name": "paid", "is_free": False, "online": True}]},
+        {"models": [{"model_name": "paid", "type": "text", "supported_endpoint_types": ["openai"], "is_free": False, "online": True}]},
         {"data": [{"id": "paid"}]},
     ])
     monkeypatch.setattr(unorouter_adapter, "_read_json", lambda *a, **k: next(responses))
     monkeypatch.setattr(unorouter_adapter, "_catalog_cache", {})
     with pytest.raises(unorouter_adapter.ProviderUnavailable, match="No models were confirmed free"):
         unorouter_adapter.discover_free_models("test-api-key", force_refresh=True)
+
+
+def test_discovery_excludes_non_chat_and_non_openai_models(monkeypatch):
+    responses = iter([
+        {"models": [
+            {"model_name": "chat", "type": "text", "supported_endpoint_types": ["openai"], "online": True},
+            {"model_name": "image", "type": "image", "supported_endpoint_types": ["openai"], "online": True},
+            {"model_name": "embedding", "type": "embedding", "supported_endpoint_types": ["openai"], "online": True},
+            {"model_name": "anthropic-only", "type": "text", "supported_endpoint_types": ["anthropic"], "online": True},
+        ]},
+        {"data": [
+            {"id": "chat:free"}, {"id": "image:free"},
+            {"id": "embedding:free"}, {"id": "anthropic-only:free"},
+        ]},
+    ])
+    monkeypatch.setattr(unorouter_adapter, "_read_json", lambda *a, **k: next(responses))
+    monkeypatch.setattr(unorouter_adapter, "_catalog_cache", {})
+    assert unorouter_adapter.discover_free_models("test-api-key", force_refresh=True) == ("chat:free",)
 
 
 def test_auto_catalog_adapter_rotates_between_free_models(monkeypatch):
