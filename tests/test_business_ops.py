@@ -165,3 +165,43 @@ def test_code_assets_and_license_offers_are_business_isolated(monkeypatch):
         assert offer.json()["business_id"] == "digital-products"
         agency_offers = client.get("/code-assets/license-offers?business_id=physical-agency", headers=headers)
         assert all(item["id"] != offer.json()["id"] for item in agency_offers.json())
+
+
+
+def test_approval_decisions_and_expense_mirroring_are_business_scoped(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    headers = {"X-API-Key": "test-owner-key"}
+    with TestClient(app) as client:
+        agency_expense = client.post("/business/expenses", headers=headers, json={
+            "business_id": "physical-agency",
+            "title": "Agency logistics invoice",
+            "amount": 30,
+            "currency": "USD",
+        })
+        assert agency_expense.status_code == 201
+        approval_id = agency_expense.json()["approval_id"]
+
+        wrong_unit_decision = client.post(
+            f"/approvals/{approval_id}/decision?business_id=digital-products",
+            headers=headers, json={"decision": "approved"},
+        )
+        assert wrong_unit_decision.status_code == 404
+
+        digital_expenses = client.get(
+            "/business/expenses?business_id=digital-products", headers=headers
+        )
+        assert all(item["id"] != agency_expense.json()["id"] for item in digital_expenses.json())
+
+        correct_decision = client.post(
+            f"/approvals/{approval_id}/decision?business_id=physical-agency",
+            headers=headers, json={"decision": "approved"},
+        )
+        assert correct_decision.status_code == 200
+        assert correct_decision.json()["business_id"] == "physical-agency"
+
+        agency_expenses = client.get(
+            "/business/expenses?business_id=physical-agency", headers=headers
+        )
+        linked = next(item for item in agency_expenses.json() if item["id"] == agency_expense.json()["id"])
+        assert linked["status"] == "approved_for_manual_payment"
