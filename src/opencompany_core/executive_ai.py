@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from uuid import uuid4
 
-from .domain import TaskState, WorkItem
+from .domain import BUSINESS_UNIT_IDS, TaskState, WorkItem
 from .model_gateway import ModelGateway, ModelRequest
 from .organization import default_organization
 from .workforce import default_workforce
@@ -57,9 +57,12 @@ def create_executive_plan(
     gateway: ModelGateway,
     *,
     max_tasks: int = 10,
+    business_id: str = "core",
 ) -> ExecutivePlan:
     if not 1 <= max_tasks <= 10:
         raise ValueError("max_tasks must be between 1 and 10")
+    if business_id not in BUSINESS_UNIT_IDS:
+        raise ExecutivePlanningError(f"unknown business unit: {business_id}")
     departments = default_organization().all()
     department_context = [
         {"key": item.key, "name": item.name, "mission": item.mission}
@@ -72,6 +75,8 @@ def create_executive_plan(
         f"Executive role: {ceo.title}\n"
         f"Role mission: {ceo.mission}\n"
         f"CEO operating procedure:\n{ceo_steps}\n"
+        f"Business unit: {business_id}\n"
+        "Keep all proposed work, research, suppliers, customers, pricing, and financial context inside this business unit. Do not combine data from another business unit.\n"
         f"Owner objective title: {title}\n"
         f"Owner objective: {objective}\n"
         f"Create between 1 and {max_tasks} practical department work items. "
@@ -127,6 +132,7 @@ def create_executive_plan(
             id=ids[index], title=task_title.strip(), objective=task_objective.strip(),
             department=department, state=TaskState.DRAFT,
             depends_on=tuple(ids[value] for value in dependencies),
+            business_id=business_id,
         ))
     return ExecutivePlan(
         rationale=rationale.strip(), work_items=tuple(items),
