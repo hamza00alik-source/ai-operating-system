@@ -105,3 +105,13 @@ The owner console is mobile-friendly and exposes workforce, planning, delegation
 Before production routing is changed, verify the persistent volume, owner session recovery, saved provider configuration, authenticated live free-model test, worker execution while the owner is offline, backup restore, audit-chain integrity, and rollback. A successful deployment or passing unit tests alone is not proof of end-to-end production readiness.
 
 CI/testing is deferred until 1 December 2026 under the owner's current instruction. Newly added regression tests must be treated as unrun until that date or until the owner changes the instruction.
+
+### Commercial opportunity and catalogue isolation
+
+The owner API now provides private, owner-authenticated commercial records:
+
+- `POST/GET /commercial/opportunities`: each opportunity must select exactly one of `physical-agency`, `physical-brand`, or `digital-products`. Core is internal and cannot own a customer opportunity. Creation requires an explicit single-business scope confirmation.
+- `POST/GET /commercial/products`: each catalogue entry is stored under one commercial business unit and begins as a private `draft`. No publish/listing action is provided by these endpoints.
+- Each create operation and its audit event are committed in the same SQLite transaction. Lists can be filtered by business unit.
+- These are initial records, not a complete CRM, quoting, order, inventory, payment, supplier, or marketplace system. Customer contact, publishing, pricing commitments, orders, and cross-business referrals remain unavailable until separately designed and owner-approved.
+- No cross-selling or substitution feature exists. A second independently requested category must be represented as a separate opportunity with its own business unit and scope confirmation.
