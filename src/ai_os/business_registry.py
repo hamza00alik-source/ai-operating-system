@@ -77,7 +77,11 @@ def create_business(name: str, business_type: str, description: str = "") -> dic
 def require_business(business_id: str, allow_core: bool = True) -> str:
     scope = (business_id or "").strip()
     if scope not in BUSINESS_IDS:
-        refresh_business_ids()
+        try:
+            refresh_business_ids()
+        except Exception:
+            # A registry/database failure must fail closed, never grant a scope.
+            pass
     if scope not in BUSINESS_IDS or (not allow_core and scope == "core"):
-        raise ValueError("Unknown or inactive business unit.")
+        raise ValueError("Unknown business environment or inactive business unit.")
     return scope
