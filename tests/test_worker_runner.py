@@ -274,7 +274,7 @@ def test_worker_requeues_same_lease_after_manager_requests_rework(tmp_path, monk
         id=agent_id, name="Marketplace Specialist", department="revenue-partnerships",
         purpose="Prepare marketplace research", capabilities=("research",),
         state=AgentState.ACTIVE, role_key="marketplace_operations_analyst",
-        team_key="revenue-partnerships__team_1",
+        team_key="management",
     )
     item = WorkItem(
         id=uuid4(), title="Prepare marketplace research", objective="Research options",
