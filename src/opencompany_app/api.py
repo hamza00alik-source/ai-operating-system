@@ -165,6 +165,11 @@ class CommercialOpportunityInput(BaseModel):
     scope_confirmed: bool
 
 
+class CommercialProductStatusInput(BaseModel):
+    status: str
+    confirm_owner_approval: bool
+
+
 class CommercialProductInput(BaseModel):
     business_id: str
     name: str = Field(min_length=1, max_length=200)
@@ -1287,6 +1292,31 @@ def create_commercial_product(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"product_id": product_id, "business_id": payload.business_id, "status": "draft", "published": False}
+
+
+@app.post("/commercial/products/{product_id}/status", dependencies=[Depends(require_owner_key)])
+def update_commercial_product_status(
+    product_id: UUID, payload: CommercialProductStatusInput,
+    store: SQLiteStore = Depends(get_store)
+) -> dict:
+    from datetime import datetime, timezone
+    if payload.status not in {"active", "archived"}:
+        raise HTTPException(status_code=422, detail="Status must be active or archived.")
+    if not payload.confirm_owner_approval:
+        raise HTTPException(status_code=422, detail="Owner confirmation is required to change catalogue status.")
+    changed = store.update_commercial_product_status(
+        str(product_id), payload.status, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner",
+            action="commercial.product_status_changed",
+            subject_type="commercial_product", subject_id=str(product_id),
+            outcome=payload.status, correlation_id=str(uuid4()),
+            details={"status": payload.status, "owner_confirmed": True},
+        )
+    )
+    if not changed:
+        raise HTTPException(status_code=404, detail="Product not found or already archived.")
+    return {"product_id": str(product_id), "status": payload.status, "published": False}
 
 
 @app.get("/commercial/products", dependencies=[Depends(require_owner_key)])
