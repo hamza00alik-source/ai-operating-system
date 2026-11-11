@@ -188,7 +188,7 @@ class CommercialQuoteInput(BaseModel):
     opportunity_id: UUID
     title: str = Field(min_length=1, max_length=200)
     currency: str = Field(min_length=3, max_length=3)
-    currency_exponent: int = Field(default=2, ge=0, le=3)
+    currency_exponent: int = Field(default=2)
     terms: str = Field(min_length=1, max_length=4000)
     items: list[CommercialQuoteLineInput] = Field(min_length=1, max_length=100)
 
@@ -1365,6 +1365,8 @@ def create_commercial_quote(
     currency = payload.currency.upper()
     if not re.fullmatch(r"[A-Z]{3}", currency):
         raise HTTPException(status_code=422, detail="Currency must be a three-letter ISO code.")
+    if payload.currency_exponent not in {0, 2, 3}:
+        raise HTTPException(status_code=422, detail="Currency exponent must be 0, 2, or 3.")
     opportunity = store.get_commercial_opportunity(str(payload.opportunity_id))
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Commercial opportunity not found.")
@@ -1460,9 +1462,10 @@ def create_commercial_order(
             correlation_id=str(uuid4()), details={"quote_id": str(payload.quote_id), "owner_confirmed": True},
         ))
     except ValueError as exc:
+        if "already exists for this quote" in str(exc):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        # A duplicate order for the same accepted quote is a conflict, not a second sale.
         if "UNIQUE constraint failed" in str(exc):
             raise HTTPException(status_code=409, detail="An order already exists for this quote.") from exc
         raise
