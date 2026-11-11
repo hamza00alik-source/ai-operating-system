@@ -62,6 +62,13 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   <section class="panel">
     <h2 class="section-title">CEO objective planner</h2>
     <p class="muted">The active Chief Executive Orchestrator can turn an owner-approved objective into draft department tasks. Draft tasks are not queued or executed until you review them.</p>
+    <label for="executive-business">Business unit</label>
+    <select id="executive-business">
+      <option value="core">Core / internal operations</option>
+      <option value="physical-agency">Physical-products agency</option>
+      <option value="physical-brand">Own physical-product brand</option>
+      <option value="digital-products">Digital products business</option>
+    </select>
     <label for="executive-title">Plan title</label>
     <input id="executive-title" maxlength="240" placeholder="Example: Launch an international digital product business">
     <label for="executive-objective">Company objective</label>
@@ -201,7 +208,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         const heading=document.createElement("h3");heading.textContent=w.title;row.append(heading);
         const badge=document.createElement("span");badge.className="pill";badge.textContent=w.state;row.append(badge);
         card.append(row);
-        const detail=document.createElement("p");detail.textContent=w.department+" · "+w.objective;card.append(detail);
+        const detail=document.createElement("p");detail.textContent=(w.business_id||"core")+" · "+w.department+" · "+w.objective;card.append(detail);
         const workflowButton=document.createElement("button");workflowButton.textContent="Workflow details";
         workflowButton.addEventListener("click",async()=>{
           workflowButton.disabled=true;
@@ -372,10 +379,11 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   byId("create-executive-plan").addEventListener("click",async()=>{
     const title=byId("executive-title").value.trim();
     const objective=byId("executive-objective").value.trim();
+    const businessId=byId("executive-business").value;
     if(!title||!objective){setMessage("Enter a plan title and objective.","error");return;}
     byId("create-executive-plan").disabled=true;
     try{
-      const result=await request("/executive/plan",{method:"POST",body:JSON.stringify({title,objective,max_tasks:8})});
+      const result=await request("/executive/plan",{method:"POST",body:JSON.stringify({title,objective,max_tasks:8,business_id:businessId})});
       setMessage("CEO created "+result.created_count+" draft tasks. Review them in Work queue before moving any to READY.","success");
       byId("executive-title").value="";byId("executive-objective").value="";
       await load();
