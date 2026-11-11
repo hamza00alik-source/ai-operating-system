@@ -1,4 +1,4 @@
-from ai_os.venture_pipeline import DIMENSIONS, score_assessment
+from ai_os.venture_pipeline import DIMENSIONS, clean_evidence_records, score_assessment
 
 
 def test_venture_score_is_not_created_from_incomplete_ratings():
@@ -35,3 +35,30 @@ def test_boolean_values_are_not_accepted_as_ratings():
     })
     assert result["score"] is None
     assert result["coverage"] == 5
+
+
+
+def test_evidence_candidates_require_https_host_and_are_deduplicated():
+    evidence = clean_evidence_records([
+        {"url": "https://example.com/report", "claim": "Demand evidence"},
+        {"url": "https://example.com/report/", "claim": "Duplicate"},
+        {"url": "http://example.com/insecure"},
+        {"url": "https:///missing-host"},
+        {"url": "https://user:pass@example.com/private"},
+        {"url": "javascript:alert(1)"},
+    ])
+    assert [item["url"] for item in evidence] == ["https://example.com/report"]
+
+
+def test_assessment_source_count_uses_only_normalized_evidence_records():
+    # Arbitrary URLs supplied in assessment JSON are overwritten by save_assessment
+    # with this normalized evidence list before score_assessment is called.
+    evidence = clean_evidence_records([
+        {"url": "https://example.com/a"},
+        {"url": "https://example.com/b"},
+    ])
+    result = score_assessment({
+        "ratings": {dimension: 3 for dimension in DIMENSIONS},
+        "source_urls": [item["url"] for item in evidence],
+    })
+    assert result["source_count"] == 2
