@@ -1124,7 +1124,9 @@ def post_venture_research(opportunity_id: str):
         f"CUSTOMER SEGMENT: {opportunity['customer_segment']}\nPROBLEM: {opportunity['problem']}\n"
         f"REVENUE MODEL: {opportunity['revenue_model']}\nMARKET SCOPE: {opportunity['market_scope']}\n"
     )
+    previous_status = None
     try:
+        previous_status = venture_pipeline.reserve_research(opportunity_id)
         task = create_task(TaskCreate(
             title="Venture research: " + opportunity["title"][:150],
             description=description,
@@ -1132,11 +1134,17 @@ def post_venture_research(opportunity_id: str):
             business_id="core",
         ))
         run = create_run(task["id"])
-        result = venture_pipeline.queue_research(opportunity_id, task["id"])
+        result = venture_pipeline.attach_research_task(opportunity_id, task["id"])
         return {"opportunity": result, "task": task, "agent_run": run,
                 "execution_policy": "Free-confirmed models only; no paid fallback; no external side effects."}
     except (ValueError, LookupError) as exc:
+        if previous_status is not None:
+            venture_pipeline.cancel_research_reservation(opportunity_id, previous_status)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        if previous_status is not None:
+            venture_pipeline.cancel_research_reservation(opportunity_id, previous_status)
+        raise
 
 
 @app.post("/venture-opportunities/{opportunity_id}/assessment", dependencies=[Depends(require_owner_key)])
