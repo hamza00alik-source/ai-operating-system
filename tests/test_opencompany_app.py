@@ -573,12 +573,14 @@ def test_deliverables_endpoint_requires_owner_and_returns_persisted_records(owne
 
 
 def test_owner_session_login_is_rate_limited_after_five_failed_attempts(owner_client):
+    api_module._clear_login_failures("testclient")
     for _ in range(4):
         response = owner_client.post("/auth/session", json={"api_key": "wrong-owner-key"})
         assert response.status_code == 401
     limited = owner_client.post("/auth/session", json={"api_key": "wrong-owner-key"})
     assert limited.status_code == 429
     assert int(limited.headers["retry-after"]) > 0
+    api_module._clear_login_failures("testclient")
 
 
 def test_invalid_owner_api_key_headers_are_rate_limited(owner_client):
