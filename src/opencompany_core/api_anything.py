@@ -110,7 +110,15 @@ class ApiAnythingClient:
                 raise ValueError("invalid site identifier")
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", operation):
                 raise ValueError("invalid operation identifier")
+            try:
+                args_size = len(json.dumps(args, separators=(",", ":")))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("batch call args must be JSON-serializable") from exc
+            if args_size > 8000:
+                raise ValueError("each batch call args object is limited to 8000 characters")
             safe_calls.append({"site": site, "op": operation, "args": args, "id": item.get("id")})
+        if len(json.dumps(safe_calls, separators=(",", ":"))) > 64_000:
+            raise ValueError("batch payload is limited to 64000 characters")
         return self._request(
             "POST", "/v1/batch", {"calls": safe_calls, "concurrency": min(4, len(safe_calls)), "maxTier": 1}
         )
