@@ -1044,6 +1044,8 @@ def run_agent_once(
     runtime: OpenCompanyRuntime = Depends(get_runtime),
 ) -> dict:
     """Owner-trigger one bounded internal worker cycle for one active profile."""
+    if runtime.unorouter_tested_at is None:
+        raise HTTPException(status_code=409, detail="Run the owner-triggered zero-cost UnoRouter test in this process before executing a worker cycle.")
     agent = runtime.store.get_agent(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent profile not found.")
