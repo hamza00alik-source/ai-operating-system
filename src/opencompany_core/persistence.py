@@ -342,13 +342,18 @@ class SQLiteStore:
 
     def save_work_item(self, item: WorkItem) -> None:
         with self._lock:
+            existing = self._connection.execute(
+                "SELECT business_id FROM work_items WHERE id=?", (str(item.id),)
+            ).fetchone()
+            if existing is not None and existing["business_id"] != item.business_id:
+                raise ValueError("a work item's business unit is immutable")
             self._connection.execute(
                 """INSERT INTO work_items
                    (id,title,objective,department,business_id,state,assigned_agent_id,dependencies_json,created_at)
                    VALUES(?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                      title=excluded.title, objective=excluded.objective,
-                     department=excluded.department, business_id=excluded.business_id, state=excluded.state,
+                     department=excluded.department, state=excluded.state,
                      assigned_agent_id=excluded.assigned_agent_id,
                      dependencies_json=excluded.dependencies_json,
                      created_at=excluded.created_at""",
@@ -362,13 +367,18 @@ class SQLiteStore:
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
+                existing = self._connection.execute(
+                    "SELECT business_id FROM work_items WHERE id=?", (str(item.id),)
+                ).fetchone()
+                if existing is not None and existing["business_id"] != item.business_id:
+                    raise ValueError("a work item's business unit is immutable")
                 self._connection.execute(
                     """INSERT INTO work_items
                        (id,title,objective,department,business_id,state,assigned_agent_id,dependencies_json,created_at)
                        VALUES(?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(id) DO UPDATE SET
                          title=excluded.title, objective=excluded.objective,
-                         department=excluded.department, business_id=excluded.business_id, state=excluded.state,
+                         department=excluded.department, state=excluded.state,
                          assigned_agent_id=excluded.assigned_agent_id,
                          dependencies_json=excluded.dependencies_json,
                          created_at=excluded.created_at""",
