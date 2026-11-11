@@ -21,7 +21,7 @@ Every successful completion must report an explicit provider cost of exactly zer
 ## Owner setup
 
 1. Enter the UnoRouter API key once in Owner Dashboard.
-2. Confirm that only explicitly free models may be used.
+2. Confirm that only online catalogue entries with key-visible `:free` model IDs may be used.
 3. Save encrypted credentials.
 4. Press **Discover all free models** to view the current account-accessible catalogue.
 5. Run the zero-cost connection test.
