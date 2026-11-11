@@ -5,6 +5,8 @@ on:
     branches:
       - clean-room-rebuild
       - "feat/**"
+      - "clean-room-rebuild"
+      - "fix/**"
   pull_request:
     branches:
       - main
