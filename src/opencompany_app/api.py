@@ -8,6 +8,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 from dataclasses import replace
 from functools import lru_cache
@@ -15,7 +16,8 @@ from uuid import UUID, uuid4
 from urllib.parse import urlsplit
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
 from opencompany_core.domain import AgentState, AuditRecord, TaskState, WorkItem
@@ -396,6 +398,32 @@ def readiness(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
         "worker_fleet_running": fleet.running,
         "provider_required_for_readiness": False,
     }
+
+
+@app.get("/owner/backup", dependencies=[Depends(require_owner_key)])
+def download_owner_database_backup(store: SQLiteStore = Depends(get_store)) -> FileResponse:
+    """Download a consistent, integrity-checked SQLite snapshot for owner backup."""
+    descriptor, backup_path = tempfile.mkstemp(prefix="opencompany-backup-", suffix=".sqlite3")
+    os.close(descriptor)
+    try:
+        store.backup_to(backup_path)
+    except Exception as exc:
+        try:
+            os.unlink(backup_path)
+        except FileNotFoundError:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database backup failed safely: {type(exc).__name__}",
+        ) from exc
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return FileResponse(
+        backup_path,
+        media_type="application/vnd.sqlite3",
+        filename=f"opencompany-backup-{stamp}.sqlite3",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        background=BackgroundTask(os.unlink, backup_path),
+    )
 
 
 @app.get("/workforce/roles")
