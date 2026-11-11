@@ -130,6 +130,7 @@ class ProductWorkflowRepository:
     def complete_stage(
         self, workflow_id: UUID | str, stage_key: str, *,
         output: str, artifact_refs: list[str], evidence: list[str],
+        qa_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not output.strip() or len(output) > 12000:
             raise ProductWorkflowError("Stage output must contain 1-12000 characters.")
@@ -137,9 +138,18 @@ class ProductWorkflowRepository:
             raise ProductWorkflowError("Artifact references must be non-empty and limited to 30.")
         if len(evidence) > 30 or any(not item.strip() or len(item) > 1000 for item in evidence):
             raise ProductWorkflowError("Evidence entries must be non-empty and limited to 30.")
+        if stage_key == "automated_qa":
+            required = {"passed_checks", "failed_checks", "untested_claims"}
+            if not isinstance(qa_result, dict) or set(qa_result) != required:
+                raise ProductWorkflowError("Automated QA requires passed_checks, failed_checks, and untested_claims.")
+            if any(not isinstance(qa_result[key], list) for key in required):
+                raise ProductWorkflowError("Automated QA result fields must be lists.")
+            if any(not isinstance(item, str) or not item.strip() for key in required for item in qa_result[key]):
+                raise ProductWorkflowError("Automated QA entries must be non-empty strings.")
         return self._mutate_stage(
             workflow_id, stage_key, "complete",
             output=output, artifact_refs=artifact_refs, evidence=evidence,
+            qa_result=qa_result,
         )
 
     def block_stage(self, workflow_id: UUID | str, stage_key: str, reason: str) -> dict[str, Any]:
@@ -178,6 +188,8 @@ class ProductWorkflowRepository:
                     stage["output"] = values["output"]
                     stage["artifact_refs"] = values["artifact_refs"]
                     stage["evidence"] = values["evidence"]
+                    if stage_key == "automated_qa":
+                        stage["qa_result"] = values["qa_result"]
                     stage["completed_at"] = self._now()
                 elif action == "block":
                     if stage["status"] not in {"pending", "in_progress"}:
@@ -196,6 +208,51 @@ class ProductWorkflowRepository:
                 self._connection.execute(
                     "UPDATE product_workflows SET stages_json=?,status=?,updated_at=? WHERE id=?",
                     (json.dumps(stages, sort_keys=True), status, now, str(workflow_id)),
+                )
+                updated = self._connection.execute(
+                    "SELECT * FROM product_workflows WHERE id=?", (str(workflow_id),)
+                ).fetchone()
+                self._connection.execute("COMMIT")
+                return self._decode(updated)
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
+
+    def return_to_production(self, workflow_id: UUID | str, reason: str) -> dict[str, Any]:
+        """Return a blocked QA result to artifact production and reset downstream stages."""
+        if not reason.strip() or len(reason) > 2000:
+            raise ProductWorkflowError("A rework reason of 1-2000 characters is required.")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._connection.execute(
+                    "SELECT * FROM product_workflows WHERE id=?", (str(workflow_id),)
+                ).fetchone()
+                if row is None:
+                    raise ProductWorkflowError("Product workflow not found.")
+                record = self._decode(row)
+                if record["status"] != "blocked" or record["stages"][4]["status"] != "blocked":
+                    raise ProductWorkflowError("Only a blocked automated QA stage can be returned to production.")
+                stages = record["stages"]
+                for index in range(3, len(stages)):
+                    stage = stages[index]
+                    stage["status"] = "pending"
+                    stage["started_at"] = None
+                    stage["completed_at"] = None
+                    stage["output"] = None
+                    stage["artifact_refs"] = []
+                    stage["evidence"] = []
+                    stage.pop("qa_result", None)
+                production = stages[3]
+                production["status"] = "in_progress"
+                production["started_at"] = self._now()
+                production["blockers"].append("QA rework: " + reason)
+                now = self._now()
+                self._connection.execute(
+                    "UPDATE product_workflows SET stages_json=?,status='in_progress',updated_at=? WHERE id=?",
+                    (json.dumps(stages, sort_keys=True), now, str(workflow_id)),
                 )
                 updated = self._connection.execute(
                     "SELECT * FROM product_workflows WHERE id=?", (str(workflow_id),)
