@@ -1,9 +1,9 @@
 """Authenticated encryption for owner-managed provider credentials.
 
 Secrets are encrypted with AES-256-GCM before SQLite persistence. The
-encryption key is derived from OPENCOMPANY_SECRET_ENCRYPTION_KEY when present,
-there is no owner-key fallback. Set a dedicated stable encryption key before
-saving credentials; rotating it requires re-entering provider credentials.
+dedicated OPENCOMPANY_SECRET_ENCRYPTION_KEY is required; there is no owner-key
+fallback. Keep it stable and backed up; rotating it requires re-entering
+provider credentials.
 """
 from __future__ import annotations
 import json, os, secrets, sqlite3
