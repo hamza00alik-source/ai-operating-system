@@ -57,6 +57,9 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "unsafe-inline" not in response.headers["content-security-policy"].split("script-src", 1)[1].split(";", 1)[0]
     assert "nonce-" in response.headers["content-security-policy"]
     assert 'nonce="' in response.text
+    style_policy = response.headers["content-security-policy"].split("style-src", 1)[1].split(";", 1)[0]
+    assert "unsafe-inline" not in style_policy
+    assert "<style nonce=" in response.text
     assert response.headers["x-frame-options"] == "DENY"
 
 
