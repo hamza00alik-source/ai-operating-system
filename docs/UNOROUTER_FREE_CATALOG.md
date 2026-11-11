@@ -6,9 +6,9 @@ OpenCompany accepts one owner-provided UnoRouter API key and discovers the full 
 
 The owner-only `GET /settings/providers/unorouter/models` endpoint intersects:
 
-1. `GET https://api.unorouter.com/api/pricing/catalog` — only models with `is_free=true` and `online=true`.
+1. `GET https://api.unorouter.com/api/pricing/catalog` — only base models currently marked `online=true`.
 2. `GET https://api.unorouter.com/v1/models` authenticated with the saved API key — only model IDs that the key can actually access.
-3. The intersection must use exact model IDs ending in `:free`.
+3. The key-visible model ID must end in `:free`. UnoRouter documents this suffix as the zero-cost route marker. Its catalogue's `is_free` field describes the base route; a base row may be paid while a separate `:free` variant exists.
 
 The catalogue refreshes every five minutes in-process. The owner can force a refresh from the dashboard. If either catalogue cannot be read, or no matching models remain, the adapter fails closed.
 
