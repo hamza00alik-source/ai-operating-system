@@ -1934,7 +1934,13 @@ def create_executive_work_plan(
     except NoEligibleProvider as exc:
         raise HTTPException(status_code=503, detail="No owner-configured free model provider is available for CEO planning.") from exc
     except (ProviderUnavailable, CostPolicyViolation) as exc:
-        raise HTTPException(status_code=502, detail=f"CEO model request failed safely: {type(exc).__name__}") from exc
+        # Adapter diagnostics are sanitized and bounded; never expose credentials
+        # or raw upstream response bodies in the owner-facing API.
+        reason = " ".join(str(exc).split())[:600] or type(exc).__name__
+        raise HTTPException(
+            status_code=502,
+            detail=f"CEO model request failed safely: {type(exc).__name__}: {reason}",
+        ) from exc
     except ExecutivePlanningError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     correlation_id = str(uuid4())
