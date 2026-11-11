@@ -1217,8 +1217,7 @@ def create_commercial_opportunity(
         "created_at": now, "updated_at": now,
     }
     try:
-        store.create_commercial_opportunity(record)
-        store.append_audit_record(AuditRecord(
+        store.create_commercial_opportunity(record, AuditRecord(
             id=uuid4(), occurred_at=datetime.now(timezone.utc),
             actor_type="owner", actor_id="owner", action="commercial.opportunity_created",
             subject_type="commercial_opportunity", subject_id=opportunity_id,
@@ -1258,8 +1257,7 @@ def create_commercial_product(
         "created_at": now, "updated_at": now,
     }
     try:
-        store.create_commercial_product(record)
-        store.append_audit_record(AuditRecord(
+        store.create_commercial_product(record, AuditRecord(
             id=uuid4(), occurred_at=datetime.now(timezone.utc),
             actor_type="owner", actor_id="owner", action="commercial.product_created",
             subject_type="commercial_product", subject_id=product_id,
