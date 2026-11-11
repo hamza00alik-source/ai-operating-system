@@ -91,6 +91,8 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] Route research tasks through a dedicated Venture Discovery & Growth company department mapped to existing specialist catalogue pools.
 - [x] Add provisional six-dimension scorecard and block launch approval without complete ratings and at least three HTTPS sources.
 - [x] Require explicit owner approval before creating a separate business unit from an opportunity.
+- [x] Link each venture opportunity to its queued task and latest agent run; expose specialist output, CEO review and run errors in an owner-only report viewer.
+- [x] Extract HTTPS URL candidates from the report for owner review without treating them as verified evidence or auto-approving assessments.
 - [ ] Add primary-source web research retrieval, citation-quality checks and dated source refresh.
 - [ ] Generate conservative/base/upside financial models with explicit assumptions, startup cash requirements and break-even analysis.
 - [ ] Track validation experiments, customer interviews and willingness-to-pay evidence without autonomous customer outreach.
