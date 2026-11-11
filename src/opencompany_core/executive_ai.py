@@ -21,8 +21,8 @@ def _parse_model_json(text: str) -> dict:
     if not isinstance(text, str) or not text.strip():
         raise ExecutivePlanningError("CEO model returned an empty response")
 
-    candidate = text.lstrip("\\ufeff").strip()
-    fenced = re.fullmatch(r"```(?:json)?\\s*(.*?)\\s*```", candidate, flags=re.IGNORECASE | re.DOTALL)
+    candidate = text.lstrip("\ufeff").strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", candidate, flags=re.IGNORECASE | re.DOTALL)
     if fenced:
         candidate = fenced.group(1).strip()
 
@@ -85,7 +85,7 @@ def create_executive_plan(
         "The top-level object must have exactly these keys: rationale (string), work_items (array). "
         "Each work item must have exactly department (string), title (string), objective (string), "
         "depends_on (array of earlier integer indices). Example shape: "
-        '{"rationale":"Short explanation","work_items":[{"department":"research","title":"Research demand","objective":"Assess demand using available evidence","depends_on":[]}]}\\n'
+        '{"rationale":"Short explanation","work_items":[{"department":"research","title":"Research demand","objective":"Assess demand using available evidence","depends_on":[]}]}\n'
         f"Departments: {json.dumps(department_context, separators=(',', ':'))}"
     )
     result = gateway.complete(
