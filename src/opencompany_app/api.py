@@ -1894,7 +1894,8 @@ def create_agent_handoff(
         actor_id="owner", action="owner.proposed_agent_handoff",
         subject_type="agent_handoff", subject_id=str(handoff.id), outcome="proposed",
         correlation_id=str(uuid4()),
-        details={"work_item_id": str(item.id), "recipient_agent_id": str(payload.recipient_agent_id)},
+        details={"work_item_id": str(item.id), "business_id": item.business_id,
+                 "recipient_agent_id": str(payload.recipient_agent_id)},
     )
     try:
         runtime.handoffs.create(handoff, event)
@@ -1919,10 +1920,14 @@ def list_agent_handoffs(
 def accept_agent_handoff(
     handoff_id: UUID,
     runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
 ) -> dict:
     handoff = runtime.handoffs.get(handoff_id)
     if handoff is None:
         raise HTTPException(status_code=404, detail="Handoff not found.")
+    work_item = store.get_work_item(handoff.work_item_id)
+    if work_item is None:
+        raise HTTPException(status_code=404, detail="Handoff work item not found.")
     now = datetime.now(timezone.utc)
     try:
         updated = accept_handoff(handoff, at=now)
@@ -1932,7 +1937,8 @@ def accept_agent_handoff(
         id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
         action="owner.accepted_agent_handoff", subject_type="agent_handoff",
         subject_id=str(handoff.id), outcome="accepted", correlation_id=str(uuid4()),
-        details={"recipient_agent_id": str(handoff.recipient_agent_id)},
+        details={"recipient_agent_id": str(handoff.recipient_agent_id),
+                 "work_item_id": str(work_item.id), "business_id": work_item.business_id},
     )
     if not runtime.handoffs.transition(updated, HandoffState.PROPOSED, event):
         raise HTTPException(status_code=409, detail="Handoff changed; reload before retrying.")
@@ -1943,10 +1949,14 @@ def accept_agent_handoff(
 def decline_agent_handoff(
     handoff_id: UUID,
     runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
 ) -> dict:
     handoff = runtime.handoffs.get(handoff_id)
     if handoff is None:
         raise HTTPException(status_code=404, detail="Handoff not found.")
+    work_item = store.get_work_item(handoff.work_item_id)
+    if work_item is None:
+        raise HTTPException(status_code=404, detail="Handoff work item not found.")
     now = datetime.now(timezone.utc)
     try:
         updated = decline_handoff(handoff, at=now)
@@ -1956,7 +1966,8 @@ def decline_agent_handoff(
         id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
         action="owner.declined_agent_handoff", subject_type="agent_handoff",
         subject_id=str(handoff.id), outcome="declined", correlation_id=str(uuid4()),
-        details={"recipient_agent_id": str(handoff.recipient_agent_id)},
+        details={"recipient_agent_id": str(handoff.recipient_agent_id),
+                 "work_item_id": str(work_item.id), "business_id": work_item.business_id},
     )
     if not runtime.handoffs.transition(updated, HandoffState.PROPOSED, event):
         raise HTTPException(status_code=409, detail="Handoff changed; reload before retrying.")
@@ -1968,10 +1979,14 @@ def deliver_agent_handoff(
     handoff_id: UUID,
     payload: HandoffDeliverInput,
     runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
 ) -> dict:
     handoff = runtime.handoffs.get(handoff_id)
     if handoff is None:
         raise HTTPException(status_code=404, detail="Handoff not found.")
+    work_item = store.get_work_item(handoff.work_item_id)
+    if work_item is None:
+        raise HTTPException(status_code=404, detail="Handoff work item not found.")
     now = datetime.now(timezone.utc)
     try:
         updated = deliver_handoff(handoff, response_artifact_ids=payload.response_artifact_ids, at=now)
@@ -1981,7 +1996,8 @@ def deliver_agent_handoff(
         id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
         action="owner.recorded_handoff_delivery", subject_type="agent_handoff",
         subject_id=str(handoff.id), outcome="delivered", correlation_id=str(uuid4()),
-        details={"response_artifact_ids": [str(value) for value in payload.response_artifact_ids]},
+        details={"response_artifact_ids": [str(value) for value in payload.response_artifact_ids],
+                 "work_item_id": str(work_item.id), "business_id": work_item.business_id},
     )
     if not runtime.handoffs.transition(updated, HandoffState.ACCEPTED, event):
         raise HTTPException(status_code=409, detail="Handoff changed; reload before retrying.")
