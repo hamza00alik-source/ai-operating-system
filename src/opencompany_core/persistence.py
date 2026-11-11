@@ -293,6 +293,38 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def update_commercial_product_status(
+        self, product_id: str, status: str, audit: AuditRecord
+    ) -> bool:
+        if status not in {"active", "archived"}:
+            raise ValueError("catalogue status must be active or archived")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = self._connection.execute(
+                    "UPDATE commercial_products SET status=?,updated_at=? WHERE id=? AND status!='archived'",
+                    (status, datetime.now(timezone.utc).isoformat(), product_id),
+                )
+                if cursor.rowcount != 1:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                previous = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                payload = _audit_payload(audit, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    "INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audit.id), audit.occurred_at.isoformat(), _json(payload), previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def list_commercial_products(
         self, *, business_id: str | None = None, status: str | None = None, limit: int = 500
     ) -> tuple[dict[str, Any], ...]:
