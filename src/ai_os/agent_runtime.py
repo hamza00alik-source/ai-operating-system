@@ -440,6 +440,7 @@ def run_pending_once() -> bool:
         review_prompt = (
             business_scope + "\n\n" + team_contract + "\n\n"
             + "You are the CEO and final quality reviewer. Integrate two specialist contributions into one useful deliverable. "
+            "Before finalizing, compare the deliverable with the MANDATORY BUSINESS SCOPE above. If it requests or proposes a product, fulfillment method, customer record or commitment from another business line, do not silently substitute it; flag the mismatch and recommend owner correction. A physical-products order must not be fulfilled with a digital file, and a digital-products order must not imply physical shipping. "
             "Resolve contradictions explicitly. Enforce evidence discipline: remove unsupported numeric market-size, CAGR, revenue-share, ranking and pricing claims; never convert a collaborator's unsupported claim into a verified fact. " +
             "If no traceable source URL and publication date are present, label claims as unverified hypotheses or omit them. State that live research was not performed when no browsing/source retrieval occurred. Separate facts, assumptions and unknowns, and include a QA checklist and next actions. "
             "Do not claim external actions. No spending, publishing, outreach, account changes or commitments are allowed.\n\n"
