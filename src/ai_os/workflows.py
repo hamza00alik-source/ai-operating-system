@@ -38,7 +38,7 @@ TEMPLATES = {
         "name": "Company-wide cross-department operating cycle",
         "description": "A supervised end-to-end cycle for one objective in exactly one business environment. Business records and customer data must never be mixed.",
         "steps": [
-            ("executive", "Set objective, scope and owner decision gates", "Define the objective, selected business environment, measurable outcome, exclusions, risks and owner approval gates. Keep the physical-products agency, own physical-products brand and digital-products business separate."),
+            ("executive", "Set objective, scope and owner decision gates", "Define the objective, selected business environment, measurable outcome, exclusions, risks and owner approval gates. Keep every registered business unit separate; in particular preserve the physical-agency, own-physical-brand and digital-products boundaries."),
             ("research", "Validate the opportunity with evidence", "Collect dated, attributable evidence about customers, demand, competitors, market conditions and risks. Separate verified facts, estimates and hypotheses; cite primary sources and mark unknowns."),
             ("product", "Specify the offer and acceptance criteria", "Define the proposed offer, target buyer, value proposition, deliverables, exclusions, acceptance criteria and assumptions. Do not promise availability or delivery."),
             ("design", "Prepare creative and production specifications", "Produce a detailed creative brief, visual direction, required assets, file formats and quality criteria. Distinguish a brief from assets actually created."),
