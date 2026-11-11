@@ -130,6 +130,7 @@ def test_executor_records_successful_model_usage_without_secret_material():
     assert events[0]["request_id"] == adapter.request.request_id
     assert events[0]["work_item_id"] == str(item.id)
     assert events[0]["role_key"] == "market_intelligence_analyst"
+    assert events[0]["business_id"] == item.business_id
     assert events[0]["provider"] == "free"
     assert events[0]["model"] == "test-model"
     assert events[0]["cost_usd"] == 0
