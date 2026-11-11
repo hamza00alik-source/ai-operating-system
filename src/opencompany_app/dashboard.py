@@ -117,6 +117,10 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       <div><h3>Customer opportunities</h3><div id="commercial-opportunities" class="list"><p class="muted">Connect to load opportunities.</p></div></div>
       <div><h3>Separate catalogues</h3><div id="commercial-products" class="list"><p class="muted">Connect to load catalogue drafts.</p></div></div>
     </div>
+    <div class="grid">
+      <div><h3>Proposals & quotations</h3><div id="commercial-quotes" class="list"><p class="muted">Connect to load quotations.</p></div></div>
+      <div><h3>Orders · record only</h3><div id="commercial-orders" class="list"><p class="muted">Connect to load orders.</p></div></div>
+    </div>
   </section>
   <section class="panel">
     <div class="row"><h2 class="section-title">External research connector</h2><span id="api-anything-status" class="pill">Not configured</span></div>
@@ -188,8 +192,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     return response.json();
   };
   async function loadCommercial(){
-    const [opportunities,products]=await Promise.all([
-      request("/commercial/opportunities"),request("/commercial/products")
+    const [opportunities,products,quotes,orders]=await Promise.all([
+      request("/commercial/opportunities"),request("/commercial/products"),
+      request("/commercial/quotes"),request("/commercial/orders")
     ]);
     clear("commercial-opportunities","No customer opportunities recorded.");
     opportunities.opportunities.forEach(o=>{
@@ -209,6 +214,36 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         finally{matching.disabled=false;}
       });
       card.append(matching);
+      const quoteForm=document.createElement("div");quoteForm.className="item";
+      const quoteHeading=document.createElement("h4");quoteHeading.textContent="Prepare a quote for this opportunity";quoteForm.append(quoteHeading);
+      const activeProducts=products.products.filter(p=>p.business_id===o.business_id&&p.status==="active");
+      const productSelect=document.createElement("select");
+      activeProducts.forEach(p=>{const option=document.createElement("option");option.value=p.id;option.textContent=p.name+" · "+p.category;productSelect.append(option);});
+      if(!activeProducts.length){const option=document.createElement("option");option.textContent="No active catalogue entries for this business";option.value="";productSelect.append(option);}
+      quoteForm.append(productSelect);
+      const quoteTitle=document.createElement("input");quoteTitle.maxLength=200;quoteTitle.placeholder="Quote title";quoteTitle.value="Proposal for "+o.customer_name;quoteForm.append(quoteTitle);
+      const currency=document.createElement("input");currency.maxLength=3;currency.value="USD";currency.placeholder="ISO currency code";quoteForm.append(currency);
+      const quantity=document.createElement("input");quantity.type="number";quantity.min="1";quantity.max="10000";quantity.value="1";quantity.placeholder="Quantity";quoteForm.append(quantity);
+      const unitPrice=document.createElement("input");unitPrice.type="number";unitPrice.min="1";unitPrice.step="1";unitPrice.placeholder="Unit price in minor units (e.g. 1250 = 12.50)";quoteForm.append(unitPrice);
+      const terms=document.createElement("textarea");terms.rows=2;terms.maxLength=4000;terms.placeholder="Quote terms, validity, exclusions and delivery assumptions";quoteForm.append(terms);
+      const makeQuote=document.createElement("button");makeQuote.textContent="Save quote as draft";
+      makeQuote.disabled=!activeProducts.length;
+      makeQuote.addEventListener("click",async()=>{
+        const q=Number(quantity.value),price=Number(unitPrice.value);
+        if(!productSelect.value||!quoteTitle.value.trim()||!/^[A-Za-z]{3}$/.test(currency.value)||!Number.isInteger(q)||q<1||!Number.isInteger(price)||price<1||!terms.value.trim()){
+          setMessage("Complete the product, title, ISO currency, quantity, minor-unit price and terms.","error");return;
+        }
+        makeQuote.disabled=true;
+        try{
+          const selected=activeProducts.find(p=>p.id===productSelect.value);
+          await request("/commercial/quotes",{method:"POST",body:JSON.stringify({
+            opportunity_id:o.id,title:quoteTitle.value.trim(),currency:currency.value.toUpperCase(),terms:terms.value.trim(),
+            items:[{product_id:selected.id,description:selected.name+" — "+selected.description,quantity:q,unit_price_minor:price}]
+          })});
+          await loadCommercial();setMessage("Draft quote saved under "+o.business_id+". It was not sent to the customer.","success");
+        }catch(error){setMessage(error.message,"error");makeQuote.disabled=false;}
+      });
+      quoteForm.append(makeQuote);card.append(quoteForm);
     byId("commercial-opportunities").append(card);
     });
     clear("commercial-products","No catalogue drafts yet.");
@@ -229,6 +264,51 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         card.append(activate);
       }
       byId("commercial-products").append(card);
+    });
+    clear("commercial-quotes","No proposals or quotations recorded.");
+    quotes.quotes.forEach(q=>{
+      const card=document.createElement("article");card.className="item";
+      const heading=document.createElement("h3");heading.textContent=q.title+" · "+q.business_id;card.append(heading);
+      const detail=document.createElement("p");detail.textContent=q.customer_name+" · "+q.currency+" "+(q.subtotal_minor/100).toFixed(2)+" · "+q.items.length+" line(s)";card.append(detail);
+      const state=document.createElement("span");state.className="pill";state.textContent=q.status;card.append(state);
+      const lines=document.createElement("p");lines.textContent=q.items.map(i=>i.description+" × "+i.quantity).join(" | ");card.append(lines);
+      if(q.status==="draft"){
+        const approve=document.createElement("button");approve.textContent="Approve quote for owner delivery";
+        approve.addEventListener("click",async()=>{
+          if(!confirm("Approve this quote for you to deliver to the customer outside OpenCompany? Nothing will be sent automatically."))return;
+          approve.disabled=true;
+          try{await request("/commercial/quotes/"+q.id+"/decision",{method:"POST",body:JSON.stringify({status:"approved_for_delivery",confirm_owner_decision:true})});await loadCommercial();setMessage("Quote approved for manual owner delivery. No message was sent.","success");}
+          catch(error){setMessage(error.message,"error");approve.disabled=false;}
+        });card.append(approve);
+      }else if(q.status==="approved_for_delivery"){
+        const evidence=document.createElement("input");evidence.maxLength=1000;evidence.placeholder="Customer acceptance evidence reference (e.g. email/order ref)";
+        const accept=document.createElement("button");accept.textContent="Record customer acceptance";
+        accept.addEventListener("click",async()=>{
+          if(!evidence.value.trim()||!confirm("Confirm the customer has accepted this exact quote? This only records your confirmation; it does not contact the customer.")){setMessage("Acceptance evidence reference and confirmation are required.","error");return;}
+          accept.disabled=true;
+          try{await request("/commercial/quotes/"+q.id+"/decision",{method:"POST",body:JSON.stringify({status:"accepted",confirm_owner_decision:true,acceptance_reference:evidence.value.trim()})});await loadCommercial();setMessage("Customer acceptance recorded with your evidence reference.","success");}
+          catch(error){setMessage(error.message,"error");accept.disabled=false;}
+        });card.append(evidence,accept);
+        const reject=document.createElement("button");reject.textContent="Record rejected / void";
+        reject.addEventListener("click",async()=>{if(!confirm("Record this quote as rejected?"))return;try{await request("/commercial/quotes/"+q.id+"/decision",{method:"POST",body:JSON.stringify({status:"rejected",confirm_owner_decision:true})});await loadCommercial();}catch(error){setMessage(error.message,"error");}});card.append(reject);
+      }else if(q.status==="accepted"){
+        const orderButton=document.createElement("button");orderButton.textContent="Create order record";
+        orderButton.addEventListener("click",async()=>{
+          if(!confirm("Create an internal order record for this accepted quote? This does not take payment or start fulfilment."))return;
+          orderButton.disabled=true;
+          try{await request("/commercial/orders",{method:"POST",body:JSON.stringify({quote_id:q.id,confirm_owner_order_record:true})});await loadCommercial();setMessage("Order record created. Payment and fulfilment remain manual and separate.","success");}
+          catch(error){setMessage(error.message,"error");orderButton.disabled=false;}
+        });card.append(orderButton);
+      }
+      byId("commercial-quotes").append(card);
+    });
+    clear("commercial-orders","No order records yet.");
+    orders.orders.forEach(o=>{
+      const card=document.createElement("article");card.className="item";
+      const heading=document.createElement("h3");heading.textContent=o.customer_name+" · "+o.business_id;card.append(heading);
+      const detail=document.createElement("p");detail.textContent="Order "+o.id+" · Quote "+o.quote_id;card.append(detail);
+      const state=document.createElement("span");state.className="pill";state.textContent=o.status;card.append(state);
+      byId("commercial-orders").append(card);
     });
     ["create-opportunity","create-catalog-product"].forEach(id=>byId(id).disabled=false);
   }
@@ -474,7 +554,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{if(csrfToken) await fetch("/auth/logout",{method:"POST",headers:{"X-CSRF-Token":csrfToken},credentials:"same-origin",cache:"no-store"});}
     finally{
       csrfToken="";keyInput.value="";
-      ["departments","agents","capabilities","work-items","commercial-opportunities","commercial-products"].forEach(id=>clear(id,"Disconnected."));
+      ["departments","agents","capabilities","work-items","commercial-opportunities","commercial-products","commercial-quotes","commercial-orders"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
       byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
