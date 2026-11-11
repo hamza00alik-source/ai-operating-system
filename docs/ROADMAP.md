@@ -33,6 +33,10 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Task dependencies and assignment
 - [x] Static specialist registry sourced from Agency Agents
 - [x] Three-stage task collaboration: lead specialist, independent collaborator, and CEO integration/QA review
+- [x] Shared team-operating contract injected into lead, collaborator and CEO stages
+- [x] Explicit business-scope contract for core, physical agency, own physical brand and digital-products tasks; unknown business IDs fail closed
+- [ ] Intent-aware team composition, structured task plans and specialist-specific deliverable schemas
+- [ ] Workflow artifact aggregation, cancellation, safe resumability and bounded parallel branches
 - [ ] Autonomous department inbox interpretation and multi-agent task planning
 - [ ] Retry policy, timeouts, execution logs
 - [x] In-service discovery polling worker (single service)
