@@ -1179,10 +1179,13 @@ def api_anything_read_batch(
 
 @app.get("/code-evolution/config-status", dependencies=[Depends(require_owner_key)])
 def code_evolution_config_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    provider_verified = runtime.unorouter_tested_at is not None
+    github_verified = runtime.github_evolution_tested_at is not None
     return {
         "configured": runtime.github_evolution is not None,
-        "enabled": runtime.github_evolution is not None and runtime.github_evolution_tested_at is not None,
-        "access_verified": runtime.github_evolution_tested_at is not None,
+        "enabled": runtime.github_evolution is not None and github_verified and provider_verified,
+        "access_verified": github_verified,
+        "provider_verified": provider_verified,
         "verified_at": runtime.github_evolution_tested_at,
         "repository": runtime.github_evolution.repository if runtime.github_evolution else None,
         "base_branch": runtime.github_evolution.base_branch if runtime.github_evolution else None,
@@ -1203,6 +1206,8 @@ def create_code_evolution_proposal(
             status_code=503,
             detail="Code evolution is not connected. Configure the repository on the service and save a GitHub token in the owner dashboard.",
         )
+    if runtime.unorouter_tested_at is None:
+        raise HTTPException(status_code=409, detail="Run the owner-triggered zero-cost UnoRouter test before creating code-evolution proposals.")
     if runtime.github_evolution_tested_at is None:
         raise HTTPException(status_code=409, detail="Run the read-only GitHub repository access test before creating code-evolution proposals.")
     try:
