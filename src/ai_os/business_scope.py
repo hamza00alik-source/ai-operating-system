@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-BUSINESS_IDS = {"core", "physical-agency", "physical-brand", "digital-products"}
+from ai_os.business_registry import BUSINESS_IDS, require_business
 
 _DIGITAL_FULFILLMENT = re.compile(
     r"\b(?:deliver|fulfil|fulfill|ship|provide|sell|supply|replace|substitute|complete)\b"
@@ -30,9 +30,7 @@ _PHYSICAL_FULFILLMENT = re.compile(
 
 def validate_business_task_scope(business_id: str, title: str, description: str = "") -> None:
     """Reject explicit wrong-business fulfillment; unknown scope fails closed."""
-    scope = (business_id or "core").strip()
-    if scope not in BUSINESS_IDS:
-        raise ValueError("Unknown business environment; refusing unscoped work.")
+    scope = require_business(business_id or "core")
     text = f"{title or ''}\n{description or ''}"[:15000]
     if scope in {"physical-agency", "physical-brand"} and _DIGITAL_FULFILLMENT.search(text):
         raise ValueError(
@@ -49,8 +47,7 @@ def validate_business_task_scope(business_id: str, title: str, description: str 
 
 def validate_workflow_scope(template_id: str, business_id: str) -> None:
     """Keep product-specific workflow templates inside their matching business line."""
-    if business_id not in BUSINESS_IDS:
-        raise ValueError("Unknown business environment.")
+    business_id = require_business(business_id)
     if template_id == "digital-product-launch" and business_id != "digital-products":
         raise ValueError(
             "The digital-product-launch workflow can only run inside the digital-products business."
