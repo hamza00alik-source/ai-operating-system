@@ -62,6 +62,12 @@ Owner-authenticated:
 - `GET /audit/verify` — verify the local audit hash chain.
 - Provider settings, read-only API Anything research, and isolated GitHub code-evolution routes are owner-authenticated.
 
+## Business-unit boundaries
+
+Internal work items are assigned to one immutable business unit: `core`, `physical-agency`, `physical-brand`, or `digital-products`. CEO plans select one unit; manager-created child tasks inherit the parent unit; dependencies across units are rejected; workflow and task lists can be filtered by unit; and role-learning notes are retrieved only for the matching unit. Existing persisted work items migrate to `core` by default and can be recreated under a different unit only as new work.
+
+This is internal workflow isolation, not yet complete external-account isolation. Store credentials, customer/order records, supplier records, financial ledgers, and marketplace accounts still need separate business-scoped connectors and authorization before those integrations are enabled.
+
 ## Provider and cost controls
 
 No model provider is enabled by default. The UnoRouter integration imports the live public pricing catalogue and intersects it with model IDs visible to the owner's key. Only online chat-capable text models with exact zero input/output/fixed prices, a `:free` model ID, and key visibility are eligible. All eligible free models may be rotated; paid and unknown models remain unavailable. Provider-reported non-zero, invalid, or non-finite cost is rejected. If no eligible free model is available, execution fails safely.
