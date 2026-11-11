@@ -425,7 +425,7 @@ def owner_dashboard() -> HTMLResponse:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = (
         f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
-        f"style-src 'self' 'nonce-{nonce}'; style-src-attr 'unsafe-inline'; connect-src 'self'; "
+        f"style-src 'self' 'nonce-{nonce}'; connect-src 'self'; "
         "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; "
         "form-action 'self'; object-src 'none'"
     )
