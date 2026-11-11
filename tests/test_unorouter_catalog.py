@@ -3,7 +3,7 @@ import pytest
 
 from opencompany_core import unorouter_adapter
 from opencompany_core.model_gateway import (
-    BillingMode, ModelGateway, ModelRequest, ModelResult, ProviderPolicy, ProviderUnavailable,
+    BillingMode, ModelGateway, ModelRequest, ModelResult, NoEligibleProvider, ProviderPolicy, ProviderUnavailable,
 )
 
 
@@ -212,5 +212,5 @@ def test_gateway_globally_blocks_paid_provider_even_with_positive_budget():
         PaidAdapter(),
     ),))
     assert gateway.eligible_providers(request_budget_usd=100.0) == ()
-    with pytest.raises(Exception):
+    with pytest.raises(NoEligibleProvider):
         gateway.complete(ModelRequest("test", "paid-block-test"), request_budget_usd=100.0)
