@@ -39,6 +39,7 @@ class ProductStageComplete(BaseModel):
     output: str = Field(min_length=1, max_length=12000)
     artifact_refs: list[str] = Field(default_factory=list, max_length=30)
     evidence: list[str] = Field(default_factory=list, max_length=30)
+    qa_result: dict | None = None
 
 
 class ProductStageBlock(BaseModel):
@@ -92,12 +93,18 @@ def complete_product_stage(workflow_id: UUID, stage_key: str, payload: ProductSt
     return _run(
         repository().complete_stage, workflow_id, stage_key,
         output=payload.output, artifact_refs=payload.artifact_refs, evidence=payload.evidence,
+        qa_result=payload.qa_result,
     )
 
 
 @router.post("/{workflow_id}/stages/{stage_key}/block")
 def block_product_stage(workflow_id: UUID, stage_key: str, payload: ProductStageBlock) -> dict:
     return _run(repository().block_stage, workflow_id, stage_key, payload.reason)
+
+
+@router.post("/{workflow_id}/return-to-production")
+def return_product_to_production(workflow_id: UUID, payload: ProductStageBlock) -> dict:
+    return _run(repository().return_to_production, workflow_id, payload.reason)
 
 
 @router.post("/{workflow_id}/owner-review")
