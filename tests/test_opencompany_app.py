@@ -1401,7 +1401,16 @@ class _UnavailableUnoRouterAdapter:
         raise ProviderUnavailable("UnoRouter returned HTTP 401.")
 
 
-def test_unorouter_test_reports_provider_failure_without_mislabeling_auth(owner_client):
+class _SuccessfulUnoRouterAdapter:
+    def generate(self, request, *, model):
+        return ModelResult(
+            text="OPENCOMPANY_UNOROUTER_OK", provider="unorouter",
+            model=model, cost_usd=0.0, input_tokens=5, output_tokens=4,
+        )
+
+
+def test_unorouter_test_reports_provider_failure_without_mislabeling_auth(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "false")
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     runtime = app.dependency_overrides[get_runtime]()
     runtime.gateway = ModelGateway.configure((
@@ -1410,12 +1419,48 @@ def test_unorouter_test_reports_provider_failure_without_mislabeling_auth(owner_
     ))
     runtime.gateway.set_usage_recorder(runtime.usage.record)
 
-    response = owner_client.post("/settings/providers/unorouter/test", headers=headers, json={})
+    started = owner_client.post("/settings/providers/unorouter/test", headers=headers, json={})
+    assert started.status_code == 202
+    job_id = started.json()["job_id"]
+    result = owner_client.get(f"/settings/providers/unorouter/test/{job_id}", headers=headers)
 
-    assert response.status_code == 502
-    assert response.json()["detail"] == (
+    assert result.status_code == 200
+    assert result.json()["status"] == "failed"
+    assert result.json()["error"] == (
         "UnoRouter test failed safely: All eligible providers were unavailable: "
         "unorouter: UnoRouter returned HTTP 401.. No paid fallback was attempted."
     )
+    assert result.json()["paid_fallback"] is False
     assert runtime.unorouter_tested_at is None
+    assert runtime.fleet.status().running is False
+
+
+def test_unorouter_test_succeeds_with_zero_cost_and_polls_result(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "false")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway.configure((
+        (ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
+         _SuccessfulUnoRouterAdapter()),
+    ))
+    runtime.gateway.set_usage_recorder(runtime.usage.record)
+
+    started = owner_client.post("/settings/providers/unorouter/test", headers=headers, json={})
+    assert started.status_code == 202
+    result = owner_client.get(
+        f"/settings/providers/unorouter/test/{started.json()['job_id']}", headers=headers,
+    )
+
+    assert result.status_code == 200
+    payload = result.json()
+    assert payload["status"] == "succeeded"
+    assert payload["success"] is True
+    assert payload["provider"] == "unorouter"
+    assert payload["model"] == "test/free-model:free"
+    assert payload["cost_usd"] == 0.0
+    assert payload["output_preview"] == "OPENCOMPANY_UNOROUTER_OK"
+    assert payload["worker_autostart_enabled"] is False
+    assert payload["worker_started"] is False
+    assert payload["paid_fallback"] is False
+    assert runtime.unorouter_tested_at is not None
     assert runtime.fleet.status().running is False
