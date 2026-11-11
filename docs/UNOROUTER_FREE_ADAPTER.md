@@ -4,17 +4,17 @@ UnoRouter is a first-class inference provider in the independently authored Open
 
 ## Owner configuration
 
-For owner-managed configuration, open the dashboard's UnoRouter panel, enter the API key, and choose **Load available free models**. OpenCompany validates the key against `GET https://api.unorouter.com/v1/models`, then intersects the returned IDs with `GET https://api.unorouter.com/api/pricing/catalog`. Only key-accessible models with `is_free=true`, `online=true`, zero input/output prices, and an ID ending in `:free` appear. Select one and confirm free-only use. The server repeats this check immediately before saving, so stale or newly paid/offline models are rejected.
+For owner-managed configuration, open the dashboard's UnoRouter panel and save the inference API key once. Use the inference key from UnoRouter's Tokens page, not the separate account API-access token. The key is encrypted in the server-side vault and is never returned to the browser after saving.
+
+OpenCompany automatically discovers models by intersecting the public pricing catalogue with the models visible to the saved key. A model is eligible only when its base model is online in the catalogue and the key-visible model ID ends in `:free`. The `:free` variant is the authoritative free-route marker; the public base row's `is_free` flag may be false even when a separate free variant exists. Discovery is cached for five minutes, and the owner can refresh the catalogue from the dashboard without re-entering the key.
+
+The saved routing policy uses the internal model selector `unorouter/free-catalog:free`. The adapter rotates across the discovered free models and tries up to five candidates per request. A failed, timed-out, rate-limited, or retired route is skipped in favour of another confirmed-free candidate. Any response that omits cost, reports a non-zero cost, or identifies a different model is rejected. Paid models and paid fallback are never used. Existing saved single-model credentials are migrated to this automatic policy on runtime initialization without changing or re-entering the API key.
 
 Environment-based configuration remains available for controlled deployments:
 
-- `OPENCOMPANY_UNOROUTER_API_KEY` — API key from the owner's UnoRouter account.
-- `OPENCOMPANY_UNOROUTER_FREE_MODEL` — exact account-accessible model ID ending in `:free`.
-- `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true` — explicit owner confirmation that the selected route is currently free.
-
-The adapter uses the fixed HTTPS endpoint `https://api.unorouter.com/v1/chat/completions`. It does not accept a caller-supplied base URL, so task content cannot redirect the API key to another host. The key is held in server memory for the request and is never included in status responses.
-
-Partial configuration, a missing confirmation, or a model ID that does not end in `:free` disables the provider. No paid model IDs are eligible for automatic execution. There is no paid fallback.
+- `OPENCOMPANY_UNOROUTER_API_KEY` — inference API key.
+- `OPENCOMPANY_UNOROUTER_FREE_MODEL` — either an explicit account-accessible `:free` model ID or `unorouter/free-catalog:free`.
+- `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true` — explicit owner confirmation of free-only use.
 
 ## Runtime integration
 
@@ -26,7 +26,7 @@ from opencompany_core.unorouter_adapter import configured_unorouter_gateway
 gateway = configured_unorouter_gateway()
 ```
 
-The gateway implements the common ModelGateway interface consumed by AgentExecutor. When an AgentExecutor is constructed without an explicitly supplied gateway, it now resolves this owner-configured UnoRouter gateway automatically; this makes the same provider available to every role using that executor. The adapter sends non-streaming chat-completion requests with bounded output tokens and a 45-second timeout. Responses are size-limited and checked for the selected model identity. Transport errors are converted to safe provider errors without exposing response bodies or credentials.
+The gateway implements the common ModelGateway interface consumed by AgentExecutor. When an AgentExecutor is constructed without an explicitly supplied gateway, it now resolves this owner-configured UnoRouter gateway automatically; this makes the same provider available to every role using that executor. The adapter sends non-streaming chat-completion requests with bounded output tokens and a 15-second per-model timeout, trying up to five candidates. Catalogue reads use bounded 12-second timeouts. Responses are size-limited and checked against the actual selected free model. Transport errors are converted to safe provider errors without exposing response bodies or credentials. Owner connection tests run as background jobs and expose a pollable status so a slow model does not make the browser abandon the test.
 
 The zero-cost gateway rejects any response that reports a non-zero cost. If UnoRouter is unavailable or rate-limited, the task receives a provider-unavailable result; this adapter does not silently select a paid route. A separately configured free provider may be added to the gateway by the application, but no fallback is configured by this adapter.
 
