@@ -8,7 +8,11 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
+import secrets
 import tempfile
+import time
+from threading import Lock
 from datetime import datetime, timezone
 from dataclasses import replace
 from functools import lru_cache
@@ -52,6 +56,35 @@ app = FastAPI(
     version="0.2.0",
     description="Owner-authenticated API for OpenCompany's independently authored operating core.",
 )
+
+# Per-process login throttling. The API key is a bootstrap credential; this
+# protects the session exchange endpoint from unlimited online guessing.
+_LOGIN_FAILURES: dict[str, list[float]] = {}
+_LOGIN_LOCK = Lock()
+_LOGIN_WINDOW_SECONDS = 900
+_LOGIN_MAX_FAILURES = 5
+
+
+def _login_retry_after(client_key: str, *, failed: bool = False) -> int:
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        for key, attempts in list(_LOGIN_FAILURES.items()):
+            fresh = [stamp for stamp in attempts if now - stamp < _LOGIN_WINDOW_SECONDS]
+            if fresh:
+                _LOGIN_FAILURES[key] = fresh
+            else:
+                _LOGIN_FAILURES.pop(key, None)
+        attempts = _LOGIN_FAILURES.setdefault(client_key, [])
+        if failed:
+            attempts.append(now)
+        if len(attempts) < _LOGIN_MAX_FAILURES:
+            return 0
+        return max(1, int(_LOGIN_WINDOW_SECONDS - (now - attempts[0])))
+
+
+def _clear_login_failures(client_key: str) -> None:
+    with _LOGIN_LOCK:
+        _LOGIN_FAILURES.pop(client_key, None)
 
 
 class OwnerLoginInput(BaseModel):
@@ -312,6 +345,7 @@ def _record(item: WorkItem, action: str) -> AuditRecord:
 @app.post("/auth/session")
 def create_owner_session(
     payload: OwnerLoginInput,
+    request: Request,
     response: Response,
     runtime: OpenCompanyRuntime = Depends(get_runtime),
 ) -> dict:
@@ -319,8 +353,24 @@ def create_owner_session(
     expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
     if not expected:
         raise HTTPException(status_code=503, detail="Owner authentication is not configured.")
+    client_key = request.client.host if request.client else "unknown"
+    retry_after = _login_retry_after(client_key)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed owner login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
     if not hmac.compare_digest(payload.api_key, expected):
+        retry_after = _login_retry_after(client_key, failed=True)
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many failed owner login attempts. Try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
         raise HTTPException(status_code=401, detail="Owner authentication failed.")
+    _clear_login_failures(client_key)
     token, csrf, expires = runtime.sessions.create(lifetime_hours=12)
     secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
     response.set_cookie(
@@ -356,14 +406,22 @@ def owner_dashboard() -> HTMLResponse:
     before, marker, after = html.rpartition("})();")
     if marker:
         html = before + OWNER_PROVIDER_SETTINGS_JS + "\n  const previousLoad=load; load=async function(){await previousLoad(); await loadUnoRouterSettings(); await loadGitHubEvolutionSettings(); await loadModelUsage();};\n})();" + after
+    # The dashboard currently embeds its scripts. Give every script element a
+    # fresh nonce rather than allowing arbitrary inline script execution.
+    nonce = secrets.token_urlsafe(18)
+    html = re.sub(r"<script(?=[\s>])", f'<script nonce="{nonce}"', html)
     response = HTMLResponse(html)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-        "connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"
+        f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+        "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; object-src 'none'"
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     return response
 
 
