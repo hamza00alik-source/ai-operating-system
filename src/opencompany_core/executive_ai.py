@@ -82,7 +82,7 @@ def create_executive_plan(
         "no commentary and no trailing text. Use double-quoted JSON keys and string values. "
         "The top-level object must have exactly these keys: rationale (string), work_items (array). "
         "Each work item must have exactly department (string), title (string), objective (string), "
-        "depends_on (array of earlier integer indices).\\n"
+        "depends_on (array of earlier integer indices).\n"
         f"Departments: {json.dumps(department_context, separators=(',', ':'))}"
     )
     result = gateway.complete(
