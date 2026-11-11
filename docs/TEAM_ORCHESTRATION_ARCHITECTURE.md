@@ -93,3 +93,8 @@ The research brief requires dated, source-backed facts; clear separation of fact
 A six-dimension 0–5 scorecard (demand, competition, economics, distribution, execution, risk) produces a clearly labelled provisional score only when all six ratings are supplied. The score is not a probability of success and is not automatically generated from unverified claims. Launch planning approval is blocked until all six ratings and at least three HTTPS evidence sources are recorded. Only an owner-authorized launch action registers a new, separate business unit; registration itself spends no money, publishes no listing and contacts no customer.
 
 This is an initial venture funnel, not yet a full investment committee or autonomous portfolio manager. Live market data retrieval, source quality verification, financial model generation, validation experiment tracking, portfolio P&L, performance-based scaling/pivot/closure recommendations and scheduled recurring opportunity scans remain future work.
+
+
+### Linked research report visibility
+
+Each venture opportunity's stored research task is now resolved to its latest agent run through the task ID. An owner-only endpoint and dashboard viewer expose the specialist output, CEO review, run state and any recorded error. HTTPS strings are extracted as source URL candidates for review, but the system does not claim that those links are live, relevant, authoritative or independently verified. They do not automatically populate the assessment scorecard or satisfy launch approval. This closes the visibility gap between queued research and the owner assessment step; primary-source retrieval, citation validation and structured report-to-assessment extraction remain separate future increments.
