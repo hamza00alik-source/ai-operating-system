@@ -291,6 +291,38 @@ def test_unorouter_task_router_selects_free_chat_model_for_coding(monkeypatch):
     assert selected["benchmark_status"].startswith("not benchmarked")
 
 
+
+def test_unorouter_skips_consent_required_free_model_and_retries_another_free_model(monkeypatch):
+    provider = next(p for p in llm_gateway.PROVIDERS if p.key == "unorouter")
+    monkeypatch.setattr(llm_gateway, "_resolve", lambda provider_id: (
+        provider, {"base_url": "https://api.unorouter.com/v1",
+                   "_secret": "uno-test-secret", "model": "__catalog_only__"}
+    ))
+    selections = [
+        {"task_category": "reasoning", "model_id": "first-model:free"},
+        {"task_category": "reasoning", "model_id": "second-model:free"},
+    ]
+    excluded = []
+    def select(prompt, exclude_model_ids=None):
+        excluded.append(set(exclude_model_ids or set()))
+        return selections.pop(0)
+    monkeypatch.setattr(llm_gateway, "select_unorouter_model", select)
+    calls = []
+    def fake_post(url, payload, headers, timeout=35):
+        calls.append(payload["model"])
+        if len(calls) == 1:
+            raise llm_gateway.ProviderHTTPError(403, '{"error":{"code":"consent_required"}}')
+        return {"model": payload["model"],
+                "choices": [{"message": {"content": "A valid free-model response with enough detail."}}],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 8}}
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.generate("unorouter", "Reason through this problem")
+    assert calls == ["first-model:free", "second-model:free"]
+    assert result["model"] == "second-model:free"
+    assert result["model_selection"]["consent_skipped_model_ids"] == ["first-model:free"]
+    assert excluded == [set(), {"first-model:free"}]
+
+
 def test_unorouter_auto_selection_uses_selected_free_chat_model_without_paid_requests(monkeypatch):
     provider = next(p for p in llm_gateway.PROVIDERS if p.key == "unorouter")
     monkeypatch.setattr(llm_gateway, "_resolve", lambda provider_id: (
