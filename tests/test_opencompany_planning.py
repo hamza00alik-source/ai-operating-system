@@ -99,3 +99,17 @@ def test_approval_by_non_owner_is_not_sufficient():
     )
     assert not authorize_action(action="publish", target_type="listing",
                                 target_id="listing-7", approval=approval)
+
+
+def test_plan_rejects_dependencies_across_business_units():
+    dependency_id = uuid4()
+    agency_task = WorkItem(
+        dependency_id, "Supplier research", "Assess supplier fit",
+        "research", business_id="physical-agency",
+    )
+    digital_task = WorkItem(
+        uuid4(), "Digital product launch", "Prepare digital product plan",
+        "product", depends_on=(dependency_id,), business_id="digital-products",
+    )
+    with pytest.raises(PlanError, match="cross business-unit"):
+        WorkPlan((agency_task, digital_task))
