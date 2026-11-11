@@ -43,11 +43,11 @@ def test_manager_accepts_valid_specialist_deliverable():
         '"rework_instructions":""}'
     )
     decision = review_specialist_deliverables(
-        _item(), "research_department_manager", _evidence(), gateway
+        _item(), "market_intelligence_analyst", _evidence(), gateway
     )
     assert decision.approved is True
     assert decision.rework_instructions == ""
-    assert gateway.request.role_key == "research_department_manager"
+    assert gateway.request.role_key == "market_intelligence_analyst"
 
 
 def test_manager_requests_specific_rework():
@@ -56,7 +56,7 @@ def test_manager_requests_specific_rework():
         '"rework_instructions":"Expand the sample and explain selection bias."}'
     )
     decision = review_specialist_deliverables(
-        _item(), "research_department_manager", _evidence(), gateway
+        _item(), "market_intelligence_analyst", _evidence(), gateway
     )
     assert decision.approved is False
     assert "Expand the sample" in decision.rework_instructions
@@ -72,12 +72,12 @@ def test_manager_requests_specific_rework():
 def test_manager_rejects_invalid_or_ambiguous_decisions(response):
     with pytest.raises(ManagerReviewError):
         review_specialist_deliverables(
-            _item(), "research_department_manager", _evidence(), FakeGateway(response)
+            _item(), "market_intelligence_analyst", _evidence(), FakeGateway(response)
         )
 
 
 def test_manager_requires_deliverable_evidence():
     with pytest.raises(ManagerReviewError):
         review_specialist_deliverables(
-            _item(), "research_department_manager", (), FakeGateway("{}")
+            _item(), "market_intelligence_analyst", (), FakeGateway("{}")
         )
