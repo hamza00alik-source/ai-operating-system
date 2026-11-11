@@ -162,9 +162,9 @@ class SQLiteStore:
                     raise
                 return
             if version == 4:
-                self._connection.execute("BEGIN IMMEDIATE")
                 try:
                     self._connection.executescript("""
+                        BEGIN IMMEDIATE;
                         CREATE TABLE IF NOT EXISTS commercial_opportunities (
                             id TEXT PRIMARY KEY,
                             business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
@@ -189,9 +189,9 @@ class SQLiteStore:
                         );
                         CREATE INDEX IF NOT EXISTS idx_commercial_products_unit
                             ON commercial_products(business_id, status, created_at);
+                        PRAGMA user_version = 5;
+                        COMMIT;
                     """)
-                    self._connection.execute("PRAGMA user_version = 5")
-                    self._connection.execute("COMMIT")
                 except Exception:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")
