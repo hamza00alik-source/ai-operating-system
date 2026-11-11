@@ -245,6 +245,91 @@ th{background:#101b2c}
  .panel{padding:13px}
 }
 
+
+/* MOBILE-FIRST OWNER CONSOLE PATCH — layout only; APIs and workflows unchanged */
+html{width:100%;max-width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;scroll-padding-top:76px}
+body{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+main{min-width:0;max-width:100%;width:100%}
+section,.panel,.grid,.toolbar,.top,.view-heading,.scroll{min-width:0;max-width:100%}
+img,canvas,video,pre,textarea{max-width:100%}
+pre,code,td,th,.small,.status,.hint{overflow-wrap:anywhere;word-break:normal}
+.scroll{width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.scroll table{width:100%;min-width:700px}
+button,input,select,textarea{max-width:100%;min-width:0}
+button{touch-action:manipulation}
+:focus-visible{scroll-margin-top:84px}
+@media(max-width:760px){
+ html{scroll-padding-top:66px}
+ body{font-size:14px}
+ main{margin:0!important;padding:12px 12px calc(30px + env(safe-area-inset-bottom))!important}
+ .top{display:flex;align-items:flex-start;gap:12px;padding:10px 2px 14px!important}
+ .top>div:first-child{min-width:0;flex:1 1 100%}
+ .top .hint{max-width:none;font-size:12px;line-height:1.45}
+ h1{font-size:clamp(21px,6vw,27px);line-height:1.16;overflow-wrap:anywhere}
+ .top .toolbar{display:flex;flex:1 1 100%;width:100%;justify-content:flex-start;align-items:center;gap:7px}
+ .top .tag{max-width:100%;white-space:normal;line-height:1.35}
+ nav.main-nav{position:sticky!important;top:0!important;left:auto!important;right:auto!important;bottom:auto!important;z-index:40;width:calc(100% + 24px)!important;height:auto!important;max-height:58px;margin:0 -12px 12px!important;padding:7px 10px!important;display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-start!important;gap:6px!important;overflow-x:auto!important;overflow-y:hidden!important;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;border:0!important;border-bottom:1px solid rgba(108,233,255,.18)!important;border-radius:0 0 12px 12px!important;background:rgba(7,12,22,.97)!important;backdrop-filter:blur(14px)}
+ nav.main-nav:before{display:none!important}
+ nav.main-nav a{display:inline-flex!important;align-items:center;justify-content:center;flex:0 0 auto!important;width:auto!important;min-height:40px!important;padding:9px 12px!important;font-size:12px!important;line-height:1.2;white-space:nowrap!important;border-radius:9px!important}
+ nav.main-nav a:before{display:none!important}
+ .panel{margin-top:12px!important;padding:14px!important;border-radius:13px!important}
+ .panel>h2{font-size:17px!important;line-height:1.25;gap:7px}
+ .panel h3{font-size:14px;line-height:1.3}
+ .grid,#overview .grid,#workforce .grid,#companyDepartmentCards,#officeDepartmentGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;margin:11px 0!important}
+ .metric{min-width:0;padding:12px 10px!important;border-radius:10px!important}
+ .metric strong{font-size:clamp(20px,6vw,26px)!important;line-height:1.15;overflow-wrap:anywhere}
+ .metric span{font-size:11px!important;line-height:1.35}
+ .toolbar{display:flex;align-items:stretch;flex-wrap:wrap;gap:8px!important}
+ .toolbar>input:not([type=checkbox]),.toolbar>select,.toolbar>button{flex:1 1 145px;min-width:0!important;width:auto;min-height:44px}
+ .toolbar>button{white-space:normal;line-height:1.25}
+ .toolbar label{flex:1 1 135px;min-width:0;align-items:flex-start;line-height:1.35;padding:7px 8px}
+ input,select,textarea{width:100%;min-height:44px;font-size:16px!important}
+ textarea{min-height:90px;resize:vertical}
+ #taskForm{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:8px!important}
+ #taskForm input,#taskForm select,#taskForm button{width:100%!important;min-width:0!important;min-height:46px}
+ #agentSearch,#departmentFilter,#providerApiKey,#vaultModel,#vaultApiKey,#researchSourceUrl{width:100%!important;min-width:0!important;flex:1 1 100%}
+ #loadAgents{width:100%!important}
+ #departmentChips{max-height:112px;overflow:auto}
+ #models .toolbar{display:flex!important}
+ #models .toolbar>*{flex:1 1 100%;min-width:0!important}
+ #models textarea,#apiAnything textarea{width:100%!important;font-size:16px!important}
+ #providerSelect,#unorouterModelSelect{width:100%!important;min-width:0!important}
+ #saveProviderKey,#saveVaultProvider,#testProvider,#testUnoRouterPersonal{width:100%;min-height:46px}
+ #taskApprovalPanel,#agentRunOutput,#brain,#researchSources,#freeApiSourceNotes{overflow-wrap:anywhere}
+ #modelOutput,#unorouterPersonalOutput,#apiAnythingResults,#apiAnythingOutput{max-height:300px!important;overflow:auto!important;white-space:pre-wrap!important;overflow-wrap:anywhere!important}
+ .office-viewport{height:300px!important;max-height:58vh;border-radius:12px}
+ .office-hud{left:9px;right:9px;top:9px;font-size:9px;letter-spacing:.08em}
+ .office-roster,#officeDepartmentGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ .office-selected{padding:11px}
+ .office-toolbar>*{flex:1 1 135px}
+ #loginPanel{padding:12px!important;align-items:center!important}
+ #loginPanel form{width:100%!important;max-width:420px;padding:18px!important}
+ #loginPanel input,#loginPanel button{min-height:48px;font-size:16px!important}
+ .view-heading{display:flex;align-items:flex-start;flex-direction:column;gap:8px}
+ .scroll table{min-width:700px}
+ th,td{padding:9px 8px;font-size:12px}
+ .status{line-height:1.45}
+}
+@media(max-width:390px){
+ main{padding-left:9px!important;padding-right:9px!important}
+ nav.main-nav{width:calc(100% + 18px)!important;margin-left:-9px!important;margin-right:-9px!important;padding-left:8px!important;padding-right:8px!important}
+ nav.main-nav a{padding:9px 10px!important;font-size:11px!important}
+ .panel{padding:11px!important}
+ .grid,#overview .grid,#workforce .grid,#companyDepartmentCards,#officeDepartmentGrid{gap:7px!important}
+ .metric{padding:10px 8px!important}
+ .metric strong{font-size:20px!important}
+ .metric span{font-size:10px!important}
+ .office-viewport{height:260px!important}
+}
+@media(hover:none) and (pointer:coarse){
+ button,.office-department{min-height:44px}
+ nav.main-nav a{min-height:42px!important}
+}
+@media(prefers-reduced-motion:reduce){
+ html{scroll-behavior:auto}
+ nav.main-nav{scroll-behavior:auto}
+}
+
 </style>
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
