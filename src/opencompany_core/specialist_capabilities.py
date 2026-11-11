@@ -316,8 +316,7 @@ _RULES = {
         "community insights": "community_insights_analysis",
         "brand consistency": "brand_consistency_auditing",
         "search intent": "search_intent_strategy",
-        "creator economy": "creator_economy_research"
-
+        "creator economy": "creator_economy_research",
         "short-form": "short_form_content_strategy",
         "long-form": "long_form_content_strategy",
     },
