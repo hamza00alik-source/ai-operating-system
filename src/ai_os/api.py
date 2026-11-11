@@ -241,7 +241,7 @@ class ModelRunRequest(BaseModel):
 
 class ResearchSourceRequest(BaseModel):
     url: str = Field(min_length=12, max_length=2048)
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
 
 
 class BrainMemoryReview(BaseModel):
@@ -768,7 +768,7 @@ def get_workflow_detail(workflow_id: str, business_id: str = "core"):
 
 
 class BusinessRecordRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=160)
     amount: float | None = Field(default=None, ge=0, le=1000000000)
     currency: str = Field(default="USD", min_length=3, max_length=3)
@@ -778,7 +778,7 @@ class BusinessRecordRequest(BaseModel):
 
 
 class InvestorRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=180)
     organization: str = Field(default="", max_length=180)
     contact: str = Field(default="", max_length=200)
