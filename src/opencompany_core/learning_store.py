@@ -152,13 +152,13 @@ class LearningRepository:
             try:
                 placeholders = ",".join("?" for _ in item.based_on_evaluations)
                 business_rows = self._db.execute(
-                    f"""SELECT DISTINCT w.business_id FROM outcome_evaluations e
+                    f"""SELECT e.id,w.business_id FROM outcome_evaluations e
                         JOIN work_items w ON w.id=e.work_item_id
                         WHERE e.id IN ({placeholders})""",
                     tuple(str(value) for value in item.based_on_evaluations),
                 ).fetchall()
                 business_ids = {row["business_id"] for row in business_rows}
-                if len(business_ids) != 1:
+                if len(business_rows) != len(item.based_on_evaluations) or len(business_ids) != 1:
                     raise ValueError("improvement proposal evaluations must exist and belong to one business unit")
                 business_id = next(iter(business_ids))
                 self._db.execute(
