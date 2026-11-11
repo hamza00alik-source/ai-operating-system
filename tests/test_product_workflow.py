@@ -1,4 +1,5 @@
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.product_artifacts import generate_product_blueprint
 from opencompany_core.product_workflow import (
     ProductWorkflowError,
     ProductWorkflowRepository,
@@ -213,6 +214,93 @@ def test_product_workflow_api_requires_owner_and_persists_created_job(tmp_path, 
             )
             assert listed.status_code == 200
             assert listed.json()["count"] == 1
+    finally:
+        app.dependency_overrides.clear()
+        runtime.close()
+
+
+def test_blueprint_generator_creates_safe_zip_with_truthful_scope_and_manifest(tmp_path):
+    import json
+    import zipfile
+    from uuid import uuid4
+
+    workflow_id = uuid4()
+    artifact = generate_product_blueprint(
+        workflow_id=workflow_id,
+        title="Original UI Toolkit",
+        brief="Create a collection of original UI icons for a desktop game.",
+        artifact_root=tmp_path / "artifacts",
+    )
+    path = tmp_path / "artifacts" / f"{workflow_id}.zip"
+    assert artifact["status"] == "blueprint_only_not_a_finished_product"
+    assert artifact["size_bytes"] > 0
+    with zipfile.ZipFile(path) as archive:
+        assert archive.testzip() is None
+        names = set(archive.namelist())
+        assert names == {
+            "README.md", "PRODUCT_SPEC.md", "PRODUCTION_PLAN.md",
+            "QA_CHECKLIST.md", "LISTING_DRAFT.md", "SOURCE_BRIEF.md", "manifest.json",
+        }
+        readme = archive.read("README.md").decode()
+        assert "not a finished commercial product" in readme
+        qa = archive.read("QA_CHECKLIST.md").decode()
+        assert "not executed" in qa
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["provider_cost_usd"] == 0
+        assert manifest["external_actions_performed"] is False
+        assert manifest["status"] == "blueprint_only_not_a_finished_product"
+
+
+def test_product_workflow_api_generates_and_serves_owner_authenticated_blueprint(tmp_path, monkeypatch):
+    import io
+    import zipfile
+    from fastapi.testclient import TestClient
+    from opencompany_app.api import app, get_runtime
+    from opencompany_app.runtime import create_runtime
+
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "product-artifact-test-key")
+    runtime = create_runtime(str(tmp_path / "product-artifact-api.sqlite3"))
+    app.dependency_overrides[get_runtime] = lambda: runtime
+    headers = {"X-OpenCompany-API-Key": "product-artifact-test-key"}
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/product-workflows", headers=headers,
+                json={"title": "Starter Pack", "brief": "Create an original starter pack."},
+            )
+            assert created.status_code == 200
+            workflow = created.json()
+            workflow_id = workflow["id"]
+            repo = ProductWorkflowRepository(runtime.store._connection, runtime.store._lock)
+            for stage in STAGES[:3]:
+                current = repo.get(workflow_id)["stages"][STAGES.index(stage)]
+                if current["status"] == "in_progress":
+                    repo.complete_stage(
+                        workflow_id, stage, output=f"{stage} done",
+                        artifact_refs=[], evidence=["recorded"],
+                    )
+                else:
+                    repo.start_stage(workflow_id, stage)
+                    repo.complete_stage(
+                        workflow_id, stage, output=f"{stage} done",
+                        artifact_refs=[], evidence=["recorded"],
+                    )
+
+            generated = client.post(f"/product-workflows/{workflow_id}/generate-blueprint", headers=headers)
+            assert generated.status_code == 200, generated.text
+            payload = generated.json()
+            assert payload["artifact"]["status"] == "blueprint_only_not_a_finished_product"
+            assert payload["next_stage"] == "automated_qa"
+            assert "not a finished" in payload["notice"]
+            current = repo.get(workflow_id)
+            assert current["stages"][3]["status"] == "completed"
+            assert current["stages"][4]["status"] == "pending"
+
+            downloaded = client.get(payload["download_path"], headers=headers)
+            assert downloaded.status_code == 200
+            assert downloaded.headers["content-type"].startswith("application/zip")
+            with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
+                assert archive.testzip() is None
     finally:
         app.dependency_overrides.clear()
         runtime.close()
