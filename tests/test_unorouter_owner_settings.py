@@ -356,6 +356,11 @@ def test_manual_worker_start_requires_live_provider_verification(monkeypatch, tm
     try:
         response = client.post("/workers/start", headers=headers, json={})
         assert response.status_code == 409
+        run_once = client.post(
+            "/workers/00000000-0000-0000-0000-000000000001/run-once",
+            headers=headers, json={},
+        )
+        assert run_once.status_code == 409
         assert starts == []
         runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
         started = client.post("/workers/start", headers=headers, json={})
