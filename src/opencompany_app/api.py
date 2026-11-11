@@ -2543,9 +2543,14 @@ def list_work_item_deliverables(
 
 
 @app.get("/usage/model", dependencies=[Depends(require_owner_key)])
-def model_usage_summary(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
-    """Owner-only, durable inference usage and cost accounting."""
-    return runtime.usage.summary(limit=100)
+def model_usage_summary(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Owner-only, durable inference usage and cost accounting, optionally scoped by business."""
+    if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
+    return runtime.usage.summary(limit=100, business_id=business_id)
 
 
 @app.get("/audit/verify", dependencies=[Depends(require_owner_key)])
