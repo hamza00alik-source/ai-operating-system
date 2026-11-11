@@ -1,0 +1,91 @@
+stages:
+  - test
+  - container
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+default:
+  interruptible: true
+
+python-tests:
+  stage: test
+  image: python:3.11-slim
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    PYTHONDONTWRITEBYTECODE: "1"
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  cache:
+    key:
+      files:
+        - pyproject.toml
+    paths:
+      - .cache/pip
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -e ".[dev]"
+  script:
+    - python -m compileall -q src worker_main.py main.py
+    - pytest -q
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+container-build-smoke:
+  stage: container
+  image: docker:27-cli
+  services:
+    - name: docker:27-dind
+      alias: docker
+      command: ["--tls=true"]
+  variables:
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  before_script:
+    - apk add --no-cache python3
+    - |
+      for attempt in $(seq 1 30); do
+        if docker info >/dev/null 2>&1; then
+          break
+        fi
+        if [ "$attempt" -eq 30 ]; then
+          echo "Docker-in-Docker did not become ready"
+          exit 1
+        fi
+        sleep 2
+      done
+  script:
+    - docker build --pull --tag opencompany-api:ci .
+    - |
+      docker run --detach --name opencompany-api-ci         --publish 8000:8000         --env OPENCOMPANY_OWNER_API_KEY=ci-only-owner-key         --env OPENCOMPANY_SECRET_ENCRYPTION_KEY=ci-only-secret-encryption-key-at-least-32         opencompany-api:ci
+    - |
+      cleanup() { docker rm --force opencompany-api-ci >/dev/null 2>&1 || true; }
+      trap cleanup EXIT
+      python3 - <<'PY'
+      import json
+      import time
+      import urllib.error
+      import urllib.request
+
+      for attempt in range(30):
+          try:
+              with urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=2) as response:
+                  health = json.loads(response.read().decode())
+              with urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=2) as response:
+                  ready = json.loads(response.read().decode())
+              assert health["status"] == "ok"
+              assert ready["status"] == "ready"
+              print("Container health and readiness checks passed.")
+              break
+          except (OSError, urllib.error.URLError, AssertionError):
+              if attempt == 29:
+                  raise
+              time.sleep(1)
+      PY
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
