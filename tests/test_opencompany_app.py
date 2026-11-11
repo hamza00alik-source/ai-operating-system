@@ -49,7 +49,7 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "loadModelUsage" in response.text
     assert 'id="unorouter-discover"' in response.text
     assert 'id="unorouter-model"' in response.text
-    assert "automatic rotation across online models" in response.text
+    assert "automatic rotation across confirmed-free models" in response.text
     assert 'id="unorouter-model"' in response.text
     assert "discover all free models" in response.text.lower()
     assert "payload.detail" in response.text
