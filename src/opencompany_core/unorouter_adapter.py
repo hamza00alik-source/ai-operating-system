@@ -189,8 +189,8 @@ class UnoRouterAdapter:
         except (AttributeError, KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as exc:
             raise ProviderUnavailable("UnoRouter returned an invalid chat-completion response.") from exc
 
-        if returned_model != model:
-            raise ProviderUnavailable("UnoRouter returned a different model than the locked free model.")
+        if returned_model not in {model, model.removesuffix(":free")}:
+            raise ProviderUnavailable("UnoRouter returned a different model than the requested free variant.")
         if not text:
             raise ProviderUnavailable("UnoRouter returned an empty completion.")
         return ModelResult(
