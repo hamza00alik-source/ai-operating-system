@@ -9,7 +9,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from uuid import uuid4
 
-from opencompany_core.model_gateway import ModelRequest, NoEligibleProvider, ProviderUnavailable, CostPolicyViolation\nfrom opencompany_core.workforce import default_workforce
+from opencompany_core.model_gateway import ModelRequest, NoEligibleProvider, ProviderUnavailable, CostPolicyViolation
+from opencompany_core.workforce import default_workforce
 
 from opencompany_core.product_workflow import ProductWorkflowError, ProductWorkflowRepository
 from opencompany_core.product_artifacts import generate_product_blueprint, verify_product_blueprint
