@@ -233,6 +233,13 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def get_commercial_opportunity(self, opportunity_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM commercial_opportunities WHERE id=?", (opportunity_id,)
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     def list_commercial_opportunities(
         self, *, business_id: str | None = None, limit: int = 500
     ) -> tuple[dict[str, Any], ...]:
