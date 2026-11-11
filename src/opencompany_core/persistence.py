@@ -419,6 +419,10 @@ class SQLiteStore:
                 business_id = opportunity["business_id"]
                 if business_id != record["business_id"]:
                     raise ValueError("quote business must match its opportunity")
+                if opportunity["stage"] in {"lost", "on_hold"}:
+                    raise ValueError("a lost or on-hold opportunity cannot receive a new quote")
+                if record["currency_exponent"] not in {0, 2, 3}:
+                    raise ValueError("currency exponent must be 0, 2, or 3")
                 if not items:
                     raise ValueError("a quote must contain at least one line item")
                 subtotal = 0
@@ -529,6 +533,12 @@ class SQLiteStore:
                     raise ValueError("invalid quote status transition")
                 if status == "accepted" and not (acceptance_reference and acceptance_reference.strip()):
                     raise ValueError("customer acceptance evidence reference is required")
+                if status == "void" and current == "accepted":
+                    existing_order = self._connection.execute(
+                        "SELECT 1 FROM commercial_orders WHERE quote_id=?", (quote_id,)
+                    ).fetchone()
+                    if existing_order is not None:
+                        raise ValueError("an accepted quote with an order record cannot be voided")
                 self._connection.execute(
                     "UPDATE commercial_quotes SET status=?,acceptance_reference=?,updated_at=? WHERE id=?",
                     (status, acceptance_reference, datetime.now(timezone.utc).isoformat(), quote_id),
@@ -562,6 +572,11 @@ class SQLiteStore:
                 ).fetchone()
                 if quote is None or quote["status"] != "accepted":
                     raise ValueError("an order requires a quote with recorded customer acceptance")
+                existing_order = self._connection.execute(
+                    "SELECT id FROM commercial_orders WHERE quote_id=?", (quote_id,)
+                ).fetchone()
+                if existing_order is not None:
+                    raise ValueError("an order already exists for this quote")
                 self._connection.execute(
                     """INSERT INTO commercial_orders
                        (id,quote_id,opportunity_id,business_id,customer_name,status,created_at,updated_at)
