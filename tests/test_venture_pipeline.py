@@ -40,8 +40,8 @@ def test_boolean_values_are_not_accepted_as_ratings():
 
 def test_evidence_candidates_require_https_host_and_are_deduplicated():
     evidence = clean_evidence_records([
-        {"url": "https://example.com/report", "claim": "Demand evidence"},
-        {"url": "https://example.com/report/", "claim": "Duplicate"},
+        {"url": "https://example.com/report", "claim": "Demand evidence", "owner_verified": True},
+        {"url": "https://example.com/report/", "claim": "Duplicate", "owner_verified": True},
         {"url": "http://example.com/insecure"},
         {"url": "https:///missing-host"},
         {"url": "https://user:pass@example.com/private"},
@@ -54,8 +54,8 @@ def test_assessment_source_count_uses_only_normalized_evidence_records():
     # Arbitrary URLs supplied in assessment JSON are overwritten by save_assessment
     # with this normalized evidence list before score_assessment is called.
     evidence = clean_evidence_records([
-        {"url": "https://example.com/a"},
-        {"url": "https://example.com/b"},
+        {"url": "https://example.com/a", "owner_verified": True},
+        {"url": "https://example.com/b", "owner_verified": True},
     ])
     result = score_assessment({
         "ratings": {dimension: 3 for dimension in DIMENSIONS},
@@ -103,3 +103,17 @@ def test_financial_scenarios_reject_missing_or_loss_making_unit_economics():
         assert "positive contribution" in str(exc)
     else:
         raise AssertionError("Loss-making unit economics must be rejected")
+
+
+def test_unreviewed_https_candidates_do_not_count_as_launch_evidence():
+    evidence = clean_evidence_records([
+        {"url": "https://example.com/candidate"},
+        {"url": "https://example.org/reviewed", "owner_verified": True},
+    ])
+    assert len(evidence) == 2
+    verified = [item["url"] for item in evidence if item["owner_verified"]]
+    result = score_assessment({
+        "ratings": {dimension: 3 for dimension in DIMENSIONS},
+        "source_urls": verified,
+    })
+    assert result["source_count"] == 1
