@@ -21,7 +21,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 
 
 def _json(value: Any) -> str:
@@ -161,7 +161,121 @@ class SQLiteStore:
                     self._connection.execute("ROLLBACK")
                     raise
                 return
+            if version == 4:
+                self._connection.execute("BEGIN IMMEDIATE")
+                try:
+                    self._connection.executescript("""
+                        CREATE TABLE IF NOT EXISTS commercial_opportunities (
+                            id TEXT PRIMARY KEY,
+                            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+                            customer_name TEXT NOT NULL,
+                            customer_contact TEXT,
+                            customer_need TEXT NOT NULL,
+                            stage TEXT NOT NULL DEFAULT 'new' CHECK(stage IN ('new','qualified','proposal','won','lost','on_hold')),
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_commercial_opportunities_unit
+                            ON commercial_opportunities(business_id, created_at);
+                        CREATE TABLE IF NOT EXISTS commercial_products (
+                            id TEXT PRIMARY KEY,
+                            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+                            name TEXT NOT NULL,
+                            description TEXT NOT NULL,
+                            category TEXT NOT NULL,
+                            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','active','archived')),
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_commercial_products_unit
+                            ON commercial_products(business_id, status, created_at);
+                    """)
+                    self._connection.execute("PRAGMA user_version = 5")
+                    self._connection.execute("COMMIT")
+                except Exception:
+                    if self._connection.in_transaction:
+                        self._connection.execute("ROLLBACK")
+                    raise
+                return
             raise RuntimeError(f"unsupported database schema version: {version}")
+
+
+    def create_commercial_opportunity(self, record: dict[str, Any]) -> None:
+        """Create one customer opportunity scoped to exactly one commercial business."""
+        allowed = {"physical-agency", "physical-brand", "digital-products"}
+        if record.get("business_id") not in allowed:
+            raise ValueError("opportunities must belong to one commercial business unit")
+        with self._lock:
+            self._connection.execute(
+                """INSERT INTO commercial_opportunities
+                   (id,business_id,customer_name,customer_contact,customer_need,stage,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (record["id"], record["business_id"], record["customer_name"],
+                 record.get("customer_contact"), record["customer_need"],
+                 record.get("stage", "new"), record["created_at"], record["updated_at"]),
+            )
+
+    def list_commercial_opportunities(
+        self, *, business_id: str | None = None, limit: int = 500
+    ) -> tuple[dict[str, Any], ...]:
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if business_id is not None and business_id not in {
+            "physical-agency", "physical-brand", "digital-products"
+        }:
+            raise ValueError("unknown commercial business unit")
+        sql = "SELECT * FROM commercial_opportunities"
+        values: list[Any] = []
+        if business_id is not None:
+            sql += " WHERE business_id=?"
+            values.append(business_id)
+        sql += " ORDER BY created_at DESC,id LIMIT ?"
+        values.append(limit)
+        with self._lock:
+            rows = self._connection.execute(sql, tuple(values)).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def create_commercial_product(self, record: dict[str, Any]) -> None:
+        """Create a draft catalogue entry inside exactly one commercial unit."""
+        allowed = {"physical-agency", "physical-brand", "digital-products"}
+        if record.get("business_id") not in allowed:
+            raise ValueError("catalogue products must belong to one commercial business unit")
+        with self._lock:
+            self._connection.execute(
+                """INSERT INTO commercial_products
+                   (id,business_id,name,description,category,status,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (record["id"], record["business_id"], record["name"],
+                 record["description"], record["category"], record.get("status", "draft"),
+                 record["created_at"], record["updated_at"]),
+            )
+
+    def list_commercial_products(
+        self, *, business_id: str | None = None, status: str | None = None, limit: int = 500
+    ) -> tuple[dict[str, Any], ...]:
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if business_id is not None and business_id not in {
+            "physical-agency", "physical-brand", "digital-products"
+        }:
+            raise ValueError("unknown commercial business unit")
+        if status is not None and status not in {"draft", "active", "archived"}:
+            raise ValueError("unknown catalogue status")
+        clauses, values = [], []
+        if business_id is not None:
+            clauses.append("business_id=?")
+            values.append(business_id)
+        if status is not None:
+            clauses.append("status=?")
+            values.append(status)
+        sql = "SELECT * FROM commercial_products"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC,id LIMIT ?"
+        values.append(limit)
+        with self._lock:
+            rows = self._connection.execute(sql, tuple(values)).fetchall()
+        return tuple(dict(row) for row in rows)
 
     def close(self) -> None:
         with self._lock:
