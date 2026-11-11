@@ -2,9 +2,12 @@ name: tests
 
 on:
   push:
-    branches: [main, "feat/**", "clean-room-rebuild"]
+    branches: [main, "feat/**", "clean-room-rebuild", "fix/**"]
   pull_request:
-    branches: [main, "feat/**"]
+    branches: [main, "feat/**", "clean-room-rebuild"]
+
+permissions:
+  contents: read
 
 jobs:
   test:
