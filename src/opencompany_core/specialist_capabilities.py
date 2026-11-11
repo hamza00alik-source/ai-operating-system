@@ -48,6 +48,18 @@ _RULES = {
         "enterprise planning": "enterprise_planning",
         "management review": "management_review_facilitation",
 
+        "operating cadence": "operating_cadence_design",
+        "strategic portfolio": "strategic_portfolio_analysis",
+        "priority conflict": "priority_conflict_mediation",
+        "decision rights": "decision_rights_analysis",
+        "decision follow-through": "decision_follow_through",
+        "strategic dependency": "strategic_dependency_mapping",
+        "strategic initiative": "strategic_initiative_control",
+        "policy impact": "policy_impact_assessment",
+        "stress tester": "scenario_stress_testing",
+        "governance process": "governance_process_analysis",
+        "internal communications": "internal_communications_planning"
+
     },
     "intelligence-research": {
         "market": "market_demand_analysis",
@@ -84,6 +96,15 @@ _RULES = {
         "purchase": "purchase_intent_analysis",
         "due diligence": "opportunity_due_diligence",
         "product category": "product_category_mapping"
+
+        "buyer objection": "buyer_objection_research",
+        "market entry": "market_entry_analysis",
+        "verification": "source_verification",
+        "category research": "category_research",
+        "research automation": "research_automation",
+        "channel economics": "channel_economics_analysis",
+        "supplier capability": "supplier_capability_analysis",
+        "public data": "public_data_research"
 
     },
     "product-innovation": {
@@ -128,6 +149,16 @@ _RULES = {
         "feedback": "product_feedback_analysis",
         "adoption": "product_adoption_strategy",
         "metrics": "product_metrics_design"
+
+        "feature economics": "feature_economics",
+        "prototype test": "prototype_testing",
+        "packaging reviewer": "packaging_quality_review",
+        "digital download": "digital_download_product_design",
+        "differentiation researcher": "differentiation_research",
+        "roadmap risk": "roadmap_risk_assessment",
+        "documentation architect": "documentation_architecture",
+        "release coordinator": "product_release_coordination",
+        "value proposition": "value_proposition_design"
 
     },
     "engineering-ai-systems": {
@@ -178,6 +209,11 @@ _RULES = {
         "workflow state": "workflow_state_management",
         "cloud runtime": "cloud_runtime_operations"
 
+        "api integration": "api_integration_engineering",
+        "agent evaluation": "agent_evaluation_engineering",
+        "release automation": "release_automation_engineering",
+        "llm reliability": "llm_reliability_engineering"
+
     },
     "media-creative-production": {
         "creative": "creative_direction",
@@ -225,6 +261,14 @@ _RULES = {
         "production workflow": "production_workflow_management",
         "art direction": "art_direction"
 
+        "creative researcher": "creative_research",
+        "creative performance": "creative_performance_analysis",
+        "video concept": "video_concept_development",
+        "video generation": "video_generation",
+        "video editing": "video_editing",
+        "game animation": "game_animation",
+        "visual effects": "visual_effects_planning"
+
     },
     "marketing-audience-growth": {
         "audience": "audience_research",
@@ -263,6 +307,17 @@ _RULES = {
         "repurposing": "content_repurposing_strategy",
         "compliance": "marketing_compliance_review"
 
+        "content quality": "content_quality_editing",
+        "content brief": "content_brief_architecture",
+        "content analytics": "content_analytics_engineering",
+        "partnership content": "partnership_content_planning",
+        "editorial calendar": "editorial_calendar_management",
+        "editorial standards": "editorial_standards",
+        "community insights": "community_insights_analysis",
+        "brand consistency": "brand_consistency_auditing",
+        "search intent": "search_intent_strategy",
+        "creator economy": "creator_economy_research"
+
     },
     "revenue-partnerships": {
         "marketplace": "marketplace_operations",
@@ -299,6 +354,21 @@ _RULES = {
         "product data": "product_data_quality",
         "inbound lead": "inbound_lead_research",
         "due diligence": "partner_due_diligence"
+
+        "marketplace category": "marketplace_category_analysis",
+        "marketplace fee": "marketplace_fee_analysis",
+        "listing copywriter": "listing_copywriting",
+        "listing quality": "listing_quality_review",
+        "listing compliance": "listing_compliance_audit",
+        "sales opportunity": "sales_opportunity_research",
+        "sales enablement": "sales_enablement_content",
+        "supplier qualification": "supplier_qualification",
+        "marketplace policy analyst": "marketplace_policy_analysis",
+        "channel expansion": "channel_expansion_strategy",
+        "affiliate program": "affiliate_program_analysis",
+        "affiliate partner": "affiliate_partner_research",
+        "revenue performance": "revenue_performance_analysis",
+        "revenue experiment": "revenue_experiment_analysis"
 
     },
     "customer-operations": {
@@ -339,6 +409,19 @@ _RULES = {
         "customer success": "customer_success_management",
         "handoff": "operational_handoff_design"
 
+        "feedback taxonomist": "customer_feedback_taxonomy",
+        "support workflow": "support_workflow_analysis",
+        "support capacity": "support_capacity_planning",
+        "knowledge freshness": "knowledge_freshness_audit",
+        "help center content": "help_centre_content",
+        "help centre information": "help_centre_information_design",
+        "journey measurement": "journey_measurement",
+        "service level": "service_level_analysis",
+        "onboarding writer": "onboarding_content_writing",
+        "escalation coordinator": "escalation_coordination",
+        "fulfilment quality": "fulfilment_quality_assurance",
+        "service recovery analyst": "service_recovery_analysis"
+
     },
     "finance-risk": {
         "cost": "cost_accounting",
@@ -377,6 +460,16 @@ _RULES = {
         "open source licence": "open_source_license_compliance",
         "terms change": "commercial_terms_change_monitoring",
         "financial evidence": "financial_evidence_review"
+
+        "pricing sensitivity": "pricing_sensitivity_analysis",
+        "control testing": "control_testing",
+        "scenario finance": "scenario_finance_modelling",
+        "chargeback risk": "chargeback_risk_analysis",
+        "data protection risk": "data_protection_risk",
+        "liquidity risk": "liquidity_risk_analysis",
+        "risk dashboard": "enterprise_risk_dashboard",
+        "cloud cost": "cloud_cost_forecasting",
+        "cost forecast variance": "cost_forecast_variance"
 
     },
     "organizational-learning-quality": {
@@ -421,6 +514,16 @@ _RULES = {
         "action boundary": "autonomous_action_boundary_testing",
         "availability": "agent_availability_analysis",
         "interdepartmental": "interdepartmental_quality_audit"
+
+        "delegation outcome": "delegation_outcome_analysis",
+        "response grounding": "model_response_grounding_audit",
+        "cross-run consistency": "cross_run_consistency",
+        "incident trend": "incident_trend_analysis",
+        "retrieval evaluator": "knowledge_retrieval_evaluation",
+        "regression coverage": "regression_coverage_analysis",
+        "change proposal": "change_proposal_evaluation",
+        "owner approval trace": "owner_approval_trace_audit",
+        "release risk": "release_risk_assessment"
 
     },
 }
