@@ -35,6 +35,17 @@ def list_businesses(include_archived: bool = False) -> list[dict]:
     result.extend([{**dict(row), "built_in": False} for row in rows])
     return result
 
+def get_business(business_id: str) -> dict | None:
+    if business_id in BUILTIN_BUSINESSES:
+        return {"id": business_id, **BUILTIN_BUSINESSES[business_id], "status": "active", "built_in": True}
+    with connect() as db:
+        row = db.execute(
+            "SELECT id,name,business_type,description,status,created_at FROM business_units WHERE id=?",
+            (business_id,),
+        ).fetchone()
+    return {**dict(row), "built_in": False} if row else None
+
+
 def create_business(name: str, business_type: str, description: str = "") -> dict:
     clean_name = " ".join((name or "").split())[:120]
     clean_type = (business_type or "general").strip().lower()
