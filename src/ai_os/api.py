@@ -1147,6 +1147,17 @@ def post_venture_research(opportunity_id: str):
         raise
 
 
+@app.get("/venture-opportunities/{opportunity_id}/research-report", dependencies=[Depends(require_owner_key)])
+def get_venture_research_report(opportunity_id: str):
+    try:
+        result = venture_pipeline.get_research_report(opportunity_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    return result
+
+
 @app.post("/venture-opportunities/{opportunity_id}/assessment", dependencies=[Depends(require_owner_key)])
 def post_venture_assessment(opportunity_id: str, payload: VentureAssessmentRequest):
     try:
