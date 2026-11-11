@@ -42,13 +42,27 @@ def review_specialist_deliverables(
     playbook = manager_role.playbook
     workflow = "\n".join(playbook.workflow_steps) if playbook else "Follow the department's standard review procedure."
     rubric = "\n".join(playbook.quality_rubric) if playbook else "Assess relevance, evidence, completeness, consistency, and risk."
+    if len(deliverables) > 8:
+        raise ManagerReviewError("manager review is limited to eight complete deliverables; split the review")
     evidence = []
-    for row in deliverables[:8]:
-        if not isinstance(row, dict) or not row.get("content") or not row.get("role_key"):
-            raise ManagerReviewError("every reviewed deliverable must identify its role and content")
+    total_content_chars = 0
+    for row in deliverables:
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("content"), str)
+            or not row["content"].strip()
+            or not isinstance(row.get("role_key"), str)
+            or not row["role_key"].strip()
+        ):
+            raise ManagerReviewError("every reviewed deliverable must identify its role and non-empty text content")
+        if len(row["content"]) > 6000:
+            raise ManagerReviewError("a deliverable exceeds the 6000-character review limit; no truncation is allowed")
+        total_content_chars += len(row["content"])
+        if total_content_chars > 24000:
+            raise ManagerReviewError("combined deliverables exceed the 24000-character review limit; split the review")
         evidence.append({
-            "role_key": str(row["role_key"])[:160],
-            "content": str(row["content"])[:6000],
+            "role_key": row["role_key"],
+            "content": row["content"],
             "provider": str(row.get("provider", ""))[:80],
             "model": str(row.get("model", ""))[:160],
         })
