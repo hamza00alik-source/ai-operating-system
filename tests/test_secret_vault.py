@@ -58,3 +58,12 @@ def test_provider_secret_vault_encrypts_github_token_with_provider_scoped_payloa
     assert vault.status("github_evolution")["configured"] is True
     assert vault.delete("github_evolution") is True
     assert vault.get("github_evolution") is None
+
+
+
+def test_provider_secret_vault_requires_dedicated_encryption_key(monkeypatch):
+    monkeypatch.delenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-that-is-long-enough-but-not-an-encryption-key")
+    vault = ProviderSecretVault(_database(), __import__("threading").RLock())
+    with pytest.raises(SecretVaultError, match="OPENCOMPANY_SECRET_ENCRYPTION_KEY"):
+        vault.put("unorouter", {"api_key": "private-token", "model": "model:free"})

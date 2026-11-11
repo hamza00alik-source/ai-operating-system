@@ -12,7 +12,7 @@ from pathlib import Path
 
 from opencompany_core.execution import AgentExecutor
 from opencompany_core.model_gateway import ModelGateway
-from opencompany_core.unorouter_adapter import configured_unorouter_gateway
+from opencompany_core.unorouter_adapter import UNOROUTER_AUTO_FREE_MODEL, configured_unorouter_gateway
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.worker_queue import DurableWorkerQueue
 from opencompany_core.worker_runner import OpenCompanyWorker
@@ -148,6 +148,18 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     except SecretVaultError:
         stored_unorouter = None
         secret_vault_errors["unorouter"] = "Stored UnoRouter credentials cannot be decrypted; replace them in the owner dashboard."
+    if stored_unorouter is not None and stored_unorouter.get("model") != UNOROUTER_AUTO_FREE_MODEL:
+        # Preserve the existing encrypted inference key while upgrading its
+        # routing policy to automatic confirmed-free model rotation.
+        try:
+            secret_vault.put("unorouter", {
+                "api_key": stored_unorouter["api_key"],
+                "model": UNOROUTER_AUTO_FREE_MODEL,
+            })
+            stored_unorouter["model"] = UNOROUTER_AUTO_FREE_MODEL
+        except SecretVaultError:
+            stored_unorouter = None
+            secret_vault_errors["unorouter"] = "Stored UnoRouter credentials could not be upgraded safely; review the owner dashboard."
     gateway = (
         ModelGateway()
         if "unorouter" in secret_vault_errors

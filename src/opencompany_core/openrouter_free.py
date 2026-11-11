@@ -6,6 +6,7 @@ no paid fallback and reserves quota before every outbound attempt.
 from __future__ import annotations
 
 import json
+import math
 from contextlib import closing
 import os
 import sqlite3
@@ -130,6 +131,17 @@ class OpenRouterFreeAdapter:
         except (URLError, TimeoutError, OSError, ValueError):
             raise ProviderUnavailable("OpenRouter request failed or timed out.") from None
         try:
+            if not isinstance(data, dict):
+                raise ValueError
+            returned_model = str(data.get("model") or self.model)
+            if returned_model not in {self.model, self.model.removesuffix(":free")}:
+                raise ProviderUnavailable("OpenRouter returned a different model than the requested free route.")
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            reported_cost = usage.get("cost", data.get("cost"))
+            if reported_cost is not None:
+                cost = float(reported_cost)
+                if cost != 0.0 or not math.isfinite(cost):
+                    raise ProviderUnavailable("OpenRouter reported a non-zero or invalid cost for a free route.")
             content = data["choices"][0]["message"]["content"]
             if isinstance(content, list):
                 content = "".join(

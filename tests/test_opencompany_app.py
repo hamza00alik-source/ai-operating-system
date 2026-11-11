@@ -10,7 +10,7 @@ from opencompany_core.persistence import SQLiteStore
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
-from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy
+from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy, ProviderUnavailable
 from opencompany_core.github_evolution import GitHubPullRequest
 
 
@@ -47,6 +47,12 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "Request revision" in response.text
     assert "AI usage &amp; cost ledger" in response.text or "AI usage & cost ledger" in response.text
     assert "loadModelUsage" in response.text
+    assert 'id="unorouter-discover"' in response.text
+    assert 'id="unorouter-model"' in response.text
+    assert "automatic rotation across confirmed-free models" in response.text
+    assert 'id="unorouter-model"' in response.text
+    assert "discover all free models" in response.text.lower()
+    assert "payload.detail" in response.text
     assert 'id="github-evolution-token"' in response.text
     assert "draft pull requests only" in response.text
     assert "loadGitHubEvolutionSettings" in response.text
@@ -54,6 +60,15 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert "unsafe-inline" not in response.headers["content-security-policy"].split("script-src", 1)[1].split(";", 1)[0]
+    assert "nonce-" in response.headers["content-security-policy"]
+    assert 'nonce="' in response.text
+    style_policy = response.headers["content-security-policy"].split("style-src", 1)[1].split(";", 1)[0]
+    assert "unsafe-inline" not in style_policy
+    assert "style-src-attr" not in response.headers["content-security-policy"]
+    assert " style=" not in response.text
+    assert "<style nonce=" in response.text
+    assert response.headers["x-frame-options"] == "DENY"
 
 
 
@@ -92,6 +107,50 @@ def test_provider_status_keeps_unorouter_disabled_without_owner_confirmation(mon
     assert response.status_code == 200
     assert response.json()["gateway_enabled"] is False
     assert response.json()["providers"]["unorouter"]["partial_configuration_detected"] is True
+
+
+def test_unorouter_discovery_requires_owner_and_returns_only_free_models(owner_client, monkeypatch):
+    discovered = [{
+        "id": "provider/model:free", "name": "provider/model:free", "vendor": "Example",
+        "context_length": 32768, "max_output_tokens": 4096,
+    }]
+    monkeypatch.setattr(api_module, "discover_free_models", lambda api_key: discovered if api_key == "valid-api-key-123456" else [])
+    unauthorized = owner_client.post(
+        "/settings/providers/unorouter/discover",
+        json={"api_key": "valid-api-key-123456"},
+    )
+    assert unauthorized.status_code == 401
+
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    response = owner_client.post(
+        "/settings/providers/unorouter/discover",
+        headers=headers,
+        json={"api_key": "valid-api-key-123456"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["models"][0]["id"] == "provider/model:free"
+    assert payload["paid_models_included"] is False
+    assert "valid-api-key-123456" not in response.text
+
+
+def test_unorouter_save_revalidates_model_before_persisting(owner_client, monkeypatch):
+    monkeypatch.setattr(api_module, "discover_free_models", lambda api_key: [])
+    response = owner_client.put(
+        "/settings/providers/unorouter",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+        json={
+            "api_key": "valid-api-key-123456",
+            "model": "provider/model:free",
+            "confirm_free": True,
+        },
+    )
+    assert response.status_code == 409
+    assert owner_client.get(
+        "/settings/providers/unorouter",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+    ).json()["configured"] is False
 
 
 def test_workforce_endpoint_exposes_only_original_opencompany_roles():
@@ -565,33 +624,77 @@ def test_deliverables_endpoint_requires_owner_and_returns_persisted_records(owne
 
 
 
-def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_client):
+def test_owner_session_login_is_rate_limited_after_five_failed_attempts(owner_client):
+    api_module._clear_login_failures("testclient")
+    for _ in range(4):
+        response = owner_client.post("/auth/session", json={"api_key": "wrong-owner-key"})
+        assert response.status_code == 401
+    limited = owner_client.post("/auth/session", json={"api_key": "wrong-owner-key"})
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) > 0
+    api_module._clear_login_failures("testclient")
+
+
+def test_manager_proposal_api_accepts_expanded_specialist_team_limit():
+    assert api_module.ManagerProposalInput().max_specialists == 15
+    assert api_module.ManagerProposalInput(max_specialists=50).max_specialists == 50
+    with pytest.raises(Exception):
+        api_module.ManagerProposalInput(max_specialists=51)
+
+
+def test_invalid_owner_api_key_headers_are_rate_limited(owner_client):
+    api_module._clear_login_failures("testclient")
+    for _ in range(4):
+        response = owner_client.get("/agents", headers={"X-OpenCompany-API-Key": "wrong-owner-key"})
+        assert response.status_code == 401
+    limited = owner_client.get("/agents", headers={"X-OpenCompany-API-Key": "wrong-owner-key"})
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) > 0
+    api_module._clear_login_failures("testclient")
+
+
+def test_session_login_uses_http_only_cookie_and_restores_across_tabs(owner_client):
     login = owner_client.post("/auth/session", json={"api_key": "test-owner-key"})
     assert login.status_code == 200
     csrf = login.json()["csrf_token"]
     cookie = owner_client.cookies.get("opencompany_session")
-    assert cookie
-    assert "opencompany_session" in login.headers.get("set-cookie", "")
-    assert "httponly" in login.headers.get("set-cookie", "").lower()
-    assert "samesite=strict" in login.headers.get("set-cookie", "").lower()
+    csrf_cookie = owner_client.cookies.get("opencompany_csrf")
+    assert cookie and csrf_cookie
+    set_cookies = "; ".join(login.headers.get_list("set-cookie"))
+    assert "opencompany_session" in set_cookies
+    assert "opencompany_csrf" in set_cookies
+    assert set_cookies.lower().count("httponly") >= 2
+    assert "samesite=strict" in set_cookies.lower()
+    assert "max-age=604800" in set_cookies.lower()
 
-    status = owner_client.get("/auth/session")
-    assert status.status_code == 200 and status.json()["authenticated"] is True
-    blocked = owner_client.post("/agents/bootstrap", json={})
-    assert blocked.status_code == 401
-    allowed = owner_client.post(
-        "/agents/bootstrap",
-        headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
-        json={},
-    )
-    assert allowed.status_code == 200
-    logout = owner_client.post(
-        "/auth/logout",
-        headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
-    )
-    assert logout.status_code == 200
-    after = owner_client.get("/agents")
-    assert after.status_code == 401
+    # Simulate closing/reopening the browser, then opening a second dashboard tab.
+    with TestClient(app, base_url="https://testserver") as reopened, TestClient(app, base_url="https://testserver") as second_tab:
+        for browser in (reopened, second_tab):
+            browser.cookies.set("opencompany_session", cookie)
+            browser.cookies.set("opencompany_csrf", csrf_cookie)
+        status = reopened.get("/auth/session")
+        assert status.status_code == 200 and status.json()["authenticated"] is True
+        restored_csrf = status.json()["csrf_token"]
+        assert restored_csrf == csrf
+        second_status = second_tab.get("/auth/session")
+        assert second_status.status_code == 200
+        assert second_status.json()["csrf_token"] == restored_csrf
+
+        blocked = reopened.post("/agents/bootstrap", json={})
+        assert blocked.status_code == 401
+        allowed = reopened.post(
+            "/agents/bootstrap",
+            headers={"X-CSRF-Token": restored_csrf, "Origin": "https://testserver"},
+            json={},
+        )
+        assert allowed.status_code == 200
+        logout = reopened.post(
+            "/auth/logout",
+            headers={"X-CSRF-Token": restored_csrf, "Origin": "https://testserver"},
+        )
+        assert logout.status_code == 200
+        assert reopened.get("/agents").status_code == 401
+        assert second_tab.get("/auth/session").status_code == 401
 
 
 def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
@@ -1291,3 +1394,94 @@ def test_auto_queue_runs_only_after_owner_approval_and_zero_cost_provider_readin
     )
     assert manager_review.status_code == 200
     assert manager_review.json()["state"] == "completed"
+
+
+class _UnavailableUnoRouterAdapter:
+    def generate(self, request, *, model):
+        raise ProviderUnavailable("UnoRouter returned HTTP 401.")
+
+
+class _SuccessfulUnoRouterAdapter:
+    def generate(self, request, *, model):
+        return ModelResult(
+            text="OPENCOMPANY_UNOROUTER_OK", provider="unorouter",
+            model=model, cost_usd=0.0, input_tokens=5, output_tokens=4,
+        )
+
+
+def test_unorouter_test_reports_provider_failure_without_mislabeling_auth(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "false")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway.configure((
+        (ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
+         _UnavailableUnoRouterAdapter()),
+    ))
+    runtime.gateway.set_usage_recorder(runtime.usage.record)
+
+    started = owner_client.post("/settings/providers/unorouter/test", headers=headers, json={})
+    assert started.status_code == 202
+    job_id = started.json()["job_id"]
+    result = owner_client.get(f"/settings/providers/unorouter/test/{job_id}", headers=headers)
+
+    assert result.status_code == 200
+    assert result.json()["status"] == "failed"
+    assert result.json()["error"] == (
+        "UnoRouter test failed safely: All eligible providers were unavailable: "
+        "unorouter: UnoRouter returned HTTP 401.. No paid fallback was attempted."
+    )
+    assert result.json()["paid_fallback"] is False
+    assert runtime.unorouter_tested_at is None
+    assert runtime.fleet.status().running is False
+
+
+def test_unorouter_test_succeeds_with_zero_cost_and_polls_result(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "false")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    runtime.gateway = ModelGateway.configure((
+        (ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
+         _SuccessfulUnoRouterAdapter()),
+    ))
+    runtime.gateway.set_usage_recorder(runtime.usage.record)
+
+    started = owner_client.post("/settings/providers/unorouter/test", headers=headers, json={})
+    assert started.status_code == 202
+    result = owner_client.get(
+        f"/settings/providers/unorouter/test/{started.json()['job_id']}", headers=headers,
+    )
+
+    assert result.status_code == 200
+    payload = result.json()
+    assert payload["status"] == "succeeded"
+    assert payload["success"] is True
+    assert payload["provider"] == "unorouter"
+    assert payload["model"] == "test/free-model:free"
+    assert payload["cost_usd"] == 0.0
+    assert payload["output_preview"] == "OPENCOMPANY_UNOROUTER_OK"
+    assert payload["worker_autostart_enabled"] is False
+    assert payload["worker_started"] is False
+    assert payload["paid_fallback"] is False
+    assert runtime.unorouter_tested_at is not None
+    assert runtime.fleet.status().running is False
+
+
+
+def test_saved_unorouter_catalogue_refresh_uses_server_key_without_reentry(owner_client, monkeypatch):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    saved = {"api_key": "saved-inference-key-never-return-this", "model": "unorouter/free-catalog:free"}
+    monkeypatch.setattr(runtime.secret_vault, "get", lambda name: saved if name == "unorouter" else None)
+    monkeypatch.setattr(
+        api_module, "discover_free_models",
+        lambda api_key, force_refresh=False: ("alpha:free", "beta:free") if api_key == saved["api_key"] and force_refresh else (),
+    )
+
+    response = owner_client.get("/settings/providers/unorouter/models", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["routing_mode"] == "automatic_all_free_models"
+    assert payload["models"] == ["alpha:free", "beta:free"]
+    assert payload["paid_fallback"] is False
+    assert "saved-inference-key-never-return-this" not in response.text

@@ -122,19 +122,17 @@ class ModelGateway:
             raise ValueError("request budget must be finite and non-negative")
 
     def eligible_providers(self, *, request_budget_usd: float = 0.0) -> tuple[str, ...]:
+        """Return only explicitly confirmed-free providers.
+
+        Paid inference is globally disabled for this company runtime. A positive
+        request budget or PAID_OWNER_APPROVED flag cannot override this policy.
+        """
         self._validate_budget(request_budget_usd)
-        eligible = []
-        for item in self._providers:
-            policy = item.policy
-            if policy.billing_mode == BillingMode.FREE_CONFIRMED:
-                eligible.append(policy.name)
-            elif (
-                policy.billing_mode == BillingMode.PAID_OWNER_APPROVED
-                and request_budget_usd > 0
-                and policy.max_cost_per_request_usd <= request_budget_usd
-            ):
-                eligible.append(policy.name)
-        return tuple(eligible)
+        return tuple(
+            item.policy.name for item in self._providers
+            if item.policy.billing_mode == BillingMode.FREE_CONFIRMED
+            and item.policy.max_cost_per_request_usd == 0.0
+        )
 
     def complete(
         self,
@@ -164,7 +162,15 @@ class ModelGateway:
             except ProviderUnavailable as exc:
                 failures.append(f"{item.policy.name}: {exc}")
                 continue
-            if result.provider != item.policy.name or result.model != item.policy.model:
+            dynamic_free_catalog = (
+                item.policy.name == "unorouter"
+                and item.policy.model == "unorouter/free-catalog:free"
+                and isinstance(result.model, str)
+                and result.model.endswith(":free")
+            )
+            if result.provider != item.policy.name or (
+                result.model != item.policy.model and not dynamic_free_catalog
+            ):
                 raise CostPolicyViolation("adapter response identity does not match selected provider")
             if self._usage_recorder is not None:
                 try:
@@ -187,4 +193,8 @@ class ModelGateway:
             if result.cost_usd > item.policy.max_cost_per_request_usd:
                 raise CostPolicyViolation("provider-reported cost exceeds its configured ceiling")
             return result
-        raise NoEligibleProvider("All eligible providers were unavailable: " + "; ".join(failures))
+        if failures:
+            raise ProviderUnavailable(
+                "All eligible providers were unavailable: " + "; ".join(failures)
+            )
+        raise NoEligibleProvider("No explicitly enabled provider fits the current cost policy.")

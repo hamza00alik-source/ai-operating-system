@@ -1,9 +1,9 @@
 """Authenticated encryption for owner-managed provider credentials.
 
 Secrets are encrypted with AES-256-GCM before SQLite persistence. The
-encryption key is derived from OPENCOMPANY_SECRET_ENCRYPTION_KEY when present,
-otherwise from the high-entropy owner API key. Rotating the fallback owner key
-requires re-entering provider credentials.
+dedicated OPENCOMPANY_SECRET_ENCRYPTION_KEY is required; there is no owner-key
+fallback. Keep it stable and backed up; rotating it requires re-entering
+provider credentials.
 """
 from __future__ import annotations
 import json, os, secrets, sqlite3
@@ -31,10 +31,10 @@ class ProviderSecretVault:
     @staticmethod
     def _key_material() -> bytes:
         value = os.environ.get("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "").strip()
-        if not value:
-            value = os.environ.get("OPENCOMPANY_OWNER_API_KEY", "").strip()
         if len(value) < 32:
-            raise SecretVaultError("Set a 32-character encryption key or a high-entropy owner API key before saving provider credentials.")
+            raise SecretVaultError(
+                "Set a dedicated OPENCOMPANY_SECRET_ENCRYPTION_KEY of at least 32 characters before saving or reading provider credentials."
+            )
         return value.encode()
 
     @classmethod

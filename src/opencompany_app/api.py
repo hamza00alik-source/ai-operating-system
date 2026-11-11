@@ -8,7 +8,11 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
+import secrets
 import tempfile
+import time
+from threading import Lock
 from datetime import datetime, timezone
 from dataclasses import replace
 from functools import lru_cache
@@ -16,7 +20,7 @@ from uuid import UUID, uuid4
 from urllib.parse import urlsplit
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
@@ -28,7 +32,9 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
-from opencompany_core.unorouter_adapter import unorouter_configuration_status
+from opencompany_core.unorouter_adapter import (
+    UNOROUTER_AUTO_FREE_MODEL, discover_free_models, discover_model_catalog, unorouter_configuration_status,
+)
 from opencompany_core.secret_vault import SecretVaultError
 from opencompany_app.provider_settings_ui import OWNER_PROVIDER_SETTINGS_HTML, OWNER_PROVIDER_SETTINGS_JS
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
@@ -53,15 +59,60 @@ app = FastAPI(
     description="Owner-authenticated API for OpenCompany's independently authored operating core.",
 )
 
+# Per-process login throttling. The API key is a bootstrap credential; this
+# protects the session exchange endpoint from unlimited online guessing.
+_LOGIN_FAILURES: dict[str, list[float]] = {}
+_LOGIN_LOCK = Lock()
+_LOGIN_WINDOW_SECONDS = 900
+_LOGIN_MAX_FAILURES = 5
+_LOGIN_MAX_TRACKED_CLIENTS = 10_000
+
+# In-memory, owner-authenticated async provider-test jobs. The inference request
+# may outlive browser/proxy request timeouts; clients poll the job instead.
+_UNOROUTER_TESTS: dict[str, dict] = {}
+_UNOROUTER_TESTS_LOCK = Lock()
+_UNOROUTER_TESTS_MAX = 50
+
+
+def _login_retry_after(client_key: str, *, failed: bool = False) -> int:
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        for key, attempts in list(_LOGIN_FAILURES.items()):
+            fresh = [stamp for stamp in attempts if now - stamp < _LOGIN_WINDOW_SECONDS]
+            if fresh:
+                _LOGIN_FAILURES[key] = fresh
+            else:
+                _LOGIN_FAILURES.pop(key, None)
+        if client_key not in _LOGIN_FAILURES and len(_LOGIN_FAILURES) >= _LOGIN_MAX_TRACKED_CLIENTS:
+            oldest_key = min(
+                _LOGIN_FAILURES,
+                key=lambda key: _LOGIN_FAILURES[key][-1] if _LOGIN_FAILURES[key] else now,
+            )
+            _LOGIN_FAILURES.pop(oldest_key, None)
+        attempts = _LOGIN_FAILURES.setdefault(client_key, [])
+        if failed:
+            attempts.append(now)
+        if len(attempts) < _LOGIN_MAX_FAILURES:
+            return 0
+        return max(1, int(_LOGIN_WINDOW_SECONDS - (now - attempts[0])))
+
+
+def _clear_login_failures(client_key: str) -> None:
+    with _LOGIN_LOCK:
+        _LOGIN_FAILURES.pop(client_key, None)
+
 
 class OwnerLoginInput(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
 
 
 class UnoRouterSettingsInput(BaseModel):
-    api_key: str = Field(min_length=16, max_length=512)
+    api_key: str = Field(min_length=8, max_length=512)
     model: str = Field(min_length=3, max_length=200, pattern=r"^[A-Za-z0-9._/-]+:free$")
     confirm_free: bool
+
+class UnoRouterDiscoveryInput(BaseModel):
+    api_key: str = Field(min_length=8, max_length=512)
 
 
 class GitHubEvolutionSettingsInput(BaseModel):
@@ -103,7 +154,7 @@ class WorkItemCreateInput(BaseModel):
 
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
-    max_specialists: int = Field(default=5, ge=1, le=5)
+    max_specialists: int = Field(default=15, ge=1, le=50)
 
 
 class ApiAnythingCallInput(BaseModel):
@@ -172,7 +223,7 @@ class ExecutivePlanInput(BaseModel):
 
 
 class ManagerProposalInput(BaseModel):
-    max_specialists: int = Field(default=5, ge=1, le=5)
+    max_specialists: int = Field(default=15, ge=1, le=50)
 
 
 class WorkItemTransitionInput(BaseModel):
@@ -279,8 +330,18 @@ def require_owner_key(
                 if not valid_origin:
                     raise HTTPException(status_code=403, detail="Owner session requests must use the same origin.")
             return "owner"
+    client_key = request.client.host if request.client else "unknown"
     if x_opencompany_api_key and hmac.compare_digest(x_opencompany_api_key, expected):
+        _clear_login_failures(client_key)
         return "owner"
+    if x_opencompany_api_key:
+        retry_after = _login_retry_after(client_key, failed=True)
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many failed owner authentication attempts. Try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
     raise HTTPException(status_code=401, detail="Owner authentication failed.")
 
 
@@ -312,6 +373,7 @@ def _record(item: WorkItem, action: str) -> AuditRecord:
 @app.post("/auth/session")
 def create_owner_session(
     payload: OwnerLoginInput,
+    request: Request,
     response: Response,
     runtime: OpenCompanyRuntime = Depends(get_runtime),
 ) -> dict:
@@ -319,12 +381,32 @@ def create_owner_session(
     expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
     if not expected:
         raise HTTPException(status_code=503, detail="Owner authentication is not configured.")
+    client_key = request.client.host if request.client else "unknown"
+    retry_after = _login_retry_after(client_key)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed owner login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
     if not hmac.compare_digest(payload.api_key, expected):
+        retry_after = _login_retry_after(client_key, failed=True)
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many failed owner login attempts. Try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
         raise HTTPException(status_code=401, detail="Owner authentication failed.")
-    token, csrf, expires = runtime.sessions.create(lifetime_hours=12)
+    _clear_login_failures(client_key)
+    token, csrf, expires = runtime.sessions.create(lifetime_hours=168)
     secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
     response.set_cookie(
-        "opencompany_session", token, max_age=12 * 60 * 60, httponly=True,
+        "opencompany_session", token, max_age=7 * 24 * 60 * 60, httponly=True,
+        secure=secure_cookie, samesite="strict", path="/",
+    )
+    response.set_cookie(
+        "opencompany_csrf", csrf, max_age=7 * 24 * 60 * 60, httponly=True,
         secure=secure_cookie, samesite="strict", path="/",
     )
     response.headers["Cache-Control"] = "no-store"
@@ -332,8 +414,29 @@ def create_owner_session(
 
 
 @app.get("/auth/session", dependencies=[Depends(require_owner_key)])
-def owner_session_status() -> dict:
-    return {"authenticated": True, "session_type": "owner"}
+def owner_session_status(
+    response: Response,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    opencompany_session: str | None = Cookie(default=None),
+    opencompany_csrf: str | None = Cookie(default=None),
+) -> dict:
+    """Restore the same CSRF token across tabs; rotate only if its cookie is missing or invalid."""
+    if not opencompany_session:
+        raise HTTPException(status_code=401, detail="Owner browser session is missing.")
+    renewed = runtime.sessions.rotate_csrf(opencompany_session, opencompany_csrf)
+    if renewed is None:
+        raise HTTPException(status_code=401, detail="Owner browser session has expired or been revoked.")
+    csrf, expires = renewed
+    secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
+    response.set_cookie(
+        "opencompany_csrf", csrf, max_age=7 * 24 * 60 * 60, httponly=True,
+        secure=secure_cookie, samesite="strict", path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "authenticated": True, "session_type": "owner",
+        "csrf_token": csrf, "expires_at": expires.isoformat(),
+    }
 
 
 @app.post("/auth/logout", dependencies=[Depends(require_owner_key)])
@@ -346,6 +449,7 @@ def revoke_owner_session(
     if opencompany_session:
         runtime.sessions.revoke(opencompany_session)
     response.delete_cookie("opencompany_session", path="/", httponly=True, samesite="strict")
+    response.delete_cookie("opencompany_csrf", path="/", httponly=True, samesite="strict")
     response.headers["Cache-Control"] = "no-store"
     return {"authenticated": False, "revoked": bool(opencompany_session)}
 
@@ -356,14 +460,23 @@ def owner_dashboard() -> HTMLResponse:
     before, marker, after = html.rpartition("})();")
     if marker:
         html = before + OWNER_PROVIDER_SETTINGS_JS + "\n  const previousLoad=load; load=async function(){await previousLoad(); await loadUnoRouterSettings(); await loadGitHubEvolutionSettings(); await loadModelUsage();};\n})();" + after
+    # The dashboard currently embeds its scripts. Give every script element a
+    # fresh nonce rather than allowing arbitrary inline script execution.
+    nonce = secrets.token_urlsafe(18)
+    html = re.sub(r"<script(?=[\s>])", f'<script nonce="{nonce}"', html)
+    html = re.sub(r"<style(?=[\s>])", f'<style nonce="{nonce}"', html)
     response = HTMLResponse(html)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-        "connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"
+        f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' 'nonce-{nonce}'; connect-src 'self'; "
+        "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; object-src 'none'"
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     return response
 
 
@@ -387,6 +500,13 @@ def readiness(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
             if result is None or str(result[0]).casefold() != "ok":
                 raise RuntimeError("database integrity check failed")
             connection.execute("SELECT 1").fetchone()
+            # A readable database is not necessarily writable (for example,
+            # when a persistent volume is mounted with the wrong owner).
+            # Acquire and release a write transaction so readiness catches
+            # that deployment failure before owner login attempts to create
+            # a session or other state.
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("ROLLBACK")
         fleet = runtime.fleet.status()
     except Exception as exc:
         # Keep internal database and filesystem diagnostics out of public probes.
@@ -571,6 +691,19 @@ def provider_runtime_status(runtime: OpenCompanyRuntime | None = Depends(get_opt
 
 
 
+@app.post("/settings/providers/unorouter/discover", dependencies=[Depends(require_owner_key)])
+def discover_unorouter_models(payload: UnoRouterDiscoveryInput) -> dict:
+    try:
+        models = discover_free_models(payload.api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ProviderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=f"UnoRouter model discovery failed safely: {exc}") from exc
+    return {"success": True, "models": models, "count": len(models),
+            "source": "authenticated-key-list intersected with live zero-price catalogue",
+            "paid_models_included": False}
+
+
 @app.get("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
 def get_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     status = runtime.secret_vault.status("unorouter")
@@ -590,12 +723,68 @@ def get_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -
     }
 
 
+@app.get("/settings/providers/unorouter/models", dependencies=[Depends(require_owner_key)])
+def list_unorouter_free_models(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Discover all free models accessible to the already-saved inference key."""
+    try:
+        saved = runtime.secret_vault.get("unorouter")
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored UnoRouter credentials cannot be decrypted.") from exc
+    if not saved:
+        raise HTTPException(status_code=409, detail="Save the UnoRouter API key first.")
+    try:
+        models = discover_free_models(saved["api_key"], force_refresh=True)
+    except ProviderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=f"UnoRouter catalogue refresh failed safely: {exc}") from exc
+    return {
+        "provider": "unorouter", "count": len(models), "models": list(models),
+        "routing_mode": "automatic_all_free_models",
+        "catalogue_cache_seconds": 300, "paid_models_included": False,
+        "paid_fallback": False,
+    }
+
+
+@app.get("/settings/providers/unorouter/catalog", dependencies=[Depends(require_owner_key)])
+def import_unorouter_catalog(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Import the full live catalogue; paid/unsupported models are visible but hard-blocked."""
+    try:
+        saved = runtime.secret_vault.get("unorouter")
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored UnoRouter credentials cannot be decrypted.") from exc
+    if not saved:
+        raise HTTPException(status_code=409, detail="Save the UnoRouter API key first.")
+    try:
+        catalog = discover_model_catalog(saved["api_key"])
+    except ProviderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=f"UnoRouter full catalogue import failed safely: {exc}") from exc
+    eligible = [item for item in catalog if item["allowed_for_inference"]]
+    blocked = len(catalog) - len(eligible)
+    return {
+        "provider": "unorouter",
+        "source": "live public pricing catalogue intersected with authenticated /v1/models",
+        "total_models": len(catalog),
+        "eligible_free_chat_models": len(eligible),
+        "blocked_models": blocked,
+        "paid_models_included_for_inference": False,
+        "paid_fallback": False,
+        "policy": "FREE_ONLY_ZERO_PRICE_ONLINE_CHAT_KEY_ACCESS_REQUIRED",
+        "models": list(catalog),
+    }
+
+
 @app.put("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
 def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     if payload.confirm_free is not True:
         raise HTTPException(status_code=422, detail="Owner must explicitly confirm the selected model is free.")
-    if not payload.model.endswith(":free"):
-        raise HTTPException(status_code=422, detail="Only explicitly free model IDs ending in :free are accepted.")
+    if payload.model != UNOROUTER_AUTO_FREE_MODEL and not payload.model.endswith(":free"):
+        raise HTTPException(status_code=422, detail="Only explicitly free model IDs or automatic free-catalog routing are accepted.")
+    if payload.model != UNOROUTER_AUTO_FREE_MODEL:
+        try:
+            discovered = discover_free_models(payload.api_key)
+        except ProviderUnavailable as exc:
+            raise HTTPException(status_code=502, detail=f"UnoRouter could not revalidate the selected free model: {exc}") from exc
+        if payload.model not in discovered:
+            raise HTTPException(status_code=409, detail="The selected model is not currently listed as free, online, and available to this API key. Load the free-model list again.")
     try:
         runtime.stop_workers_for_provider_change()
         revision = runtime.secret_vault.put("unorouter", {"api_key": payload.api_key, "model": payload.model})
@@ -611,33 +800,110 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
             "billing_mode": "free_confirmed", "automatic_paid_fallback": False, "live_inference_tested": False}
 
 
-@app.post("/settings/providers/unorouter/test", dependencies=[Depends(require_owner_key)])
-def test_unorouter_connection(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+def _worker_autostart_enabled() -> bool:
+    return os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _run_unorouter_test(runtime: OpenCompanyRuntime, job_id: str) -> None:
+    with _UNOROUTER_TESTS_LOCK:
+        job = _UNOROUTER_TESTS.get(job_id)
+        if job is None:
+            return
+        job["status"] = "running"
     try:
         result = runtime.gateway.complete(
             ModelRequest(prompt="Reply with exactly: OPENCOMPANY_UNOROUTER_OK",
                          request_id=f"owner-unorouter-test-{uuid4()}", max_output_tokens=24),
             request_budget_usd=0.0, preferred_provider="unorouter",
         )
-    except NoEligibleProvider as exc:
-        raise HTTPException(status_code=503, detail="No confirmed-free UnoRouter model is configured and available.") from exc
-    except (ProviderUnavailable, CostPolicyViolation) as exc:
-        raise HTTPException(status_code=502, detail=f"UnoRouter test failed safely: {type(exc).__name__}. No paid fallback was attempted.") from exc
-    if result.text.strip() != "OPENCOMPANY_UNOROUTER_OK":
-        raise HTTPException(status_code=502, detail="UnoRouter returned an unexpected test response; connection was not marked verified.")
-    runtime.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
-    worker_started = False
-    worker_start_error = None
-    try:
-        worker_started = runtime.start_workers_if_ready()
-    except Exception as exc:
-        worker_start_error = type(exc).__name__
-    return {"success": True, "provider": result.provider, "model": result.model, "cost_usd": result.cost_usd,
+        if result.text.strip() != "OPENCOMPANY_UNOROUTER_OK":
+            raise ProviderUnavailable("UnoRouter returned an unexpected test response.")
+        runtime.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
+        worker_started = False
+        worker_start_error = None
+        try:
+            worker_started = runtime.start_workers_if_ready()
+        except Exception as exc:
+            worker_start_error = type(exc).__name__
+        outcome = {
+            "status": "succeeded", "success": True, "provider": result.provider,
+            "model": result.model, "cost_usd": result.cost_usd,
             "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
             "output_preview": result.text[:160], "tested_at": runtime.unorouter_tested_at,
-            "worker_autostart_enabled": os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"},
+            "worker_autostart_enabled": _worker_autostart_enabled(),
             "worker_started": worker_started, "worker_start_error": worker_start_error,
-            "paid_fallback": False}
+            "paid_fallback": False,
+        }
+    except NoEligibleProvider:
+        outcome = {
+            "status": "failed", "success": False,
+            "error": "No confirmed-free UnoRouter model is configured and available.",
+            "provider": "unorouter", "model": None, "cost_usd": 0.0,
+            "input_tokens": 0, "output_tokens": 0, "output_preview": None,
+            "worker_autostart_enabled": _worker_autostart_enabled(),
+            "worker_started": False, "worker_start_error": None, "paid_fallback": False,
+        }
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        # Adapter diagnostics are deliberately bounded and contain no credentials.
+        reason = " ".join(str(exc).split())[:600] or type(exc).__name__
+        outcome = {
+            "status": "failed", "success": False,
+            "error": f"UnoRouter test failed safely: {reason}. No paid fallback was attempted.",
+            "provider": "unorouter", "model": None, "cost_usd": 0.0,
+            "input_tokens": 0, "output_tokens": 0, "output_preview": None,
+            "worker_autostart_enabled": _worker_autostart_enabled(),
+            "worker_started": False, "worker_start_error": None, "paid_fallback": False,
+        }
+    except Exception as exc:
+        outcome = {
+            "status": "failed", "success": False,
+            "error": f"UnoRouter test failed safely ({type(exc).__name__}). No paid fallback was attempted.",
+            "provider": "unorouter", "model": None, "cost_usd": 0.0,
+            "input_tokens": 0, "output_tokens": 0, "output_preview": None,
+            "worker_autostart_enabled": _worker_autostart_enabled(),
+            "worker_started": False, "worker_start_error": None, "paid_fallback": False,
+        }
+    with _UNOROUTER_TESTS_LOCK:
+        if job_id in _UNOROUTER_TESTS:
+            _UNOROUTER_TESTS[job_id].update(outcome)
+
+
+@app.post("/settings/providers/unorouter/test", dependencies=[Depends(require_owner_key)])
+def test_unorouter_connection(
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> JSONResponse:
+    # A browser/proxy can close a long-running inference request. Start the
+    # bounded zero-dollar test in a background task and let the owner poll it.
+    with _UNOROUTER_TESTS_LOCK:
+        active = next((
+            job for job in reversed(list(_UNOROUTER_TESTS.values()))
+            if job.get("status") in {"queued", "running"}
+        ), None)
+        if active is not None:
+            return JSONResponse(status_code=202, content={
+                "job_id": active["job_id"], "status": active["status"],
+            })
+        job_id = str(uuid4())
+        _UNOROUTER_TESTS[job_id] = {"job_id": job_id, "status": "queued"}
+        while len(_UNOROUTER_TESTS) > _UNOROUTER_TESTS_MAX:
+            oldest = next(iter(_UNOROUTER_TESTS))
+            if _UNOROUTER_TESTS[oldest].get("status") in {"queued", "running"}:
+                break
+            _UNOROUTER_TESTS.pop(oldest, None)
+    return JSONResponse(
+        status_code=202,
+        content={"job_id": job_id, "status": "queued"},
+        background=BackgroundTask(_run_unorouter_test, runtime, job_id),
+    )
+
+
+@app.get("/settings/providers/unorouter/test/{job_id}", dependencies=[Depends(require_owner_key)])
+def get_unorouter_test_status(job_id: UUID) -> dict:
+    with _UNOROUTER_TESTS_LOCK:
+        job = _UNOROUTER_TESTS.get(str(job_id))
+        if job is None:
+            raise HTTPException(status_code=404, detail="UnoRouter test job was not found or has expired.")
+        return dict(job)
 
 
 @app.delete("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
@@ -1113,6 +1379,7 @@ def preview_work_item_delegation(
         },
         "mode": plan.mode.value,
         "selected_team_key": plan.selected_team_key,
+        "selected_team_keys": list(dict.fromkeys(specialist.team_key for specialist in plan.specialists)),
         "specialists": [
             {
                 "role_key": specialist.role_key,
@@ -1695,7 +1962,13 @@ def create_executive_work_plan(
     except NoEligibleProvider as exc:
         raise HTTPException(status_code=503, detail="No owner-configured free model provider is available for CEO planning.") from exc
     except (ProviderUnavailable, CostPolicyViolation) as exc:
-        raise HTTPException(status_code=502, detail=f"CEO model request failed safely: {type(exc).__name__}") from exc
+        # Adapter diagnostics are sanitized and bounded; never expose credentials
+        # or raw upstream response bodies in the owner-facing API.
+        reason = " ".join(str(exc).split())[:600] or type(exc).__name__
+        raise HTTPException(
+            status_code=502,
+            detail=f"CEO model request failed safely: {type(exc).__name__}: {reason}",
+        ) from exc
     except ExecutivePlanningError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     correlation_id = str(uuid4())
@@ -1800,6 +2073,7 @@ def create_ai_manager_proposal(
             "manager_rationale": recommendation.rationale,
             "planner_provider": recommendation.provider,
             "planner_model": recommendation.model,
+            "selected_team_keys": list(dict.fromkeys(specialist.team_key for specialist in plan.specialists)),
         },
         manager_agent_id=manager.id,
         mode=plan.mode.value,
@@ -1862,7 +2136,11 @@ def create_work_item_delegation_proposal(
             })
     return delegations.create_proposal(
         parent_work_item_id=item.id,
-        request={"required_capabilities": payload.required_capabilities, "max_specialists": payload.max_specialists},
+        request={
+            "required_capabilities": payload.required_capabilities,
+            "max_specialists": payload.max_specialists,
+            "selected_team_keys": list(dict.fromkeys(specialist.team_key for specialist in plan.specialists)),
+        },
         manager_agent_id=manager.id,
         mode=plan.mode.value,
         team_key=plan.selected_team_key,

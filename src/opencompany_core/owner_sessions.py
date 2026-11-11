@@ -33,9 +33,9 @@ class OwnerSessionStore:
                 "CREATE INDEX IF NOT EXISTS idx_owner_sessions_expiry ON owner_sessions(expires_at)"
             )
 
-    def create(self, *, lifetime_hours: int = 12) -> tuple[str, str, datetime]:
-        if not 1 <= lifetime_hours <= 24:
-            raise ValueError("session lifetime must be between 1 and 24 hours")
+    def create(self, *, lifetime_hours: int = 168) -> tuple[str, str, datetime]:
+        if not 1 <= lifetime_hours <= 168:
+            raise ValueError("session lifetime must be between 1 and 168 hours")
         token = secrets.token_urlsafe(48)
         csrf = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
@@ -67,6 +67,33 @@ class OwnerSessionStore:
         if require_csrf:
             return bool(csrf and hmac.compare_digest(row["csrf_hash"], _hash(csrf)))
         return True
+
+    def rotate_csrf(self, token: str, current_csrf: str | None = None) -> tuple[str, datetime] | None:
+        """Restore a browser's shared CSRF cookie, rotating only if it is missing or invalid."""
+        if not token or len(token) > 256:
+            return None
+        now = datetime.now(timezone.utc)
+        csrf = secrets.token_urlsafe(32)
+        with self._lock:
+            row = self._db.execute(
+                "SELECT csrf_hash,expires_at,revoked_at FROM owner_sessions WHERE token_hash=?",
+                (_hash(token),),
+            ).fetchone()
+            if row is None or row["revoked_at"] is not None:
+                return None
+            try:
+                expires = datetime.fromisoformat(row["expires_at"])
+            except (TypeError, ValueError):
+                return None
+            if expires <= now:
+                return None
+            if current_csrf and hmac.compare_digest(row["csrf_hash"], _hash(current_csrf)):
+                return current_csrf, expires
+            self._db.execute(
+                "UPDATE owner_sessions SET csrf_hash=? WHERE token_hash=?",
+                (_hash(csrf), _hash(token)),
+            )
+        return csrf, expires
 
     def revoke(self, token: str) -> bool:
         if not token or len(token) > 256:

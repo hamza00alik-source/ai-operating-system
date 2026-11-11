@@ -17,7 +17,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}.metric{background:#0e172b;border:1px solid #293a5a;border-radius:12px;padding:14px}.metric strong{display:block;font-size:1.8rem;margin-top:5px}
 .list{display:grid;gap:10px;margin-top:12px}.item{background:#0e172b;border:1px solid #293a5a;border-radius:12px;padding:13px}.item h3{font-size:1rem;margin:0 0 7px}.item p{margin:5px 0;color:#b7c3dc;line-height:1.45;font-size:.92rem}
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.pill{font-size:.75rem;border-radius:999px;background:#263653;color:#cfe0ff;padding:5px 9px}
-.warn{color:#ffd58a}.error{color:#ff9c9c}.success{color:#91e0bd}.section-title{margin:22px 0 8px;font-size:1.15rem}
+.owner-connection-title{font-size:1.05rem;margin:0 0 10px}.provider-state{font-size:1.05rem}.section-title.compact{margin:0}.research-results{white-space:pre-wrap;overflow-wrap:anywhere}.worker-actions{margin-top:12px}.console-footer{font-size:.8rem;margin:18px 4px}.confirmation-label{display:flex;gap:10px;align-items:center;margin:12px 0}.warn{color:#ffd58a}.error{color:#ff9c9c}.success{color:#91e0bd}.section-title{margin:22px 0 8px;font-size:1.15rem}
 @media(max-width:520px){main{padding:16px 12px 32px}.panel{padding:13px}.auth{flex-direction:column}.auth button{width:100%}}
 </style>
 </head>
@@ -28,7 +28,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <span class="pill">Owner approval controls enabled</span>
   </div>
   <section class="panel">
-    <h2 style="font-size:1.05rem;margin:0 0 10px">Secure owner connection</h2>
+    <h2 class="owner-connection-title">Secure owner connection</h2>
     <div class="auth">
       <input id="owner-key" type="password" autocomplete="current-password" placeholder="Enter owner API key">
       <button id="connect">Connect</button>
@@ -42,21 +42,21 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div class="metric"><span class="muted">Specialist roles</span><strong id="specialist-count">—</strong></div>
     <div class="metric"><span class="muted">Work items</span><strong id="work-count">—</strong></div>
     <div class="metric"><span class="muted">Queued tasks</span><strong id="queue-count">—</strong></div>
-    <div class="metric"><span class="muted">Model gateway</span><strong id="provider-state" style="font-size:1.05rem">—</strong></div>
+    <div class="metric"><span class="muted">Model gateway</span><strong id="provider-state" class="provider-state">—</strong></div>
   </section>
   <section class="panel">
-    <div class="row"><h2 class="section-title" style="margin:0">Departments</h2><span class="pill">Original OpenCompany design</span></div>
+    <div class="row"><h2 class="section-title compact">Departments</h2><span class="pill">Original OpenCompany design</span></div>
     <div id="departments" class="list"><p class="muted">Connect to load departments.</p></div>
   </section>
   <section class="panel">
     <div class="row">
-      <div><h2 class="section-title" style="margin:0">Company agent profiles</h2><p class="muted">CEO, managers and specialists are created as drafts; provisioning does not start workers.</p></div>
+      <div><h2 class="section-title compact">Company agent profiles</h2><p class="muted">CEO, managers and specialists are created as drafts; provisioning does not start workers.</p></div>
       <div class="auth"><button id="provision-executive" disabled>Provision CEO</button><button id="provision" disabled>Provision managers</button><button id="provision-specialists" disabled>Provision 500 specialists</button></div>
     </div>
     <div id="agents" class="list"><p class="muted">Connect to view manager profiles.</p></div>
   </section>
   <section class="panel">
-    <h2 class="section-title" style="margin:0">AI capabilities</h2>
+    <h2 class="section-title compact">AI capabilities</h2>
     <div id="capabilities" class="list"><p class="muted">Connect to inspect provider and media readiness.</p></div>
   </section>
   <section class="panel">
@@ -74,7 +74,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <label for="research-query">Search available research operations</label>
     <input id="research-query" maxlength="300" placeholder="Example: market demand, competitor reviews, software trends">
     <button id="search-research" disabled>Search research connector</button>
-    <pre id="research-results" class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere">No research results loaded.</pre>
+    <pre id="research-results" class="muted research-results">No research results loaded.</pre>
   </section>
   <section class="panel">
     <h2 class="section-title">AI code evolution</h2>
@@ -92,11 +92,11 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div id="learning-proposals" class="stack"><p class="muted">No proposals loaded.</p></div>
   </section>
   <section class="panel">
-    <div class="row"><h2 class="section-title" style="margin:0">Work queue</h2><span id="worker-status" class="pill">Workers stopped</span></div>
-    <div class="auth" style="margin-top:12px"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
+    <div class="row"><h2 class="section-title compact">Work queue</h2><span id="worker-status" class="pill">Workers stopped</span></div>
+    <div class="auth worker-actions"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
   </section>
-  <p class="muted" style="font-size:.8rem;margin:18px 4px">This console does not publish content, contact customers, spend money, deploy production, or activate agents. Protected actions remain owner-gated.</p>
+  <p class="muted console-footer">This console does not publish content, contact customers, spend money, deploy production, or activate agents. Protected actions remain owner-gated.</p>
 </main>
 <script>
 (() => {
@@ -121,7 +121,12 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     if(method!=="GET" && method!=="HEAD" && csrfToken) headers.set("X-CSRF-Token",csrfToken);
     if(options.body) headers.set("Content-Type","application/json");
     const response=await fetch(path,{...options,headers,credentials:"same-origin",cache:"no-store"});
-    if(!response.ok) throw new Error(response.status===401?"Owner key rejected.":response.status===503?"Owner authentication is not configured on the server.":"Request failed ("+response.status+").");
+    if(!response.ok){
+      let detail="";
+      try{const payload=await response.json();if(typeof payload.detail==="string")detail=payload.detail;}catch{}
+      if(!detail) detail=response.status===401?"Owner key rejected.":"Request failed ("+response.status+").";
+      throw new Error(detail);
+    }
     return response.json();
   };
   async function load(){
@@ -351,6 +356,18 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{const result=await request("/agents/bootstrap-specialists",{method:"POST",body:"{}"});setMessage(result.count+" specialist profiles saved as drafts. No workers were started.","success");await load();}
     catch(error){setMessage(error.message,"error");byId("provision-specialists").disabled=false;}
   });
+  // Restore the HttpOnly cookie session on every page load. Never persist the API key or CSRF token in browser storage.
+  (async()=>{
+    byId("connect").disabled=true;
+    try{
+      const response=await fetch("/auth/session",{method:"GET",credentials:"same-origin",cache:"no-store"});
+      if(!response.ok){setMessage("Enter the owner API key to connect. Your previous session may have expired.");return;}
+      const session=await response.json();
+      csrfToken=session.csrf_token;
+      await load();
+    }catch(error){setMessage("Could not restore the owner session: "+error.message,"error");}
+    finally{byId("connect").disabled=false;}
+  })();
 })();
 </script>
 </body>
