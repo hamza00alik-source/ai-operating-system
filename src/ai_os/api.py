@@ -866,6 +866,19 @@ def post_business_expense(payload: BusinessRecordRequest):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.post("/business/expenses/{expense_id}/confirm-paid", dependencies=[Depends(require_owner_key)])
+def post_business_expense_confirm_paid(expense_id: str, business_id: str = "core"):
+    """Owner attests an already-paid, previously approved expense; no payment is initiated."""
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    try:
+        return business_ops.confirm_expense_paid(expense_id, business_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.get("/business/revenue", dependencies=[Depends(require_api_key)])
 def get_business_revenue(business_id: str = "core"):
     if business_id not in BUSINESS_IDS:
