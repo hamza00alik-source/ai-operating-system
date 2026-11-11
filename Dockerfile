@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Mount a persistent Railway volume at /data for production SQLite state.
+RUN mkdir -p /data
+ENV OPENCOMPANY_DATABASE_PATH=/data/opencompany_core.sqlite3
+
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt
 

@@ -74,7 +74,14 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         free = saved["free_confirmed"]
     configured = bool(base and model and secret)
     uno_free_model = provider.key != "unorouter" or model.endswith(":free")
-    eligible = configured and free and uno_free_model and not provider.experimental_only
+    # UnoRouter's current Terms do not offer business-customer accounts.
+    # Keep its consumer connector available only through the isolated,
+    # owner-triggered personal-test function below; never use it for company runs.
+    company_route_allowed = provider.key != "unorouter"
+    eligible = (
+        configured and free and uno_free_model and not provider.experimental_only
+        and company_route_allowed
+    )
     return {
         "id": provider.key, "name": provider.label, "protocol": provider.protocol,
         "_secret": secret,
@@ -84,8 +91,8 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
-            "UnoRouter requires an owner-confirmed model ID ending in :free."
-            if provider.key == "unorouter" and not uno_free_model else
+            "UnoRouter is restricted to owner-triggered personal tests and is excluded from company task routing under current provider terms."
+            if provider.key == "unorouter" else
             "Set base URL, model, API secret, and explicitly confirm this endpoint "
             "is currently free. Paid or unverified endpoints are blocked."
         ),
