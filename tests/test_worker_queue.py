@@ -149,3 +149,49 @@ def test_manager_rework_reuses_current_lease_and_requeues_atomically(tmp_path):
     assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
     assert store.verify_audit_chain()
     store.close()
+
+
+def test_manager_rework_retry_limit_dead_letters_task(tmp_path):
+    store = SQLiteStore(tmp_path / "shared-rework-limit.sqlite3")
+    now = datetime.now(timezone.utc)
+    agent_id = uuid4()
+    agent = AgentProfile(
+        id=agent_id, name="Marketplace Specialist", department="revenue-partnerships",
+        purpose="Prepare marketplace research", capabilities=("research",),
+        state=AgentState.ACTIVE, role_key="revenue_partnerships__marketplace_category_analyst",
+        team_key="revenue-partnerships__team_1",
+    )
+    item = WorkItem(
+        id=uuid4(), title="Prepare listing research", objective="Research listing options",
+        department="revenue-partnerships", state=TaskState.QUEUED,
+        assigned_agent_id=agent_id,
+    )
+    store.save_agent_with_audit(agent, AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="test.agent_created", subject_type="agent_profile",
+        subject_id=str(agent_id), outcome="recorded", correlation_id="manager-rework-limit",
+    ))
+    store.save_work_item_with_audit(item, AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="test.task_queued", subject_type="work_item", subject_id=str(item.id),
+        outcome="recorded", correlation_id="manager-rework-limit",
+    ))
+    queue = DurableWorkerQueue(store._connection, lock=store._lock, max_attempts=1)
+    queue.enqueue(item.id, agent_id, {"role_key": agent.role_key, "team_key": agent.team_key})
+    lease = queue.claim(agent_id)
+    assert lease is not None and lease.attempt == 1
+    ready_item = replace(item, state=TaskState.READY)
+    store.save_work_item(ready_item)
+    requeued = queue.requeue_after_manager_review(
+        lease, ready_item, lease.payload, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+            actor_id=str(agent_id), action="manager.rework_retry_limit_reached",
+            subject_type="work_item", subject_id=str(item.id), outcome="failed",
+            correlation_id="manager-rework-limit", details={"attempt": 1, "max_attempts": 1},
+        ),
+    )
+    assert requeued is False
+    assert queue.counts() == {"dead": 1}
+    assert store.get_work_item(item.id).state == TaskState.FAILED
+    assert store.verify_audit_chain()
+    store.close()
