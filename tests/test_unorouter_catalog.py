@@ -27,7 +27,7 @@ def test_discovery_intersects_free_online_catalogue_with_key_access(monkeypatch)
 def test_catalogue_discovery_fails_closed_when_no_free_models_are_accessible(monkeypatch):
     responses = iter([
         {"models": [{"model_name": "paid", "is_free": False, "online": True}]},
-        {"data": [{"id": "paid:free"}]},
+        {"data": [{"id": "paid"}]},
     ])
     monkeypatch.setattr(unorouter_adapter, "_read_json", lambda *a, **k: next(responses))
     monkeypatch.setattr(unorouter_adapter, "_catalog_cache", {})
