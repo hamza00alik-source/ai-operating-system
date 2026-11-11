@@ -74,12 +74,17 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         base, model, secret = saved["base_url"], saved["model"], saved["secret"]
         free = saved["free_confirmed"]
     configured = bool(base and model and secret)
-    # Only an explicit OpenRouter :free route is admitted to unattended AIOS
-    # company inference. A dashboard checkbox cannot verify arbitrary provider pricing.
+    # OpenRouter requires an exact :free model ID. UnoRouter may be saved in
+    # discovery-only mode; the authenticated catalogue selector then chooses an
+    # account-callable :free chat model before any prompt is sent.
     verified_free_model = (
-        provider.key == "openrouter"
-        and base == "https://openrouter.ai/api/v1"
-        and model.endswith(":free")
+        (provider.key == "openrouter"
+         and base == "https://openrouter.ai/api/v1"
+         and model.endswith(":free"))
+        or
+        (provider.key == "unorouter"
+         and base == "https://api.unorouter.com/v1"
+         and (model.endswith(":free") or model == "__catalog_only__"))
     )
     eligible = configured and free and verified_free_model and not provider.experimental_only
     return {
@@ -91,7 +96,9 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
-            "Only an explicitly free OpenRouter model ID ending in :free is enabled for company inference. Other providers remain disabled until zero-cost routing can be independently verified."
+            ("UnoRouter requires owner-confirmed free-only mode and an account-accessible :free chat model; discovery-only keys are allowed."
+             if provider.key == "unorouter" else
+             "Only an explicitly free OpenRouter model ID ending in :free is enabled for company inference. Other providers remain disabled until zero-cost routing can be independently verified.")
         ),
     }
 
