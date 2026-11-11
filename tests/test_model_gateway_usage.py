@@ -93,3 +93,19 @@ def test_gateway_records_reported_charge_before_rejecting_zero_cost_violation():
     assert len(events) == 1
     assert events[0]["cost_usd"] == 0.01
     assert events[0]["role_key"] == "finance_cost_auditor"
+
+
+def test_gateway_preserves_selected_business_unit_in_usage_record():
+    events = []
+    model_gateway = gateway()
+    model_gateway.set_usage_recorder(events.append)
+    model_gateway.complete(
+        ModelRequest(
+            prompt="Assess own-brand demand.", request_id="request-business-001",
+            work_item_id="brand-work-item", role_key="market_demand_researcher",
+            business_id="physical-brand",
+        ),
+        request_budget_usd=0.0,
+    )
+    assert len(events) == 1
+    assert events[0]["business_id"] == "physical-brand"
