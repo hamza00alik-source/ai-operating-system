@@ -180,6 +180,12 @@ def connect():
 def initialize_database() -> None:
     with connect() as connection:
         connection.executescript("""
+        CREATE TABLE IF NOT EXISTS business_units (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, business_type TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_business_units_status ON business_units(status, created_at);
         CREATE TABLE IF NOT EXISTS tasks (
             id TEXT PRIMARY KEY, title TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
@@ -292,7 +298,7 @@ def initialize_database() -> None:
             title TEXT NOT NULL, amount REAL, currency TEXT NOT NULL DEFAULT 'USD',
             status TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0,
             approval_id TEXT, contact TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL, paid_at TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_business_records_type_created ON business_records(record_type, created_at);
         CREATE TABLE IF NOT EXISTS investor_contacts (
@@ -302,7 +308,7 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_investor_contacts_stage ON investor_contacts(stage, created_at);
         CREATE TABLE IF NOT EXISTS code_assets (
-            id TEXT PRIMARY KEY, name TEXT NOT NULL, repository_url TEXT NOT NULL DEFAULT '',
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', name TEXT NOT NULL, repository_url TEXT NOT NULL DEFAULT '',
             path TEXT NOT NULL DEFAULT '', asset_type TEXT NOT NULL DEFAULT 'source_code',
             ownership_status TEXT NOT NULL DEFAULT 'unverified', license TEXT NOT NULL DEFAULT 'unknown',
             dependency_review TEXT NOT NULL DEFAULT 'not_reviewed', token_estimate INTEGER,
@@ -311,7 +317,7 @@ def initialize_database() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_code_assets_created ON code_assets(created_at);
         CREATE TABLE IF NOT EXISTS license_offers (
-            id TEXT PRIMARY KEY, asset_id TEXT NOT NULL, buyer TEXT NOT NULL,
+            id TEXT PRIMARY KEY, business_id TEXT NOT NULL DEFAULT 'core', asset_id TEXT NOT NULL, buyer TEXT NOT NULL,
             terms TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft_pending_owner_approval',
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
             FOREIGN KEY(asset_id) REFERENCES code_assets(id)
@@ -349,6 +355,16 @@ def initialize_database() -> None:
             review_notes TEXT NOT NULL DEFAULT '',
             review_updated_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS venture_opportunities (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL, thesis TEXT NOT NULL,
+            customer_segment TEXT NOT NULL DEFAULT '', problem TEXT NOT NULL DEFAULT '',
+            revenue_model TEXT NOT NULL DEFAULT 'unknown', market_scope TEXT NOT NULL DEFAULT 'global',
+            status TEXT NOT NULL DEFAULT 'idea', assessment_json TEXT NOT NULL DEFAULT '{}',
+            evidence_json TEXT NOT NULL DEFAULT '[]', research_task_id TEXT,
+            business_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_venture_opportunities_status
+            ON venture_opportunities(status, updated_at);
         """)
         # Backward-compatible migration for databases created before agent-run
         # task linkage. CREATE TABLE IF NOT EXISTS does not alter an existing
@@ -381,17 +397,22 @@ def initialize_database() -> None:
         if "review_updated_at" not in columns:
             connection.execute("ALTER TABLE discovery_candidates ADD COLUMN review_updated_at TEXT")
         # Add explicit business ownership to operational records. Legacy rows remain in core.
-        for table_name in ("approvals", "business_records", "investor_contacts", "research_sources"):
+        for table_name in ("approvals", "business_records", "investor_contacts", "research_sources", "code_assets", "license_offers"):
             scoped_columns = {row["name"] for row in connection.execute("PRAGMA table_info(" + table_name + ")")}
             if "business_id" not in scoped_columns:
                 connection.execute("ALTER TABLE " + table_name + " ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_business_records_scope ON business_records(business_id, record_type, created_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_investor_contacts_scope ON investor_contacts(business_id, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_code_assets_scope ON code_assets(business_id, created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_license_offers_scope ON license_offers(business_id, created_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_research_sources_scope ON research_sources(business_id, captured_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_approvals_scope ON approvals(business_id, status, created_at)")
         business_columns = {row["name"] for row in connection.execute("PRAGMA table_info(business_records)")}
         if "approval_id" not in business_columns:
             connection.execute("ALTER TABLE business_records ADD COLUMN approval_id TEXT")
+        if "paid_at" not in business_columns:
+            connection.execute("ALTER TABLE business_records ADD COLUMN paid_at TEXT")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_business_records_paid_scope ON business_records(business_id, record_type, status, paid_at)")
         # Existing tasks and memories remain in core; never copy legacy knowledge into business brains.
         for table_name in ("tasks", "brain_experiences", "brain_memories"):
             table_columns = {row["name"] for row in connection.execute("PRAGMA table_info(" + table_name + ")")}

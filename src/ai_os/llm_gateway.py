@@ -74,12 +74,17 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         base, model, secret = saved["base_url"], saved["model"], saved["secret"]
         free = saved["free_confirmed"]
     configured = bool(base and model and secret)
-    # Only an explicit OpenRouter :free route is admitted to unattended AIOS
-    # company inference. A dashboard checkbox cannot verify arbitrary provider pricing.
+    # OpenRouter requires an exact :free model ID. UnoRouter may be saved in
+    # discovery-only mode; the authenticated catalogue selector then chooses an
+    # account-callable :free chat model before any prompt is sent.
     verified_free_model = (
-        provider.key == "openrouter"
-        and base == "https://openrouter.ai/api/v1"
-        and model.endswith(":free")
+        (provider.key == "openrouter"
+         and base == "https://openrouter.ai/api/v1"
+         and model.endswith(":free"))
+        or
+        (provider.key == "unorouter"
+         and base == "https://api.unorouter.com/v1"
+         and (model.endswith(":free") or model == "__catalog_only__"))
     )
     eligible = configured and free and verified_free_model and not provider.experimental_only
     return {
@@ -91,7 +96,9 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
-            "Only an explicitly free OpenRouter model ID ending in :free is enabled for company inference. Other providers remain disabled until zero-cost routing can be independently verified."
+            ("UnoRouter requires owner-confirmed free-only mode and an account-accessible :free chat model; discovery-only keys are allowed."
+             if provider.key == "unorouter" else
+             "Only an explicitly free OpenRouter model ID ending in :free is enabled for company inference. Other providers remain disabled until zero-cost routing can be independently verified.")
         ),
     }
 
@@ -282,11 +289,12 @@ def _supports_chat_completions(model: dict[str, Any]) -> bool:
     )
 
 
-def select_unorouter_model(prompt: str) -> dict[str, Any]:
+def select_unorouter_model(prompt: str, exclude_model_ids: set[str] | None = None) -> dict[str, Any]:
     """Select an account-callable, explicitly :free chat model; discovery sends no prompt."""
     saved = get_provider_credential("unorouter")
     if not saved or not saved.get("free_confirmed"):
         raise PermissionError("UnoRouter free-only credentials are not owner-confirmed.")
+    excluded = exclude_model_ids or set()
     catalog = _cached_unorouter_catalog()
     models = [
         model for model in catalog.get("models", [])
@@ -294,6 +302,7 @@ def select_unorouter_model(prompt: str) -> dict[str, Any]:
         and model.get("callable") is True
         and model.get("free") is True
         and str(model.get("id", "")).endswith(":free")
+        and str(model.get("id", "")) not in excluded
         and model.get("online") is not False
         and _supports_chat_completions(model)
     ]
@@ -377,11 +386,35 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
                 "HTTP-Referer": os.getenv("AI_OS_OPENROUTER_REFERER", "https://github.com/hamza00alik-source/ai-operating-system"),
                 "X-Title": "AI Operating System",
             })
-        data = _post(url, {
+        payload = {
             "model": model, "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2, "max_tokens": 1200
-        }, headers, timeout=45)
+        }
+        if provider.key == "unorouter":
+            # Some free models require a one-time upstream provider consent. A
+            # consent_required 403 means no usable completion was returned; try
+            # another account-callable :free chat model, never a paid model.
+            consent_skipped: list[str] = []
+            for _ in range(5):
+                payload["model"] = model
+                try:
+                    data = _post(url, payload, headers, timeout=45)
+                    break
+                except ProviderHTTPError as exc:
+                    if exc.status_code != 403 or "consent_required" not in str(exc).casefold():
+                        raise
+                    consent_skipped.append(model)
+                    model_selection = select_unorouter_model(prompt, set(consent_skipped))
+                    model = model_selection["model_id"]
+            else:
+                raise RuntimeError("UnoRouter free-model consent retry limit reached; no paid model was attempted.")
+            if model_selection is not None:
+                model_selection["consent_skipped_model_ids"] = consent_skipped
+        else:
+            data = _post(url, payload, headers, timeout=45)
         if provider.key == "openrouter":
+            _assert_zero_cost_model_response(data, model)
+        elif provider.key == "unorouter":
             _assert_zero_cost_model_response(data, model)
         choices = data.get("choices") or []
         answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""

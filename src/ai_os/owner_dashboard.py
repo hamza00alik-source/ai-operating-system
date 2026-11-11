@@ -165,6 +165,18 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 .stage-empty{grid-column:1/-1;padding:18px;border:1px dashed rgba(108,233,255,.2);border-radius:12px;color:#9eb2d1;font-size:12px}
 @media(max-width:900px){.employee-stage{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.command-stage{padding:15px}.employee-stage{grid-template-columns:1fr}.employee-card{min-height:112px}.stage-title{font-size:18px}}
 
+.scenario-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}
+.scenario-card{min-width:0;border:1px solid rgba(108,233,255,.2);border-radius:12px;padding:13px;background:rgba(5,14,29,.48)}
+.scenario-card legend{font-weight:800;color:#a9c4ff;padding:0 6px;text-transform:capitalize}
+.scenario-card label{display:block;margin:9px 0;color:var(--muted);font-size:12px}
+.scenario-card input{display:block;width:100%;min-width:0;margin-top:4px}
+.scenario-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.scenario-result{border:1px solid rgba(108,233,255,.18);border-radius:12px;padding:13px;background:rgba(8,20,36,.7);min-width:0}
+.scenario-result h4{margin:0 0 8px;text-transform:capitalize}
+.scenario-result p{margin:5px 0;font-size:12px;color:#b7c8e2;overflow-wrap:anywhere}
+.scenario-result strong{color:#eff7ff}
+@media(max-width:850px){.scenario-grid,.scenario-results{grid-template-columns:1fr}.scenario-card{padding:12px}}
+
 </style><style>
 .office-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}
 .office-viewport{height:480px;position:relative;overflow:hidden;border:1px solid rgba(108,233,255,.28);border-radius:16px;background:radial-gradient(ellipse at 50% 10%,#1b3154,#080e1b 70%);isolation:isolate}
@@ -266,7 +278,7 @@ th{background:#101b2c}
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Your AI company, workforce, research pipeline and approvals — in one supervised workspace.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><span id="apiHealth" class="tag">Checking API…</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a><a href="#business" data-view="business">Business</a><a href="#code-assets" data-view="code-assets">Code Assets</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a><a href="#business" data-view="business">Business</a><a href="#ventures" data-view="ventures">Venture Discovery</a><a href="#code-assets" data-view="code-assets">Code Assets</a></nav>
 <section class="command-stage" aria-label="AI employee command stage">
  <div class="stage-head"><div><div class="eyebrow">Neural command deck / workforce visualization</div><div class="stage-title">Meet the AI workforce</div><div class="stage-note">Stylized role representations generated from the live workforce catalogue — not fabricated active-worker status.</div></div><span id="stageRuntime" class="stage-indicator">Runtime status loading</span></div>
  <div id="employeeStage" class="employee-stage"><div class="stage-empty">Loading real specialist roles from the AIOS workforce catalogue…</div></div>
@@ -392,10 +404,56 @@ th{background:#101b2c}
 <pre id="modelOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1425;border:1px solid var(--line);border-radius:9px;padding:12px;min-height:60px">No live inference run yet.</pre>
 </section>
 
+<section id="ventures" class="panel section" data-view-panel="ventures">
+<h2>Venture Discovery & Growth</h2>
+<p class="small">Company-wide opportunity pipeline for any legitimate revenue model. Research customer demand, competition, costs, margins, distribution and risks before deciding what deserves investment. Research does not spend money or contact customers.</p>
+<div class="grid discovery-metrics"><div class="metric"><strong id="ventureTotal">—</strong><span>Opportunities</span></div><div class="metric"><strong id="ventureResearch">—</strong><span>Research queued</span></div><div class="metric"><strong id="ventureShortlist">—</strong><span>Shortlisted</span></div><div class="metric"><strong id="ventureLaunched">—</strong><span>Separate ventures</span></div></div>
+<div class="panel section"><h3>Add opportunity hypothesis</h3><form id="ventureForm">
+<input name="title" required minlength="3" maxlength="160" placeholder="Opportunity name" style="width:100%;margin:6px 0">
+<textarea name="thesis" required minlength="20" maxlength="6000" placeholder="What is the opportunity and why might customers pay?" style="width:100%;min-height:90px;margin:6px 0"></textarea>
+<div class="toolbar"><input name="customer_segment" maxlength="500" placeholder="Target customer" style="flex:1;min-width:180px"><input name="problem" maxlength="1000" placeholder="Customer problem" style="flex:1;min-width:180px"><input name="revenue_model" maxlength="100" placeholder="Revenue model" value="unknown" style="flex:1;min-width:150px"><input name="market_scope" maxlength="120" placeholder="Market / geography" value="global" style="flex:1;min-width:150px"><button type="submit">Add opportunity</button></div>
+</form><div id="ventureMessage" class="status" aria-live="polite">No opportunity created yet.</div></div>
+<h3>Opportunity portfolio</h3><div class="scroll"><table><thead><tr><th>Opportunity</th><th>Customer / model</th><th>Status</th><th>Provisional score</th><th>Evidence</th><th>Actions</th></tr></thead><tbody id="ventureRows"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
+<div class="panel section"><h3>Latest research report</h3><p class="small">The report is retrieved from the linked agent run. Extracted HTTPS links are candidates only; they are not verified sources and do not automatically become an approved scorecard.</p><div id="ventureReportMeta" class="small">Select “View report” on an opportunity.</div><div id="ventureReportSources" class="small"></div><button type="button" class="secondary" id="prefillVentureAssessment">Prefill assessment from report</button><div class="small">This copies report text and URL candidates into the form only. It never assigns ratings or saves an assessment; verify every source and set ratings yourself.</div><pre id="ventureReportText" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:520px;overflow:auto;background:var(--surface);padding:12px;border-radius:10px">No report selected.</pre></div>
+<div class="panel section"><h3>Record research assessment</h3><p class="small">Rate each dimension from 0–5 only after reviewing evidence. Launch approval requires all six ratings and at least three HTTPS sources.</p>
+<form id="ventureAssessmentForm"><select id="assessmentOpportunity" name="opportunity_id" required style="width:100%;margin:6px 0"><option value="">Select opportunity</option></select>
+<div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))"><label class="small">Demand (0–5)<input name="demand" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Competition (0–5)<input name="competition" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Economics (0–5)<input name="economics" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Distribution (0–5)<input name="distribution" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Execution (0–5)<input name="execution" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Risk (0–5)<input name="risk" type="number" min="0" max="5" required style="width:100%"></label></div>
+<textarea name="summary" maxlength="4000" placeholder="Findings, pricing, startup costs, unit economics, break-even assumptions, risks and recommended low-cost validation" style="width:100%;min-height:100px;margin:8px 0"></textarea><textarea name="sources" placeholder="HTTPS source URLs, one per line" style="width:100%;min-height:80px;margin:8px 0"></textarea><label class="small" style="display:flex;align-items:flex-start;gap:8px;margin:8px 0"><input name="sources_reviewed" type="checkbox" style="margin-top:3px"> I opened each listed source and confirmed it is relevant and supports the findings. Only checked sources count toward launch evidence.</label><button type="submit">Save assessment</button></form></div>
+<div class="panel section" id="ventureFinancialPanel"><h3>Financial scenario calculator</h3>
+<p class="small">Enter owner-reviewed assumptions for conservative, base and upside cases. All three scenarios use the same currency. This is arithmetic, not a forecast or proof of demand; no spending or external action occurs.</p>
+<form id="ventureFinancialForm">
+<label for="financialOpportunity">Opportunity</label><select id="financialOpportunity" name="opportunity_id" required style="width:100%;margin:6px 0"><option value="">Select opportunity</option></select>
+<label for="financialCurrency">Currency label (display only)</label><input id="financialCurrency" name="financialCurrency" maxlength="12" required placeholder="e.g. USD, PKR, EUR" style="width:100%;margin:6px 0">
+<div class="scenario-grid"><fieldset class="scenario-card"><legend>Conservative case</legend>
+<label>Sales per month<input name="conservative_monthly_sales" type="number" min="0" step="1" required value="10"></label>
+<label>Average price per sale<input name="conservative_average_price" type="number" min="0" step="0.01" required></label>
+<label>Variable cost per sale<input name="conservative_variable_cost_per_sale" type="number" min="0" step="0.01" required></label>
+<label>Monthly fixed costs<input name="conservative_monthly_fixed_cost" type="number" min="0" step="0.01" required></label>
+<label>Monthly marketing costs<input name="conservative_monthly_marketing_cost" type="number" min="0" step="0.01" required value="0"></label>
+<label>One-time startup costs<input name="conservative_startup_cost" type="number" min="0" step="0.01" required value="0"></label>
+</fieldset>
+<fieldset class="scenario-card"><legend>Base case</legend>
+<label>Sales per month<input name="base_monthly_sales" type="number" min="0" step="1" required value="30"></label>
+<label>Average price per sale<input name="base_average_price" type="number" min="0" step="0.01" required></label>
+<label>Variable cost per sale<input name="base_variable_cost_per_sale" type="number" min="0" step="0.01" required></label>
+<label>Monthly fixed costs<input name="base_monthly_fixed_cost" type="number" min="0" step="0.01" required></label>
+<label>Monthly marketing costs<input name="base_monthly_marketing_cost" type="number" min="0" step="0.01" required value="0"></label>
+<label>One-time startup costs<input name="base_startup_cost" type="number" min="0" step="0.01" required value="0"></label>
+</fieldset>
+<fieldset class="scenario-card"><legend>Upside case</legend>
+<label>Sales per month<input name="upside_monthly_sales" type="number" min="0" step="1" required value="60"></label>
+<label>Average price per sale<input name="upside_average_price" type="number" min="0" step="0.01" required></label>
+<label>Variable cost per sale<input name="upside_variable_cost_per_sale" type="number" min="0" step="0.01" required></label>
+<label>Monthly fixed costs<input name="upside_monthly_fixed_cost" type="number" min="0" step="0.01" required></label>
+<label>Monthly marketing costs<input name="upside_monthly_marketing_cost" type="number" min="0" step="0.01" required value="0"></label>
+<label>One-time startup costs<input name="upside_startup_cost" type="number" min="0" step="0.01" required value="0"></label>
+</fieldset></div><button type="submit" id="runFinancialModel">Calculate scenarios</button>
+</form><div id="ventureFinancialMessage" class="status" aria-live="polite">No calculation run yet.</div><div id="ventureFinancialResults" class="scenario-results" aria-live="polite"></div></div>
+</section>
 <section id="business" class="panel section" data-view-panel="business">
 <h2>Business operations · financial ledger & customers</h2>
-<p class="small">Select one independent business environment before viewing or recording customers, revenue and expenses. Only owner-confirmed payments count as revenue; no payment is initiated here.</p><div class="toolbar section"><label for="businessScope">Business records scope</label><select id="businessScope"><option value="core">AIOS Core / internal</option><option value="physical-agency">Physical Products Agency</option><option value="physical-brand">Own Physical Products Brand</option><option value="digital-products">Digital Products</option></select><span class="small">Records and reports below are isolated to this selection.</span></div>
-<div id="businessSummary" class="grid"><div class="metric"><strong>—</strong><span>Customers</span></div><div class="metric"><strong>—</strong><span>Verified revenue records</span></div><div class="metric"><strong>—</strong><span>Expenses awaiting approval</span></div></div>
+<p class="small">Select one independent business environment before viewing or recording customers, revenue and expenses. Only owner-confirmed payments count as revenue; no payment is initiated here.</p><div class="toolbar section"><label for="businessScope">Business records scope</label><select id="businessScope"><option value="core">AIOS Core / internal</option><option value="physical-agency">Physical Products Agency</option><option value="physical-brand">Own Physical Products Brand</option><option value="digital-products">Digital Products</option></select><span class="small">Records and reports below are isolated to this selection.</span></div><div class="panel section"><h3>Expand OpenCompany - register a new venture</h3><p class="small">Add a business unit for any legitimate revenue model. Customers, finances, credentials, research and memory are scoped separately. Registration does not spend money or publish anything.</p><form id="businessUnitForm" class="toolbar"><input name="name" required minlength="2" maxlength="120" placeholder="Business / venture name"><input name="business_type" required minlength="2" maxlength="64" placeholder="Type slug (e.g. services, saas, content)" value="general"><input name="description" maxlength="3000" placeholder="What it sells and how it operates" style="flex:1;min-width:220px"><button type="submit">Register business unit</button></form><div id="businessUnitMessage" class="small" aria-live="polite"></div></div>
+<div id="businessSummary" class="grid"><div class="metric"><strong>—</strong><span>Customers</span></div><div class="metric"><strong>—</strong><span>Verified revenue records</span></div><div class="metric"><strong>—</strong><span>Expenses awaiting approval</span></div></div><p class="small">Net cash movement is calculated separately per currency from verified receipts minus expenses you confirm have already been paid. It is not accounting profit; approved expenses awaiting manual payment are excluded. AIOS never sends payments.</p>
 <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
 <div class="panel"><h3>Add customer</h3><form id="customerForm"><input name="title" required maxlength="160" placeholder="Customer / company name" style="width:100%;margin:6px 0"><input name="contact" maxlength="200" placeholder="Email or contact (optional)" style="width:100%;margin:6px 0"><textarea name="notes" maxlength="2000" placeholder="Notes" style="width:100%;margin:6px 0"></textarea><button type="submit">Save customer</button></form></div><div class="panel"><h3>Add investor / partner</h3><form id="investorForm"><input name="name" required maxlength="180" placeholder="Investor / partner name" style="width:100%;margin:6px 0"><input name="organization" maxlength="180" placeholder="Organization" style="width:100%;margin:6px 0"><input name="contact" maxlength="200" placeholder="Contact details" style="width:100%;margin:6px 0"><select name="stage" style="width:100%;margin:6px 0"><option value="prospect">Prospect</option><option value="contacted">Contacted</option><option value="interested">Interested</option><option value="due_diligence">Due diligence</option><option value="committed">Committed (record only)</option><option value="declined">Declined</option></select><textarea name="notes" maxlength="2000" placeholder="Notes / discussion history" style="width:100%;margin:6px 0"></textarea><button type="submit">Save investor</button></form></div>
 <div class="panel"><h3>Record verified revenue</h3><form id="revenueForm"><input name="title" required maxlength="160" placeholder="Sale / order reference" style="width:100%;margin:6px 0"><input name="amount" required type="number" min="0" step="0.01" placeholder="Amount" style="width:100%;margin:6px 0"><select name="currency" style="width:100%;margin:6px 0"><option>USD</option><option>PKR</option><option>EUR</option><option>GBP</option></select><label><input name="verified_payment" type="checkbox"> Payment actually received and verified</label><textarea name="notes" maxlength="2000" placeholder="Payment reference / notes" style="width:100%;margin:6px 0"></textarea><button type="submit">Record revenue</button></form></div>
@@ -438,7 +496,7 @@ th{background:#101b2c}
 
 </div>
 <h3>Customers</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Contact</th><th>Notes</th><th>Created</th></tr></thead><tbody id="customerRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></div><h3>Investors & partners</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Organization</th><th>Contact</th><th>Stage</th><th>Notes</th></tr></thead><tbody id="investorRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
-<h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+<h3>Financial ledger</h3><div class="scroll"><table><thead><tr><th>Type</th><th>Description</th><th>Amount</th><th>Status</th><th>Created</th><th>Owner action</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
 </section>
 <section id="code-assets" class="panel section" data-view-panel="code-assets">
 <h2>Code Asset Management & Licensing</h2>
@@ -485,6 +543,41 @@ async function api(path,options={}){
  if(!response.ok){const detail=payload?.detail||payload?.error||raw.slice(0,300)||"No error details returned.";setApiHealth("API error · "+response.status,"degraded");throw Error("API "+response.status+": "+detail);}
  if(!raw)return {};
  try{return JSON.parse(raw)}catch(_){throw Error("The AIOS API returned an invalid JSON response for "+path+".");}
+}
+async function loadVentureOpportunities(){
+ try{
+  const items=await api("/venture-opportunities");
+  $("ventureTotal").textContent=items.length;
+  $("ventureResearch").textContent=items.filter(x=>x.status==="research_queued").length;
+  $("ventureShortlist").textContent=items.filter(x=>x.status==="shortlisted").length;
+  $("ventureLaunched").textContent=items.filter(x=>x.status==="launched").length;
+  $("assessmentOpportunity").innerHTML='<option value="">Select opportunity</option>'+items.filter(x=>x.status!=="launched"&&x.status!=="rejected").map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("");
+  $("financialOpportunity").innerHTML='<option value="">Select opportunity</option>'+items.filter(x=>x.status!=="launched"&&x.status!=="rejected").map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("");
+  $("ventureRows").innerHTML=items.length?items.map(x=>{
+   const score=x.assessment?.scorecard||{};
+   const scoreText=score.score==null?"Not scored":score.score+"/100 · provisional";
+   const evidence=(x.evidence||[]).length;
+   return '<tr><td><strong>'+esc(x.title)+'</strong><div class="small">'+esc(x.thesis)+'</div></td><td>'+esc(x.customer_segment||"Unknown")+'<div class="small">'+esc(x.revenue_model)+' · '+esc(x.market_scope)+'</div></td><td>'+esc(x.status)+'</td><td>'+esc(scoreText)+'</td><td>'+evidence+' sources</td><td><button class="secondary" data-v-action="report" data-v-id="'+esc(x.id)+'">View report</button> <button class="secondary" data-v-action="research" data-v-id="'+esc(x.id)+'" '+(["research_queued","launch_approved","launched","rejected"].includes(x.status)?"disabled":"")+'>Research</button> <button class="secondary" data-v-action="shortlisted" data-v-id="'+esc(x.id)+'">Shortlist</button> <button class="secondary" data-v-action="launch_approved" data-v-id="'+esc(x.id)+'">Approve launch</button> <button class="secondary" data-v-action="launch" data-v-id="'+esc(x.id)+'" '+(x.status!=="launch_approved"?"disabled":"")+'>Create business</button> <button class="secondary" data-v-action="rejected" data-v-id="'+esc(x.id)+'">Reject</button></td></tr>';
+  }).join(""):'<tr><td colspan="6">No opportunities yet. Add a hypothesis above.</td></tr>';
+ }catch(e){$("ventureMessage").textContent="Portfolio load failed: "+e.message}
+}
+async function loadVentureReport(id){
+ selectedVentureReportId=id;
+ const prefill=$("prefillVentureAssessment");if(prefill)prefill.disabled=false;
+ const meta=$("ventureReportMeta"),text=$("ventureReportText"),sources=$("ventureReportSources");
+ meta.textContent="Loading linked agent research report…";text.textContent="";sources.textContent="";
+ try{
+  const report=await api("/venture-opportunities/"+encodeURIComponent(id)+"/research-report");
+  meta.textContent=(report.opportunity_title||"Opportunity")+" · task: "+(report.task_status||"not queued")+" · agent run: "+(report.run?.status||"not started");
+  text.textContent=report.report_text||report.message||"The linked run has not produced a report yet.";
+  const urls=report.source_url_candidates||[];
+  sources.innerHTML=urls.length?"Extracted URL candidates (review each before using): "+urls.map(url=>'<a target="_blank" rel="noopener noreferrer" href="'+esc(url)+'">'+esc(url)+'</a>').join(" · "):"No HTTPS source URLs were extracted.";
+ }catch(e){meta.textContent="Report unavailable: "+e.message;text.textContent=""}
+}
+async function loadBusinessUnits(){
+ const result=await api("/business-units");const units=result.business_units||[];
+ ["taskBusiness","researchBusiness","brainBusiness","businessScope"].forEach(id=>{const select=$(id);if(!select)return;const current=select.value||"core";const options=units.map(b=>"<option value=\'"+esc(b.id)+"\'>"+esc(b.name)+(b.built_in?"":" - venture")+"</option>").join("");select.innerHTML=options;select.value=units.some(b=>b.id===current)?current:"core";});
+ return units;
 }
 function date(s){return s?new Date(s).toLocaleString():"—"}
 function failureAdvice(message){
@@ -616,7 +709,7 @@ window.startWorkflow=async(templateId)=>{
 };
 window.showWorkflow=async(workflowId)=>{
  try{
-  const w=await api("/company/workflows/"+encodeURIComponent(workflowId));
+  const w=await api("/company/workflows/"+encodeURIComponent(workflowId)+"?business_id="+encodeURIComponent($("taskBusiness").value));
   $("workflowInstances").innerHTML='<h3>'+esc(w.name)+' <span class="pill">'+esc(w.status)+'</span></h3><div class="scroll"><table><thead><tr><th>Step</th><th>Department</th><th>Status</th><th>Action</th></tr></thead><tbody>'+w.steps.map(s=>'<tr><td>'+esc(s.sequence_no)+'. '+esc(s.title)+'</td><td>'+esc(s.department)+'</td><td><span class="pill '+(s.status==="completed"?"good":s.status==="failed"?"bad":s.status==="queued"?"warn":"")+'">'+esc(s.status)+'</span></td><td>'+(s.status==="queued"?'<button data-id="'+esc(s.task_id)+'" onclick="runTask(this.dataset.id)">Run this department</button>':s.status==="blocked"?"Waiting for previous step":"—")+'</td></tr>').join("")+'</tbody></table></div><p class="small">Workflow ID: '+esc(w.id)+'</p>';
  }catch(e){$("workflowStatus").textContent=e.message}
 };
@@ -653,10 +746,10 @@ async function loadOperations(){
   renderExecutiveOverview(overview,tasks,approvals,runs);
  }catch(e){$("taskApprovalPanel").textContent=e.message}
 }
-window.runTask=async(taskId)=>{try{$("agentRunOutput").textContent="Queuing specialist and CEO review…";const run=await api("/tasks/"+encodeURIComponent(taskId)+"/execute",{method:"POST"});$("agentRunOutput").textContent="AI team run "+run.id+" · "+run.status+". Waiting for specialist and CEO review…";await loadOperations();pollAgentRun(run.id,$("taskBusiness").value)}catch(e){$("agentRunOutput").textContent=e.message}};
+window.runTask=async(taskId)=>{try{$("agentRunOutput").textContent="Queuing specialist and CEO review…";const run=await api("/tasks/"+encodeURIComponent(taskId)+"/execute?business_id="+encodeURIComponent($("taskBusiness").value),{method:"POST"});$("agentRunOutput").textContent="AI team run "+run.id+" · "+run.status+". Waiting for specialist and CEO review…";await loadOperations();pollAgentRun(run.id,$("taskBusiness").value)}catch(e){$("agentRunOutput").textContent=e.message}};
 async function pollAgentRun(runId,businessId){const scope="?business_id="+encodeURIComponent(businessId);try{const r=await api("/agent-runs/"+encodeURIComponent(runId)+scope);const events=await api("/agent-runs/"+encodeURIComponent(runId)+"/events"+scope);const steps=await api("/agent-runs/"+encodeURIComponent(runId)+"/steps"+scope);const timeline=events.map(x=>"• "+x.stage+": "+x.message).join("\n");const contributions=steps.map(s=>'<section class="card" style="margin:10px 0"><h4>'+esc(String(s.sequence_no)+". "+s.role+" · "+s.agent_name)+'</h4><p class="small">Status: '+esc(s.status)+' · '+esc(s.agent_id)+'</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(s.output||s.error||"Working…")+'</pre></section>').join("");if(r.status==="completed"){$("agentRunOutput").innerHTML='<h3>Collaborative run completed</h3><p class="small">Three live model calls · lead specialist + independent collaborator + CEO integration</p><h4>Execution timeline</h4><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(timeline)+'</pre><h4>Agent contributions</h4>'+contributions+'<h4>Final CEO-reviewed deliverable</h4><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(r.ceo_review)+'</pre><p class="small">Usage: '+esc(JSON.stringify(r.usage||{}))+'</p>';await loadOperations();return}if(r.status==="partial"||r.status==="failed"){$("agentRunOutput").innerHTML='<h3 class="'+(r.status==="partial"?"":"bad")+'">'+(r.status==="partial"?"Partial result preserved":"Agent run failed safely")+'</h3>'+(r.specialist_output?'<h4>Saved lead specialist deliverable</h4><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(r.specialist_output)+'</pre>':'')+'<p>'+esc(r.error||"Unknown error")+'</p><p class="small">'+esc(failureAdvice(r.error))+'</p><button class="secondary" id="retryAgentRun">Retry incomplete stage(s)</button><p class="small">Completed stages are reused; only failed or incomplete stages will make new model requests. Free-confirmed providers only; no paid fallback.</p><h4>Execution timeline</h4><pre style="white-space:pre-wrap">'+esc(timeline)+'</pre>'+contributions;const retryButton=$("retryAgentRun");if(retryButton)retryButton.onclick=async()=>{retryButton.disabled=true;retryButton.textContent="Queueing retry…";try{const queued=await api("/agent-runs/"+encodeURIComponent(runId)+"/retry?business_id="+encodeURIComponent(businessId),{method:"POST"});$("agentRunOutput").textContent="Retry queued · "+queued.id;await loadOperations();pollAgentRun(runId,businessId)}catch(e){retryButton.disabled=false;retryButton.textContent="Retry incomplete stage(s)";say(e.message)}};await loadOperations();return}$("agentRunOutput").innerHTML='<h3>Collaborative team run '+esc(r.status)+'…</h3><p class="small">Lead specialist → independent collaborator → CEO integration</p><pre style="white-space:pre-wrap">'+esc(timeline)+'</pre>'+contributions;setTimeout(()=>pollAgentRun(runId,businessId),3000)}catch(e){$("agentRunOutput").textContent=e.message}}
 
-window.decideApproval=async(id,decision)=>{if(!confirm("Confirm "+decision+" this requested action? The CEO/agent must still execute it through the approved runtime."))return;try{await api("/approvals/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision})});await loadOperations()}catch(e){say(e.message)}};
+window.decideApproval=async(id,decision)=>{if(!confirm("Confirm "+decision+" this requested action? The CEO/agent must still execute it through the approved runtime."))return;try{await api("/approvals/"+encodeURIComponent(id)+"/decision?business_id="+encodeURIComponent($("taskBusiness").value),{method:"POST",body:JSON.stringify({decision})});await loadOperations()}catch(e){say(e.message)}};
 $("taskForm").addEventListener("submit",async e=>{e.preventDefault();const title=$("taskTitle").value.trim();if(!title)return;try{await api("/tasks",{method:"POST",body:JSON.stringify({title,department:$("taskDepartment").value,business_id:$("taskBusiness").value})});$("taskTitle").value="";await loadOperations()}catch(e){say(e.message)}});
 $("overviewRefresh").addEventListener("click",loadOperations);
 document.querySelectorAll("[data-overview-view]").forEach(button=>button.addEventListener("click",()=>activateView(button.dataset.overviewView)));
@@ -725,7 +818,7 @@ $("logoutButton").onclick=async()=>{try{await fetch("/auth/session",{method:"DEL
 fetch("/auth/session",{credentials:"same-origin"}).then(r=>r.json()).then(s=>{if(s.authenticated)startDashboard();else showLogin()}).catch(()=>showLogin("Sign in to continue."));
 </script><script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-(()=>{
+(async()=>{
 const canvas=document.getElementById("officeCanvas"),fallback=document.getElementById("officeFallback");
 if(!canvas)return;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x070e1b);scene.fog=new THREE.Fog(0x070e1b,28,58);
@@ -874,7 +967,7 @@ fallback.style.display="none";
 })().catch(e=>{const f=document.getElementById("officeFallback");if(f)f.textContent="3D office could not start: "+e.message;});
 </script>
 <script>
-(function(){
+(async function(){
  const formData=form=>Object.fromEntries(new FormData(form).entries());
  const send=async(path,body)=>api(path,{method:"POST",body:JSON.stringify(body)});
  const money=(amount,currency)=>amount==null?"—":Number(amount).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
@@ -952,13 +1045,23 @@ fallback.style.display="none";
    const businessId=$("businessScope").value;const scope="?business_id="+encodeURIComponent(businessId);const [summary,customers,investors,expenses,revenue]=await Promise.all([api("/business/summary"+scope),api("/business/customers"+scope),api("/business/investors"+scope),api("/business/expenses"+scope),api("/business/revenue"+scope)]);
    const verified=revenue.filter(x=>x.verified);
    const mtd=(summary.verified_revenue_mtd_by_currency||[]).map(x=>money(x.total,x.currency)).join(" / ")||"0.00";
-   $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+esc(mtd)+'</strong><span>Verified revenue · MTD</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div>';
+   const paidMtd=(summary.owner_confirmed_paid_expenses_mtd_by_currency||[]).map(x=>money(x.total,x.currency)).join(" / ")||"0.00";
+   const netMtd=(summary.verified_net_cash_movement_mtd_by_currency||[]).map(x=>money(x.net_cash_movement,x.currency)).join(" / ")||"0.00";
+   $("businessSummary").innerHTML='<div class="metric"><strong>'+summary.customers+'</strong><span>Customers</span></div><div class="metric"><strong>'+esc(mtd)+'</strong><span>Verified receipts · MTD</span></div><div class="metric"><strong>'+esc(paidMtd)+'</strong><span>Owner-confirmed paid expenses · MTD</span></div><div class="metric"><strong>'+esc(netMtd)+'</strong><span>Net cash movement · MTD (not profit)</span></div><div class="metric"><strong>'+summary.expenses_awaiting_owner_approval+'</strong><span>Expenses awaiting approval</span></div><div class="metric"><strong>'+summary.expenses_approved_awaiting_manual_payment+'</strong><span>Approved · awaiting manual payment</span></div>';
    $("customerRows").innerHTML=customers.map(x=>'<tr><td>'+esc(x.title)+'</td><td>'+esc(x.contact||"—")+'</td><td>'+esc(x.notes||"—")+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="4">No customers recorded.</td></tr>';
    $("investorRows").innerHTML=investors.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+esc(x.organization||"—")+'</td><td>'+esc(x.contact||"—")+'</td><td>'+esc(x.stage)+'</td><td>'+esc(x.notes||"—")+'</td></tr>').join("")||'<tr><td colspan="5">No investor records yet.</td></tr>';
    const rows=[...expenses,...revenue].sort((a,b)=>b.created_at.localeCompare(a.created_at));
-   $("ledgerRows").innerHTML=rows.map(x=>'<tr><td>'+esc(x.record_type)+'</td><td>'+esc(x.title)+'</td><td>'+money(x.amount,x.currency)+'</td><td>'+esc(x.status)+'</td><td>'+date(x.created_at)+'</td></tr>').join("")||'<tr><td colspan="5">No ledger entries yet.</td></tr>';
+   $("ledgerRows").innerHTML=rows.map(x=>'<tr><td>'+esc(x.record_type)+'</td><td>'+esc(x.title)+'</td><td>'+money(x.amount,x.currency)+'</td><td>'+esc(x.status)+'</td><td>'+date(x.created_at)+'</td><td>'+(x.record_type==="expense"&&x.status==="approved_for_manual_payment"?'<button class="secondary" data-expense-paid="'+esc(x.id)+'">Confirm already paid</button>':"—")+'</td></tr>').join("")||'<tr><td colspan="6">No ledger entries yet.</td></tr>';
   }catch(e){$("businessMessage").textContent=e.message}
  }
+ $("ledgerRows")?.addEventListener("click",async e=>{
+  const button=e.target.closest("[data-expense-paid]");if(!button)return;
+  const expenseId=button.dataset.expensePaid,businessId=$("businessScope").value;
+  if(!confirm("Confirm that this expense has already been paid? This only updates the ledger; AIOS will not send money."))return;
+  button.disabled=true;
+  try{await api("/business/expenses/"+encodeURIComponent(expenseId)+"/confirm-paid?business_id="+encodeURIComponent(businessId),{method:"POST",body:"{}"});$("businessMessage").textContent="Expense marked paid based on your confirmation. No payment was initiated.";await loadBusiness()}
+  catch(err){$("businessMessage").textContent=err.message;button.disabled=false}
+ });
  $("investorForm").addEventListener("submit",async e=>{e.preventDefault();try{await send("/business/investors",{...formData(e.currentTarget),business_id:$("businessScope").value});e.currentTarget.reset();$("businessMessage").textContent="Investor record saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
  ["customer","revenue","expense"].forEach(kind=>{
   const form=$(kind+"Form");form.addEventListener("submit",async e=>{e.preventDefault();const data={...formData(form),business_id:$("businessScope").value};if(kind==="revenue")data.verified_payment=form.elements.verified_payment.checked;try{await send("/business/"+(kind==="customer"?"customers":(kind==="expense"?"expenses":"revenue")),data);form.reset();$("businessMessage").textContent=kind==="expense"?"Expense recorded for owner approval.":kind==="revenue"?"Revenue record saved; only verified receipts count.":"Customer saved.";await loadBusiness()}catch(err){$("businessMessage").textContent=err.message}});
@@ -975,10 +1078,47 @@ fallback.style.display="none";
  }
  $("assetForm").addEventListener("submit",async e=>{e.preventDefault();const data=formData(e.currentTarget);data.token_estimate=data.token_estimate?Number(data.token_estimate):null;try{await send("/code-assets",data);e.currentTarget.reset();$("assetMessage").textContent="Asset registered. Ownership and dependency checks remain explicit.";await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
  $("licenseForm").addEventListener("submit",async e=>{e.preventDefault();try{const result=await send("/code-assets/license-offers",formData(e.currentTarget));$("assetMessage").textContent="Draft created. Owner approval request "+result.approval_id+" is pending. No code was shared.";e.currentTarget.reset();await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
+ $("businessUnitForm")?.addEventListener("submit",async e=>{e.preventDefault();const form=e.currentTarget;const data=formData(form);try{const created=await api("/business-units",{method:"POST",body:JSON.stringify(data)});$("businessUnitMessage").textContent="Registered "+created.name+" as a separate business unit. No spending or publishing occurred.";form.reset();await loadBusinessUnits();["taskBusiness","researchBusiness","brainBusiness","businessScope"].forEach(id=>{const el=$(id);if(el)el.value=created.id});await Promise.all([loadOperations(),loadBusiness()]);}catch(err){$("businessUnitMessage").textContent=err.message}});
+ $("ventureForm")?.addEventListener("submit",async e=>{e.preventDefault();try{const r=await api("/venture-opportunities",{method:"POST",body:JSON.stringify(formData(e.currentTarget))});$("ventureMessage").textContent="Opportunity added: "+r.title;e.currentTarget.reset();await loadVentureOpportunities()}catch(err){$("ventureMessage").textContent=err.message}});
+$("ventureRows")?.addEventListener("click",async e=>{const button=e.target.closest("[data-v-action]");if(!button)return;const id=button.dataset.vId;const action=button.dataset.vAction;try{button.disabled=true;if(action==="report"){await loadVentureReport(id);button.disabled=false;return}else if(action==="research"){const r=await api("/venture-opportunities/"+encodeURIComponent(id)+"/research",{method:"POST",body:"{}"});$("ventureMessage").textContent="Research task queued: "+r.task.id+". Free-confirmed models only."}else if(action==="launch"){if(!confirm("Create this separate business unit? No spending or external actions will occur.")){button.disabled=false;return}const r=await api("/venture-opportunities/"+encodeURIComponent(id)+"/launch",{method:"POST",body:"{}"});$("ventureMessage").textContent="Created business unit "+r.business_unit.id;await loadBusinessUnits()}else{if(action==="launch_approved"&&!confirm("Approve launch planning? This does not spend money or publish anything.")){button.disabled=false;return}const notes=action==="launch_approved"?"Owner approved launch planning; business registration remains a separate action.":"Owner decision recorded.";await api("/venture-opportunities/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision:action,notes})});$("ventureMessage").textContent="Decision saved: "+action}await loadVentureOpportunities()}catch(err){$("ventureMessage").textContent=err.message;button.disabled=false}});
+let selectedVentureReportId=null;
+$("prefillVentureAssessment")?.addEventListener("click",async()=>{
+ const id=selectedVentureReportId;
+ if(!id){$("ventureMessage").textContent="First select View report for an opportunity.";return}
+ const button=$("prefillVentureAssessment");button.disabled=true;
+ try{
+  const report=await api("/venture-opportunities/"+encodeURIComponent(id)+"/research-report");
+  const form=$("ventureAssessmentForm");
+  form.elements.opportunity_id.value=id;
+  form.elements.summary.value=(report.report_text||report.message||"").slice(0,4000);
+  form.elements.sources.value=(report.source_url_candidates||[]).join("\n");
+  $("ventureMessage").textContent="Draft fields filled from the report. Review the full report, verify each URL and enter all six ratings before saving.";
+  form.scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(err){$("ventureMessage").textContent="Could not prefill assessment: "+err.message}
+ finally{button.disabled=false}
+});
+$("ventureAssessmentForm")?.addEventListener("submit",async e=>{e.preventDefault();const form=e.currentTarget;const ratings={};["demand","competition","economics","distribution","execution","risk"].forEach(k=>ratings[k]=Number(form.elements[k].value));const urls=form.elements.sources.value.split("\n").map(x=>x.trim()).filter(x=>x.startsWith("https://"));const ownerVerified=form.elements.sources_reviewed.checked;const evidence=urls.map(url=>({url,claim:"Source supplied for venture assessment",owner_verified:ownerVerified}));try{await api("/venture-opportunities/"+encodeURIComponent(form.elements.opportunity_id.value)+"/assessment",{method:"POST",body:JSON.stringify({assessment:{ratings,summary:form.elements.summary.value,source_urls:urls},evidence})});$("ventureMessage").textContent=ownerVerified?"Assessment saved. Score is provisional; owner-reviewed sources are counted.":"Assessment saved without verified sources. URL candidates remain unreviewed and cannot satisfy the launch evidence requirement.";form.reset();await loadVentureOpportunities()}catch(err){$("ventureMessage").textContent=err.message}});
+$("ventureFinancialForm")?.addEventListener("submit",async e=>{
+ e.preventDefault();const form=e.currentTarget,button=$("runFinancialModel"),opportunityId=form.elements.opportunity_id.value;
+ const scenarios={};for(const scenario of ["conservative","base","upside"]){scenarios[scenario]={};for(const key of ["monthly_sales","average_price","variable_cost_per_sale","monthly_fixed_cost","monthly_marketing_cost","startup_cost"]){scenarios[scenario][key]=Number(form.elements[scenario+"_"+key].value)}}
+ button.disabled=true;$("ventureFinancialMessage").textContent="Calculating from the supplied assumptions…";$("ventureFinancialResults").innerHTML="";
+ try{
+  const result=await api("/venture-opportunities/"+encodeURIComponent(opportunityId)+"/financial-model",{method:"POST",body:JSON.stringify({scenarios})});
+  const currency=esc((form.elements.financialCurrency.value||"").trim()||"units");
+  const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
+  $("ventureFinancialResults").innerHTML=["conservative","base","upside"].map(name=>{const x=result.scenarios[name];const profit=x.monthly_operating_profit_before_tax;return '<article class="scenario-result"><h4>'+esc(name)+'</h4><p>Monthly revenue: <strong>'+fmt(x.monthly_revenue)+'</strong></p><p>Operating cost: <strong>'+fmt(x.monthly_operating_cost)+'</strong></p><p>Monthly operating profit (before tax): <strong class="'+(profit>=0?"good":"bad")+'">'+fmt(profit)+'</strong></p><p>Break-even volume: <strong>'+x.break_even_sales_per_month+' sales / month</strong></p><p>First-month cash after startup: <strong>'+fmt(x.first_month_net_cash_after_startup)+'</strong></p><p>Profitable at assumed volume: <strong>'+(x.profitable_at_assumed_volume?"Yes":"No")+'</strong></p></article>'}).join("");
+  $("ventureFinancialMessage").textContent=result.warning+" Method: "+result.method;
+ }catch(err){$("ventureFinancialMessage").textContent="Calculation failed: "+err.message}
+ finally{button.disabled=false}
+});
+
+const ventureLink=document.querySelector('nav.main-nav a[data-view="ventures"]');ventureLink?.addEventListener("click",loadVentureOpportunities);
  const businessLink=document.querySelector('nav.main-nav a[data-view="business"]');businessLink?.addEventListener("click",loadBusiness);
  const assetsLink=document.querySelector('nav.main-nav a[data-view="code-assets"]');assetsLink?.addEventListener("click",loadAssets);
+ try{await loadBusinessUnits()}catch(e){setApiHealth("Business registry unavailable","degraded")}
+ if(location.hash==="#ventures")loadVentureOpportunities();
  if(location.hash==="#business"){loadBusiness();loadBusinessIntegrations();}if(location.hash==="#code-assets")loadAssets();
- window.addEventListener("hashchange",()=>{if(location.hash==="#business"){loadBusiness();loadBusinessIntegrations();}if(location.hash==="#code-assets")loadAssets()});
+ window.addEventListener("hashchange",()=>{if(location.hash==="#business"){loadBusiness();loadBusinessIntegrations();}if(location.hash==="#ventures")loadVentureOpportunities();if(location.hash==="#code-assets")loadAssets()});
 })();
 </script>
 </body></html>

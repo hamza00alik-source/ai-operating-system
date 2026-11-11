@@ -24,6 +24,8 @@ from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, 
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, worker_pool, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory, run_learning_cycle
+from ai_os.business_registry import create_business, list_businesses, refresh_business_ids
+from ai_os import venture_pipeline
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.executive_supervisor import executive_status, supervise_once, executive_supervisor_loop
@@ -36,7 +38,7 @@ from pydantic import BaseModel, Field
 
 
 class DepartmentMessageRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     sender_department: str = Field(min_length=1, max_length=64)
     recipient_department: str = Field(min_length=1, max_length=64)
     subject: str = Field(min_length=1, max_length=200)
@@ -45,7 +47,7 @@ class DepartmentMessageRequest(BaseModel):
 
 
 class DepartmentDelegationRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     from_department: str = Field(min_length=1, max_length=64)
     to_department: str = Field(min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=200)
@@ -152,6 +154,7 @@ async def lifespan(_: FastAPI):
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
     initialize_database()
+    refresh_business_ids()
     _discovery_stop.clear()
     _discovery_thread = threading.Thread(
         target=_discovery_worker_loop,
@@ -239,12 +242,35 @@ class ModelRunRequest(BaseModel):
 
 class ResearchSourceRequest(BaseModel):
     url: str = Field(min_length=12, max_length=2048)
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
 
 
 class BrainMemoryReview(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     note: str = Field(default="", max_length=1000)
+
+
+class VentureOpportunityCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=160)
+    thesis: str = Field(min_length=20, max_length=6000)
+    customer_segment: str = Field(default="", max_length=500)
+    problem: str = Field(default="", max_length=1000)
+    revenue_model: str = Field(default="unknown", max_length=100)
+    market_scope: str = Field(default="global", max_length=120)
+
+
+class VentureAssessmentRequest(BaseModel):
+    assessment: dict = Field(default_factory=dict)
+    evidence: list[dict] = Field(default_factory=list, max_length=100)
+
+
+class VentureFinancialModelRequest(BaseModel):
+    scenarios: dict = Field(default_factory=dict)
+
+
+class VentureDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(shortlisted|launch_approved|rejected|paused)$")
+    notes: str = Field(default="", max_length=3000)
 
 
 class CodeEvolutionRequest(BaseModel):
@@ -275,7 +301,7 @@ class BusinessIntegrationRequest(BaseModel):
 
 @app.get("/business-integrations/{business_id}", dependencies=[Depends(require_owner_key)])
 def get_business_integrations(business_id: str):
-    if business_id not in {"physical-agency", "physical-brand", "digital-products"}:
+    if business_id not in BUSINESS_IDS or business_id == "core":
         raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
         return {"business_id": business_id, "integrations": business_integration_statuses(business_id),
@@ -590,15 +616,32 @@ def post_research_source(payload: ResearchSourceRequest):
 @app.get("/business-environments", dependencies=[Depends(require_api_key)])
 def get_business_environments():
     return {
-        "shared_core": "One shared reasoning/model platform and reusable technical capabilities; no shared business memories.",
-        "environments": [
-            {"id": "physical-agency", "name": "Physical Products Agency", "scope": "Third-party physical-product suppliers and clients only."},
-            {"id": "physical-brand", "name": "Own Physical Products Brand", "scope": "Owner's own physical products and brand only."},
-            {"id": "digital-products", "name": "Digital Products", "scope": "Digital products and licensing only."},
-            {"id": "core", "name": "AIOS Core", "scope": "Legacy and internal operating-system tasks; not a business-memory sharing pool."},
-        ],
+        "company_goal": "Discover, validate, launch and grow any legitimate profitable business opportunity.",
+        "shared_core": "One shared reasoning/model platform and reusable technical capabilities; business memories, customers, finances and credentials remain isolated.",
+        "environments": list_businesses(),
         "memory_isolation": "Exact business_id scope; no cross-business memory fallback.",
+        "expansion": "New ventures can be registered as separate business units without changing the core company architecture.",
     }
+
+
+class BusinessUnitCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    business_type: str = Field(default="general", min_length=2, max_length=64)
+    description: str = Field(default="", max_length=3000)
+
+
+@app.get("/business-units", dependencies=[Depends(require_api_key)])
+def get_business_units():
+    return {"business_units": list_businesses()}
+
+
+@app.post("/business-units", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_business_unit(payload: BusinessUnitCreate):
+    try:
+        from ai_os.business_registry import create_business
+        return create_business(payload.name, payload.business_type, payload.description)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/code-evolution/status", dependencies=[Depends(require_owner_key)])
@@ -726,6 +769,8 @@ def post_start_workflow(template_id: str, business_id: str = "core"):
         return create_workflow(template_id, business_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/company/workflows/instances", dependencies=[Depends(require_api_key)])
@@ -736,16 +781,18 @@ def get_workflow_instances(business_id: str = "core"):
 
 
 @app.get("/company/workflows/{workflow_id}", dependencies=[Depends(require_api_key)])
-def get_workflow_detail(workflow_id: str):
-    result = get_workflow(workflow_id)
+def get_workflow_detail(workflow_id: str, business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    result = get_workflow(workflow_id, business_id=business_id)
     if result is None:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+        raise HTTPException(status_code=404, detail="Workflow not found in this business environment.")
     return result
 
 
 
 class BusinessRecordRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=160)
     amount: float | None = Field(default=None, ge=0, le=1000000000)
     currency: str = Field(default="USD", min_length=3, max_length=3)
@@ -755,7 +802,7 @@ class BusinessRecordRequest(BaseModel):
 
 
 class InvestorRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=180)
     organization: str = Field(default="", max_length=180)
     contact: str = Field(default="", max_length=200)
@@ -764,6 +811,7 @@ class InvestorRequest(BaseModel):
 
 
 class CodeAssetRequest(BaseModel):
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=180)
     repository_url: str = Field(default="", max_length=2048)
     path: str = Field(default="", max_length=500)
@@ -777,6 +825,7 @@ class CodeAssetRequest(BaseModel):
 
 
 class LicenseOfferRequest(BaseModel):
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     asset_id: str = Field(min_length=1, max_length=80)
     buyer: str = Field(min_length=1, max_length=180)
     terms: str = Field(min_length=1, max_length=3000)
@@ -819,6 +868,19 @@ def post_business_expense(payload: BusinessRecordRequest):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.post("/business/expenses/{expense_id}/confirm-paid", dependencies=[Depends(require_owner_key)])
+def post_business_expense_confirm_paid(expense_id: str, business_id: str = "core"):
+    """Owner attests an already-paid, previously approved expense; no payment is initiated."""
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    try:
+        return business_ops.confirm_expense_paid(expense_id, business_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.get("/business/revenue", dependencies=[Depends(require_api_key)])
 def get_business_revenue(business_id: str = "core"):
     if business_id not in BUSINESS_IDS:
@@ -850,12 +912,16 @@ def post_business_investor(payload: InvestorRequest):
 
 
 @app.get("/code-assets", dependencies=[Depends(require_api_key)])
-def get_code_assets():
-    return business_ops.list_assets()
+def get_code_assets(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_assets(business_id=business_id)
 
 
 @app.post("/code-assets", status_code=201, dependencies=[Depends(require_owner_key)])
 def post_code_asset(payload: CodeAssetRequest):
+    if payload.business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
         return business_ops.create_asset(payload.model_dump())
     except ValueError as exc:
@@ -863,12 +929,16 @@ def post_code_asset(payload: CodeAssetRequest):
 
 
 @app.get("/code-assets/license-offers", dependencies=[Depends(require_api_key)])
-def get_code_license_offers():
-    return business_ops.list_license_offers()
+def get_code_license_offers(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_license_offers(business_id=business_id)
 
 
 @app.post("/code-assets/license-offers", status_code=201, dependencies=[Depends(require_owner_key)])
 def post_code_license_offer(payload: LicenseOfferRequest):
+    if payload.business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
         return business_ops.create_license_offer(payload.model_dump())
     except LookupError as exc:
@@ -884,7 +954,10 @@ def health() -> dict:
 
 @app.post("/tasks", response_model=TaskOut, status_code=201, dependencies=[Depends(require_api_key)])
 def post_task(payload: TaskCreate):
-    return create_task(payload)
+    try:
+        return create_task(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/tasks", response_model=list[TaskOut], dependencies=[Depends(require_api_key)])
@@ -895,7 +968,8 @@ def get_tasks(business_id: str = "core"):
 
 
 @app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
-def execute_task(task_id: str):
+def execute_task(task_id: str, business_id: str = "core"):
+    _require_task_business_scope(task_id, business_id)
     try:
         if not task_is_runnable(task_id):
             raise ValueError("This workflow step is blocked until the previous department step completes.")
@@ -922,6 +996,19 @@ def get_agent_runs(task_id: str | None = None, business_id: str = "core"):
     if business_id not in BUSINESS_IDS:
         raise HTTPException(status_code=422, detail="Unknown business environment.")
     return list_runs(task_id, business_id)
+
+
+def _require_task_business_scope(task_id: str, business_id: str) -> dict:
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM tasks WHERE id=? AND business_id=?",
+            (task_id, business_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found in this business environment.")
+    return dict(row)
 
 
 def _require_run_business_scope(run_id: str, business_id: str) -> dict:
@@ -1002,15 +1089,154 @@ def get_approvals(business_id: str = "core"):
     response_model=ApprovalOut,
     dependencies=[Depends(require_api_key)],
 )
-def post_approval_decision(approval_id: str, payload: ApprovalDecision):
+def post_approval_decision(approval_id: str, payload: ApprovalDecision, business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    with connect() as db:
+        scoped = db.execute(
+            "SELECT 1 FROM approvals WHERE id=? AND business_id=?",
+            (approval_id, business_id),
+        ).fetchone()
+    if scoped is None:
+        raise HTTPException(status_code=404, detail="Approval request not found in this business environment.")
     try:
-        result = decide_approval(approval_id, payload)
+        result = decide_approval(approval_id, payload, business_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
-    business_ops.apply_expense_approval(approval_id, payload.decision)
+    business_ops.apply_expense_approval(approval_id, payload.decision, business_id)
     return result
+
+
+@app.get("/venture-opportunities", dependencies=[Depends(require_api_key)])
+def get_venture_opportunities(status: str | None = None):
+    if status and status not in venture_pipeline.STATUSES:
+        raise HTTPException(status_code=422, detail="Unknown opportunity status.")
+    return venture_pipeline.list_opportunities(status)
+
+
+@app.get("/venture-opportunities/{opportunity_id}", dependencies=[Depends(require_api_key)])
+def get_venture_opportunity(opportunity_id: str):
+    result = venture_pipeline.get_opportunity(opportunity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    return result
+
+
+@app.post("/venture-opportunities", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_venture_opportunity(payload: VentureOpportunityCreate):
+    try:
+        return venture_pipeline.create_opportunity(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/research", status_code=202, dependencies=[Depends(require_owner_key)])
+def post_venture_research(opportunity_id: str):
+    opportunity = venture_pipeline.get_opportunity(opportunity_id)
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    description = (
+        "COMPANY-WIDE VENTURE OPPORTUNITY RESEARCH. This is portfolio research, not work for an existing business unit. "
+        "Do not assume the opportunity is viable. Research the thesis, target customer, problem severity and willingness to pay; "
+        "market size with sourced methodology; competitors and substitutes; pricing and revenue model; startup and recurring costs; "
+        "unit economics and break-even assumptions; distribution channels and acquisition costs; operational feasibility; "
+        "legal/regulatory/IP risks; and a low-cost validation experiment. Compare at least three credible source URLs where possible. "
+        "Separate dated sourced facts, estimates, hypotheses and unknowns. Never invent figures, sources, customer demand or profit. "
+        "Return the six-dimension 0-5 scorecard (demand, competition, economics, distribution, execution, risk), explain every rating, "
+        "include HTTPS source URLs and dates, give conservative/base/upside economics only when assumptions are explicit, and recommend "
+        "validate, defer or reject. No spending, publishing, customer commitments or account changes.\n\n"
+        f"OPPORTUNITY: {opportunity['title']}\nTHESIS: {opportunity['thesis']}\n"
+        f"CUSTOMER SEGMENT: {opportunity['customer_segment']}\nPROBLEM: {opportunity['problem']}\n"
+        f"REVENUE MODEL: {opportunity['revenue_model']}\nMARKET SCOPE: {opportunity['market_scope']}\n"
+    )
+    previous_status = None
+    try:
+        previous_status = venture_pipeline.reserve_research(opportunity_id)
+        task = create_task(TaskCreate(
+            title="Venture research: " + opportunity["title"][:150],
+            description=description,
+            department="venture-strategy",
+            business_id="core",
+        ))
+        run = create_run(task["id"])
+        result = venture_pipeline.attach_research_task(opportunity_id, task["id"])
+        return {"opportunity": result, "task": task, "agent_run": run,
+                "execution_policy": "Free-confirmed models only; no paid fallback; no external side effects."}
+    except (ValueError, LookupError) as exc:
+        if previous_status is not None:
+            venture_pipeline.cancel_research_reservation(opportunity_id, previous_status)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        if previous_status is not None:
+            venture_pipeline.cancel_research_reservation(opportunity_id, previous_status)
+        raise
+
+
+@app.get("/venture-opportunities/{opportunity_id}/research-report", dependencies=[Depends(require_owner_key)])
+def get_venture_research_report(opportunity_id: str):
+    try:
+        result = venture_pipeline.get_research_report(opportunity_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    return result
+
+
+@app.post("/venture-opportunities/{opportunity_id}/financial-model", dependencies=[Depends(require_owner_key)])
+def post_venture_financial_model(opportunity_id: str, payload: VentureFinancialModelRequest):
+    if venture_pipeline.get_opportunity(opportunity_id) is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    try:
+        return venture_pipeline.build_financial_scenarios(payload.scenarios)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/assessment", dependencies=[Depends(require_owner_key)])
+def post_venture_assessment(opportunity_id: str, payload: VentureAssessmentRequest):
+    try:
+        return venture_pipeline.save_assessment(opportunity_id, payload.assessment, payload.evidence)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/decision", dependencies=[Depends(require_owner_key)])
+def post_venture_decision(opportunity_id: str, payload: VentureDecisionRequest):
+    try:
+        return venture_pipeline.decide_opportunity(opportunity_id, payload.decision, payload.notes)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/launch", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_launch_venture(opportunity_id: str):
+    opportunity = venture_pipeline.get_opportunity(opportunity_id)
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    if opportunity["status"] != "launch_approved":
+        raise HTTPException(status_code=409, detail="Owner launch approval is required before creating a business unit.")
+    revenue_model = opportunity["revenue_model"].lower()
+    business_type = "".join(ch if ch.isalnum() or ch == "-" else "-" for ch in revenue_model).strip("-")[:60].strip("-")
+    if len(business_type) < 3:
+        business_type = "general"
+    try:
+        business = create_business(
+            opportunity["title"],
+            business_type,
+            "Created from owner-approved venture opportunity. " + opportunity["thesis"],
+        )
+        result = venture_pipeline.mark_launched(opportunity_id, business["id"])
+        return {"opportunity": result, "business_unit": business,
+                "side_effects": "A separate business unit was registered. No money was spent, no listings were published, and no external account or customer was contacted."}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/discovery/status", dependencies=[Depends(require_api_key)])

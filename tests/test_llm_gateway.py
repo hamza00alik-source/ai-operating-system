@@ -130,6 +130,30 @@ def test_unorouter_is_eligible_for_prelaunch_aios_when_free_confirmed(monkeypatc
     assert status["model"] == "example-model:free"
     assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
 
+
+def test_unorouter_discovery_only_key_is_eligible_when_free_only_confirmed(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "uno-discovery-key", "model": "__catalog_only__",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
+    } if provider == "unorouter" else None)
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
+    assert status["configured"] is True
+    assert status["free_confirmed"] is True
+    assert status["eligible"] is True
+    assert status["model"] == "__catalog_only__"
+    assert "uno-discovery-key" not in json.dumps(status)
+
+
+def test_unorouter_discovery_only_key_is_blocked_without_free_confirmation(monkeypatch):
+    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
+        "secret": "uno-discovery-key", "model": "__catalog_only__",
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": False
+    } if provider == "unorouter" else None)
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
+    assert status["configured"] is True
+    assert status["eligible"] is False
+
+
 def test_unorouter_catalog_lists_free_and_paid_and_preserves_exact_ids(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
         "secret": "catalog-key", "model": "gpt-oss-120b:free",
@@ -265,6 +289,38 @@ def test_unorouter_task_router_selects_free_chat_model_for_coding(monkeypatch):
     assert selected["model_id"] == "qwen-coder:free"
     assert selected["candidate_count"] == 2
     assert selected["benchmark_status"].startswith("not benchmarked")
+
+
+
+def test_unorouter_skips_consent_required_free_model_and_retries_another_free_model(monkeypatch):
+    provider = next(p for p in llm_gateway.PROVIDERS if p.key == "unorouter")
+    monkeypatch.setattr(llm_gateway, "_resolve", lambda provider_id: (
+        provider, {"base_url": "https://api.unorouter.com/v1",
+                   "_secret": "uno-test-secret", "model": "__catalog_only__"}
+    ))
+    selections = [
+        {"task_category": "reasoning", "model_id": "first-model:free"},
+        {"task_category": "reasoning", "model_id": "second-model:free"},
+    ]
+    excluded = []
+    def select(prompt, exclude_model_ids=None):
+        excluded.append(set(exclude_model_ids or set()))
+        return selections.pop(0)
+    monkeypatch.setattr(llm_gateway, "select_unorouter_model", select)
+    calls = []
+    def fake_post(url, payload, headers, timeout=35):
+        calls.append(payload["model"])
+        if len(calls) == 1:
+            raise llm_gateway.ProviderHTTPError(403, '{"error":{"code":"consent_required"}}')
+        return {"model": payload["model"],
+                "choices": [{"message": {"content": "A valid free-model response with enough detail."}}],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 8}}
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
+    result = llm_gateway.generate("unorouter", "Reason through this problem")
+    assert calls == ["first-model:free", "second-model:free"]
+    assert result["model"] == "second-model:free"
+    assert result["model_selection"]["consent_skipped_model_ids"] == ["first-model:free"]
+    assert excluded == [set(), {"first-model:free"}]
 
 
 def test_unorouter_auto_selection_uses_selected_free_chat_model_without_paid_requests(monkeypatch):

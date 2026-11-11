@@ -56,9 +56,14 @@ def save_provider_credential(provider: str, api_key: str, model: str, free_confi
     if not model or len(model) > 200:
         raise ValueError("Enter a valid model identifier.")
     if provider == "unorouter":
-        if model.endswith(":free") and not free_confirmed:
+        if model == "__catalog_only__":
+            # Save the key for read-only model discovery. Automatic routing still
+            # requires free_confirmed=True and select_unorouter_model() independently
+            # filters the authenticated catalogue to callable :free chat models.
+            pass
+        elif model.endswith(":free") and not free_confirmed:
             raise ValueError("Confirm that this :free model is zero-cost before enabling automatic free-only routing.")
-        if not model.endswith(":free") and free_confirmed:
+        elif not model.endswith(":free") and free_confirmed:
             raise ValueError("A paid UnoRouter model cannot be marked free or enabled for automatic routing.")
     elif not free_confirmed:
         raise ValueError("Confirm that this provider account and model are currently free.")

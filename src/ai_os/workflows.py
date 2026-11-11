@@ -6,6 +6,7 @@ import json
 from ai_os.db import connect, initialize_database
 from ai_os.brain import BUSINESS_IDS
 from ai_os.workflow_dag import COMPANY_CYCLE_DEPENDENCIES
+from ai_os.business_scope import validate_workflow_scope
 
 TEMPLATES = {
     "digital-product-launch": {
@@ -37,7 +38,7 @@ TEMPLATES = {
         "name": "Company-wide cross-department operating cycle",
         "description": "A supervised end-to-end cycle for one objective in exactly one business environment. Business records and customer data must never be mixed.",
         "steps": [
-            ("executive", "Set objective, scope and owner decision gates", "Define the objective, selected business environment, measurable outcome, exclusions, risks and owner approval gates. Keep the physical-products agency, own physical-products brand and digital-products business separate."),
+            ("executive", "Set objective, scope and owner decision gates", "Define the objective, selected business environment, measurable outcome, exclusions, risks and owner approval gates. Keep every registered business unit separate; in particular preserve the physical-agency, own-physical-brand and digital-products boundaries."),
             ("research", "Validate the opportunity with evidence", "Collect dated, attributable evidence about customers, demand, competitors, market conditions and risks. Separate verified facts, estimates and hypotheses; cite primary sources and mark unknowns."),
             ("product", "Specify the offer and acceptance criteria", "Define the proposed offer, target buyer, value proposition, deliverables, exclusions, acceptance criteria and assumptions. Do not promise availability or delivery."),
             ("design", "Prepare creative and production specifications", "Produce a detailed creative brief, visual direction, required assets, file formats and quality criteria. Distinguish a brief from assets actually created."),
@@ -107,8 +108,7 @@ def list_templates() -> dict:
         "execution_policy": "Only the first step is queued. Later steps remain blocked until the preceding step completes. Each step requires an explicit owner-triggered execution."}
 
 def create_workflow(template_id: str, business_id: str = "core") -> dict:
-    if business_id not in BUSINESS_IDS:
-        raise ValueError("Unknown business environment.")
+    validate_workflow_scope(template_id, business_id)
     if template_id not in TEMPLATES:
         raise LookupError("Workflow template not found")
     initialize_workflows()
@@ -141,13 +141,24 @@ def create_workflow(template_id: str, business_id: str = "core") -> dict:
             "status": "active", "steps": created,
             "next_action": "All dependency-free departments are queued; dependent departments start when every prerequisite completes."}
 
-def get_workflow(workflow_id: str) -> dict | None:
+def get_workflow(workflow_id: str, business_id: str | None = None) -> dict | None:
     initialize_workflows()
+    if business_id is not None and business_id not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
     with connect() as db:
-        workflow = db.execute("SELECT * FROM workflow_instances WHERE id=?", (workflow_id,)).fetchone()
+        if business_id is None:
+            workflow = db.execute("SELECT * FROM workflow_instances WHERE id=?", (workflow_id,)).fetchone()
+        else:
+            workflow = db.execute(
+                "SELECT * FROM workflow_instances WHERE id=? AND business_id=?",
+                (workflow_id, business_id),
+            ).fetchone()
         if not workflow:
             return None
-        steps = db.execute("SELECT * FROM workflow_steps WHERE workflow_id=? ORDER BY sequence_no", (workflow_id,)).fetchall()
+        steps = db.execute(
+            "SELECT * FROM workflow_steps WHERE workflow_id=? ORDER BY sequence_no",
+            (workflow_id,),
+        ).fetchall()
     return {**dict(workflow), "steps": [dict(step) for step in steps]}
 
 def task_is_runnable(task_id: str) -> bool:
@@ -210,4 +221,4 @@ def list_workflows(limit: int = 50, business_id: str = "core") -> list[dict]:
     initialize_workflows()
     with connect() as db:
         rows = db.execute("SELECT id FROM workflow_instances WHERE business_id=? ORDER BY created_at DESC LIMIT ?", (business_id, max(1, min(limit, 100)))).fetchall()
-    return [item for row in rows if (item := get_workflow(row["id"])) is not None]
+    return [item for row in rows if (item := get_workflow(row["id"], business_id)) is not None]

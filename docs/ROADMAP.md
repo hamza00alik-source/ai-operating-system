@@ -33,6 +33,10 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Task dependencies and assignment
 - [x] Static specialist registry sourced from Agency Agents
 - [x] Three-stage task collaboration: lead specialist, independent collaborator, and CEO integration/QA review
+- [x] Shared team-operating contract injected into lead, collaborator and CEO stages
+- [x] Explicit business-scope contract for core, physical agency, own physical brand and digital-products tasks; unknown business IDs fail closed
+- [ ] Intent-aware team composition, structured task plans and specialist-specific deliverable schemas
+- [ ] Workflow artifact aggregation, cancellation, safe resumability and bounded parallel branches
 - [ ] Autonomous department inbox interpretation and multi-agent task planning
 - [ ] Retry policy, timeouts, execution logs
 - [x] In-service discovery polling worker (single service)
@@ -79,3 +83,20 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] AI may collaborate internally, generate code proposals, and open isolated draft PRs when explicitly configured.
 - [ ] AI-generated code changes are not auto-merged or deployed; production release remains owner-controlled.
 - [ ] External write permissions remain disabled until each platform connection is authenticated and scoped; publishing, customer contact, purchases, payments, and commitments require explicit owner approval.
+
+
+## Company-wide venture discovery and growth
+- [x] Add owner-controlled opportunity intake across any legitimate revenue model.
+- [x] Add persistent opportunity lifecycle and source-backed assessment storage.
+- [x] Route research tasks through a dedicated Venture Discovery & Growth company department mapped to existing specialist catalogue pools.
+- [x] Add provisional six-dimension scorecard and block launch approval without complete ratings and at least three HTTPS sources.
+- [x] Require explicit owner approval before creating a separate business unit from an opportunity.
+- [x] Link each venture opportunity to its queued task and latest agent run; expose specialist output, CEO review and run errors in an owner-only report viewer.
+- [x] Extract HTTPS URL candidates from the report for owner review without treating them as verified evidence or auto-approving assessments.
+- [ ] Add primary-source web research retrieval, citation-quality checks and dated source refresh.
+- [x] Generate conservative/base/upside financial models with explicit assumptions, startup cash requirements and break-even analysis.
+- [x] Track owner-confirmed paid expenses separately from approved-but-unpaid expenses; calculate per-currency verified net cash movement by payment month without initiating payments.
+- [x] Add a report-to-assessment draft handoff that copies report text and URL candidates but leaves ratings, source verification and saving to the owner.
+- [ ] Track validation experiments, customer interviews and willingness-to-pay evidence without autonomous customer outreach.
+- [ ] Add portfolio-level P&L, opportunity comparison, capital allocation and scale/pivot/close recommendations.
+- [ ] Add scheduled discovery scans and recurring executive opportunity reviews, with no paid model or external action fallback.

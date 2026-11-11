@@ -206,6 +206,32 @@
         "Workforce Registry"
       ],
       "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "venture-strategy",
+      "name": "Venture Discovery & Growth",
+      "owner_role": "Chief Venture Officer / Venture Strategy Lead",
+      "responsibilities": [
+        "Discover legitimate revenue opportunities across industries and business models",
+        "Research customer pain, willingness to pay, market demand, competition and substitutes",
+        "Build conservative startup-cost, unit-economics, break-even and profitability scenarios",
+        "Coordinate research, product, finance, marketing, sales and compliance reviews",
+        "Recommend validation, defer or reject with source-backed evidence",
+        "Track venture performance and recommend scaling, pivoting or closure"
+      ],
+      "source_departments": [
+        "research",
+        "finance",
+        "product",
+        "marketing",
+        "sales",
+        "specialized",
+        "academic"
+      ],
+      "built_in_roles": [
+        "Venture Opportunity Pipeline"
+      ],
+      "workflow_state": "catalogue-routed-runtime"
     }
   ]
 }

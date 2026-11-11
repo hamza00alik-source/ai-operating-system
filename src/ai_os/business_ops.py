@@ -104,7 +104,9 @@ def create_record(kind: str, payload: dict) -> dict:
 
 
 def business_summary(business_id: str = "core") -> dict:
+    """Summarize owner-verified receipts and owner-confirmed paid expenses by currency."""
     scope = _scope(business_id)
+    month = now()[:7]
     with connect() as db:
         expenses = db.execute(
             "SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' GROUP BY currency", (scope,)
@@ -116,8 +118,17 @@ def business_summary(business_id: str = "core") -> dict:
         revenue_mtd = db.execute(
             """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
             WHERE business_id=? AND record_type='revenue' AND verified=1 AND substr(created_at,1,7)=?
-            GROUP BY currency""",
-            (scope, now()[:7]),
+            GROUP BY currency""", (scope, month),
+        ).fetchall()
+        paid_expenses = db.execute(
+            """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
+            WHERE business_id=? AND record_type='expense' AND status='owner_confirmed_paid'
+            GROUP BY currency""", (scope,),
+        ).fetchall()
+        paid_expenses_mtd = db.execute(
+            """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
+            WHERE business_id=? AND record_type='expense' AND status='owner_confirmed_paid'
+            AND substr(paid_at,1,7)=? GROUP BY currency""", (scope, month),
         ).fetchall()
         customers = db.execute(
             "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='customer'", (scope,)
@@ -125,21 +136,46 @@ def business_summary(business_id: str = "core") -> dict:
         pending_expenses = db.execute(
             "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' AND status='awaiting_owner_approval'", (scope,)
         ).fetchone()["n"]
+        approved_unpaid_expenses = db.execute(
+            "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' AND status='approved_for_manual_payment'", (scope,)
+        ).fetchone()["n"]
+    revenue_mtd_by_currency = {row["currency"]: float(row["total"] or 0) for row in revenue_mtd}
+    paid_mtd_by_currency = {row["currency"]: float(row["total"] or 0) for row in paid_expenses_mtd}
+    currencies = sorted(set(revenue_mtd_by_currency) | set(paid_mtd_by_currency))
+    net_cash_mtd = [
+        {
+            "currency": currency,
+            "verified_revenue": round(revenue_mtd_by_currency.get(currency, 0.0), 2),
+            "owner_confirmed_paid_expenses": round(paid_mtd_by_currency.get(currency, 0.0), 2),
+            "net_cash_movement": round(
+                revenue_mtd_by_currency.get(currency, 0.0) - paid_mtd_by_currency.get(currency, 0.0), 2
+            ),
+        }
+        for currency in currencies
+    ]
     return {
         "business_id": scope,
         "customers": customers,
         "verified_revenue_by_currency": [dict(x) for x in revenue],
         "verified_revenue_mtd_by_currency": [dict(x) for x in revenue_mtd],
         "expenses_by_currency": [dict(x) for x in expenses],
+        "owner_confirmed_paid_expenses_by_currency": [dict(x) for x in paid_expenses],
+        "owner_confirmed_paid_expenses_mtd_by_currency": [dict(x) for x in paid_expenses_mtd],
+        "verified_net_cash_movement_mtd_by_currency": net_cash_mtd,
         "expenses_awaiting_owner_approval": pending_expenses,
+        "expenses_approved_awaiting_manual_payment": approved_unpaid_expenses,
         "revenue_policy": "Only owner-marked verified payments are included. Expected or unverified revenue is excluded.",
-        "expense_policy": "Expense entries are recorded as awaiting owner approval; this system does not initiate payments.",
+        "expense_policy": "Expenses count as paid only after approval and a separate owner confirmation that payment has already occurred. AIOS never initiates payment.",
+        "net_cash_policy": "Net cash movement is calculated separately per currency from verified receipts minus owner-confirmed paid expenses. It is not accounting profit and excludes other cash flows.",
     }
 
-
-def list_assets(limit: int = 500) -> list[dict]:
+def list_assets(limit: int = 500, business_id: str = "core") -> list[dict]:
+    scope = _scope(business_id)
     with connect() as db:
-        rows = db.execute("SELECT * FROM code_assets ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 1000)),)).fetchall()
+        rows = db.execute(
+            "SELECT * FROM code_assets WHERE business_id=? ORDER BY created_at DESC LIMIT ?",
+            (scope, max(1, min(limit, 1000))),
+        ).fetchall()
     return [dict(x) for x in rows]
 
 
@@ -158,7 +194,8 @@ def create_asset(payload: dict) -> dict:
         if token_estimate < 0:
             raise ValueError("Token estimate cannot be negative.")
     item = {
-        "id": str(uuid4()), "name": name, "repository_url": repo_url,
+        "id": str(uuid4()), "business_id": _scope(payload.get("business_id", "core")),
+        "name": name, "repository_url": repo_url,
         "path": asset_path, "asset_type": _clean(payload.get("asset_type", "source_code"), 50),
         "ownership_status": _clean(payload.get("ownership_status", "unverified"), 50),
         "license": _clean(payload.get("license", "unknown"), 100),
@@ -172,21 +209,23 @@ def create_asset(payload: dict) -> dict:
     with connect() as db:
         db.execute(
             """INSERT INTO code_assets
-            (id,name,repository_url,path,asset_type,ownership_status,license,dependency_review,
+            (id,business_id,name,repository_url,path,asset_type,ownership_status,license,dependency_review,
              token_estimate,token_method,git_history_tokens,notes,created_at,updated_at)
-            VALUES (:id,:name,:repository_url,:path,:asset_type,:ownership_status,:license,
+            VALUES (:id,:business_id,:name,:repository_url,:path,:asset_type,:ownership_status,:license,
              :dependency_review,:token_estimate,:token_method,:git_history_tokens,:notes,:created_at,:updated_at)""",
             item,
         )
     return item
 
 
-def list_license_offers(limit: int = 200) -> list[dict]:
+def list_license_offers(limit: int = 200, business_id: str = "core") -> list[dict]:
+    scope = _scope(business_id)
     with connect() as db:
         rows = db.execute(
             """SELECT o.*, a.name AS asset_name FROM license_offers o
-            LEFT JOIN code_assets a ON a.id=o.asset_id ORDER BY o.created_at DESC LIMIT ?""",
-            (max(1, min(limit, 500)),),
+            LEFT JOIN code_assets a ON a.id=o.asset_id AND a.business_id=o.business_id
+            WHERE o.business_id=? ORDER BY o.created_at DESC LIMIT ?""",
+            (scope, max(1, min(limit, 500))),
         ).fetchall()
     return [dict(x) for x in rows]
 
@@ -195,10 +234,11 @@ def create_license_offer(payload: dict) -> dict:
     asset_id = _clean(payload.get("asset_id"), 80)
     buyer = _clean(payload.get("buyer"), 180)
     terms = _clean(payload.get("terms"), 3000)
+    scope = _scope(payload.get("business_id", "core"))
     if not asset_id or not buyer or not terms:
         raise ValueError("Asset, prospective buyer and draft terms are required.")
     with connect() as db:
-        asset = db.execute("SELECT * FROM code_assets WHERE id=?", (asset_id,)).fetchone()
+        asset = db.execute("SELECT * FROM code_assets WHERE id=? AND business_id=?", (asset_id, scope)).fetchone()
         if asset is None:
             raise LookupError("Code asset not found.")
         if asset["ownership_status"].casefold() not in {"verified", "owner_confirmed"}:
@@ -206,39 +246,73 @@ def create_license_offer(payload: dict) -> dict:
         if asset["dependency_review"].casefold() not in {"passed", "reviewed_clear"}:
             raise ValueError("Licensing is blocked until third-party dependency review is clear.")
         offer = {
-            "id": str(uuid4()), "asset_id": asset_id, "buyer": buyer,
+            "id": str(uuid4()), "business_id": scope, "asset_id": asset_id, "buyer": buyer,
             "terms": terms, "status": "draft_pending_owner_approval",
             "created_at": now(), "updated_at": now(),
         }
         db.execute(
             """INSERT INTO license_offers
-            (id,asset_id,buyer,terms,status,created_at,updated_at)
-            VALUES (:id,:asset_id,:buyer,:terms,:status,:created_at,:updated_at)""",
+            (id,business_id,asset_id,buyer,terms,status,created_at,updated_at)
+            VALUES (:id,:business_id,:asset_id,:buyer,:terms,:status,:created_at,:updated_at)""",
             offer,
         )
         approval = {
-            "id": str(uuid4()), "task_id": None,
+            "id": str(uuid4()), "task_id": None, "business_id": scope,
             "action": "review_code_license_offer",
             "details": f"Review draft licensing offer {offer['id']} for asset {asset['name']} and prospective buyer {buyer}. No code or repository has been shared.",
             "status": "pending", "created_at": now(), "decided_at": None,
         }
         db.execute(
-            """INSERT INTO approvals (id,task_id,action,details,status,created_at,decided_at)
-            VALUES (:id,:task_id,:action,:details,:status,:created_at,:decided_at)""",
+            """INSERT INTO approvals (id,task_id,business_id,action,details,status,created_at,decided_at)
+            VALUES (:id,:task_id,:business_id,:action,:details,:status,:created_at,:decided_at)""",
             approval,
         )
     return {**offer, "approval_id": approval["id"], "external_sharing": False}
 
 
-def apply_expense_approval(approval_id: str, decision: str) -> None:
-    """Mirror a completed owner decision onto the linked expense ledger row."""
+
+
+
+def confirm_expense_paid(expense_id: str, business_id: str = "core") -> dict:
+    """Mark an approved expense paid only after an explicit owner attestation."""
+    scope = _scope(business_id)
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM business_records WHERE id=? AND business_id=? AND record_type='expense'",
+            (expense_id, scope),
+        ).fetchone()
+        if row is None:
+            raise LookupError("Expense not found in this business environment.")
+        if row["status"] == "owner_confirmed_paid":
+            return dict(row)
+        if row["amount"] is None:
+            raise ValueError("Add an amount before confirming an expense as paid.")
+        if row["status"] != "approved_for_manual_payment":
+            raise ValueError("Only owner-approved expenses can be marked paid. Approve the expense first.")
+        updated = db.execute(
+            """UPDATE business_records SET status='owner_confirmed_paid',paid_at=?
+            WHERE id=? AND business_id=? AND record_type='expense'
+            AND status='approved_for_manual_payment'""",
+            (now(), expense_id, scope),
+        )
+        if updated.rowcount != 1:
+            raise ValueError("Expense status changed. Refresh the ledger and try again.")
+        result = db.execute(
+            "SELECT * FROM business_records WHERE id=? AND business_id=?",
+            (expense_id, scope),
+        ).fetchone()
+    return dict(result)
+def apply_expense_approval(approval_id: str, decision: str, business_id: str = "core") -> None:
+    """Mirror a completed owner decision only onto this business's linked expense row."""
+    scope = _scope(business_id)
     status = {"approved": "approved_for_manual_payment", "rejected": "rejected_by_owner"}.get(decision)
     if status is None:
         return
     with connect() as db:
         db.execute(
-            "UPDATE business_records SET status=? WHERE approval_id=? AND record_type='expense'",
-            (status, approval_id),
+            """UPDATE business_records SET status=? WHERE approval_id=?
+            AND business_id=? AND record_type='expense'""",
+            (status, approval_id, scope),
         )
 
 
