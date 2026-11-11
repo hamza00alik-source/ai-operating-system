@@ -399,8 +399,23 @@ def create_owner_session(
 
 
 @app.get("/auth/session", dependencies=[Depends(require_owner_key)])
-def owner_session_status() -> dict:
-    return {"authenticated": True, "session_type": "owner"}
+def owner_session_status(
+    response: Response,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    opencompany_session: str | None = Cookie(default=None),
+) -> dict:
+    """Restore browser session state and rotate its in-memory CSRF token."""
+    if not opencompany_session:
+        raise HTTPException(status_code=401, detail="Owner browser session is missing.")
+    renewed = runtime.sessions.rotate_csrf(opencompany_session)
+    if renewed is None:
+        raise HTTPException(status_code=401, detail="Owner browser session has expired or been revoked.")
+    csrf, expires = renewed
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "authenticated": True, "session_type": "owner",
+        "csrf_token": csrf, "expires_at": expires.isoformat(),
+    }
 
 
 @app.post("/auth/logout", dependencies=[Depends(require_owner_key)])
