@@ -33,9 +33,9 @@ class OwnerSessionStore:
                 "CREATE INDEX IF NOT EXISTS idx_owner_sessions_expiry ON owner_sessions(expires_at)"
             )
 
-    def create(self, *, lifetime_hours: int = 12) -> tuple[str, str, datetime]:
-        if not 1 <= lifetime_hours <= 24:
-            raise ValueError("session lifetime must be between 1 and 24 hours")
+    def create(self, *, lifetime_hours: int = 168) -> tuple[str, str, datetime]:
+        if not 1 <= lifetime_hours <= 168:
+            raise ValueError("session lifetime must be between 1 and 168 hours")
         token = secrets.token_urlsafe(48)
         csrf = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
