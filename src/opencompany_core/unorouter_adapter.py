@@ -24,7 +24,6 @@ UNOROUTER_AUTO_FREE_MODEL = "unorouter/free-catalog:free"
 UNOROUTER_TIMEOUT_SECONDS = 15
 MAX_RESPONSE_BYTES = 2_000_000
 CATALOG_CACHE_SECONDS = 300
-MAX_FREE_MODEL_ATTEMPTS = 5
 _catalog_lock = threading.Lock()
 _catalog_cache: dict[str, tuple[float, tuple[str, ...]]] = {}
 _round_robin_lock = threading.Lock()
@@ -209,7 +208,7 @@ class UnoRouterAdapter:
             _round_robin_index += 1
         ordered = models[start:] + models[:start]
         failures = []
-        for candidate in ordered[:MAX_FREE_MODEL_ATTEMPTS]:
+        for candidate in ordered:
             try:
                 return self._generate_one(request, model=candidate)
             except ProviderUnavailable as exc:

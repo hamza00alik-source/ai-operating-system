@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -13,6 +14,33 @@ from .workforce import default_workforce
 
 class ExecutivePlanningError(ValueError):
     pass
+
+
+def _parse_model_json(text: str) -> dict:
+    """Extract one JSON object from common model formatting without weakening schema checks."""
+    if not isinstance(text, str) or not text.strip():
+        raise ExecutivePlanningError("CEO model returned an empty response")
+    candidate = text.lstrip("\ufeff").strip()
+    fence = chr(96) * 3
+    fenced = re.fullmatch(re.escape(fence) + r"(?:json)?\s*(.*?)\s*" + re.escape(fence),
+                          candidate, flags=re.IGNORECASE | re.DOTALL)
+    if fenced:
+        candidate = fenced.group(1).strip()
+    try:
+        payload = json.loads(candidate)
+    except json.JSONDecodeError:
+        start = candidate.find("{")
+        if start < 0:
+            raise ExecutivePlanningError("CEO model did not return a JSON object")
+        try:
+            payload, end = json.JSONDecoder().raw_decode(candidate[start:])
+        except json.JSONDecodeError as exc:
+            raise ExecutivePlanningError("CEO model did not return valid JSON") from exc
+        if candidate[start + end:].strip():
+            raise ExecutivePlanningError("CEO model returned extra content after its JSON object")
+    if not isinstance(payload, dict):
+        raise ExecutivePlanningError("CEO response must be a JSON object")
+    return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,8 +78,10 @@ def create_executive_plan(
         "Each task must have a single accountable department, a clear measurable objective, "
         "and dependencies expressed as zero-based indices of earlier tasks only. "
         "Do not invent department identifiers. Avoid assigning external actions or spending authority. "
-        "Return only JSON with exactly these keys: rationale (string), work_items (array). "
-        "Each work item has exactly department (string), title (string), objective (string), "
+        "Return exactly one valid JSON object and nothing else: no Markdown fences, no preamble, "
+        "no commentary and no trailing text. Use double-quoted JSON keys and string values. "
+        "The top-level object must have exactly these keys: rationale (string), work_items (array). "
+        "Each work item must have exactly department (string), title (string), objective (string), "
         "depends_on (array of earlier integer indices).\n"
         f"Departments: {json.dumps(department_context, separators=(',', ':'))}"
     )
@@ -63,10 +93,7 @@ def create_executive_plan(
         request_budget_usd=0.0,
         preferred_provider="unorouter",
     )
-    try:
-        payload = json.loads(result.text)
-    except json.JSONDecodeError as exc:
-        raise ExecutivePlanningError("CEO model did not return valid JSON") from exc
+    payload = _parse_model_json(result.text)
     if not isinstance(payload, dict) or set(payload) != {"rationale", "work_items"}:
         raise ExecutivePlanningError("CEO response must contain only rationale and work_items")
     rationale = payload["rationale"]

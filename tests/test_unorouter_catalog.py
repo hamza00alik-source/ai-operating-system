@@ -145,3 +145,25 @@ def test_free_chat_response_without_cost_field_uses_zero_by_free_route(monkeypat
     assert result.output_tokens == 2
     assert result.text == "OPENCOMPANY_UNOROUTER_OK"
     assert result.model == "alpha:free"
+
+
+def test_auto_catalog_adapter_reaches_models_beyond_old_attempt_limit(monkeypatch):
+    models = tuple(f"model-{index}:free" for index in range(7))
+    seen = []
+    monkeypatch.setattr(unorouter_adapter, "discover_free_models", lambda *a, **k: models)
+    monkeypatch.setattr(unorouter_adapter, "_round_robin_index", 0)
+
+    def generate_one(self, request, *, model):
+        seen.append(model)
+        if model != models[-1]:
+            raise ProviderUnavailable("UnoRouter returned HTTP 503.")
+        return ModelResult("ok", "unorouter", model, 0.0, 1, 1)
+
+    monkeypatch.setattr(unorouter_adapter.UnoRouterAdapter, "_generate_one", generate_one)
+    adapter = unorouter_adapter.UnoRouterAdapter("test-api-key")
+    result = adapter.generate(
+        ModelRequest("test", "req-all-free-models"),
+        model=unorouter_adapter.UNOROUTER_AUTO_FREE_MODEL,
+    )
+    assert result.model == models[-1]
+    assert seen == list(models)
