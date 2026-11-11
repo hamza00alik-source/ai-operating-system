@@ -318,6 +318,8 @@ _RULES = {
         "search intent": "search_intent_strategy",
         "creator economy": "creator_economy_research"
 
+        "short-form": "short_form_content_strategy",
+        "long-form": "long_form_content_strategy",
     },
     "revenue-partnerships": {
         "marketplace": "marketplace_operations",
