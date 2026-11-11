@@ -1536,3 +1536,34 @@ def test_work_item_workflow_view_requires_owner_authentication(owner_client):
     response = owner_client.get(f"/work-items/{created.json()['item_id']}/workflow")
 
     assert response.status_code == 401
+
+
+def test_running_work_item_cannot_be_cancelled_without_queue_aware_recovery(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post(
+        "/work-items",
+        headers=headers,
+        json={
+            "title": "Running task cancellation guard",
+            "objective": "Ensure state-only cancellation cannot orphan a worker lease.",
+            "department": "intelligence-research",
+            "depends_on": [],
+        },
+    )
+    assert created.status_code == 200
+    item_id = created.json()["item_id"]
+    runtime = app.dependency_overrides[get_runtime]()
+    with runtime.store._lock:
+        runtime.store._connection.execute(
+            "UPDATE work_items SET state=? WHERE id=?",
+            (TaskState.IN_PROGRESS.value, item_id),
+        )
+
+    response = owner_client.post(
+        f"/work-items/{item_id}/transition",
+        headers=headers,
+        json={"target_state": "cancelled"},
+    )
+
+    assert response.status_code == 409
+    assert "queue-aware cancellation" in response.json()["detail"]
