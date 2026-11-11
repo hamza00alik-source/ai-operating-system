@@ -1787,9 +1787,14 @@ def apply_approved_learning_proposal(
 
 
 @app.get("/learning/proposals", dependencies=[Depends(require_owner_key)])
-def list_learning_proposals(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
-    proposals = runtime.learning.list_proposals()
-    return {"count": len(proposals), "proposals": proposals}
+def list_learning_proposals(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
+    proposals = runtime.learning.list_proposals(business_id=business_id)
+    return {"count": len(proposals), "business_id": business_id or "all", "proposals": proposals}
 
 
 @app.post("/learning/proposals/{proposal_id}/decision", dependencies=[Depends(require_owner_key)])
