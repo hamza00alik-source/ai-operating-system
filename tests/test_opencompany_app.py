@@ -578,6 +578,17 @@ def test_owner_session_login_is_rate_limited_after_five_failed_attempts(owner_cl
     assert int(limited.headers["retry-after"]) > 0
 
 
+def test_invalid_owner_api_key_headers_are_rate_limited(owner_client):
+    api_module._clear_login_failures("testclient")
+    for _ in range(4):
+        response = owner_client.get("/agents", headers={"X-OpenCompany-API-Key": "wrong-owner-key"})
+        assert response.status_code == 401
+    limited = owner_client.get("/agents", headers={"X-OpenCompany-API-Key": "wrong-owner-key"})
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) > 0
+    api_module._clear_login_failures("testclient")
+
+
 def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_client):
     login = owner_client.post("/auth/session", json={"api_key": "test-owner-key"})
     assert login.status_code == 200
