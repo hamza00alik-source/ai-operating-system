@@ -5,7 +5,7 @@ from uuid import uuid4
 import re
 from ai_os.db import connect
 
-BUSINESS_IDS = {"core", "physical-agency", "physical-brand", "digital-products"}
+from ai_os.business_registry import BUSINESS_IDS
 
 def _business_id(value: str) -> str:
     value = (value or "core").strip()
