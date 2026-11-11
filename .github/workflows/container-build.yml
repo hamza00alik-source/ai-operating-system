@@ -23,3 +23,35 @@ jobs:
         uses: actions/checkout@v4
       - name: Build production container without publishing
         run: docker build --pull --tag opencompany-api:ci .
+      - name: Smoke test the non-root container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name opencompany-api-ci \
+            --publish 8000:8000 \
+            --env OPENCOMPANY_OWNER_API_KEY=ci-only-owner-key \
+            --env OPENCOMPANY_SECRET_ENCRYPTION_KEY=ci-only-secret-encryption-key-at-least-32 \
+            opencompany-api:ci
+          cleanup() { docker rm --force opencompany-api-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=2) as response:
+                      health = json.loads(response.read().decode())
+                  with urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=2) as response:
+                      ready = json.loads(response.read().decode())
+                  assert health["status"] == "ok"
+                  assert ready["status"] == "ready"
+                  print("Container health and readiness checks passed.")
+                  break
+              except (OSError, urllib.error.URLError, AssertionError):
+                  if attempt == 29:
+                      raise
+                  time.sleep(1)
+          PY
