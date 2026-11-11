@@ -10,7 +10,7 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [x] Owner API-key bootstrap and revocable HttpOnly browser sessions.
 - [x] CSRF checks, login throttling, security headers, and secret-free status responses.
 - [x] Encrypted provider-secret storage with a dedicated encryption key.
-- [x] Immutable business-unit ownership for work items, same-business dependency enforcement, inherited delegation scope, and business-scoped learning notes.
+- [x] Immutable business-unit ownership for work items, same-business dependency enforcement, inherited delegation scope, business-scoped learning notes, and per-business model-cost reporting.
 - [ ] Role-based owner/operator permissions and independent security review.
 - [ ] Documented secret-rotation and session-recovery procedures.
 
