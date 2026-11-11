@@ -103,7 +103,7 @@ def test_github_client_creates_atomic_feature_branch_commit_and_draft_pr():
         if method == "PATCH" and "/git/refs/heads/" in path:
             return FakeResponse({"ref": path})
         if method == "POST" and path.endswith("/pulls"):
-            return FakeResponse({"number": 77, "html_url": "https://github.com/a/b/pull/77"})
+            return FakeResponse({"number": 77, "html_url": "https://github.com/a/b/pull/77", "draft": True})
         raise AssertionError((method, path))
 
     client = GitHubEvolutionClient(
