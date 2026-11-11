@@ -287,6 +287,30 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
           queueButton.addEventListener("click",async()=>{queueButton.disabled=true;try{await request("/work-items/"+w.id+"/enqueue",{method:"POST",body:"{}"});setMessage("Task admitted to the durable queue. No worker was started by this action.","success");await load();}catch(error){setMessage(error.message,"error");queueButton.disabled=false;}});
           card.append(queueButton);
         }
+        if(w.state==="failed"){
+          const retryButton=document.createElement("button");retryButton.textContent="Retry failed task";
+          retryButton.addEventListener("click",async()=>{
+            retryButton.disabled=true;
+            try{
+              await request("/work-items/"+w.id+"/transition",{method:"POST",body:JSON.stringify({target_state:"ready"})});
+              setMessage("Failed task returned to READY. Review the assignment, then admit it to the queue again.","success");
+              await load();
+            }catch(error){setMessage(error.message,"error");retryButton.disabled=false;}
+          });
+          card.append(retryButton);
+        }
+        if(["draft","ready","blocked","review","failed"].includes(w.state)){
+          const cancelButton=document.createElement("button");cancelButton.textContent="Cancel task";
+          cancelButton.addEventListener("click",async()=>{
+            cancelButton.disabled=true;
+            try{
+              await request("/work-items/"+w.id+"/transition",{method:"POST",body:JSON.stringify({target_state:"cancelled"})});
+              setMessage("Task cancelled. No external action was performed.","success");
+              await load();
+            }catch(error){setMessage(error.message,"error");cancelButton.disabled=false;}
+          });
+          card.append(cancelButton);
+        }
         if(w.state==="queued" && w.assigned_agent_id){
           const runButton=document.createElement("button");runButton.textContent="Run one worker cycle";
           runButton.addEventListener("click",async()=>{runButton.disabled=true;try{const result=await request("/workers/"+w.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});setMessage("Worker cycle result: "+result.result,"success");await load();}catch(error){setMessage(error.message,"error");runButton.disabled=false;}});
