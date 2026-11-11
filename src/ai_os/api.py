@@ -1023,7 +1023,16 @@ def get_approvals(business_id: str = "core"):
     response_model=ApprovalOut,
     dependencies=[Depends(require_api_key)],
 )
-def post_approval_decision(approval_id: str, payload: ApprovalDecision):
+def post_approval_decision(approval_id: str, payload: ApprovalDecision, business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    with connect() as db:
+        scoped = db.execute(
+            "SELECT 1 FROM approvals WHERE id=? AND business_id=?",
+            (approval_id, business_id),
+        ).fetchone()
+    if scoped is None:
+        raise HTTPException(status_code=404, detail="Approval request not found in this business environment.")
     try:
         result = decide_approval(approval_id, payload)
     except ValueError as exc:
