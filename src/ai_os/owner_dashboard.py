@@ -165,6 +165,18 @@ input,select,textarea{border-color:rgba(108,157,197,.28);background:rgba(5,14,29
 .stage-empty{grid-column:1/-1;padding:18px;border:1px dashed rgba(108,233,255,.2);border-radius:12px;color:#9eb2d1;font-size:12px}
 @media(max-width:900px){.employee-stage{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.command-stage{padding:15px}.employee-stage{grid-template-columns:1fr}.employee-card{min-height:112px}.stage-title{font-size:18px}}
 
+.scenario-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:14px 0}
+.scenario-card{min-width:0;border:1px solid rgba(108,233,255,.2);border-radius:12px;padding:13px;background:rgba(5,14,29,.48)}
+.scenario-card legend{font-weight:800;color:#a9c4ff;padding:0 6px;text-transform:capitalize}
+.scenario-card label{display:block;margin:9px 0;color:var(--muted);font-size:12px}
+.scenario-card input{display:block;width:100%;min-width:0;margin-top:4px}
+.scenario-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.scenario-result{border:1px solid rgba(108,233,255,.18);border-radius:12px;padding:13px;background:rgba(8,20,36,.7);min-width:0}
+.scenario-result h4{margin:0 0 8px;text-transform:capitalize}
+.scenario-result p{margin:5px 0;font-size:12px;color:#b7c8e2;overflow-wrap:anywhere}
+.scenario-result strong{color:#eff7ff}
+@media(max-width:850px){.scenario-grid,.scenario-results{grid-template-columns:1fr}.scenario-card{padding:12px}}
+
 </style><style>
 .office-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}
 .office-viewport{height:480px;position:relative;overflow:hidden;border:1px solid rgba(108,233,255,.28);border-radius:16px;background:radial-gradient(ellipse at 50% 10%,#1b3154,#080e1b 70%);isolation:isolate}
@@ -406,7 +418,36 @@ th{background:#101b2c}
 <div class="panel section"><h3>Record research assessment</h3><p class="small">Rate each dimension from 0–5 only after reviewing evidence. Launch approval requires all six ratings and at least three HTTPS sources.</p>
 <form id="ventureAssessmentForm"><select id="assessmentOpportunity" name="opportunity_id" required style="width:100%;margin:6px 0"><option value="">Select opportunity</option></select>
 <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))"><label class="small">Demand (0–5)<input name="demand" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Competition (0–5)<input name="competition" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Economics (0–5)<input name="economics" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Distribution (0–5)<input name="distribution" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Execution (0–5)<input name="execution" type="number" min="0" max="5" required style="width:100%"></label><label class="small">Risk (0–5)<input name="risk" type="number" min="0" max="5" required style="width:100%"></label></div>
-<textarea name="summary" maxlength="4000" placeholder="Findings, pricing, startup costs, unit economics, break-even assumptions, risks and recommended low-cost validation" style="width:100%;min-height:100px;margin:8px 0"></textarea><textarea name="sources" placeholder="HTTPS source URLs, one per line" style="width:100%;min-height:80px;margin:8px 0"></textarea><button type="submit">Save assessment</button></form></div>
+<textarea name="summary" maxlength="4000" placeholder="Findings, pricing, startup costs, unit economics, break-even assumptions, risks and recommended low-cost validation" style="width:100%;min-height:100px;margin:8px 0"></textarea><textarea name="sources" placeholder="HTTPS source URLs, one per line" style="width:100%;min-height:80px;margin:8px 0"></textarea><button type="submit">Save assessment</button><div class="panel section" id="ventureFinancialPanel"><h3>Financial scenario calculator</h3>
+<p class="small">Enter owner-reviewed assumptions for conservative, base and upside cases. All three scenarios use the same currency. This is arithmetic, not a forecast or proof of demand; no spending or external action occurs.</p>
+<form id="ventureFinancialForm">
+<label for="financialOpportunity">Opportunity</label><select id="financialOpportunity" name="opportunity_id" required style="width:100%;margin:6px 0"><option value="">Select opportunity</option></select>
+<label for="financialCurrency">Currency label (display only)</label><input id="financialCurrency" name="financialCurrency" maxlength="12" value="USD" placeholder="e.g. USD, PKR, EUR" style="width:100%;margin:6px 0">
+<div class="scenario-grid"><fieldset class="scenario-card"><legend>Conservative case</legend>
+<label>Sales per month<input name="conservative_monthly_sales" type="number" min="0" step="1" required value="10"></label>
+<label>Average price per sale<input name="conservative_average_price" type="number" min="0" step="0.01" required></label>
+<label>Variable cost per sale<input name="conservative_variable_cost_per_sale" type="number" min="0" step="0.01" required></label>
+<label>Monthly fixed costs<input name="conservative_monthly_fixed_cost" type="number" min="0" step="0.01" required></label>
+<label>Monthly marketing costs<input name="conservative_monthly_marketing_cost" type="number" min="0" step="0.01" required value="0"></label>
+<label>One-time startup costs<input name="conservative_startup_cost" type="number" min="0" step="0.01" required value="0"></label>
+</fieldset>
+<fieldset class="scenario-card"><legend>Base case</legend>
+<label>Sales per month<input name="base_monthly_sales" type="number" min="0" step="1" required value="30"></label>
+<label>Average price per sale<input name="base_average_price" type="number" min="0" step="0.01" required></label>
+<label>Variable cost per sale<input name="base_variable_cost_per_sale" type="number" min="0" step="0.01" required></label>
+<label>Monthly fixed costs<input name="base_monthly_fixed_cost" type="number" min="0" step="0.01" required></label>
+<label>Monthly marketing costs<input name="base_monthly_marketing_cost" type="number" min="0" step="0.01" required value="0"></label>
+<label>One-time startup costs<input name="base_startup_cost" type="number" min="0" step="0.01" required value="0"></label>
+</fieldset>
+<fieldset class="scenario-card"><legend>Upside case</legend>
+<label>Sales per month<input name="upside_monthly_sales" type="number" min="0" step="1" required value="60"></label>
+<label>Average price per sale<input name="upside_average_price" type="number" min="0" step="0.01" required></label>
+<label>Variable cost per sale<input name="upside_variable_cost_per_sale" type="number" min="0" step="0.01" required></label>
+<label>Monthly fixed costs<input name="upside_monthly_fixed_cost" type="number" min="0" step="0.01" required></label>
+<label>Monthly marketing costs<input name="upside_monthly_marketing_cost" type="number" min="0" step="0.01" required value="0"></label>
+<label>One-time startup costs<input name="upside_startup_cost" type="number" min="0" step="0.01" required value="0"></label>
+</fieldset></div><button type="submit" id="runFinancialModel">Calculate scenarios</button>
+</form><div id="ventureFinancialMessage" class="status" aria-live="polite">No calculation run yet.</div><div id="ventureFinancialResults" class="scenario-results" aria-live="polite"></div></div>
 </section>
 <section id="business" class="panel section" data-view-panel="business">
 <h2>Business operations · financial ledger & customers</h2>
@@ -1027,6 +1068,20 @@ fallback.style.display="none";
  $("ventureForm")?.addEventListener("submit",async e=>{e.preventDefault();try{const r=await api("/venture-opportunities",{method:"POST",body:JSON.stringify(formData(e.currentTarget))});$("ventureMessage").textContent="Opportunity added: "+r.title;e.currentTarget.reset();await loadVentureOpportunities()}catch(err){$("ventureMessage").textContent=err.message}});
 $("ventureRows")?.addEventListener("click",async e=>{const button=e.target.closest("[data-v-action]");if(!button)return;const id=button.dataset.vId;const action=button.dataset.vAction;try{button.disabled=true;if(action==="report"){await loadVentureReport(id);button.disabled=false;return}else if(action==="research"){const r=await api("/venture-opportunities/"+encodeURIComponent(id)+"/research",{method:"POST",body:"{}"});$("ventureMessage").textContent="Research task queued: "+r.task.id+". Free-confirmed models only."}else if(action==="launch"){if(!confirm("Create this separate business unit? No spending or external actions will occur.")){button.disabled=false;return}const r=await api("/venture-opportunities/"+encodeURIComponent(id)+"/launch",{method:"POST",body:"{}"});$("ventureMessage").textContent="Created business unit "+r.business_unit.id;await loadBusinessUnits()}else{if(action==="launch_approved"&&!confirm("Approve launch planning? This does not spend money or publish anything.")){button.disabled=false;return}const notes=action==="launch_approved"?"Owner approved launch planning; business registration remains a separate action.":"Owner decision recorded.";await api("/venture-opportunities/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision:action,notes})});$("ventureMessage").textContent="Decision saved: "+action}await loadVentureOpportunities()}catch(err){$("ventureMessage").textContent=err.message;button.disabled=false}});
 $("ventureAssessmentForm")?.addEventListener("submit",async e=>{e.preventDefault();const form=e.currentTarget;const ratings={};["demand","competition","economics","distribution","execution","risk"].forEach(k=>ratings[k]=Number(form.elements[k].value));const urls=form.elements.sources.value.split("\n").map(x=>x.trim()).filter(x=>x.startsWith("https://"));const evidence=urls.map(url=>({url,claim:"Source supplied for venture assessment"}));try{await api("/venture-opportunities/"+encodeURIComponent(form.elements.opportunity_id.value)+"/assessment",{method:"POST",body:JSON.stringify({assessment:{ratings,summary:form.elements.summary.value,source_urls:urls},evidence})});$("ventureMessage").textContent="Assessment saved. Score is provisional and depends on evidence quality.";form.reset();await loadVentureOpportunities()}catch(err){$("ventureMessage").textContent=err.message}});
+$("ventureFinancialForm")?.addEventListener("submit",async e=>{
+ e.preventDefault();const form=e.currentTarget,button=$("runFinancialModel"),opportunityId=form.elements.opportunity_id.value;
+ const scenarios={};for(const scenario of ["conservative","base","upside"]){scenarios[scenario]={};for(const key of ["monthly_sales","average_price","variable_cost_per_sale","monthly_fixed_cost","monthly_marketing_cost","startup_cost"]){scenarios[scenario][key]=Number(form.elements[scenario+"_"+key].value)}}
+ button.disabled=true;$("ventureFinancialMessage").textContent="Calculating from the supplied assumptions…";$("ventureFinancialResults").innerHTML="";
+ try{
+  const result=await api("/venture-opportunities/"+encodeURIComponent(opportunityId)+"/financial-model",{method:"POST",body:JSON.stringify({scenarios})});
+  const currency=esc((form.elements.financialCurrency.value||"").trim()||"units");
+  const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:2})+" "+currency;
+  $("ventureFinancialResults").innerHTML=["conservative","base","upside"].map(name=>{const x=result.scenarios[name];const profit=x.monthly_operating_profit_before_tax;return '<article class="scenario-result"><h4>'+esc(name)+'</h4><p>Monthly revenue: <strong>'+fmt(x.monthly_revenue)+'</strong></p><p>Operating cost: <strong>'+fmt(x.monthly_operating_cost)+'</strong></p><p>Monthly operating profit (before tax): <strong class="'+(profit>=0?"good":"bad")+'">'+fmt(profit)+'</strong></p><p>Break-even volume: <strong>'+x.break_even_sales_per_month+' sales / month</strong></p><p>First-month cash after startup: <strong>'+fmt(x.first_month_net_cash_after_startup)+'</strong></p><p>Profitable at assumed volume: <strong>'+(x.profitable_at_assumed_volume?"Yes":"No")+'</strong></p></article>'}).join("");
+  $("ventureFinancialMessage").textContent=result.warning+" Method: "+result.method;
+ }catch(err){$("ventureFinancialMessage").textContent="Calculation failed: "+err.message}
+ finally{button.disabled=false}
+});
+
 const ventureLink=document.querySelector('nav.main-nav a[data-view="ventures"]');ventureLink?.addEventListener("click",loadVentureOpportunities);
  const businessLink=document.querySelector('nav.main-nav a[data-view="business"]');businessLink?.addEventListener("click",loadBusiness);
  const assetsLink=document.querySelector('nav.main-nav a[data-view="code-assets"]');assetsLink?.addEventListener("click",loadAssets);
