@@ -152,7 +152,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       const workItemsUrl=businessFilter?"/work-items?business_id="+encodeURIComponent(businessFilter):"/work-items";
       const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution,apiAnything]=await Promise.all([
         request("/organization/departments"),request("/agents"),request(workItemsUrl),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request(businessFilter?"/learning/proposals?business_id="+encodeURIComponent(businessFilter):"/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
@@ -169,7 +169,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("create-code-pr").disabled=!codeEvolution.enabled;
       byId("code-pr-result").textContent=codeEvolution.enabled?"Verified · "+codeEvolution.repository+" · branch "+codeEvolution.base_branch:(codeEvolution.configured?(codeEvolution.access_verified&&!codeEvolution.provider_verified?"GitHub access verified. Run the live zero-cost UnoRouter test before creating draft PRs.":"Token saved but repository access is not verified. Test GitHub access in Integrations before creating draft PRs."):"GitHub code-evolution credentials are not configured on the server.");
       clear("learning-proposals","No learning proposals yet.");
-      learning.proposals.filter(proposal=>!businessFilter || proposal.business_id===businessFilter).forEach(proposal=>{
+      learning.proposals.forEach(proposal=>{
         const card=document.createElement("article");card.className="item";
         const title=document.createElement("h3");title.textContent=(proposal.business_id||"core")+" · "+proposal.target+" · "+proposal.state;card.append(title);
         const summary=document.createElement("p");summary.textContent=proposal.change_summary;card.append(summary);
