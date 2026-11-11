@@ -355,6 +355,16 @@ def initialize_database() -> None:
             review_notes TEXT NOT NULL DEFAULT '',
             review_updated_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS venture_opportunities (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL, thesis TEXT NOT NULL,
+            customer_segment TEXT NOT NULL DEFAULT '', problem TEXT NOT NULL DEFAULT '',
+            revenue_model TEXT NOT NULL DEFAULT 'unknown', market_scope TEXT NOT NULL DEFAULT 'global',
+            status TEXT NOT NULL DEFAULT 'idea', assessment_json TEXT NOT NULL DEFAULT '{}',
+            evidence_json TEXT NOT NULL DEFAULT '[]', research_task_id TEXT,
+            business_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_venture_opportunities_status
+            ON venture_opportunities(status, updated_at);
         """)
         # Backward-compatible migration for databases created before agent-run
         # task linkage. CREATE TABLE IF NOT EXISTS does not alter an existing
