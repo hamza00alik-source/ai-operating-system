@@ -351,6 +351,18 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{const result=await request("/agents/bootstrap-specialists",{method:"POST",body:"{}"});setMessage(result.count+" specialist profiles saved as drafts. No workers were started.","success");await load();}
     catch(error){setMessage(error.message,"error");byId("provision-specialists").disabled=false;}
   });
+  // Restore the HttpOnly cookie session on every page load. Never persist the API key or CSRF token in browser storage.
+  (async()=>{
+    byId("connect").disabled=true;
+    try{
+      const response=await fetch("/auth/session",{method:"GET",credentials:"same-origin",cache:"no-store"});
+      if(!response.ok){setMessage("Enter the owner API key to connect. Your previous session may have expired.");return;}
+      const session=await response.json();
+      csrfToken=session.csrf_token;
+      await load();
+    }catch(error){setMessage("Could not restore the owner session: "+error.message,"error");}
+    finally{byId("connect").disabled=false;}
+  })();
 })();
 </script>
 </body>
