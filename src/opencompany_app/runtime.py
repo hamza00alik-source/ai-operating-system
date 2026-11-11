@@ -106,6 +106,37 @@ class OpenCompanyRuntime:
         self.store.close()
 
 
+def _read_dependency_deliverables(store, item):
+    results = []
+    for dependency_id in item.depends_on:
+        prerequisite = store.get_work_item(dependency_id)
+        if prerequisite is None:
+            raise ValueError("work dependency does not exist")
+        if prerequisite.business_id != item.business_id:
+            raise ValueError("work dependency belongs to another business unit")
+        if prerequisite.state.value != "completed":
+            raise ValueError("work dependency is not completed")
+        deliverables = store.list_deliverables(dependency_id)
+        if not deliverables:
+            raise ValueError("completed prerequisite has no persisted deliverable")
+        results.append({
+            "work_item_id": str(dependency_id),
+            "business_id": prerequisite.business_id,
+            "deliverables": [
+                {
+                    "role_key": row["role_key"],
+                    "content": row["content"][:8000],
+                    "provider": row["provider"],
+                    "model": row["model"],
+                    "cost_usd": row["cost_usd"],
+                }
+                for row in deliverables[:5]
+            ],
+        })
+    return results
+
+
+
 def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     """Build the API/worker composition without starting background workers."""
     configured = database_path or os.environ.get(
@@ -172,41 +203,12 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     gateway.set_usage_recorder(usage.record)
     api_anything = ApiAnythingClient.from_env()
     research_broker = ResearchBroker(api_anything, gateway) if api_anything is not None else None
-    def read_dependency_deliverables(item):
-        results = []
-        for dependency_id in item.depends_on:
-            prerequisite = store.get_work_item(dependency_id)
-            if prerequisite is None:
-                raise ValueError("work dependency does not exist")
-            if prerequisite.business_id != item.business_id:
-                raise ValueError("work dependency belongs to another business unit")
-            if prerequisite.state.value != "completed":
-                raise ValueError("work dependency is not completed")
-            deliverables = store.list_deliverables(dependency_id)
-            if not deliverables:
-                raise ValueError("completed prerequisite has no persisted deliverable")
-            results.append({
-                "work_item_id": str(dependency_id),
-                "business_id": prerequisite.business_id,
-                "deliverables": [
-                    {
-                        "role_key": row["role_key"],
-                        "content": row["content"][:8000],
-                        "provider": row["provider"],
-                        "model": row["model"],
-                        "cost_usd": row["cost_usd"],
-                    }
-                    for row in deliverables[:5]
-                ],
-            })
-        return results
-
     executor = AgentExecutor(
         gateway=gateway,
         learning_context=learning.list_learning_notes,
         research_broker=research_broker,
         usage_recorder=usage.record,
-        dependency_context=read_dependency_deliverables,
+        dependency_context=lambda item: _read_dependency_deliverables(store, item),
     )
     worker = OpenCompanyWorker(
         queue=queue,
