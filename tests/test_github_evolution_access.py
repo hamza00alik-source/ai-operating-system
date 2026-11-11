@@ -45,3 +45,63 @@ def test_github_evolution_verify_access_rejects_read_only_repository_permission(
     )
     with pytest.raises(GitHubEvolutionError, match="lacks reported push permission"):
         client.verify_access()
+
+
+def test_code_evolution_creates_only_a_confirmed_draft_pr():
+    calls = []
+    payloads = [
+        {"object": {"sha": "base-sha"}},
+        {"tree": {"sha": "base-tree"}},
+        {},
+        {"sha": "blob-sha"},
+        {"sha": "tree-sha"},
+        {"sha": "commit-sha"},
+        {},
+        {"number": 12, "html_url": "https://github.com/owner/repo/pull/12", "draft": True},
+    ]
+    class Response:
+        def __init__(self, data): self.data = data
+        def read(self, limit): return json.dumps(self.data).encode()
+    def transport(request, timeout):
+        calls.append((request.method, request.full_url, request.data))
+        return Response(payloads.pop(0))
+    client = GitHubEvolutionClient("test-token-value-123456789", "owner/repo", transport=transport)
+    result = client.create_pull_request(
+        title="Improve safe validation", summary="Add a bounded validation check.",
+        files={"src/opencompany_core/example.py": "VALUE = 1\n"},
+    )
+    assert result.number == 12
+    assert [method for method, _, _ in calls] == ["GET", "GET", "POST", "POST", "POST", "POST", "PATCH", "POST"]
+    pr_payload = json.loads(calls[-1][2])
+    assert pr_payload["draft"] is True
+    assert pr_payload["base"] == "clean-room-rebuild"
+
+
+def test_code_evolution_closes_unconfirmed_non_draft_and_deletes_branch():
+    calls = []
+    payloads = [
+        {"object": {"sha": "base-sha"}},
+        {"tree": {"sha": "base-tree"}},
+        {},
+        {"sha": "blob-sha"},
+        {"sha": "tree-sha"},
+        {"sha": "commit-sha"},
+        {},
+        {"number": 13, "html_url": "https://github.com/owner/repo/pull/13", "draft": False},
+        {},
+        {},
+    ]
+    class Response:
+        def __init__(self, data): self.data = data
+        def read(self, limit): return json.dumps(self.data).encode()
+    def transport(request, timeout):
+        calls.append((request.method, request.full_url, request.data))
+        return Response(payloads.pop(0))
+    client = GitHubEvolutionClient("test-token-value-123456789", "owner/repo", transport=transport)
+    with pytest.raises(GitHubEvolutionError, match="did not confirm draft status"):
+        client.create_pull_request(
+            title="Improve safe validation", summary="Add a bounded validation check.",
+            files={"src/opencompany_core/example.py": "VALUE = 1\n"},
+        )
+    assert any(method == "PATCH" and url.endswith("/pulls/13") for method, url, _ in calls)
+    assert any(method == "DELETE" and "/git/refs/heads/feat/opencompany-evolution-" in url for method, url, _ in calls)
