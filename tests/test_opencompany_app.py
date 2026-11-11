@@ -615,31 +615,34 @@ def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_
 
     assert "max-age=43200" in login.headers.get("set-cookie", "").lower()
 
-    status = owner_client.get("/auth/session")
-    assert status.status_code == 200 and status.json()["authenticated"] is True
-    renewed_csrf = status.json()["csrf_token"]
-    assert renewed_csrf and renewed_csrf != csrf
-    blocked = owner_client.post("/agents/bootstrap", json={})
-    assert blocked.status_code == 401
-    stale_csrf = owner_client.post(
-        "/agents/bootstrap",
-        headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
-        json={},
-    )
-    assert stale_csrf.status_code == 401
-    allowed = owner_client.post(
-        "/agents/bootstrap",
-        headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
-        json={},
-    )
-    assert allowed.status_code == 200
-    logout = owner_client.post(
-        "/auth/logout",
-        headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
-    )
-    assert logout.status_code == 200
-    after = owner_client.get("/agents")
-    assert after.status_code == 401
+    # Simulate closing the browser and reopening it with the persistent cookie.
+    with TestClient(app, base_url="https://testserver") as reopened:
+        reopened.cookies.set("opencompany_session", cookie)
+        status = reopened.get("/auth/session")
+        assert status.status_code == 200 and status.json()["authenticated"] is True
+        renewed_csrf = status.json()["csrf_token"]
+        assert renewed_csrf and renewed_csrf != csrf
+        blocked = reopened.post("/agents/bootstrap", json={})
+        assert blocked.status_code == 401
+        stale_csrf = reopened.post(
+            "/agents/bootstrap",
+            headers={"X-CSRF-Token": csrf, "Origin": "https://testserver"},
+            json={},
+        )
+        assert stale_csrf.status_code == 401
+        allowed = reopened.post(
+            "/agents/bootstrap",
+            headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
+            json={},
+        )
+        assert allowed.status_code == 200
+        logout = reopened.post(
+            "/auth/logout",
+            headers={"X-CSRF-Token": renewed_csrf, "Origin": "https://testserver"},
+        )
+        assert logout.status_code == 200
+        after = reopened.get("/agents")
+        assert after.status_code == 401
 
 
 def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
