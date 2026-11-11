@@ -76,7 +76,11 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
     # Only an explicit OpenRouter :free route is admitted to unattended AIOS
     # company inference. A dashboard checkbox is not proof that an arbitrary
     # provider/model is zero-cost, so every other legacy provider is fail-closed.
-    verified_free_model = provider.key == "openrouter" and model.endswith(":free")
+    verified_free_model = (
+        provider.key == "openrouter"
+        and base == "https://openrouter.ai/api/v1"
+        and model.endswith(":free")
+    )
     company_route_allowed = verified_free_model
     eligible = (
         configured and free and verified_free_model and not provider.experimental_only
