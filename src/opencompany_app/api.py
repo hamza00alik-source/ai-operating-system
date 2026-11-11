@@ -2399,6 +2399,11 @@ def change_work_item_state(
         raise HTTPException(status_code=404, detail="Work item not found.")
     if item.state == TaskState.REVIEW and payload.target_state == TaskState.COMPLETED:
         raise HTTPException(status_code=409, detail="Use the owner review endpoint to approve a review-required deliverable.")
+    if item.state in {TaskState.QUEUED, TaskState.IN_PROGRESS} and payload.target_state == TaskState.CANCELLED:
+        raise HTTPException(
+            status_code=409,
+            detail="Queued or running work cannot be cancelled through a state-only transition. A queue-aware cancellation must first stop or revoke the active lease.",
+        )
     if payload.target_state in {TaskState.QUEUED, TaskState.IN_PROGRESS}:
         raise HTTPException(status_code=409, detail="Use owner queue admission and the worker claim pipeline for execution states.")
     known = {value.id: value for value in store.list_work_items(limit=1000)}
