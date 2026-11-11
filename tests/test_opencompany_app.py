@@ -54,6 +54,10 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert "unsafe-inline" not in response.headers["content-security-policy"].split("script-src", 1)[1].split(";", 1)[0]
+    assert "nonce-" in response.headers["content-security-policy"]
+    assert 'nonce="' in response.text
+    assert response.headers["x-frame-options"] == "DENY"
 
 
 
@@ -563,6 +567,15 @@ def test_deliverables_endpoint_requires_owner_and_returns_persisted_records(owne
     unauthorized = owner_client.get(f"/work-items/{item_id}/deliverables")
     assert unauthorized.status_code == 401
 
+
+
+def test_owner_session_login_is_rate_limited_after_five_failed_attempts(owner_client):
+    for _ in range(4):
+        response = owner_client.post("/auth/session", json={"api_key": "wrong-owner-key"})
+        assert response.status_code == 401
+    limited = owner_client.post("/auth/session", json={"api_key": "wrong-owner-key"})
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) > 0
 
 
 def test_session_login_uses_http_only_cookie_and_requires_csrf_for_writes(owner_client):
