@@ -240,6 +240,14 @@ class LearningRepository:
                         ).fetchone()
                         if found is None or found["business_id"] != business_id:
                             raise ValueError("learning note evidence must belong to the selected business unit")
+                    elif ref.startswith("deliverable:"):
+                        found = self._db.execute(
+                            """SELECT w.business_id FROM deliverables d
+                               JOIN work_items w ON w.id=d.work_item_id WHERE d.id=?""",
+                            (ref.split(":", 1)[1],),
+                        ).fetchone()
+                        if found is None or found["business_id"] != business_id:
+                            raise ValueError("learning note deliverable evidence must belong to the selected business unit")
                 self._db.execute(
                     """INSERT INTO approved_learning_notes
                        (id,role_key,note,evidence_refs_json,created_at,owner_id,state,business_id)
@@ -271,10 +279,13 @@ class LearningRepository:
                 role_key = proposal["target"]
                 evidence_ids = json.loads(proposal["based_on_evaluations_json"])
                 for evaluation_id in evidence_ids:
-                    if self._db.execute(
-                        "SELECT 1 FROM outcome_evaluations WHERE id=?", (evaluation_id,)
-                    ).fetchone() is None:
-                        raise ValueError("approved proposal references an unavailable evaluation")
+                    evaluation = self._db.execute(
+                        """SELECT w.business_id FROM outcome_evaluations e
+                           JOIN work_items w ON w.id=e.work_item_id WHERE e.id=?""",
+                        (evaluation_id,),
+                    ).fetchone()
+                    if evaluation is None or evaluation["business_id"] != proposal["business_id"]:
+                        raise ValueError("approved proposal evidence must remain inside its business unit")
                 evidence_refs = [f"evaluation:{value}" for value in evidence_ids]
                 self._db.execute(
                     """INSERT INTO approved_learning_notes
