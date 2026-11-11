@@ -1870,6 +1870,7 @@ def create_ai_manager_proposal(
             "manager_rationale": recommendation.rationale,
             "planner_provider": recommendation.provider,
             "planner_model": recommendation.model,
+            "selected_team_keys": list(dict.fromkeys(specialist.team_key for specialist in plan.specialists)),
         },
         manager_agent_id=manager.id,
         mode=plan.mode.value,
@@ -1932,7 +1933,11 @@ def create_work_item_delegation_proposal(
             })
     return delegations.create_proposal(
         parent_work_item_id=item.id,
-        request={"required_capabilities": payload.required_capabilities, "max_specialists": payload.max_specialists},
+        request={
+            "required_capabilities": payload.required_capabilities,
+            "max_specialists": payload.max_specialists,
+            "selected_team_keys": list(dict.fromkeys(specialist.team_key for specialist in plan.specialists)),
+        },
         manager_agent_id=manager.id,
         mode=plan.mode.value,
         team_key=plan.selected_team_key,
