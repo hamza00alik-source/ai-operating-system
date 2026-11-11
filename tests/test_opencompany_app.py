@@ -1464,3 +1464,24 @@ def test_unorouter_test_succeeds_with_zero_cost_and_polls_result(owner_client, m
     assert payload["paid_fallback"] is False
     assert runtime.unorouter_tested_at is not None
     assert runtime.fleet.status().running is False
+
+
+
+def test_saved_unorouter_catalogue_refresh_uses_server_key_without_reentry(owner_client, monkeypatch):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    saved = {"api_key": "saved-inference-key-never-return-this", "model": "unorouter/free-catalog:free"}
+    monkeypatch.setattr(runtime.secret_vault, "get", lambda name: saved if name == "unorouter" else None)
+    monkeypatch.setattr(
+        api_module, "discover_free_models",
+        lambda api_key, force_refresh=False: ("alpha:free", "beta:free") if api_key == saved["api_key"] and force_refresh else (),
+    )
+
+    response = owner_client.get("/settings/providers/unorouter/models", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["routing_mode"] == "automatic_all_free_models"
+    assert payload["models"] == ["alpha:free", "beta:free"]
+    assert payload["paid_fallback"] is False
+    assert "saved-inference-key-never-return-this" not in response.text
