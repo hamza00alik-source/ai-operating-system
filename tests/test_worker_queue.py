@@ -6,6 +6,7 @@ import pytest
 from opencompany_core.worker_queue import DurableWorkerQueue, QueueError
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
+from opencompany_core.delegation_records import DelegationRepository
 
 
 def test_queue_claim_complete_and_duplicate_protection(tmp_path):
@@ -167,5 +168,72 @@ def test_authorized_re_admission_reuses_done_and_dead_queue_rows(tmp_path):
     assert retried.attempt == 1
     queue.complete(retried)
     assert queue.counts() == {"done": 2}
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_delegated_child_can_be_re_admitted_after_review_revision(tmp_path):
+    store = SQLiteStore(tmp_path / "delegated_re_admission.sqlite3")
+    delegations = DelegationRepository(store._connection, store._lock)
+    agent_id = uuid4()
+    agent = AgentProfile(
+        id=agent_id, name="Research Specialist", department="intelligence-research",
+        purpose="Prepare evidence", capabilities=("research",), state=AgentState.ACTIVE,
+        role_key="market_intelligence_analyst", team_key="intelligence-research__team_1",
+    )
+    store.save_agent(agent)
+    parent_id = uuid4()
+    proposal = delegations.create_proposal(
+        parent_work_item_id=parent_id,
+        request={"required_capabilities": ["market_research"]},
+        manager_agent_id=None, mode="specialist_team",
+        team_key=agent.team_key,
+        children=[{
+            "assigned_agent_id": str(agent_id), "role_key": agent.role_key,
+            "team_key": agent.team_key, "title": "Research child",
+            "objective": "Prepare a sourced internal research draft",
+        }],
+    )
+    child_id = UUID(proposal["children"][0]["id"])
+    with store._lock:
+        store._connection.execute(
+            "UPDATE delegation_child_tasks SET state='approved' WHERE id=?",
+            (str(child_id),),
+        )
+    item = WorkItem(
+        id=child_id, title="Research child", objective="Prepare a sourced internal research draft",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=agent_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock, lease_seconds=30)
+
+    def admit():
+        queue.enqueue_authorized(
+            store.get_work_item(child_id), agent_id,
+            {"role_key": agent.role_key, "team_key": agent.team_key},
+            AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner", action="work_item.queued",
+                subject_type="work_item", subject_id=str(child_id),
+                outcome="recorded", correlation_id=str(uuid4()),
+            ),
+        )
+
+    admit()
+    first = queue.claim(agent_id)
+    assert first is not None
+    queue.complete(first)
+    with store._lock:
+        store._connection.execute(
+            "UPDATE work_items SET state=? WHERE id=?",
+            (TaskState.READY.value, str(child_id)),
+        )
+    # The delegation record remains queued after its first admission. A revision
+    # must still be re-admittable once the durable queue row is terminal.
+    admit()
+    second = queue.claim(agent_id)
+    assert second is not None and second.work_item_id == child_id
+    queue.complete(second)
     assert store.verify_audit_chain()
     store.close()
