@@ -27,6 +27,29 @@ def test_business_records_distinguish_verified_revenue_and_pending_expenses(monk
         linked_expense = next(x for x in expenses.json() if x["id"] == expense.json()["id"])
         assert linked_expense["status"] == "approved_for_manual_payment"
 
+        pending_expense = client.post("/business/expenses", json={
+            "title": "Unapproved invoice", "amount": 7, "currency": "USD"
+        }, headers=headers)
+        assert pending_expense.status_code == 201
+        premature = client.post(
+            f"/business/expenses/{pending_expense.json()['id']}/confirm-paid?business_id=core",
+            json={}, headers=headers
+        )
+        assert premature.status_code == 409
+
+        confirmed_paid = client.post(
+            f"/business/expenses/{expense.json()['id']}/confirm-paid?business_id=core",
+            json={}, headers=headers
+        )
+        assert confirmed_paid.status_code == 200
+        assert confirmed_paid.json()["status"] == "owner_confirmed_paid"
+        repeated = client.post(
+            f"/business/expenses/{expense.json()['id']}/confirm-paid?business_id=core",
+            json={}, headers=headers
+        )
+        assert repeated.status_code == 200
+        assert repeated.json()["status"] == "owner_confirmed_paid"
+
         expected = client.post("/business/revenue", json={
             "title": "Unsigned order", "amount": 99, "currency": "USD"
         }, headers=headers)
@@ -45,6 +68,11 @@ def test_business_records_distinguish_verified_revenue_and_pending_expenses(monk
         assert summary.json()["customers"] >= 1
         usd = next(x for x in summary.json()["verified_revenue_by_currency"] if x["currency"] == "USD")
         assert usd["total"] >= 25
+        paid_usd = next(x for x in summary.json()["owner_confirmed_paid_expenses_by_currency"] if x["currency"] == "USD")
+        assert paid_usd["total"] >= 12.5
+        net_usd = next(x for x in summary.json()["verified_net_cash_movement_mtd_by_currency"] if x["currency"] == "USD")
+        assert net_usd["net_cash_movement"] >= 12.5
+        assert summary.json()["expenses_approved_awaiting_manual_payment"] >= 0
 
 
 def test_code_asset_license_offer_requires_ownership_and_dependency_review(monkeypatch):
