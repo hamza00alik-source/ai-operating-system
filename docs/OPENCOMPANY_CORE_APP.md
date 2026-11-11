@@ -130,3 +130,12 @@ The owner API now provides private, owner-authenticated commercial records:
 - Lost and on-hold opportunities cannot receive new quotes. An accepted quote cannot be voided after its order record exists, and duplicate order creation is rejected.
 
 - Order status can be changed only through owner-confirmed, audited transitions: awaiting owner fulfilment → in progress → fulfilled, with cancellation allowed before completion. These status updates are records only and never trigger external fulfilment.
+
+
+### Supplier relationship records (schema 7)
+
+- Private supplier records are available only to the physical-products agency and the owner's own physical-product brand. Digital products and core cannot own supplier records.
+- Agency suppliers represent third-party manufacturers/suppliers the agency may represent; own-brand suppliers belong only to the owner's separate supply chain. The relationship type is derived from the business unit and enforced by a database constraint.
+- Supplier records begin as drafts. Owner-confirmed status changes can mark a record verified or blocked; every write and status change is audit-linked in the same database transaction.
+- Listing can be filtered to one physical business. No supplier credentials, purchase orders, inventory claims, supplier messages, price commitments, or procurement actions are created by this registry.
+- A verified supplier is not proof of stock, quality certification, export eligibility, or current pricing. Those require separate evidence and review.
