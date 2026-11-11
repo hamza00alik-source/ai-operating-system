@@ -1,6 +1,9 @@
+import json
+
 import pytest
 
-from opencompany_core.executive_ai import ExecutivePlanningError, _parse_model_json
+from opencompany_core.executive_ai import ExecutivePlanningError, _parse_model_json, create_executive_plan
+from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy
 
 
 VALID = '{"rationale":"Plan rationale","work_items":[]}'
@@ -32,3 +35,35 @@ def test_reject_empty_malformed_or_multiple_payloads(value):
 def test_reject_non_object_json():
     with pytest.raises(ExecutivePlanningError):
         _parse_model_json('["not", "an", "object"]')
+
+
+def test_ceo_plan_inherits_selected_business_unit():
+    class PlanAdapter:
+        def __init__(self):
+            self.request = None
+
+        def generate(self, request, *, model):
+            self.request = request
+            payload = {
+                "rationale": "Keep this work inside the selected business.",
+                "work_items": [{
+                    "department": "intelligence-research",
+                    "title": "Research agency buyers",
+                    "objective": "Prepare a sourced international buyer report.",
+                    "depends_on": [],
+                }],
+            }
+            return ModelResult(json.dumps(payload), "free", model, 0.0)
+
+    adapter = PlanAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    plan = create_executive_plan(
+        "Agency buyer research", "Find qualified international buyers.",
+        gateway, business_id="physical-agency",
+    )
+
+    assert plan.work_items[0].business_id == "physical-agency"
+    assert "Business unit: physical-agency" in adapter.request.prompt
+    assert adapter.request.business_id == "physical-agency"
