@@ -237,3 +237,26 @@ def test_delegated_child_can_be_re_admitted_after_review_revision(tmp_path):
     queue.complete(second)
     assert store.verify_audit_chain()
     store.close()
+
+
+def test_queue_counts_are_filtered_by_business_unit(tmp_path):
+    store = SQLiteStore(tmp_path / "queue-business-scope.sqlite3")
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    agency = WorkItem(
+        id=uuid4(), title="Agency task", objective="Research suppliers",
+        department="intelligence-research", business_id="physical-agency",
+    )
+    digital = WorkItem(
+        id=uuid4(), title="Digital task", objective="Research digital products",
+        department="intelligence-research", business_id="digital-products",
+    )
+    store.save_work_item(agency)
+    store.save_work_item(digital)
+    queue.enqueue(agency.id, uuid4(), {"role_key": "market_intelligence_analyst"})
+    queue.enqueue(digital.id, uuid4(), {"role_key": "market_intelligence_analyst"})
+    assert queue.counts("physical-agency") == {"queued": 1}
+    assert queue.counts("digital-products") == {"queued": 1}
+    assert queue.counts() == {"queued": 2}
+    with pytest.raises(ValueError, match="unknown business unit"):
+        queue.counts("not-a-business")
+    store.close()
