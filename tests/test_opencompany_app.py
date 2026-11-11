@@ -1533,4 +1533,4 @@ def test_work_item_workflow_view_requires_owner_authentication(owner_client):
 
     response = owner_client.get(f"/work-items/{created.json()['item_id']}/workflow")
 
-    assert response.status_code == 404
+    assert response.status_code == 401
