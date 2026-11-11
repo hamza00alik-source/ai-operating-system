@@ -72,6 +72,22 @@ def test_product_workflow_is_persisted_zero_cost_and_owner_gated(tmp_path):
         store.close()
 
 
+def test_product_workflow_rejects_completion_without_evidence(tmp_path):
+    store, repo = _repo(tmp_path)
+    try:
+        workflow = repo.create("Evidence required", "Every completed stage needs evidence.")
+        try:
+            repo.complete_stage(
+                workflow["id"], "opportunity_brief",
+                output="The stage claims to be complete.", artifact_refs=[], evidence=[],
+            )
+            assert False, "stage completion without evidence must fail"
+        except ProductWorkflowError:
+            pass
+    finally:
+        store.close()
+
+
 def test_product_workflow_enforces_sequential_stages_and_records_blockers(tmp_path):
     store, repo = _repo(tmp_path)
     try:
