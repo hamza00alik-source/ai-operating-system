@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Protocol, Callable
 from uuid import NAMESPACE_URL, UUID, uuid5, uuid4
 
 from .domain import AuditRecord, TaskState
@@ -41,6 +41,7 @@ class OpenCompanyWorker:
         *,
         request_budget_usd: float = 0.0,
         preferred_provider: str | None = None,
+        post_delivery_review: Callable[[UUID], str] | None = None,
     ) -> None:
         if artifact_sink is None:
             raise WorkerConfigurationError("a durable artifact sink is required")
@@ -52,6 +53,7 @@ class OpenCompanyWorker:
         self.artifact_sink = artifact_sink
         self.request_budget_usd = request_budget_usd
         self.preferred_provider = preferred_provider
+        self.post_delivery_review = post_delivery_review
 
     def available_agent_ids(self) -> tuple[UUID, ...]:
         """Return only assignees with queued work or expired leases."""
@@ -91,6 +93,16 @@ class OpenCompanyWorker:
             if not saved:
                 raise WorkerConfigurationError("work item is no longer in progress")
             self.queue.complete(lease)
+            if self.post_delivery_review is not None:
+                try:
+                    return self.post_delivery_review(lease.work_item_id)
+                except Exception as exc:
+                    # Delivery is already durable and acknowledged. A review outage
+                    # must leave the item in REVIEW, never re-execute the specialist.
+                    self.store.append_audit_record(self._audit(
+                        lease, "manager.auto_review_unavailable",
+                        {"error_type": type(exc).__name__},
+                    ))
             return "completed_review_required"
         except Exception as exc:
             # Do not leak exception text into persistent queue metadata.
