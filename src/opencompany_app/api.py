@@ -2410,6 +2410,81 @@ def change_work_item_state(
     return {"item_id": str(changed.id), "state": changed.state.value}
 
 
+@app.get("/work-items/{item_id}/workflow", dependencies=[Depends(require_owner_key)])
+def get_work_item_workflow(
+    item_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Return the complete internal lifecycle view for one work item."""
+    item = store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    items = store.list_work_items(limit=1000)
+    by_id = {candidate.id: candidate for candidate in items}
+    prerequisites = [
+        {
+            "id": str(dependency_id),
+            "state": by_id[dependency_id].state.value if dependency_id in by_id else "missing",
+            "title": by_id[dependency_id].title if dependency_id in by_id else "Missing prerequisite",
+        }
+        for dependency_id in item.depends_on
+    ]
+    dependents = [
+        {
+            "id": str(candidate.id), "title": candidate.title,
+            "department": candidate.department, "state": candidate.state.value,
+        }
+        for candidate in items if item_id in candidate.depends_on
+    ]
+    deliverables = store.list_deliverables(item_id)
+    proposals = runtime.delegations.list_for_parent(item_id)
+    handoffs = runtime.handoffs.list_for_work_item(item_id)
+    next_action = {
+        "draft": "owner_review_and_mark_ready",
+        "ready": "owner_confirm_assignment_and_enqueue",
+        "blocked": "complete_prerequisites",
+        "queued": "worker_execution",
+        "in_progress": "wait_for_worker_or_recover_expired_lease",
+        "review": "owner_review_deliverables",
+        "failed": "owner_retry_or_cancel",
+        "completed": "terminal",
+        "cancelled": "terminal",
+    }.get(item.state.value, "inspect")
+    return {
+        "work_item": {
+            "id": str(item.id), "title": item.title, "objective": item.objective,
+            "department": item.department, "state": item.state.value,
+            "assigned_agent_id": str(item.assigned_agent_id) if item.assigned_agent_id else None,
+            "depends_on": [str(value) for value in item.depends_on],
+            "created_at": item.created_at.isoformat(),
+        },
+        "next_action": next_action,
+        "prerequisites": prerequisites,
+        "dependents": dependents,
+        "queue": runtime.queue.get_entry(item_id),
+        "delegation_proposals": proposals,
+        "handoffs": [_handoff_payload(value) for value in handoffs],
+        "deliverables": [
+            {
+                "id": row["id"], "role_key": row["role_key"],
+                "provider": row["provider"], "model": row["model"],
+                "cost_usd": row["cost_usd"], "review_required": bool(row["review_required"]),
+                "created_at": row["created_at"],
+            }
+            for row in deliverables
+        ],
+        "counts": {
+            "prerequisites": len(prerequisites),
+            "completed_prerequisites": sum(1 for value in prerequisites if value["state"] == "completed"),
+            "dependents": len(dependents),
+            "deliverables": len(deliverables),
+            "handoffs": len(handoffs),
+            "delegation_proposals": len(proposals),
+        },
+    }
+
+
 @app.get("/work-items/{item_id}/deliverables", dependencies=[Depends(require_owner_key)])
 def list_work_item_deliverables(
     item_id: UUID, store: SQLiteStore = Depends(get_store),
