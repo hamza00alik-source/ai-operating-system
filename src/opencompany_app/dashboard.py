@@ -76,6 +76,49 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <button id="create-executive-plan" disabled>Create CEO draft plan</button>
   </section>
   <section class="panel">
+    <h2 class="section-title">Commercial workspace · separate businesses</h2>
+    <p class="muted">Each customer opportunity and catalogue entry belongs to exactly one business. Core is internal only. No automatic cross-selling, substitution, customer contact, or publishing occurs here.</p>
+    <div class="grid">
+      <div class="item">
+        <h3>Record customer opportunity</h3>
+        <label for="opportunity-business">Business serving this need</label>
+        <select id="opportunity-business">
+          <option value="physical-agency">Physical-products agency</option>
+          <option value="physical-brand">Own physical-product brand</option>
+          <option value="digital-products">Digital products</option>
+        </select>
+        <label for="opportunity-customer">Customer / company</label>
+        <input id="opportunity-customer" maxlength="200" placeholder="Customer name">
+        <label for="opportunity-contact">Contact (optional)</label>
+        <input id="opportunity-contact" maxlength="320" placeholder="Email or contact reference">
+        <label for="opportunity-need">What did the customer ask for?</label>
+        <textarea id="opportunity-need" rows="3" maxlength="4000" placeholder="Record only the customer's stated need."></textarea>
+        <label class="confirmation-label"><input id="opportunity-scope" type="checkbox"> I confirm this is one relevant business and no unrelated offer is being added.</label>
+        <button id="create-opportunity" disabled>Save opportunity</button>
+      </div>
+      <div class="item">
+        <h3>Add a product / service catalogue entry</h3>
+        <label for="catalog-business">Owning business</label>
+        <select id="catalog-business">
+          <option value="physical-agency">Physical-products agency</option>
+          <option value="physical-brand">Own physical-product brand</option>
+          <option value="digital-products">Digital products</option>
+        </select>
+        <label for="catalog-name">Name</label>
+        <input id="catalog-name" maxlength="200" placeholder="Product or service name">
+        <label for="catalog-category">Category</label>
+        <input id="catalog-category" maxlength="120" placeholder="e.g. Himalayan pink salt / downloadable tool">
+        <label for="catalog-description">Description</label>
+        <textarea id="catalog-description" rows="3" maxlength="4000" placeholder="Describe only what this business actually provides."></textarea>
+        <button id="create-catalog-product" disabled>Save as private draft</button>
+      </div>
+    </div>
+    <div class="grid">
+      <div><h3>Customer opportunities</h3><div id="commercial-opportunities" class="list"><p class="muted">Connect to load opportunities.</p></div></div>
+      <div><h3>Separate catalogues</h3><div id="commercial-products" class="list"><p class="muted">Connect to load catalogue drafts.</p></div></div>
+    </div>
+  </section>
+  <section class="panel">
     <div class="row"><h2 class="section-title">External research connector</h2><span id="api-anything-status" class="pill">Not configured</span></div>
     <p class="muted">API Anything is connected in read-only tier-one mode. This console can discover public operations and call them without browser automation or write permissions.</p>
     <label for="research-query">Search available research operations</label>
@@ -144,6 +187,28 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     }
     return response.json();
   };
+  async function loadCommercial(){
+    const [opportunities,products]=await Promise.all([
+      request("/commercial/opportunities"),request("/commercial/products")
+    ]);
+    clear("commercial-opportunities","No customer opportunities recorded.");
+    opportunities.opportunities.forEach(o=>{
+      const card=document.createElement("article");card.className="item";
+      const heading=document.createElement("h3");heading.textContent=o.customer_name+" · "+o.business_id;card.append(heading);
+      const need=document.createElement("p");need.textContent=o.customer_need;card.append(need);
+      const stage=document.createElement("span");stage.className="pill";stage.textContent=o.stage;card.append(stage);
+    byId("commercial-opportunities").append(card);
+    });
+    clear("commercial-products","No catalogue drafts yet.");
+    products.products.forEach(p=>{
+      const card=document.createElement("article");card.className="item";
+      const heading=document.createElement("h3");heading.textContent=p.name+" · "+p.business_id;card.append(heading);
+      const detail=document.createElement("p");detail.textContent=p.category+" · "+p.description;card.append(detail);
+      const state=document.createElement("span");state.className="pill";state.textContent="Private draft · "+p.status;card.append(state);
+      byId("commercial-products").append(card);
+    });
+    ["create-opportunity","create-catalog-product"].forEach(id=>byId(id).disabled=false);
+  }
   async function load(){
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
@@ -154,6 +219,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         request("/organization/departments"),request("/agents"),request(workItemsUrl),
         request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request(businessFilter?"/workers/queue?business_id="+encodeURIComponent(businessFilter):"/workers/queue"),request("/workers/status"),request(businessFilter?"/learning/proposals?business_id="+encodeURIComponent(businessFilter):"/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
+      await loadCommercial();
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
       byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
@@ -385,10 +451,40 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{if(csrfToken) await fetch("/auth/logout",{method:"POST",headers:{"X-CSRF-Token":csrfToken},credentials:"same-origin",cache:"no-store"});}
     finally{
       csrfToken="";keyInput.value="";
-      ["departments","agents","capabilities","work-items"].forEach(id=>clear(id,"Disconnected."));
+      ["departments","agents","capabilities","work-items","commercial-opportunities","commercial-products"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
       byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
+  });
+  byId("create-opportunity").addEventListener("click",async()=>{
+    const customer=byId("opportunity-customer").value.trim();
+    const need=byId("opportunity-need").value.trim();
+    if(!customer||!need||!byId("opportunity-scope").checked){setMessage("Enter the customer and stated need, then confirm the single-business scope.","error");return;}
+    const button=byId("create-opportunity");button.disabled=true;
+    try{
+      await request("/commercial/opportunities",{method:"POST",body:JSON.stringify({
+        business_id:byId("opportunity-business").value,customer_name:customer,
+        customer_contact:byId("opportunity-contact").value.trim()||null,
+        customer_need:need,scope_confirmed:true
+      })});
+      byId("opportunity-customer").value="";byId("opportunity-contact").value="";
+      byId("opportunity-need").value="";byId("opportunity-scope").checked=false;
+      await loadCommercial();setMessage("Opportunity saved under one business unit. No customer was contacted.","success");
+    }catch(error){setMessage(error.message,"error");}
+    finally{button.disabled=false;}
+  });
+  byId("create-catalog-product").addEventListener("click",async()=>{
+    const name=byId("catalog-name").value.trim(),description=byId("catalog-description").value.trim(),category=byId("catalog-category").value.trim();
+    if(!name||!description||!category){setMessage("Complete the catalogue name, category and description.","error");return;}
+    const button=byId("create-catalog-product");button.disabled=true;
+    try{
+      await request("/commercial/products",{method:"POST",body:JSON.stringify({
+        business_id:byId("catalog-business").value,name,description,category
+      })});
+      byId("catalog-name").value="";byId("catalog-description").value="";byId("catalog-category").value="";
+      await loadCommercial();setMessage("Catalogue entry saved as a private draft. Nothing was published.","success");
+    }catch(error){setMessage(error.message,"error");}
+    finally{button.disabled=false;}
   });
   byId("search-research").addEventListener("click",async()=>{
     const query=byId("research-query").value.trim();
