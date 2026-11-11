@@ -46,6 +46,8 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "Approve draft" in response.text
     assert "Request revision" in response.text
     assert "Workflow details" in response.text
+    assert "Retry failed task" in response.text
+    assert "Cancel task" in response.text
     assert 'request("/work-items/"+w.id+"/workflow")' in response.text
     assert "AI usage &amp; cost ledger" in response.text or "AI usage & cost ledger" in response.text
     assert "loadModelUsage" in response.text
