@@ -215,3 +215,47 @@ def test_deliverable_write_and_review_transition_roll_back_together(tmp_path):
     assert store.verify_audit_chain()
     queue.close()
     store.close()
+
+
+def test_post_delivery_manager_review_hook_runs_after_queue_ack(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    sink = MemorySink()
+    calls = []
+
+    def review(work_item_id):
+        assert work_item_id == item.id
+        assert queue.counts() == {"done": 1}
+        assert store.get_work_item(work_item_id).state == TaskState.REVIEW
+        calls.append(work_item_id)
+        return "manager_approved"
+
+    worker = OpenCompanyWorker(
+        queue, store, FakeExecutor(), sink, post_delivery_review=review,
+    )
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "manager_approved"
+    assert calls == [item.id]
+    assert queue.counts() == {"done": 1}
+    assert store.get_work_item(item.id).state == TaskState.REVIEW
+    queue.close()
+    store.close()
+
+
+def test_post_delivery_review_failure_does_not_reexecute_specialist(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    calls = []
+
+    def unavailable(_work_item_id):
+        calls.append(True)
+        raise RuntimeError("review provider unavailable")
+
+    worker = OpenCompanyWorker(
+        queue, store, FakeExecutor(), MemorySink(), post_delivery_review=unavailable,
+    )
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert calls == [True]
+    assert queue.counts() == {"done": 1}
+    assert store.get_work_item(item.id).state == TaskState.REVIEW
+    assert store.audit_event_count() == 2
+    assert store.verify_audit_chain()
+    queue.close()
+    store.close()
