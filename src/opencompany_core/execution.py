@@ -48,7 +48,7 @@ class AgentExecutor:
         *,
         workforce: RoleCatalog | None = None,
         max_output_tokens: int = 1600,
-        learning_context: Callable[[str], Sequence[dict]] | None = None,
+        learning_context: Callable[..., Sequence[dict]] | None = None,
         research_broker=None,
         usage_recorder: Callable[[dict], None] | None = None,
         dependency_context: Callable[[WorkItem], Sequence[dict]] | None = None,
