@@ -78,7 +78,7 @@ The owner must review provider terms, privacy, data handling, account billing se
 
 The API and in-process worker fleet share one SQLite database connection and transaction boundary. This deployment design assumes one persistent API container and one mounted SQLite volume; do not point a second host or standalone worker process at a separate copy of the database.
 
-Queue leases are atomic and token-checked. Expired leases are recovered within a bounded retry ceiling; exhausted work is dead-lettered. An owner may return a FAILED item to READY, or request revision of a review item. The terminal queue row may then be reused for re-admission, with attempt and stale lease/error state reset. Existing queued or leased work cannot be overwritten.
+Queue leases are atomic and token-checked. Expired leases are recovered within a bounded retry ceiling; exhausted work is dead-lettered. An owner may return a FAILED item to READY, or request revision of a review item. The terminal queue row may then be reused for re-admission, with attempt and stale lease/error state reset. Existing queued or leased work cannot be overwritten. The owner console exposes retry for FAILED work and cancellation for unqueued work. State-only cancellation of QUEUED or IN_PROGRESS work is rejected because it would leave an orphaned queue row or active provider call; queue-aware cooperative cancellation remains a release task.
 
 The fleet may be started explicitly from the owner console. Optional autostart remains gated by the configured owner-approved provider verification in the current process; saved credentials alone do not authorize inference at process boot.
 
