@@ -166,7 +166,7 @@ textarea,#product-title{width:100%;margin:7px 0 12px;background:#0b1428;border:1
         if(ref.startsWith("artifact://")){
           const artifactId=ref.slice("artifact://".length);
           const link=document.createElement("a");link.href="/product-workflows/artifacts/"+encodeURIComponent(artifactId);
-          link.textContent="Download generated blueprint ZIP";link.addEventListener("click",()=>{});
+          link.textContent="Download generated blueprint ZIP";
           card.append(link);
         }
       });
