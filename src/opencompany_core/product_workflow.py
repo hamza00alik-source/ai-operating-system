@@ -136,8 +136,11 @@ class ProductWorkflowRepository:
             raise ProductWorkflowError("Stage output must contain 1-12000 characters.")
         if len(artifact_refs) > 30 or any(not ref.strip() or len(ref) > 500 for ref in artifact_refs):
             raise ProductWorkflowError("Artifact references must be non-empty and limited to 30.")
-        if len(evidence) > 30 or any(not item.strip() or len(item) > 1000 for item in evidence):
-            raise ProductWorkflowError("Evidence entries must be non-empty and limited to 30.")
+        if not evidence or len(evidence) > 30 or any(
+            not isinstance(item, str) or not item.strip() or len(item) > 1000
+            for item in evidence
+        ):
+            raise ProductWorkflowError("At least one non-empty evidence entry is required (maximum 30).")
         if stage_key == "automated_qa":
             required = {"passed_checks", "failed_checks", "untested_claims"}
             if not isinstance(qa_result, dict) or set(qa_result) != required:
