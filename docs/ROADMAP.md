@@ -25,7 +25,8 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [x] Atomic worker claims, expiring leases, bounded retries, dead-letter handling, and stale-lease recovery.
 - [x] Bounded worker fleet with explicit start/stop and optional owner-configured autostart.
 - [x] Specialist execution through a cost-gated model gateway; deliverables remain review-required.
-- [x] Owner review, approval, revision, failure, and cancellation lifecycle transitions.
+- [x] Owner review, approval, revision, failure, and safe cancellation of unqueued work; state-only cancellation of queued/running work is rejected to protect active leases.
+- [x] Owner-visible failed-task retry and workflow-detail inspection, backed by live queue/dependency/delegation/handoff/deliverable state.
 - [x] Persisted inter-agent handoffs with identity, artifact, and audit checks.
 - [x] Owner-authenticated workflow inspection endpoint for prerequisites, dependents, delegation proposals, handoffs, deliverables, queue state, and next action.
 - [ ] Workflow-level artifact aggregation and specialist-specific machine-readable deliverable schemas.
