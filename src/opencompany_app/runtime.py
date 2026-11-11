@@ -175,11 +175,19 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     def read_dependency_deliverables(item):
         results = []
         for dependency_id in item.depends_on:
+            prerequisite = store.get_work_item(dependency_id)
+            if prerequisite is None:
+                raise ValueError("work dependency does not exist")
+            if prerequisite.business_id != item.business_id:
+                raise ValueError("work dependency belongs to another business unit")
+            if prerequisite.state.value != "completed":
+                raise ValueError("work dependency is not completed")
             deliverables = store.list_deliverables(dependency_id)
             if not deliverables:
                 raise ValueError("completed prerequisite has no persisted deliverable")
             results.append({
                 "work_item_id": str(dependency_id),
+                "business_id": prerequisite.business_id,
                 "deliverables": [
                     {
                         "role_key": row["role_key"],
