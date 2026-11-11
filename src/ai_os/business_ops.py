@@ -104,7 +104,9 @@ def create_record(kind: str, payload: dict) -> dict:
 
 
 def business_summary(business_id: str = "core") -> dict:
+    """Summarize owner-verified receipts and owner-confirmed paid expenses by currency."""
     scope = _scope(business_id)
+    month = now()[:7]
     with connect() as db:
         expenses = db.execute(
             "SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' GROUP BY currency", (scope,)
@@ -116,8 +118,17 @@ def business_summary(business_id: str = "core") -> dict:
         revenue_mtd = db.execute(
             """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
             WHERE business_id=? AND record_type='revenue' AND verified=1 AND substr(created_at,1,7)=?
-            GROUP BY currency""",
-            (scope, now()[:7]),
+            GROUP BY currency""", (scope, month),
+        ).fetchall()
+        paid_expenses = db.execute(
+            """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
+            WHERE business_id=? AND record_type='expense' AND status='owner_confirmed_paid'
+            GROUP BY currency""", (scope,),
+        ).fetchall()
+        paid_expenses_mtd = db.execute(
+            """SELECT currency, SUM(amount) total, COUNT(*) n FROM business_records
+            WHERE business_id=? AND record_type='expense' AND status='owner_confirmed_paid'
+            AND substr(created_at,1,7)=? GROUP BY currency""", (scope, month),
         ).fetchall()
         customers = db.execute(
             "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='customer'", (scope,)
@@ -125,17 +136,38 @@ def business_summary(business_id: str = "core") -> dict:
         pending_expenses = db.execute(
             "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' AND status='awaiting_owner_approval'", (scope,)
         ).fetchone()["n"]
+        approved_unpaid_expenses = db.execute(
+            "SELECT COUNT(*) n FROM business_records WHERE business_id=? AND record_type='expense' AND status='approved_for_manual_payment'", (scope,)
+        ).fetchone()["n"]
+    revenue_mtd_by_currency = {row["currency"]: float(row["total"] or 0) for row in revenue_mtd}
+    paid_mtd_by_currency = {row["currency"]: float(row["total"] or 0) for row in paid_expenses_mtd}
+    currencies = sorted(set(revenue_mtd_by_currency) | set(paid_mtd_by_currency))
+    net_cash_mtd = [
+        {
+            "currency": currency,
+            "verified_revenue": round(revenue_mtd_by_currency.get(currency, 0.0), 2),
+            "owner_confirmed_paid_expenses": round(paid_mtd_by_currency.get(currency, 0.0), 2),
+            "net_cash_movement": round(
+                revenue_mtd_by_currency.get(currency, 0.0) - paid_mtd_by_currency.get(currency, 0.0), 2
+            ),
+        }
+        for currency in currencies
+    ]
     return {
         "business_id": scope,
         "customers": customers,
         "verified_revenue_by_currency": [dict(x) for x in revenue],
         "verified_revenue_mtd_by_currency": [dict(x) for x in revenue_mtd],
         "expenses_by_currency": [dict(x) for x in expenses],
+        "owner_confirmed_paid_expenses_by_currency": [dict(x) for x in paid_expenses],
+        "owner_confirmed_paid_expenses_mtd_by_currency": [dict(x) for x in paid_expenses_mtd],
+        "verified_net_cash_movement_mtd_by_currency": net_cash_mtd,
         "expenses_awaiting_owner_approval": pending_expenses,
+        "expenses_approved_awaiting_manual_payment": approved_unpaid_expenses,
         "revenue_policy": "Only owner-marked verified payments are included. Expected or unverified revenue is excluded.",
-        "expense_policy": "Expense entries are recorded as awaiting owner approval; this system does not initiate payments.",
+        "expense_policy": "Expenses count as paid only after approval and a separate owner confirmation that payment has already occurred. AIOS never initiates payment.",
+        "net_cash_policy": "Net cash movement is calculated separately per currency from verified receipts minus owner-confirmed paid expenses. It is not accounting profit and excludes other cash flows.",
     }
-
 
 def list_assets(limit: int = 500) -> list[dict]:
     with connect() as db:
@@ -230,6 +262,36 @@ def create_license_offer(payload: dict) -> dict:
     return {**offer, "approval_id": approval["id"], "external_sharing": False}
 
 
+
+
+
+def confirm_expense_paid(expense_id: str, business_id: str = "core") -> dict:
+    """Mark an approved expense paid only after an explicit owner attestation."""
+    scope = _scope(business_id)
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM business_records WHERE id=? AND business_id=? AND record_type='expense'",
+            (expense_id, scope),
+        ).fetchone()
+        if row is None:
+            raise LookupError("Expense not found in this business environment.")
+        if row["status"] == "owner_confirmed_paid":
+            return dict(row)
+        if row["status"] != "approved_for_manual_payment":
+            raise ValueError("Only owner-approved expenses can be marked paid. Approve the expense first.")
+        updated = db.execute(
+            """UPDATE business_records SET status='owner_confirmed_paid'
+            WHERE id=? AND business_id=? AND record_type='expense'
+            AND status='approved_for_manual_payment'""",
+            (expense_id, scope),
+        )
+        if updated.rowcount != 1:
+            raise ValueError("Expense status changed. Refresh the ledger and try again.")
+        result = db.execute(
+            "SELECT * FROM business_records WHERE id=? AND business_id=?",
+            (expense_id, scope),
+        ).fetchone()
+    return dict(result)
 def apply_expense_approval(approval_id: str, decision: str) -> None:
     """Mirror a completed owner decision onto the linked expense ledger row."""
     status = {"approved": "approved_for_manual_payment", "rejected": "rejected_by_owner"}.get(decision)
