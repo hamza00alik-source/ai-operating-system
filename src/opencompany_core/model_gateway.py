@@ -187,4 +187,8 @@ class ModelGateway:
             if result.cost_usd > item.policy.max_cost_per_request_usd:
                 raise CostPolicyViolation("provider-reported cost exceeds its configured ceiling")
             return result
-        raise NoEligibleProvider("All eligible providers were unavailable: " + "; ".join(failures))
+        if failures:
+            raise ProviderUnavailable(
+                "All eligible providers were unavailable: " + "; ".join(failures)
+            )
+        raise NoEligibleProvider("No explicitly enabled provider fits the current cost policy.")
