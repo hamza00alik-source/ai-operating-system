@@ -131,6 +131,8 @@ def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> di
                 "source_date": str(item.get("source_date") or "")[:80],
             })
     enriched = dict(assessment)
+    if not enriched.get("source_urls"):
+        enriched["source_urls"] = [item["url"] for item in clean_evidence]
     enriched["scorecard"] = score_assessment(enriched)
     with connect() as db:
         row = db.execute("SELECT id FROM venture_opportunities WHERE id=?", (opportunity_id,)).fetchone()
