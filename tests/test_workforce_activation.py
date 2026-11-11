@@ -85,3 +85,54 @@ def test_team_activation_requires_department(tmp_path):
             store.activate_all_draft_agents_with_audit(team_key="team_1")
     finally:
         store.close()
+
+
+def test_api_rejects_unknown_team_before_activation():
+    import pytest
+    from fastapi import HTTPException
+    from opencompany_app.api import WorkforceActivationInput, activate_workforce_scope
+
+    class Store:
+        def list_agents(self, *, limit):
+            return []
+
+        def activate_all_draft_agents_with_audit(self, **kwargs):
+            raise AssertionError("invalid team must be rejected before activation")
+
+    with pytest.raises(HTTPException) as error:
+        activate_workforce_scope(
+            WorkforceActivationInput(
+                department="intelligence-research",
+                team_key="not-a-registered-team",
+            ),
+            Store(),
+        )
+    assert error.value.status_code == 422
+
+
+def test_api_activates_only_the_requested_department_scope():
+    from opencompany_app.api import WorkforceActivationInput, activate_workforce_scope
+
+    class Store:
+        def __init__(self):
+            self.activation_scope = None
+
+        def list_agents(self, *, limit):
+            return []
+
+        def activate_all_draft_agents_with_audit(self, **kwargs):
+            self.activation_scope = kwargs
+            return 7
+
+    store = Store()
+    result = activate_workforce_scope(
+        WorkforceActivationInput(department="intelligence-research"),
+        store,
+    )
+
+    assert result["activated_count"] == 7
+    assert result["worker_execution_started"] is False
+    assert store.activation_scope == {
+        "department": "intelligence-research",
+        "team_key": None,
+    }
