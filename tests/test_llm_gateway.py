@@ -29,7 +29,7 @@ def test_provider_status_never_exposes_secret(monkeypatch):
     monkeypatch.setenv("AI_OS_GROQ_API_KEY", "do-not-leak-this-secret")
     monkeypatch.setenv("AI_OS_GROQ_FREE_CONFIRMED", "true")
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "groq")
-    assert status["eligible"] is True
+    assert status["eligible"] is False
     assert "do-not-leak-this-secret" not in json.dumps(status)
     assert "api_key" not in json.dumps(status).lower()
 
@@ -47,12 +47,9 @@ def test_gateway_executes_real_adapter_path_with_mocked_transport(monkeypatch):
                 "usage": {"prompt_tokens": 7, "completion_tokens": 4, "total_tokens": 11}}
 
     monkeypatch.setattr(llm_gateway, "_post", fake_post)
-    result = llm_gateway.test_provider("groq")
-    assert result["test_passed"] is True
-    assert result["live"] is True
-    assert result["usage"]["total_tokens"] == 11
-    assert captured["url"] == "https://api.groq.com/openai/v1/chat/completions"
-    assert captured["headers"]["Authorization"] == "Bearer test-secret"
+    with pytest.raises(PermissionError):
+        llm_gateway.test_provider("groq")
+    assert captured == {}
 
 
 def test_openrouter_free_route_uses_compatible_api_and_reports_usage(monkeypatch):
@@ -214,29 +211,29 @@ def test_unorouter_env_model_must_end_in_free(monkeypatch):
     assert "personal tests" in status["reason"]
 
 
-def test_unorouter_paid_personal_test_requires_explicit_approval(monkeypatch):
+def test_unorouter_personal_test_never_allows_paid_model(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
         "secret": "uno-test-secret", "model": "paid-model",
-        "base_url": "https://api.unorouter.com/v1", "free_confirmed": False
+        "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
     } if provider == "unorouter" else None)
-    with pytest.raises(PermissionError, match="Explicitly approve"):
-        llm_gateway.test_unorouter_personal("test prompt", approve_paid_request=False)
+    monkeypatch.setattr("opencompany_core.unorouter_adapter.discover_model_catalog", lambda key: (
+        {"model_id": "paid-model", "allowed_for_inference": False},
+    ))
+    with pytest.raises(PermissionError, match="No model is verified free"):
+        llm_gateway.test_unorouter_personal("test prompt")
 
 
-def test_unorouter_paid_personal_test_runs_only_when_approved(monkeypatch):
-    monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
-        "secret": "uno-test-secret", "model": "paid-model",
-        "base_url": "https://api.unorouter.com/v1", "free_confirmed": False
-    } if provider == "unorouter" else None)
-    captured={}
-    def fake_post(url,payload,headers,timeout=35):
-        captured.update(url=url,payload=payload)
-        return {"model":"paid-model","choices":[{"message":{"content":"Approved paid model test returned a valid response."}}],"usage":{}}
-    monkeypatch.setattr(llm_gateway,"_post",fake_post)
-    result=llm_gateway.test_unorouter_personal("test prompt",approve_paid_request=True)
-    assert result["model_cost_class"]=="paid"
-    assert result["paid_request_approved"] is True
-    assert captured["payload"]["model"]=="paid-model"
+def test_non_openrouter_legacy_provider_is_blocked_even_when_marked_free(monkeypatch):
+    monkeypatch.setenv("AI_OS_GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("AI_OS_GROQ_MODEL", "example-model")
+    monkeypatch.setenv("AI_OS_GROQ_API_KEY", "test-secret")
+    monkeypatch.setenv("AI_OS_GROQ_FREE_CONFIRMED", "true")
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "groq")
+    assert status["configured"] is True
+    assert status["free_confirmed"] is True
+    assert status["eligible"] is False
+    with pytest.raises(PermissionError):
+        llm_gateway.generate("groq", "Do not send this prompt")
 
 
 
