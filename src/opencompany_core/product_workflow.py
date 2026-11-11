@@ -80,7 +80,7 @@ class ProductWorkflowRepository:
             {
                 "key": key,
                 "status": "in_progress" if index == 0 else "pending",
-                "owner_role": "product-rd-manager" if index in (0, 1, 2, 3, 4, 5, 6, 7) else "chief-executive-orchestrator",
+                "owner_role": "product_planning_lead" if index in (0, 1, 2, 3, 4, 5, 6, 7) else "chief_executive_orchestrator",
                 "input": {"product_title": title, "brief": brief} if index == 0 else {},
                 "output": None,
                 "artifact_refs": [],
