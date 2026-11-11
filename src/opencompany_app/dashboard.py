@@ -70,7 +70,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       <option value="digital-products">Digital products business</option>
     </select>
     <label for="executive-title">Plan title</label>
-    <input id="executive-title" maxlength="240" placeholder="Example: Launch an international digital product business">
+    <input id="executive-title" maxlength="240" placeholder="Example: Research buyer demand and prepare a scoped plan for one business unit">
     <label for="executive-objective">Company objective</label>
     <textarea id="executive-objective" rows="4" maxlength="12000" placeholder="Describe the outcome, constraints, audience, and success measures."></textarea>
     <button id="create-executive-plan" disabled>Create CEO draft plan</button>
