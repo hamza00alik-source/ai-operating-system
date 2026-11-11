@@ -1,0 +1,64 @@
+# OpenCompany Team Orchestration Architecture
+
+**Reference:** Teamily.ai, used as an inspiration benchmark only. OpenCompany does not copy its branding, proprietary implementation, or unverified capability claims.
+
+## Design objective
+
+Make OpenCompany AIOS one coordinated operating system: a CEO-led orchestration layer, specialist teams, shared but access-controlled company knowledge, durable workflows, free-only model routing, useful deliverables, and explicit owner approval gates.
+
+## Non-negotiable company boundaries
+
+Every task belongs to exactly one business environment:
+
+- `physical-agency`: third-party physical-product supplier/manufacturer agency. AIOS supports international buyer research, marketing, enquiries, sales coordination and reporting; the owner manages the Pakistan-side physical supply chain.
+- `physical-brand`: the owner's separate physical-products brand, with its own customers, products, supply chain, sales, finances and operations.
+- `digital-products`: the separate downloadable digital-products business.
+- `core`: internal OpenCompany platform work only.
+
+A workflow must never fulfil a physical order with a digital deliverable, promise physical shipment from the digital-products business, or merge the agency and owned-brand customers or finances. If a task is mis-scoped or ambiguous, it must be flagged for owner correction rather than silently reassigned.
+
+## Teamily-inspired patterns and AIOS implementation
+
+| Pattern | AIOS implementation | Current truth |
+|---|---|---|
+| CEO-led team | Lead specialist, independent collaborator, CEO integration/QA | Existing three-stage runtime; now receives a shared team contract |
+| Specialized workforce | Agency Agents catalogue mapped to company departments | Catalogue is not a set of always-on agents |
+| Shared memory | Business-scoped brain retrieval and experience capture | Existing subsystem; approved memories only are retrieved |
+| Shared workspace | Persisted task, run, step, event, workflow and department-inbox records | Existing persistence; richer artifact aggregation remains open |
+| Model routing | UnoRouter-first, free-confirmed provider failover | Existing routing; no paid fallback |
+| Human control | Owner approval for external/consequential actions | Existing policy; external write integrations remain unconnected/disabled |
+| Proactive execution | Worker queues and scheduled brain evaluation | Bounded in-service workers; not a claim of independent cloud agents or guaranteed operation while offline |
+| Team planning | Task intent and department-aware specialist selection | Partial; autonomous CEO task decomposition and dynamic team sizing remain future work |
+
+## Runtime contract added in this change
+
+The same explicit business-scope and team-operating contract is injected into the lead specialist, collaborator and CEO review prompts. Unknown business IDs fail closed. The team contract requires role distinction, critical independent review, CEO integration, source/evidence discipline, and prohibits cross-business context disclosure.
+
+This is a prompt-level execution guardrail in addition to the existing database-level business-scoped task and memory retrieval. It is not a substitute for authorization, row-level isolation, or external-action approval enforcement.
+
+## Target execution lifecycle
+
+1. Owner or authorized internal workflow creates a task in one business environment.
+2. CEO/planner classifies objective, deliverable type, department, dependencies, risk and approval requirements.
+3. Orchestrator selects a lead specialist and one or more reviewers from the correct department pool.
+4. Agents receive only the current task's scoped instructions, approved memories and captured research evidence.
+5. Work proceeds through a durable queue; each stage writes its output, model/provider metadata and execution events.
+6. CEO integrates outputs, checks business scope, evidence, completeness and acceptance criteria.
+7. Deliverables are stored against the task/workflow; downstream departments unlock only after successful handoff.
+8. Internal reversible work may continue within policy. Publishing, spending, customer communications, purchases, payments, account changes and commitments remain blocked pending explicit owner approval.
+9. Outcomes and failures are recorded in the correct business brain. Proposed lessons require owner review before retrieval.
+
+## Required next engineering increments
+
+- Add a structured task/team plan with typed deliverables and acceptance criteria.
+- Replace fixed collaborator selection with intent-aware reviewer selection and bounded team size.
+- Aggregate workflow artifacts and support safe cancellation, resumability, retry budgets and dependency-aware parallel branches.
+- Add worker leases/heartbeats and shared durable queue semantics before multi-replica operation.
+- Complete business-level isolation for research sources, credentials, customers, finance, integrations and dashboard access.
+- Add connector permission scopes and a central approval service before any external write integration.
+- Build evaluation fixtures for wrong-business fulfilment, cross-business retrieval, prompt injection, evidence provenance, invalid model JSON, paid-model exclusion and partial-run recovery.
+- Redesign the mobile owner dashboard around actual team/workflow state, artifacts, blockers, approvals and provider health. Dashboard counts must be sourced from persisted records, never simulated.
+
+## Verification boundary
+
+A code commit is not proof of a passing test, successful Railway deployment, working provider inference, connected marketplace, or autonomous operation. Record each separately and only mark a capability verified after observing its actual test or runtime evidence.
