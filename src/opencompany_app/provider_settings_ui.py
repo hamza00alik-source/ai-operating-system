@@ -49,6 +49,25 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
 """
 
 OWNER_PROVIDER_SETTINGS_JS = r"""
+  let unorouterCatalogueLoaded=false;
+  async function discoverUnoRouterModels(){
+    const button=byId("unorouter-discover");
+    button.disabled=true;
+    byId("unorouter-model-catalogue").textContent="Refreshing the live free-model catalogue using the saved key…";
+    try{
+      const result=await request("/settings/providers/unorouter/models");
+      const models=Array.isArray(result.models)?result.models:[];
+      byId("unorouter-model-catalogue").textContent=models.length
+        ?"Found "+models.length+" confirmed-free, online models: "+models.join(", ")+". OpenCompany will rotate across them automatically; paid models excluded."
+        :"No eligible free chat models are currently available to this key. Paid models and paid fallback remain disabled.";
+      unorouterCatalogueLoaded=true;
+    }catch(error){
+      unorouterCatalogueLoaded=false;
+      byId("unorouter-model-catalogue").textContent="Catalogue discovery failed: "+error.message;
+    }finally{
+      button.disabled=false;
+    }
+  }
   async function loadUnoRouterSettings(){
     try{
       const status=await request("/settings/providers/unorouter");
@@ -62,18 +81,11 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
       byId("unorouter-discover").disabled=!status.configured;
       byId("unorouter-remove").disabled=!status.api_key_present;
       byId("unorouter-model").value="unorouter/free-catalog:free";
+      if(status.configured&&!unorouterCatalogueLoaded) await discoverUnoRouterModels();
     }catch(error){byId("unorouter-detail").textContent=error.message;}
   }
   byId("unorouter-refresh").addEventListener("click",loadUnoRouterSettings);
-  byId("unorouter-discover").addEventListener("click",async()=>{
-    byId("unorouter-discover").disabled=true;
-    byId("unorouter-model-catalogue").textContent="Refreshing the live free-model catalogue using the saved key…";
-    try{
-      const result=await request("/settings/providers/unorouter/models");
-      byId("unorouter-model-catalogue").textContent="Found "+result.count+" confirmed-free, online models: "+result.models.join(", ")+". OpenCompany will rotate across them automatically; paid models excluded.";
-    }catch(error){byId("unorouter-model-catalogue").textContent="Catalogue discovery failed: "+error.message;}
-    finally{byId("unorouter-discover").disabled=false;}
-  });
+  byId("unorouter-discover").addEventListener("click",discoverUnoRouterModels);
   byId("unorouter-save").addEventListener("click",async()=>{
     const apiKey=byId("unorouter-api-key").value.trim();
     const model="unorouter/free-catalog:free";
@@ -84,7 +96,9 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
       await request("/settings/providers/unorouter",{method:"PUT",body:JSON.stringify({api_key:apiKey,model,confirm_free:confirmed})});
       byId("unorouter-api-key").value="";
       byId("unorouter-confirm-free").checked=false;
-      setMessage("UnoRouter key saved once. OpenCompany will discover and rotate across confirmed-free models; paid fallback remains disabled.","success");
+      setMessage("UnoRouter key saved once. Loading every confirmed-free model available to this key…","success");
+      unorouterCatalogueLoaded=false;
+      await loadUnoRouterSettings();
       await load();
     }catch(error){setMessage(error.message,"error");}
     finally{byId("unorouter-save").disabled=false;}
