@@ -41,6 +41,10 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "session storage only" not in response.text
     assert "provision-executive" in response.text
     assert "provision-specialists" in response.text
+    assert "Product &amp; R&amp;D production" in response.text
+    assert 'id="create-product-workflow"' in response.text
+    assert "generate-blueprint" in response.text
+    assert "run-automated-qa" in response.text
     assert "Specialist roles" in response.text
     assert "View draft" in response.text
     assert "Approve draft" in response.text
