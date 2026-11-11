@@ -215,3 +215,50 @@ def test_deliverable_write_and_review_transition_roll_back_together(tmp_path):
     assert store.verify_audit_chain()
     queue.close()
     store.close()
+
+
+def test_worker_invokes_manager_review_after_persisting_deliverable(tmp_path, monkeypatch):
+    agent, item, store, queue = setup(tmp_path)
+    calls = []
+    monkeypatch.setenv("OPENCOMPANY_AUTO_MANAGER_REVIEW", "true")
+    worker = OpenCompanyWorker(
+        queue, store, FakeExecutor(), MemorySink(),
+        manager_review_callback=lambda item_id: calls.append(item_id),
+    )
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert calls == [item.id]
+    assert store.get_work_item(item.id).state == TaskState.REVIEW
+    assert queue.counts() == {"done": 1}
+    queue.close()
+    store.close()
+
+
+def test_worker_skips_manager_review_when_feature_flag_is_off(tmp_path, monkeypatch):
+    agent, item, store, queue = setup(tmp_path)
+    calls = []
+    monkeypatch.delenv("OPENCOMPANY_AUTO_MANAGER_REVIEW", raising=False)
+    worker = OpenCompanyWorker(
+        queue, store, FakeExecutor(), MemorySink(),
+        manager_review_callback=lambda item_id: calls.append(item_id),
+    )
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert calls == []
+    queue.close()
+    store.close()
+
+
+def test_manager_review_failure_is_audited_and_does_not_lose_deliverable(tmp_path, monkeypatch):
+    agent, item, store, queue = setup(tmp_path)
+    monkeypatch.setenv("OPENCOMPANY_AUTO_MANAGER_REVIEW", "true")
+    def fail_review(item_id):
+        raise RuntimeError("provider temporarily unavailable")
+    worker = OpenCompanyWorker(
+        queue, store, FakeExecutor(), MemorySink(), manager_review_callback=fail_review,
+    )
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert store.get_work_item(item.id).state == TaskState.REVIEW
+    assert store.list_deliverables(item.id)
+    assert queue.counts() == {"done": 1}
+    assert store.verify_audit_chain()
+    queue.close()
+    store.close()
