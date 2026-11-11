@@ -49,7 +49,7 @@ Owner-authenticated:
 - `GET /owner/backup` — consistent, integrity-checked SQLite snapshot download.
 - `GET /agents`, `POST /agents/bootstrap`, `POST /agents/bootstrap-executive`, `POST /agents/bootstrap-specialists` — profile provisioning.
 - `POST /agents/{id}/state` — owner-controlled profile activation, pause, or retirement.
-- `GET /work-items`, `POST /work-items`, `POST /executive/plan` — task and CEO planning.
+- `GET /work-items?business_id=...`, `POST /work-items`, `POST /executive/plan` — business-scoped task and CEO planning.
 - `POST /work-items/{id}/manager-proposal` and `POST /work-items/{id}/delegation-proposals` — manager planning and delegation proposals.
 - `POST /work-items/{id}/delegation-proposals/{proposal_id}/approve` — owner approval and child-task materialization.
 - `POST /work-items/{id}/enqueue` — owner admission to the durable queue.
@@ -58,7 +58,7 @@ Owner-authenticated:
 - `GET /work-items/{id}/deliverables`, `POST /work-items/{id}/review`, `POST /work-items/{id}/transition` — owner review and lifecycle control.
 - `POST /work-items/{id}/handoffs`, `GET /work-items/{id}/handoffs`, and handoff accept/decline/deliver routes — internal agent collaboration.
 - `POST /work-items/{id}/evaluations`, `POST /learning/proposals`, `POST /learning/ai-proposals`, and learning decision/note routes — evidence-based quality improvement.
-- `GET /usage/model` — durable secret-free model usage ledger.
+- `GET /usage/model?business_id=...` — durable secret-free model usage ledger, filterable by business unit.
 - `GET /audit/verify` — verify the local audit hash chain.
 - Provider settings, read-only API Anything research, and isolated GitHub code-evolution routes are owner-authenticated.
 
