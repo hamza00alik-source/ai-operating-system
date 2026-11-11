@@ -92,6 +92,16 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div id="learning-proposals" class="stack"><p class="muted">No proposals loaded.</p></div>
   </section>
   <section class="panel">
+    <h2 class="section-title compact">Product &amp; R&amp;D production</h2>
+    <p class="muted">Create an internal production workflow, record evidence at each stage, generate a zero-cost blueprint ZIP, and run deterministic archive QA. This does not publish or create a finished commercial product automatically.</p>
+    <label for="product-title">Product title</label>
+    <input id="product-title" maxlength="240" placeholder="Example: Original sci-fi game UI icon pack">
+    <label for="product-brief">Product brief</label>
+    <textarea id="product-brief" rows="4" maxlength="12000" placeholder="Describe the product, intended users, format, target platform, requirements, and constraints."></textarea>
+    <button id="create-product-workflow" disabled>Create product workflow</button>
+    <div id="product-workflows" class="list"><p class="muted">Connect to view Product &amp; R&amp;D workflows.</p></div>
+  </section>
+  <section class="panel">
     <div class="row"><h2 class="section-title compact">Work queue</h2><span id="worker-status" class="pill">Workers stopped</span></div>
     <div class="auth worker-actions"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
@@ -124,15 +134,96 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     if(!response.ok) throw new Error(response.status===401?"Owner key rejected.":response.status===503?"Owner authentication is not configured on the server.":"Request failed ("+response.status+").");
     return response.json();
   };
+  function renderProductWorkflows(items){
+    const container=byId("product-workflows");
+    container.replaceChildren();
+    if(!items.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="No product workflows yet.";container.append(empty);return;}
+    const stageNames={
+      opportunity_brief:"Opportunity brief",product_specification:"Product specification",
+      production_plan:"Production plan",artifact_generation:"Artifact generation",
+      automated_qa:"Automated QA",human_preview:"Human preview",packaging:"Packaging",
+      listing_packet:"Listing packet",ceo_review:"CEO review"
+    };
+    items.forEach(workflow=>{
+      const card=document.createElement("article");card.className="item";
+      const header=document.createElement("div");header.className="row";
+      const title=document.createElement("h3");title.textContent=workflow.title;header.append(title);
+      const status=document.createElement("span");status.className="pill";status.textContent=workflow.status;header.append(status);card.append(header);
+      const brief=document.createElement("p");brief.textContent=workflow.brief;card.append(brief);
+      const progress=document.createElement("p");progress.className="muted";
+      const done=workflow.stages.filter(s=>s.status==="completed").length;
+      progress.textContent=done+" of "+workflow.stages.length+" stages completed · $0 provider budget · external actions disabled";
+      card.append(progress);
+      const stageList=document.createElement("div");stageList.className="list";
+      workflow.stages.forEach((stage,index)=>{
+        const line=document.createElement("p");line.textContent=(index+1)+". "+(stageNames[stage.key]||stage.key)+" — "+stage.status;
+        line.className="muted";stageList.append(line);
+      });
+      card.append(stageList);
+      workflow.stages[3].artifact_refs.forEach(ref=>{
+        if(ref.startsWith("artifact://")){
+          const artifactId=ref.slice("artifact://".length);
+          const link=document.createElement("a");link.href="/product-workflows/artifacts/"+encodeURIComponent(artifactId);
+          link.textContent="Download generated blueprint ZIP";link.addEventListener("click",()=>{});
+          link.style.display="inline-block";link.style.margin="8px 0";link.style.color="#a9caff";card.append(link);
+        }
+      });
+      const active=workflow.stages.find(stage=>stage.status==="in_progress");
+      if(active){
+        if(active.key==="artifact_generation"){
+          const generate=document.createElement("button");generate.textContent="Generate blueprint ZIP (free)";
+          generate.addEventListener("click",async()=>{generate.disabled=true;try{await request("/product-workflows/"+workflow.id+"/generate-blueprint",{method:"POST",body:"{}"});setMessage("Blueprint ZIP generated. It is a starter pack, not a finished product.","success");await load();}catch(error){setMessage(error.message,"error");generate.disabled=false;}});
+          card.append(generate);
+        }else if(active.key==="automated_qa"){
+          const qa=document.createElement("button");qa.textContent="Run automated blueprint QA";
+          qa.addEventListener("click",async()=>{qa.disabled=true;try{const result=await request("/product-workflows/"+workflow.id+"/run-automated-qa",{method:"POST",body:"{}"});setMessage(result.workflow_status==="blocked"?"QA failed. Workflow blocked for rework.":"Archive QA passed; visual, legal, engine and demand checks remain untested.","success");await load();}catch(error){setMessage(error.message,"error");qa.disabled=false;}});
+          card.append(qa);
+        }else{
+          const output=document.createElement("textarea");output.rows=3;output.maxLength=12000;output.placeholder="Record the completed work and its result for this stage.";card.append(output);
+          const evidence=document.createElement("textarea");evidence.rows=2;evidence.maxLength=4000;evidence.placeholder="Evidence, one item per line (required).";card.append(evidence);
+          const complete=document.createElement("button");complete.textContent="Record stage completion";
+          complete.addEventListener("click",async()=>{
+            if(!output.value.trim()||!evidence.value.trim()){setMessage("Add the stage result and evidence before completing it.","error");return;}
+            complete.disabled=true;
+            try{await request("/product-workflows/"+workflow.id+"/stages/"+active.key+"/complete",{method:"POST",body:JSON.stringify({output:output.value,artifact_refs:[],evidence:evidence.value.split("\n").map(x=>x.trim()).filter(Boolean)})});setMessage("Stage evidence saved. No external action was performed.","success");await load();}
+            catch(error){setMessage(error.message,"error");complete.disabled=false;}
+          });
+          card.append(complete);
+        }
+      }else{
+        const pendingIndex=workflow.stages.findIndex((stage,index)=>stage.status==="pending"&&(index===0||workflow.stages[index-1].status==="completed"));
+        if(pendingIndex>=0){
+          const next=workflow.stages[pendingIndex];const start=document.createElement("button");start.textContent="Start "+(stageNames[next.key]||next.key);
+          start.addEventListener("click",async()=>{start.disabled=true;try{await request("/product-workflows/"+workflow.id+"/stages/"+next.key+"/start",{method:"POST",body:"{}"});await load();}catch(error){setMessage(error.message,"error");start.disabled=false;}});
+          card.append(start);
+        }
+      }
+      if(workflow.status==="blocked"&&workflow.stages[4].status==="blocked"){
+        const rework=document.createElement("button");rework.textContent="Return failed QA to production";
+        rework.addEventListener("click",async()=>{rework.disabled=true;try{await request("/product-workflows/"+workflow.id+"/return-to-production",{method:"POST",body:JSON.stringify({reason:"Owner requested production rework after the recorded QA failure."})});setMessage("Workflow returned to artifact production.","success");await load();}catch(error){setMessage(error.message,"error");rework.disabled=false;}});
+        card.append(rework);
+      }
+      if(workflow.status==="awaiting_owner_review"){
+        const approve=document.createElement("button");approve.textContent="Approve internal handoff";
+        approve.addEventListener("click",async()=>{approve.disabled=true;try{await request("/product-workflows/"+workflow.id+"/owner-review",{method:"POST",body:JSON.stringify({approved:true,rationale:"Owner approved the internal product workflow result after review."})});setMessage("Internal workflow approved. Nothing was published or listed.","success");await load();}catch(error){setMessage(error.message,"error");approve.disabled=false;}});
+        const reject=document.createElement("button");reject.textContent="Reject internal result";
+        reject.addEventListener("click",async()=>{reject.disabled=true;try{await request("/product-workflows/"+workflow.id+"/owner-review",{method:"POST",body:JSON.stringify({approved:false,rationale:"Owner rejected the internal product workflow result."})});setMessage("Internal workflow rejected.","success");await load();}catch(error){setMessage(error.message,"error");reject.disabled=false;}});
+        card.append(approve,reject);
+      }
+      container.append(card);
+    });
+  }
   async function load(){
     byId("provision").disabled=true;
     setMessage("Loading owner records…");
     try{
-      const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution,apiAnything]=await Promise.all([
+      const [org,agents,work,provider,media,workforce,queue,fleet,learning,codeEvolution,apiAnything,productWorkflows]=await Promise.all([
         request("/organization/departments"),request("/agents"),request("/work-items"),
-        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
+        request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request("/workers/queue"),request("/workers/status"),request("/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status"),request("/product-workflows")
       ]);
       byId("department-count").textContent=org.count;
+      renderProductWorkflows(productWorkflows.workflows||[]);
+      byId("create-product-workflow").disabled=false;
       byId("agent-count").textContent=agents.count;
       byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
       byId("work-count").textContent=work.count;
@@ -288,6 +379,18 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
       byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
+  });
+  byId("create-product-workflow").addEventListener("click",async()=>{
+    const title=byId("product-title").value.trim();
+    const brief=byId("product-brief").value.trim();
+    if(!title||!brief){setMessage("Enter a product title and brief.","error");return;}
+    byId("create-product-workflow").disabled=true;
+    try{
+      await request("/product-workflows",{method:"POST",body:JSON.stringify({title,brief})});
+      byId("product-title").value="";byId("product-brief").value="";
+      setMessage("Product workflow created. Complete each stage with evidence; external actions remain disabled.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");byId("create-product-workflow").disabled=false;}
   });
   byId("search-research").addEventListener("click",async()=>{
     const query=byId("research-query").value.trim();
