@@ -11,13 +11,13 @@ def test_parse_plain_json_object():
 
 
 def test_parse_json_markdown_fence():
-    assert _parse_model_json("```json\\n" + VALID + "\\n```") == {
+    assert _parse_model_json("```json\n" + VALID + "\n```") == {
         "rationale": "Plan rationale", "work_items": []
     }
 
 
 def test_parse_json_with_short_preamble():
-    assert _parse_model_json("Here is the requested plan:\\n" + VALID) == {
+    assert _parse_model_json("Here is the requested plan:\n" + VALID) == {
         "rationale": "Plan rationale", "work_items": []
     }
 
