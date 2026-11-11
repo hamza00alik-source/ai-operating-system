@@ -43,3 +43,18 @@ def test_backup_destination_cannot_overwrite_live_database(tmp_path):
             runtime.store.backup_to(tmp_path / "live.sqlite3")
     finally:
         runtime.close()
+
+def test_owner_backup_endpoint_rejects_unauthenticated_requests(monkeypatch, tmp_path):
+    from opencompany_app.api import _default_runtime
+
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
+    monkeypatch.setenv("OPENCOMPANY_DATABASE_PATH", str(tmp_path / "auth-live.sqlite3"))
+    _default_runtime.cache_clear()
+    try:
+        with TestClient(app) as client:
+            response = client.get("/owner/backup")
+        assert response.status_code == 401
+    finally:
+        if _default_runtime.cache_info().currsize:
+            _default_runtime().close()
+            _default_runtime.cache_clear()
