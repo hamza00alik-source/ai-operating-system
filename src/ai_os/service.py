@@ -54,15 +54,25 @@ def list_approvals(business_id: str = "core") -> list[dict]:
         rows = db.execute("SELECT * FROM approvals WHERE business_id=? ORDER BY created_at DESC", (business_id,)).fetchall()
     return [dict(row) for row in rows]
 
-def decide_approval(approval_id: str, payload: ApprovalDecision) -> dict | None:
+def decide_approval(approval_id: str, payload: ApprovalDecision, business_id: str = "core") -> dict | None:
+    if business_id not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
     with connect() as db:
-        row = db.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
+        row = db.execute(
+            "SELECT * FROM approvals WHERE id=? AND business_id=?", (approval_id, business_id)
+        ).fetchone()
         if row is None:
             return None
         if row["status"] != "pending":
             raise ValueError("This approval request has already been decided")
         decided_at = _now()
-        db.execute("UPDATE approvals SET status=?, decided_at=? WHERE id=?",
-                   (payload.decision, decided_at, approval_id))
-        updated = db.execute("SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
+        changed = db.execute(
+            "UPDATE approvals SET status=?, decided_at=? WHERE id=? AND business_id=? AND status='pending'",
+            (payload.decision, decided_at, approval_id, business_id),
+        )
+        if changed.rowcount != 1:
+            raise ValueError("This approval request has already been decided or is unavailable.")
+        updated = db.execute(
+            "SELECT * FROM approvals WHERE id=? AND business_id=?", (approval_id, business_id)
+        ).fetchone()
     return dict(updated)
