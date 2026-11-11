@@ -726,6 +726,8 @@ def post_start_workflow(template_id: str, business_id: str = "core"):
         return create_workflow(template_id, business_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/company/workflows/instances", dependencies=[Depends(require_api_key)])
@@ -886,7 +888,10 @@ def health() -> dict:
 
 @app.post("/tasks", response_model=TaskOut, status_code=201, dependencies=[Depends(require_api_key)])
 def post_task(payload: TaskCreate):
-    return create_task(payload)
+    try:
+        return create_task(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/tasks", response_model=list[TaskOut], dependencies=[Depends(require_api_key)])
