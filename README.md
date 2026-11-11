@@ -1,14 +1,16 @@
-# AI Operating System
+# OpenCompany — AI Operating System
 
-A modular, human-supervised foundation for running an AI-powered company.
+A human-supervised AI company runtime with original departments, specialist roles, CEO planning, manager delegation, durable worker execution, owner review, learning, and cost-controlled model routing.
 
-> Early development: this is a supervised operating-system foundation, not a fully autonomous company. The GitHub discovery worker is implemented as an initial capability; general-purpose AI agent execution, ecommerce, and social integrations are not yet production-connected.
+## Current product and branch policy
 
-## Independent OpenCompany rebuild status
+The current product implementation is the standalone OpenCompany application in `src/opencompany_app` and `src/opencompany_core`. The production OpenCompany service is sourced from `fix/release-hardening`. The active implementation branch for the current workflow upgrades is `feature/opencompany-full-workflow-upgrade`.
 
-The `clean-room-rebuild` branch and draft PR #105 contain a separate, independently authored OpenCompany core. It is not merged or deployed. The current `main` application, Docker entrypoint, Vercel routing, and Railway service still select the legacy `ai_os` application. See [the repository comparison audit](docs/REPOSITORY_COMPARISON_AUDIT_2026-11-10.md) for the capability comparison and release blockers.
+The legacy `src/ai_os` application and the older dashboard branch are reference-only for this rebuild. Do not modify them, merge their code over OpenCompany, or use their dashboard as the implementation base. The new app must be developed and verified through its own API, runtime, persistence, worker, integration, and owner-console workflows.
 
-The clean-room branch currently has ten original departments, 500 specialist role contracts (50 per department across 100 capability teams), ten department-manager roles, and one owner-subordinate executive orchestrator: 511 role contracts in total. The 500 specialist roles have distinct curated capability profiles and role-specific operating playbooks. The runtime supports CEO objective decomposition, manager-led team proposals, owner-approved specialist child tasks, durable queue execution, review-required deliverables, and manager synthesis after approved dependencies. These are role profiles, not 511 continuously running agents. The worker fleet runs only explicitly admitted work; the system is not yet a fully autonomous company, and ecommerce, social publishing, customer messaging, payments, and other external business actions are not production-connected.
+The original OpenCompany organization contains ten departments, 500 specialist role contracts (50 per department across 100 capability teams), ten department-manager roles, and one owner-subordinate executive orchestrator: 511 role contracts in total. These are role definitions, not 511 continuously running agents. Work executes only after the owner-approved planning, delegation, assignment, queue-admission, and provider-cost gates.
+
+The internal CEO-to-manager-to-specialist workflow is implemented in code, including durable queue execution, review-required deliverables, handoffs, audit records, learning proposals, and strict free-only model routing. WooCommerce, social publishing, customer messaging, marketplace publishing, fulfillment, and payment-status verification are not yet connected as operational workflows. This is not yet a fully autonomous company.
 
 
 ## UnoRouter company inference provider
@@ -38,7 +40,7 @@ python main.py
 ```
 
 Open http://127.0.0.1:8000/owner for the owner console, or http://127.0.0.1:8000/docs for the API. Use HTTPS and set `OPENCOMPANY_COOKIE_SECURE=true` in hosted environments. Provider credentials are stored encrypted in SQLite; the dedicated encryption key is required and must be backed up separately from the owner login key. This local command starts the OpenCompany app on the current rebuild branch; it does not deploy or modify the existing production service.
-## Current starter capabilities
+## Legacy AIOS reference capabilities (not the current OpenCompany product)
 - Create and list work tasks.
 - Create, list, approve, and reject approval requests.
 - Persist records in SQLite.
@@ -49,7 +51,7 @@ In development, operational endpoints are open for local testing. In staging/pro
 
 Approval records are workflow primitives, not a security sandbox. Do not connect production credentials until authorization, audit logging, and integration safeguards are reviewed.
 
-## Supervised technology discovery (initial implementation)
+## Legacy AIOS reference: supervised technology discovery
 
 The visual owner console at \`/owner\` can queue GitHub repository discovery scans and display persisted scan/candidate results. API endpoints are also available:
 
@@ -62,7 +64,7 @@ The production API starts the discovery polling worker in its FastAPI lifespan a
 
 The worker searches public GitHub repository metadata. The Technology Discovery panel includes **Test GitHub API** and reports connectivity, quota, and worker status without exposing credentials. Set \`GITHUB_TOKEN\` as a private environment variable only if higher authenticated API limits are needed; never commit it. Public repository discovery works without a token, subject to GitHub's lower unauthenticated limits. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
 
-## Free API research catalog
+## Legacy AIOS reference: free API research catalog
 
 The Technology Discovery panel can sync the structured public dataset from [IdoY12/awesome-free-ai-apis](https://github.com/IdoY12/awesome-free-ai-apis). AIOS imports provider descriptions, free-tier claims, policy notes (including prompt training and commercial-use caveats), confidence labels, primary-source URLs, and upstream probe status into its own SQLite catalog. The source dataset is CC0-1.0 and publishes a daily status file. This is research evidence, not a guarantee: provider quotas and terms can change, and upstream status checks do not prove that an AIOS account has access.
 
@@ -73,7 +75,7 @@ The Technology Discovery panel can sync the structured public dataset from [IdoY
 
 The catalog sync never saves provider credentials, makes inference calls, enables a provider, or spends money. A provider must still be checked against official pricing, terms, region availability, privacy/training rules, and a live $0 account test before an owner may configure it in the LLM gateway. Unknown stays unknown.
 
-## Guarded live LLM gateway
+## Legacy AIOS reference: guarded live LLM gateway
 
 The API exposes:
 - \`GET /llm/providers\` — provider configuration state (never returns secrets).
