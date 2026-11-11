@@ -78,9 +78,11 @@ def create_executive_plan(
         "Each task must have a single accountable department, a clear measurable objective, "
         "and dependencies expressed as zero-based indices of earlier tasks only. "
         "Do not invent department identifiers. Avoid assigning external actions or spending authority. "
-        "Return only JSON with exactly these keys: rationale (string), work_items (array). "
-        "Each work item has exactly department (string), title (string), objective (string), "
-        "depends_on (array of earlier integer indices).\n"
+        "Return exactly one valid JSON object and nothing else: no Markdown fences, no preamble, "
+        "no commentary and no trailing text. Use double-quoted JSON keys and string values. "
+        "The top-level object must have exactly these keys: rationale (string), work_items (array). "
+        "Each work item must have exactly department (string), title (string), objective (string), "
+        "depends_on (array of earlier integer indices).\\n"
         f"Departments: {json.dumps(department_context, separators=(',', ':'))}"
     )
     result = gateway.complete(
