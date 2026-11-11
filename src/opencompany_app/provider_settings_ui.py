@@ -2,13 +2,13 @@
 
 OWNER_PROVIDER_SETTINGS_HTML = r"""
 <section class="panel" id="unorouter-settings">
-  <div class="row"><h2 class="section-title" style="margin:0">UnoRouter free AI provider</h2><span id="unorouter-state" class="pill">Not configured</span></div>
+  <div class="row"><h2 class="section-title compact">UnoRouter free AI provider</h2><span id="unorouter-state" class="pill">Not configured</span></div>
   <p class="muted">Enter your private API key here. It is sent only to this OpenCompany server, encrypted before database storage, and never displayed again. Choose a model whose ID ends with :free. No paid fallback is allowed. Encryption uses the server-side OPENCOMPANY_SECRET_ENCRYPTION_KEY; if unset, it derives from the owner API key. Keep that key stable or re-enter credentials after rotating it.</p>
   <label for="unorouter-api-key">UnoRouter API key</label>
   <input id="unorouter-api-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste private API key">
   <label for="unorouter-model">Free model ID</label>
   <input id="unorouter-model" maxlength="200" autocomplete="off" placeholder="e.g. provider/model:free">
-  <label style="display:flex;gap:10px;align-items:center;margin:12px 0"><input id="unorouter-confirm-free" type="checkbox"> I confirm this selected model is listed as free by UnoRouter. Stop if the provider reports any charge.</label>
+  <label class="confirmation-label"><input id="unorouter-confirm-free" type="checkbox"> I confirm this selected model is listed as free by UnoRouter. Stop if the provider reports any charge.</label>
   <div class="auth">
     <button id="unorouter-save" type="button">Save encrypted credentials</button>
     <button id="unorouter-test" type="button" disabled>Test free connection</button>
