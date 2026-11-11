@@ -32,7 +32,9 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.media_studio import video_capabilities
 from opencompany_core.provider_catalog import free_provider_candidates
-from opencompany_core.unorouter_adapter import discover_free_models, unorouter_configuration_status
+from opencompany_core.unorouter_adapter import (
+    UNOROUTER_AUTO_FREE_MODEL, discover_free_models, unorouter_configuration_status,
+)
 from opencompany_core.secret_vault import SecretVaultError
 from opencompany_app.provider_settings_ui import OWNER_PROVIDER_SETTINGS_HTML, OWNER_PROVIDER_SETTINGS_JS
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
@@ -721,18 +723,40 @@ def get_unorouter_settings(runtime: OpenCompanyRuntime = Depends(get_runtime)) -
     }
 
 
+@app.get("/settings/providers/unorouter/models", dependencies=[Depends(require_owner_key)])
+def list_unorouter_free_models(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Discover all free models accessible to the already-saved inference key."""
+    try:
+        saved = runtime.secret_vault.get("unorouter")
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail="Stored UnoRouter credentials cannot be decrypted.") from exc
+    if not saved:
+        raise HTTPException(status_code=409, detail="Save the UnoRouter API key first.")
+    try:
+        models = discover_free_models(saved["api_key"], force_refresh=True)
+    except ProviderUnavailable as exc:
+        raise HTTPException(status_code=502, detail=f"UnoRouter catalogue refresh failed safely: {exc}") from exc
+    return {
+        "provider": "unorouter", "count": len(models), "models": list(models),
+        "routing_mode": "automatic_all_free_models",
+        "catalogue_cache_seconds": 300, "paid_models_included": False,
+        "paid_fallback": False,
+    }
+
+
 @app.put("/settings/providers/unorouter", dependencies=[Depends(require_owner_key)])
 def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     if payload.confirm_free is not True:
         raise HTTPException(status_code=422, detail="Owner must explicitly confirm the selected model is free.")
-    if not payload.model.endswith(":free"):
-        raise HTTPException(status_code=422, detail="Only explicitly free model IDs ending in :free are accepted.")
-    try:
-        discovered = discover_free_models(payload.api_key)
-    except ProviderUnavailable as exc:
-        raise HTTPException(status_code=502, detail=f"UnoRouter could not revalidate the selected free model: {exc}") from exc
-    if payload.model not in {str(item["id"]) for item in discovered}:
-        raise HTTPException(status_code=409, detail="The selected model is not currently listed as free, online, and available to this API key. Load the free-model list again.")
+    if payload.model != UNOROUTER_AUTO_FREE_MODEL and not payload.model.endswith(":free"):
+        raise HTTPException(status_code=422, detail="Only explicitly free model IDs or automatic free-catalog routing are accepted.")
+    if payload.model != UNOROUTER_AUTO_FREE_MODEL:
+        try:
+            discovered = discover_free_models(payload.api_key)
+        except ProviderUnavailable as exc:
+            raise HTTPException(status_code=502, detail=f"UnoRouter could not revalidate the selected free model: {exc}") from exc
+        if payload.model not in discovered:
+            raise HTTPException(status_code=409, detail="The selected model is not currently listed as free, online, and available to this API key. Load the free-model list again.")
     try:
         runtime.stop_workers_for_provider_change()
         revision = runtime.secret_vault.put("unorouter", {"api_key": payload.api_key, "model": payload.model})
