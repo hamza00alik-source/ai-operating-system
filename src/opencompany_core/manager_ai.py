@@ -61,6 +61,7 @@ def recommend_department_plan(
         ModelRequest(
             prompt=prompt, request_id=str(uuid4()), max_output_tokens=900,
             work_item_id=str(item.id), role_key=manager.key,
+            business_id=item.business_id,
         ),
         request_budget_usd=0.0,
         preferred_provider="unorouter",
