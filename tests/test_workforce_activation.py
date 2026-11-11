@@ -136,3 +136,55 @@ def test_api_activates_only_the_requested_department_scope():
         "department": "intelligence-research",
         "team_key": None,
     }
+
+
+def test_api_rejects_profile_with_inconsistent_role_team_identity():
+    import pytest
+    from fastapi import HTTPException
+    from opencompany_app.api import WorkforceActivationInput, activate_workforce_scope
+
+    malformed = _profile(
+        department="intelligence-research",
+        team_key="wrong-team",
+        role_key="market_intelligence_analyst",
+    )
+
+    class Store:
+        def list_agents(self, *, limit):
+            return [malformed]
+
+        def activate_all_draft_agents_with_audit(self, **kwargs):
+            raise AssertionError("inconsistent profile must not be activated")
+
+    with pytest.raises(HTTPException) as error:
+        activate_workforce_scope(
+            WorkforceActivationInput(department="intelligence-research"),
+            Store(),
+        )
+    assert error.value.status_code == 409
+
+
+def test_api_rejects_profile_role_from_another_department():
+    import pytest
+    from fastapi import HTTPException
+    from opencompany_app.api import WorkforceActivationInput, activate_workforce_scope
+
+    malformed = _profile(
+        department="intelligence-research",
+        team_key="management",
+        role_key="product_planning_lead",
+    )
+
+    class Store:
+        def list_agents(self, *, limit):
+            return [malformed]
+
+        def activate_all_draft_agents_with_audit(self, **kwargs):
+            raise AssertionError("cross-department role must not be activated")
+
+    with pytest.raises(HTTPException) as error:
+        activate_workforce_scope(
+            WorkforceActivationInput(department="intelligence-research"),
+            Store(),
+        )
+    assert error.value.status_code == 409
