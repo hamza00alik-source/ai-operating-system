@@ -1,5 +1,5 @@
 from opencompany_core.persistence import SQLiteStore
-from opencompany_core.product_artifacts import generate_product_blueprint
+from opencompany_core.product_artifacts import generate_product_blueprint, verify_product_blueprint
 from opencompany_core.product_workflow import (
     ProductWorkflowError,
     ProductWorkflowRepository,
@@ -296,6 +296,14 @@ def test_product_workflow_api_generates_and_serves_owner_authenticated_blueprint
             current = repo.get(workflow_id)
             assert current["stages"][3]["status"] == "completed"
             assert current["stages"][4]["status"] == "pending"
+            repo.start_stage(workflow_id, "automated_qa")
+            qa_response = client.post(f"/product-workflows/{workflow_id}/run-automated-qa", headers=headers)
+            assert qa_response.status_code == 200, qa_response.text
+            qa_payload = qa_response.json()
+            assert qa_payload["workflow_status"] == "in_progress"
+            assert qa_payload["qa_result"]["failed_checks"] == []
+            assert "visual quality of any future product assets" in qa_payload["qa_result"]["untested_claims"]
+            assert repo.get(workflow_id)["stages"][4]["status"] == "completed"
 
             downloaded = client.get(payload["download_path"], headers=headers)
             assert downloaded.status_code == 200
@@ -305,3 +313,56 @@ def test_product_workflow_api_generates_and_serves_owner_authenticated_blueprint
     finally:
         app.dependency_overrides.clear()
         runtime.close()
+
+
+def test_failed_automated_qa_blocks_workflow_and_preserves_failure_evidence(tmp_path):
+    store, repo = _repo(tmp_path)
+    try:
+        workflow = repo.create("QA fail product", "Product used to test failed QA.")
+        for stage in STAGES[:4]:
+            current = repo.get(workflow["id"])["stages"][STAGES.index(stage)]
+            if current["status"] == "in_progress":
+                repo.complete_stage(
+                    workflow["id"], stage, output="Done", artifact_refs=["artifact://sample"],
+                    evidence=["recorded"],
+                )
+            else:
+                repo.start_stage(workflow["id"], stage)
+                repo.complete_stage(
+                    workflow["id"], stage, output="Done", artifact_refs=["artifact://sample"],
+                    evidence=["recorded"],
+                )
+        repo.start_stage(workflow["id"], "automated_qa")
+        failed = repo.complete_stage(
+            workflow["id"], "automated_qa", output="QA failed",
+            artifact_refs=["artifact://sample"], evidence=["failed:checksum"],
+            qa_result={
+                "passed_checks": ["ZIP CRC integrity"],
+                "failed_checks": ["manifest checksum mismatch for PRODUCT_SPEC.md"],
+                "untested_claims": ["visual quality"],
+            },
+        )
+        assert failed["status"] == "blocked"
+        assert failed["stages"][4]["status"] == "blocked"
+        assert failed["stages"][4]["qa_result"]["failed_checks"]
+        rework = repo.return_to_production(workflow["id"], "Fix manifest mismatch.")
+        assert rework["stages"][3]["status"] == "in_progress"
+        assert rework["stages"][4]["status"] == "pending"
+    finally:
+        store.close()
+
+
+def test_blueprint_verifier_reports_passed_and_untested_separately(tmp_path):
+    from uuid import uuid4
+    workflow_id = uuid4()
+    artifact = generate_product_blueprint(
+        workflow_id=workflow_id,
+        title="Verified blueprint",
+        brief="Create a starter pack.",
+        artifact_root=tmp_path / "artifacts",
+    )
+    report = verify_product_blueprint(tmp_path / "artifacts" / f"{workflow_id}.zip")
+    assert report["failed_checks"] == []
+    assert "ZIP CRC integrity" in report["passed_checks"]
+    assert report["untested_claims"]
+    assert artifact["status"] == "blueprint_only_not_a_finished_product"
