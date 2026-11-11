@@ -6,6 +6,7 @@ marked free, online, and suffixed :free are eligible. No paid fallback exists.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -56,8 +57,9 @@ def discover_free_models(api_key: str, *, force_refresh: bool = False) -> tuple[
     if not api_key or len(api_key) > 512:
         raise ValueError("a valid UnoRouter API key is required")
     now = time.monotonic()
+    cache_key = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
     with _catalog_lock:
-        cached = _catalog_cache.get(api_key)
+        cached = _catalog_cache.get(cache_key)
         if cached and not force_refresh and now - cached[0] < CATALOG_CACHE_SECONDS:
             return cached[1]
 
@@ -92,7 +94,7 @@ def discover_free_models(api_key: str, *, force_refresh: bool = False) -> tuple[
             "No models were confirmed free, online, and accessible to this UnoRouter key."
         )
     with _catalog_lock:
-        _catalog_cache[api_key] = (time.monotonic(), models)
+        _catalog_cache[cache_key] = (time.monotonic(), models)
     return models
 
 
