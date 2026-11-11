@@ -24,6 +24,7 @@ from ai_os.llm_gateway import list_providers, list_unorouter_catalog, generate, 
 from ai_os.agent_runtime import create_run, get_run, list_runs, retry_run, recover_interrupted_runs, worker_pool, run_pending_once as run_agent_pending_once
 from ai_os.credentials import save_openrouter, credential_status, CredentialVaultUnavailable, save_provider_credential, update_provider_model, provider_credential_statuses, save_business_integration, business_integration_statuses, delete_business_integration, get_business_integration_credential
 from ai_os.brain import BUSINESS_IDS, brain_status, list_memories, review_memory, run_learning_cycle
+from ai_os.business_registry import create_business, list_businesses, refresh_business_ids
 from ai_os.workflows import list_templates, create_workflow, get_workflow, list_workflows, task_is_runnable
 from ai_os.department_collaboration import send_message, list_messages, mark_message_read, delegate_task, list_delegations
 from ai_os.executive_supervisor import executive_status, supervise_once, executive_supervisor_loop
@@ -36,7 +37,7 @@ from pydantic import BaseModel, Field
 
 
 class DepartmentMessageRequest(BaseModel):
-    business_id: str = Field(default="core", pattern="^(core|physical-agency|physical-brand|digital-products)$")
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     sender_department: str = Field(min_length=1, max_length=64)
     recipient_department: str = Field(min_length=1, max_length=64)
     subject: str = Field(min_length=1, max_length=200)
@@ -152,6 +153,7 @@ async def lifespan(_: FastAPI):
     if settings.environment != "development" and not settings.api_key:
         raise RuntimeError("AI_OS_API_KEY must be set outside development.")
     initialize_database()
+    refresh_business_ids()
     _discovery_stop.clear()
     _discovery_thread = threading.Thread(
         target=_discovery_worker_loop,
@@ -275,7 +277,7 @@ class BusinessIntegrationRequest(BaseModel):
 
 @app.get("/business-integrations/{business_id}", dependencies=[Depends(require_owner_key)])
 def get_business_integrations(business_id: str):
-    if business_id not in {"physical-agency", "physical-brand", "digital-products"}:
+    if business_id not in BUSINESS_IDS or business_id == "core":
         raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
         return {"business_id": business_id, "integrations": business_integration_statuses(business_id),
@@ -590,15 +592,32 @@ def post_research_source(payload: ResearchSourceRequest):
 @app.get("/business-environments", dependencies=[Depends(require_api_key)])
 def get_business_environments():
     return {
-        "shared_core": "One shared reasoning/model platform and reusable technical capabilities; no shared business memories.",
-        "environments": [
-            {"id": "physical-agency", "name": "Physical Products Agency", "scope": "Third-party physical-product suppliers and clients only."},
-            {"id": "physical-brand", "name": "Own Physical Products Brand", "scope": "Owner's own physical products and brand only."},
-            {"id": "digital-products", "name": "Digital Products", "scope": "Digital products and licensing only."},
-            {"id": "core", "name": "AIOS Core", "scope": "Legacy and internal operating-system tasks; not a business-memory sharing pool."},
-        ],
+        "company_goal": "Discover, validate, launch and grow any legitimate profitable business opportunity.",
+        "shared_core": "One shared reasoning/model platform and reusable technical capabilities; business memories, customers, finances and credentials remain isolated.",
+        "environments": list_businesses(),
         "memory_isolation": "Exact business_id scope; no cross-business memory fallback.",
+        "expansion": "New ventures can be registered as separate business units without changing the core company architecture.",
     }
+
+
+class BusinessUnitCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    business_type: str = Field(default="general", min_length=2, max_length=64)
+    description: str = Field(default="", max_length=3000)
+
+
+@app.get("/business-units", dependencies=[Depends(require_api_key)])
+def get_business_units():
+    return {"business_units": list_businesses()}
+
+
+@app.post("/business-units", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_business_unit(payload: BusinessUnitCreate):
+    try:
+        from ai_os.business_registry import create_business
+        return create_business(payload.name, payload.business_type, payload.description)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/code-evolution/status", dependencies=[Depends(require_owner_key)])
