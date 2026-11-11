@@ -126,7 +126,8 @@ class ResearchBroker:
             "Only select an operation from the exact catalogue below. Do not invent site or op names. "
             "Use only public, non-personal search arguments. Return only JSON with exactly site, op, args. "
             "If no operation is useful, return {\"site\":null,\"op\":null,\"args\":{}}.\n"
-            f"Role: {role.title}\nTask title: {item.title}\nTask objective: {item.objective[:2000]}\n"
+            f"Role: {role.title}\nBusiness unit: {item.business_id}. Research only this business unit; do not mix supplier, customer, pricing, or product context across units.\n"
+            f"Task title: {item.title}\nTask objective: {item.objective[:2000]}\n"
             f"Allowed tier-one read operations: {json.dumps(catalogues, ensure_ascii=False)}"
         )
         try:
@@ -134,6 +135,7 @@ class ResearchBroker:
                 ModelRequest(
                     prompt=selection_prompt, request_id=str(uuid4()), max_output_tokens=700,
                     work_item_id=str(item.id), role_key=role.key,
+                    business_id=item.business_id,
                 ),
                 request_budget_usd=0.0, preferred_provider="unorouter",
             )
