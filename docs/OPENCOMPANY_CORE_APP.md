@@ -66,7 +66,7 @@ Owner-authenticated:
 
 ## Business-unit boundaries
 
-Internal work items are assigned to one immutable business unit: `core`, `physical-agency`, `physical-brand`, or `digital-products`. CEO plans select one unit; manager-created child tasks inherit the parent unit; dependencies across units are rejected; workflow and task lists can be filtered by unit; role-learning notes are retrieved only for the matching unit; and model-usage costs can be reported per unit. Existing persisted work items migrate to `core` by default and can be recreated under a different unit only as new work.
+Internal work items are assigned to one immutable business unit: `core`, `physical-agency`, `physical-brand`, or `digital-products`. CEO plans select one unit; manager-created child tasks inherit the parent unit; dependencies across units are rejected; workflow and task lists can be filtered by unit; role-learning notes are retrieved only for the matching unit; and model-usage costs can be reported per unit. Dependency artifacts are re-checked against the requesting task's business unit and completion state at runtime before their content is loaded into another agent's context; returned dependency context carries the originating business ID. Existing persisted work items migrate to `core` by default and can be recreated under a different unit only as new work.
 
 This is internal workflow isolation, not yet complete external-account isolation. Store credentials, customer/order records, supplier records, financial ledgers, and marketplace accounts still need separate business-scoped connectors and authorization before those integrations are enabled.
 
