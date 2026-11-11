@@ -9,13 +9,13 @@ from opencompany_core.model_gateway import (
 def test_discovery_intersects_free_online_catalogue_with_key_access(monkeypatch):
     responses = iter([
         {"models": [
-            {"model_name": "alpha", "is_free": True, "online": True},
+            {"model_name": "alpha", "is_free": False, "online": True},
             {"model_name": "paid", "is_free": False, "online": True},
             {"model_name": "offline", "is_free": True, "online": False},
         ]},
         {"data": [
             {"id": "alpha:free"},
-            {"id": "paid:free"},
+            {"id": "paid"},
             {"id": "not-in-catalogue:free"},
         ]},
     ])
