@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from threading import RLock
 from uuid import UUID, uuid4
 
-from .domain import AuditRecord, TaskState
+from .domain import BUSINESS_UNIT_IDS, AuditRecord, TaskState
 from .learning import ImprovementProposal, OutcomeEvaluation, ProposalState
 from .persistence import _ZERO_HASH, _audit_payload, _digest, _json
 
@@ -43,7 +43,8 @@ class LearningRepository:
                     based_on_evaluations_json TEXT NOT NULL,
                     state TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    owner_decision TEXT
+                    owner_decision TEXT,
+                    business_id TEXT NOT NULL DEFAULT 'core'
                 )
             """)
             self._db.execute(
@@ -57,12 +58,23 @@ class LearningRepository:
                     evidence_refs_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     owner_id TEXT NOT NULL,
-                    state TEXT NOT NULL
+                    state TEXT NOT NULL,
+                    business_id TEXT NOT NULL DEFAULT 'core'
                 )
             """)
             self._db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_learning_notes_role ON approved_learning_notes(role_key,state,created_at)"
             )
+            for table in ("improvement_proposals", "approved_learning_notes"):
+                columns = {
+                    row["name"] for row in self._db.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()
+                }
+                if "business_id" not in columns:
+                    self._db.execute(
+                        f"ALTER TABLE {table} ADD COLUMN business_id TEXT NOT NULL DEFAULT 'core'"
+                    )
 
     @staticmethod
     def _audit(record: AuditRecord, db: sqlite3.Connection) -> None:
@@ -112,15 +124,20 @@ class LearningRepository:
         with self._lock:
             if work_item_id is None:
                 rows = self._db.execute(
-                    "SELECT * FROM outcome_evaluations ORDER BY evaluated_at DESC,id LIMIT 500"
+                    """SELECT e.*,w.business_id FROM outcome_evaluations e
+                       JOIN work_items w ON w.id=e.work_item_id
+                       ORDER BY e.evaluated_at DESC,e.id LIMIT 500"""
                 ).fetchall()
             else:
                 rows = self._db.execute(
-                    "SELECT * FROM outcome_evaluations WHERE work_item_id=? ORDER BY evaluated_at DESC,id",
+                    """SELECT e.*,w.business_id FROM outcome_evaluations e
+                       JOIN work_items w ON w.id=e.work_item_id
+                       WHERE e.work_item_id=? ORDER BY e.evaluated_at DESC,e.id""",
                     (str(work_item_id),),
                 ).fetchall()
         return [{
             "id": row["id"], "work_item_id": row["work_item_id"],
+            "business_id": row["business_id"],
             "evaluator": row["evaluator"], "grade": row["grade"],
             "rubric_scores": json.loads(row["rubric_scores_json"]),
             "evidence_refs": json.loads(row["evidence_refs_json"]),
@@ -133,20 +150,26 @@ class LearningRepository:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                for evaluation_id in item.based_on_evaluations:
-                    if self._db.execute(
-                        "SELECT 1 FROM outcome_evaluations WHERE id=?", (str(evaluation_id),)
-                    ).fetchone() is None:
-                        raise ValueError("improvement proposal references an unknown evaluation")
+                placeholders = ",".join("?" for _ in item.based_on_evaluations)
+                business_rows = self._db.execute(
+                    f"""SELECT DISTINCT w.business_id FROM outcome_evaluations e
+                        JOIN work_items w ON w.id=e.work_item_id
+                        WHERE e.id IN ({placeholders})""",
+                    tuple(str(value) for value in item.based_on_evaluations),
+                ).fetchall()
+                business_ids = {row["business_id"] for row in business_rows}
+                if len(business_ids) != 1:
+                    raise ValueError("improvement proposal evaluations must exist and belong to one business unit")
+                business_id = next(iter(business_ids))
                 self._db.execute(
                     """INSERT INTO improvement_proposals
                        (id,target,change_summary,rationale,expected_measurement,risk_level,
-                        based_on_evaluations_json,state,created_at,owner_decision)
-                       VALUES(?,?,?,?,?,?,?,?,?,NULL)""",
+                        based_on_evaluations_json,state,created_at,owner_decision,business_id)
+                       VALUES(?,?,?,?,?,?,?,?,?,NULL,?)""",
                     (str(item.id), item.target, item.change_summary, item.rationale,
                      item.expected_measurement, item.risk_level,
                      _json([str(value) for value in item.based_on_evaluations]),
-                     item.state.value, item.created_at.isoformat()),
+                     item.state.value, item.created_at.isoformat(), business_id),
                 )
                 self._audit(record, self._db)
                 self._db.execute("COMMIT")
@@ -165,6 +188,7 @@ class LearningRepository:
             "change_summary": row["change_summary"], "rationale": row["rationale"],
             "expected_measurement": row["expected_measurement"], "risk_level": row["risk_level"],
             "based_on_evaluations": json.loads(row["based_on_evaluations_json"]),
+            "business_id": row["business_id"],
             "state": row["state"], "created_at": row["created_at"],
             "owner_decision": row["owner_decision"],
         } for row in rows]
@@ -196,10 +220,12 @@ class LearningRepository:
 
     def save_learning_note(
         self, *, role_key: str, note: str, evidence_refs: tuple[str, ...],
-        owner_id: str, record: AuditRecord,
+        owner_id: str, record: AuditRecord, business_id: str = "core",
     ) -> str:
         if not role_key.strip() or not note.strip() or not evidence_refs:
             raise ValueError("learning notes require role, content and evidence")
+        if business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError("unknown business unit for learning note")
         note_id = str(uuid4())
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
@@ -208,15 +234,17 @@ class LearningRepository:
                 for ref in evidence_refs:
                     if ref.startswith("evaluation:"):
                         found = self._db.execute(
-                            "SELECT 1 FROM outcome_evaluations WHERE id=?", (ref.split(":",1)[1],)
+                            """SELECT w.business_id FROM outcome_evaluations e
+                               JOIN work_items w ON w.id=e.work_item_id WHERE e.id=?""",
+                            (ref.split(":",1)[1],),
                         ).fetchone()
-                        if found is None:
-                            raise ValueError("learning note references an unknown evaluation")
+                        if found is None or found["business_id"] != business_id:
+                            raise ValueError("learning note evidence must belong to the selected business unit")
                 self._db.execute(
                     """INSERT INTO approved_learning_notes
-                       (id,role_key,note,evidence_refs_json,created_at,owner_id,state)
-                       VALUES(?,?,?,?,?,?,'approved')""",
-                    (note_id, role_key, note, _json(list(evidence_refs)), now, owner_id),
+                       (id,role_key,note,evidence_refs_json,created_at,owner_id,state,business_id)
+                       VALUES(?,?,?,?,?,?,'approved',?)""",
+                    (note_id, role_key, note, _json(list(evidence_refs)), now, owner_id, business_id),
                 )
                 self._audit(record, self._db)
                 self._db.execute("COMMIT")
@@ -250,10 +278,10 @@ class LearningRepository:
                 evidence_refs = [f"evaluation:{value}" for value in evidence_ids]
                 self._db.execute(
                     """INSERT INTO approved_learning_notes
-                       (id,role_key,note,evidence_refs_json,created_at,owner_id,state)
-                       VALUES(?,?,?,?,?,?,'approved')""",
+                       (id,role_key,note,evidence_refs_json,created_at,owner_id,state,business_id)
+                       VALUES(?,?,?,?,?,?,'approved',?)""",
                     (note_id, role_key, proposal["change_summary"],
-                     _json(evidence_refs), now, owner_id),
+                     _json(evidence_refs), now, owner_id, proposal["business_id"]),
                 )
                 cursor = self._db.execute(
                     """UPDATE improvement_proposals SET state=?,owner_decision=?
@@ -272,15 +300,21 @@ class LearningRepository:
                     self._db.execute("ROLLBACK")
                 raise
 
-    def list_learning_notes(self, role_key: str, *, limit: int = 20) -> list[dict]:
+    def list_learning_notes(
+        self, role_key: str, business_id: str = "core", *, limit: int = 20
+    ) -> list[dict]:
+        if business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError("unknown business unit for learning-note lookup")
         with self._lock:
             rows = self._db.execute(
-                """SELECT * FROM approved_learning_notes WHERE role_key=? AND state='approved'
+                """SELECT * FROM approved_learning_notes
+                   WHERE role_key=? AND business_id=? AND state='approved'
                    ORDER BY created_at DESC,id LIMIT ?""",
-                (role_key, max(1, min(limit, 100))),
+                (role_key, business_id, max(1, min(limit, 100))),
             ).fetchall()
         return [{
             "id": row["id"], "role_key": row["role_key"], "note": row["note"],
+            "business_id": row["business_id"],
             "evidence_refs": json.loads(row["evidence_refs_json"]),
             "created_at": row["created_at"], "owner_id": row["owner_id"],
         } for row in rows]
