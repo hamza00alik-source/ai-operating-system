@@ -133,11 +133,16 @@ def save_assessment(opportunity_id: str, assessment: dict, evidence: list) -> di
     enriched = dict(assessment)
     if not enriched.get("source_urls"):
         enriched["source_urls"] = [item["url"] for item in clean_evidence]
+    if len(json.dumps(enriched, ensure_ascii=False)) > 20000:
+        raise ValueError("Assessment exceeds the 20 KB safe storage limit.")
     enriched["scorecard"] = score_assessment(enriched)
     with connect() as db:
         row = db.execute("SELECT id FROM venture_opportunities WHERE id=?", (opportunity_id,)).fetchone()
         if row is None:
             raise LookupError("Venture opportunity not found.")
+        current = db.execute("SELECT status FROM venture_opportunities WHERE id=?", (opportunity_id,)).fetchone()
+        if current["status"] in {"launched", "rejected"}:
+            raise ValueError("Closed opportunities cannot be reassessed.")
         db.execute(
             """UPDATE venture_opportunities SET assessment_json=?,evidence_json=?,
             status='assessed',updated_at=? WHERE id=?""",
@@ -154,7 +159,11 @@ def decide_opportunity(opportunity_id: str, decision: str, notes: str = "") -> d
     item = get_opportunity(opportunity_id)
     if not item:
         raise LookupError("Venture opportunity not found.")
+    if item["status"] in {"launched", "rejected"}:
+        raise ValueError("Closed opportunities cannot receive further decisions.")
     if decision == "launch_approved":
+        if item["status"] not in {"assessed", "shortlisted"}:
+            raise ValueError("Only assessed or shortlisted opportunities can be approved for launch planning.")
         scorecard = (item.get("assessment") or {}).get("scorecard") or {}
         if scorecard.get("coverage") != len(DIMENSIONS) or scorecard.get("source_count", 0) < 3:
             raise ValueError("Launch approval requires all six assessment dimensions and at least three HTTPS sources.")
