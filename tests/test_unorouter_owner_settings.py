@@ -341,3 +341,26 @@ def test_process_startup_never_starts_workers_from_saved_provider_credentials_al
         assert runtime.unorouter_tested_at is None
     finally:
         runtime.close()
+
+
+def test_manual_worker_start_requires_live_provider_verification(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
+    runtime = create_runtime(str(tmp_path / "manual-start-gate.sqlite3"))
+    starts = []
+    runtime.gateway.eligible_providers = lambda request_budget_usd=0.0: ("unorouter",)
+    runtime.fleet.start = lambda: starts.append(True) or True
+    api.app.dependency_overrides[api.get_runtime] = lambda: runtime
+    client = TestClient(api.app)
+    headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
+    try:
+        response = client.post("/workers/start", headers=headers, json={})
+        assert response.status_code == 409
+        assert starts == []
+        runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
+        started = client.post("/workers/start", headers=headers, json={})
+        assert started.status_code == 200
+        assert started.json()["running"] is True
+        assert starts == [True]
+    finally:
+        api.app.dependency_overrides.clear()
+        runtime.close()
