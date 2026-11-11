@@ -240,6 +240,32 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
             const existing=card.querySelector("[data-workflow-details]");
             if(existing)existing.remove();
             panel.dataset.workflowDetails="true";card.append(panel);
+            const handoffActions=document.createElement("div");
+            handoffActions.className="stack";
+            (result.handoffs||[]).forEach(h=>{
+              const handoffRow=document.createElement("div");
+              handoffRow.className="row";
+              const handoffLabel=document.createElement("span");
+              handoffLabel.textContent="Handoff · "+h.purpose+" · "+h.state;
+              handoffRow.append(handoffLabel);
+              if(h.state==="proposed"){
+                for(const action of ["accept","decline"]){
+                  const actionButton=document.createElement("button");
+                  actionButton.textContent=action==="accept"?"Accept handoff":"Decline handoff";
+                  actionButton.addEventListener("click",async()=>{
+                    actionButton.disabled=true;
+                    try{
+                      await request("/handoffs/"+h.id+"/"+action,{method:"POST",body:"{}"});
+                      setMessage("Handoff "+action+"ed. Refreshing workflow.","success");
+                      workflowButton.click();
+                    }catch(error){setMessage(error.message,"error");actionButton.disabled=false;}
+                  });
+                  handoffRow.append(actionButton);
+                }
+              }
+              handoffActions.append(handoffRow);
+            });
+            if((result.handoffs||[]).length){handoffActions.dataset.handoffActions="true";card.append(handoffActions);}
             setMessage("Workflow state loaded from the live API.","success");
           }catch(error){setMessage(error.message,"error");}
           finally{workflowButton.disabled=false;}
