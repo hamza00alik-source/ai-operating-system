@@ -134,6 +134,11 @@ class AgentStateChangeInput(BaseModel):
     expected_revision: int = Field(ge=1)
 
 
+class WorkforceActivationInput(BaseModel):
+    department: str = Field(min_length=1, max_length=80)
+    team_key: str | None = Field(default=None, min_length=1, max_length=120)
+
+
 class WorkItemCreateInput(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     objective: str = Field(min_length=1, max_length=12000)
@@ -973,6 +978,48 @@ def bootstrap_specialists(store: SQLiteStore = Depends(get_store)) -> dict:
             for item in agents
         ],
         "execution_started": False,
+    }
+
+
+@app.post("/agents/activate", dependencies=[Depends(require_owner_key)])
+def activate_workforce_scope(
+    payload: WorkforceActivationInput,
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Owner-activate draft agents in one department or one validated team."""
+    try:
+        department = default_organization().get(payload.department)
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if payload.team_key is not None:
+        allowed_team_keys = {"management"}
+        if payload.department == "executive-office":
+            allowed_team_keys.add("executive")
+        for role_key in department.role_keys:
+            role = default_workforce().get(role_key)
+            if role_key in department.role_keys and role.team_key != "general":
+                allowed_team_keys.add(role.team_key)
+        if payload.team_key not in allowed_team_keys:
+            raise HTTPException(
+                status_code=422,
+                detail="Team key is not registered in the selected department.",
+            )
+
+    try:
+        activated = store.activate_all_draft_agents_with_audit(
+            department=payload.department, team_key=payload.team_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "department": payload.department,
+        "team_key": payload.team_key,
+        "activated_count": activated,
+        "activation_scope": "department" if payload.team_key is None else "team",
+        "worker_execution_started": False,
+        "provider_verification_required_before_execution": True,
+        "audit_recorded": True,
     }
 
 
