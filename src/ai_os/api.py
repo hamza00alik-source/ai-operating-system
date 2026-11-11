@@ -736,10 +736,12 @@ def get_workflow_instances(business_id: str = "core"):
 
 
 @app.get("/company/workflows/{workflow_id}", dependencies=[Depends(require_api_key)])
-def get_workflow_detail(workflow_id: str):
+def get_workflow_detail(workflow_id: str, business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
     result = get_workflow(workflow_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Workflow not found")
+    if result is None or result.get("business_id") != business_id:
+        raise HTTPException(status_code=404, detail="Workflow not found in this business environment.")
     return result
 
 
@@ -895,7 +897,8 @@ def get_tasks(business_id: str = "core"):
 
 
 @app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
-def execute_task(task_id: str):
+def execute_task(task_id: str, business_id: str = "core"):
+    _require_task_business_scope(task_id, business_id)
     try:
         if not task_is_runnable(task_id):
             raise ValueError("This workflow step is blocked until the previous department step completes.")
@@ -922,6 +925,19 @@ def get_agent_runs(task_id: str | None = None, business_id: str = "core"):
     if business_id not in BUSINESS_IDS:
         raise HTTPException(status_code=422, detail="Unknown business environment.")
     return list_runs(task_id, business_id)
+
+
+def _require_task_business_scope(task_id: str, business_id: str) -> dict:
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM tasks WHERE id=? AND business_id=?",
+            (task_id, business_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found in this business environment.")
+    return dict(row)
 
 
 def _require_run_business_scope(run_id: str, business_id: str) -> dict:
