@@ -70,9 +70,18 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
     byId("unorouter-discover").disabled=true;
     byId("unorouter-model-catalogue").textContent="Importing the complete live UnoRouter catalogue and checking every entry against strict free-only rules…";
     try{
-      const result=await request("/settings/providers/unorouter/models");
-      byId("unorouter-model-catalogue").textContent="Found "+result.count+" confirmed-free, online models: "+result.models.join(", ")+". OpenCompany will rotate across them automatically; paid models excluded.";
-    }catch(error){byId("unorouter-model-catalogue").textContent="Catalogue discovery failed: "+error.message;}
+      const result=await request("/settings/providers/unorouter/catalog");
+      byId("unorouter-model-catalogue").textContent="Imported "+result.total_models+" catalogue entries: "+result.eligible_free_chat_models+" eligible free chat models; "+result.blocked_models+" blocked. Paid models are research-only and cannot be selected or called. Global paid inference is disabled.";
+      const rows=byId("unorouter-catalog-rows");rows.replaceChildren();
+      for(const model of result.models){
+        const row=document.createElement("div");row.className="row";
+        const info=document.createElement("span");
+        info.textContent=model.vendor+" · "+model.model_id+" · "+model.type+" · input "+String(model.input_price??"unknown")+" / output "+String(model.output_price??"unknown")+" / fixed "+String(model.fixed_price??"unknown");
+        const state=document.createElement("strong");
+        state.textContent=model.allowed_for_inference?"FREE · ELIGIBLE":"BLOCKED · "+model.policy_status.replaceAll("_"," ");
+        row.append(info,state);rows.append(row);
+      }
+    }catch(error){byId("unorouter-model-catalogue").textContent="Catalogue import failed: "+error.message;}
     finally{byId("unorouter-discover").disabled=false;}
   });
   byId("unorouter-save").addEventListener("click",async()=>{
