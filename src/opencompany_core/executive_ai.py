@@ -94,6 +94,7 @@ def create_executive_plan(
         ModelRequest(
             prompt=prompt, request_id=str(uuid4()), max_output_tokens=2400,
             work_item_id="executive-plan", role_key="chief_executive_orchestrator",
+            business_id=business_id,
         ),
         request_budget_usd=0.0,
         preferred_provider="unorouter",
