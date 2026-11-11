@@ -7,9 +7,10 @@ and remain review-required; a missing sink fails closed.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Callable, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5, uuid4
 
 from .domain import AuditRecord, TaskState
@@ -41,6 +42,7 @@ class OpenCompanyWorker:
         *,
         request_budget_usd: float = 0.0,
         preferred_provider: str | None = None,
+        manager_review_callback: Callable[[UUID], object] | None = None,
     ) -> None:
         if artifact_sink is None:
             raise WorkerConfigurationError("a durable artifact sink is required")
@@ -52,6 +54,7 @@ class OpenCompanyWorker:
         self.artifact_sink = artifact_sink
         self.request_budget_usd = request_budget_usd
         self.preferred_provider = preferred_provider
+        self.manager_review_callback = manager_review_callback
 
     def available_agent_ids(self) -> tuple[UUID, ...]:
         """Return only assignees with queued work or expired leases."""
@@ -63,11 +66,13 @@ class OpenCompanyWorker:
             return "idle"
         try:
             existing_item = self.store.get_work_item(lease.work_item_id)
-            if existing_item is not None and existing_item.state == TaskState.REVIEW:
+            if existing_item is not None and existing_item.state in {TaskState.REVIEW, TaskState.COMPLETED}:
                 saved = self.store.list_deliverables(lease.work_item_id)
                 if any(value["role_key"] == role_key for value in saved):
+                    if existing_item.state == TaskState.REVIEW:
+                        self._attempt_manager_review(lease, role_key)
                     self.queue.complete(lease)
-                    return "completed_review_required"
+                    return "completed_manager_review" if existing_item.state == TaskState.COMPLETED else "completed_review_required"
             deliverable = self._execute_lease(lease, role_key)
             # A retry of the same work/role must address the same artifact key.
             # This lets a durable sink safely deduplicate after a crash between
@@ -90,8 +95,10 @@ class OpenCompanyWorker:
             )
             if not saved:
                 raise WorkerConfigurationError("work item is no longer in progress")
+            self._attempt_manager_review(lease, role_key)
             self.queue.complete(lease)
-            return "completed_review_required"
+            reviewed_item = self.store.get_work_item(lease.work_item_id)
+            return "completed_manager_review" if reviewed_item and reviewed_item.state == TaskState.COMPLETED else "completed_review_required"
         except Exception as exc:
             # Do not leak exception text into persistent queue metadata.
             queue_state = None
@@ -108,6 +115,24 @@ class OpenCompanyWorker:
             else:
                 self.store.append_audit_record(failure_event)
             raise
+
+    def _attempt_manager_review(self, lease: WorkerLease, role_key: str) -> None:
+        """Run the internal quality gate when explicitly enabled; defer safely on failure."""
+        enabled = os.environ.get("OPENCOMPANY_AUTO_MANAGER_REVIEW", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return
+        error_type = None
+        try:
+            if self.manager_review_callback is None:
+                raise WorkerConfigurationError("manager review callback is not configured")
+            self.manager_review_callback(lease.work_item_id)
+            return
+        except Exception as exc:
+            error_type = type(exc).__name__
+        self.store.append_audit_record(self._audit(
+            lease, "manager.review_deferred",
+            {"role_key": role_key, "error_type": error_type, "task_state": "review"},
+        ))
 
     def _execute_lease(self, lease: WorkerLease, role_key: str) -> AgentDeliverable:
         item = self.store.get_work_item(lease.work_item_id)
