@@ -53,11 +53,11 @@ def test_ceo_plan_inherits_selected_business_unit():
                     "depends_on": [],
                 }],
             }
-            return ModelResult(json.dumps(payload), "free", model, 0.0)
+            return ModelResult(json.dumps(payload), "unorouter", model, 0.0)
 
     adapter = PlanAdapter()
     gateway = ModelGateway.configure((
-        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+        (ProviderPolicy("unorouter", "test-model", BillingMode.FREE_CONFIRMED), adapter),
     ))
     plan = create_executive_plan(
         "Agency buyer research", "Find qualified international buyers.",
