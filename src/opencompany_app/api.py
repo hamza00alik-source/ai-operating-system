@@ -1240,6 +1240,26 @@ def list_commercial_opportunities(
     return {"count": len(records), "opportunities": records}
 
 
+@app.get("/commercial/opportunities/{opportunity_id}/catalogue", dependencies=[Depends(require_owner_key)])
+def list_opportunity_catalogue(
+    opportunity_id: UUID, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    opportunity = store.get_commercial_opportunity(str(opportunity_id))
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Commercial opportunity not found.")
+    # The opportunity's immutable business_id is the only allowed catalogue scope.
+    products = store.list_commercial_products(
+        business_id=opportunity["business_id"], status="active"
+    )
+    return {
+        "opportunity_id": str(opportunity_id),
+        "business_id": opportunity["business_id"],
+        "count": len(products),
+        "products": products,
+        "scope_enforced": True,
+    }
+
+
 @app.post("/commercial/products", dependencies=[Depends(require_owner_key)])
 def create_commercial_product(
     payload: CommercialProductInput, store: SQLiteStore = Depends(get_store)
