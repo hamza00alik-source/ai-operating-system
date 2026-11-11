@@ -180,7 +180,9 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
   });
   async function loadModelUsage(){
     try{
-      const usage=await request("/usage/model");
+      const businessFilter=byId("business-filter")?.value||"";
+      const usageUrl=businessFilter?"/usage/model?business_id="+encodeURIComponent(businessFilter):"/usage/model";
+      const usage=await request(usageUrl);
       byId("usage-requests").textContent=String(usage.request_count);
       byId("usage-cost").textContent=Number(usage.total_cost_usd).toFixed(6);
       byId("usage-tokens").textContent=String(usage.total_input_tokens)+" / "+String(usage.total_output_tokens);
@@ -189,7 +191,7 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
       for(const event of usage.events.slice(0,8)){
         const row=document.createElement("div");row.className="row";
         const label=document.createElement("span");
-        label.textContent=event.role_key+" · "+event.provider+"/"+event.model;
+        label.textContent=(event.business_id||"core")+" · "+event.role_key+" · "+event.provider+"/"+event.model;
         const amount=document.createElement("span");
         amount.textContent=Number(event.cost_usd).toFixed(6)+" USD · "+String(event.input_tokens??"—")+"/"+String(event.output_tokens??"—")+" tokens";
         row.append(label,amount);target.append(row);
