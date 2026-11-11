@@ -120,7 +120,9 @@ The owner API now provides private, owner-authenticated commercial records:
 ### Proposals, quotations, and orders
 
 - A quote belongs to one opportunity and inherits its immutable business unit. Every quote line must reference an active catalogue item from that same unit; mixed-business quotes are rejected in the persistence layer.
-- Quote amounts are stored as integer minor currency units. Quotes begin as drafts. Owner approval moves a quote to `approved_for_delivery`, which means it is ready for manual owner delivery only; the application does not send it.
+- Quote amounts are stored as integer minor currency units with an explicit currency exponent (0–3 decimal places) to avoid assuming every currency has two decimals. Quotes begin as drafts. Owner approval moves a quote to `approved_for_delivery`, which means it is ready for manual owner delivery only; the application does not send it.
 - Customer acceptance is recorded only after an owner confirms acceptance and supplies an evidence reference. A quote can be accepted only after it was approved for delivery.
 - An order record can be created only from an accepted quote, requires explicit owner confirmation, and is unique per quote. This records an order awaiting owner fulfilment; it does not take payment, contact the customer, commit a supplier, or start fulfilment.
 - Quote, decision, and order writes are transactional with their tamper-evident audit events. Orders and quotes retain their opportunity's business unit.
+
+- Creating the first quote advances its opportunity to the proposal stage; recording an accepted-quote order advances the opportunity to won. Both stage changes are part of the same transaction as the quote/order audit record.
