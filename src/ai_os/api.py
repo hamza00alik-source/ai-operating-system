@@ -811,6 +811,7 @@ class InvestorRequest(BaseModel):
 
 
 class CodeAssetRequest(BaseModel):
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=180)
     repository_url: str = Field(default="", max_length=2048)
     path: str = Field(default="", max_length=500)
@@ -824,6 +825,7 @@ class CodeAssetRequest(BaseModel):
 
 
 class LicenseOfferRequest(BaseModel):
+    business_id: str = Field(default="core", min_length=1, max_length=64)
     asset_id: str = Field(min_length=1, max_length=80)
     buyer: str = Field(min_length=1, max_length=180)
     terms: str = Field(min_length=1, max_length=3000)
@@ -910,12 +912,16 @@ def post_business_investor(payload: InvestorRequest):
 
 
 @app.get("/code-assets", dependencies=[Depends(require_api_key)])
-def get_code_assets():
-    return business_ops.list_assets()
+def get_code_assets(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_assets(business_id=business_id)
 
 
 @app.post("/code-assets", status_code=201, dependencies=[Depends(require_owner_key)])
 def post_code_asset(payload: CodeAssetRequest):
+    if payload.business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
         return business_ops.create_asset(payload.model_dump())
     except ValueError as exc:
@@ -923,12 +929,16 @@ def post_code_asset(payload: CodeAssetRequest):
 
 
 @app.get("/code-assets/license-offers", dependencies=[Depends(require_api_key)])
-def get_code_license_offers():
-    return business_ops.list_license_offers()
+def get_code_license_offers(business_id: str = "core"):
+    if business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
+    return business_ops.list_license_offers(business_id=business_id)
 
 
 @app.post("/code-assets/license-offers", status_code=201, dependencies=[Depends(require_owner_key)])
 def post_code_license_offer(payload: LicenseOfferRequest):
+    if payload.business_id not in BUSINESS_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business environment.")
     try:
         return business_ops.create_license_offer(payload.model_dump())
     except LookupError as exc:
