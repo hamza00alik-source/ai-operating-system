@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from opencompany_core.product_workflow import ProductWorkflowError, ProductWorkflowRepository
-from opencompany_core.product_artifacts import generate_product_blueprint
+from opencompany_core.product_artifacts import generate_product_blueprint, verify_product_blueprint
 
 
 def _runtime_for_request(request: Request):
@@ -126,6 +126,51 @@ def generate_blueprint(workflow_id: UUID, request: Request) -> dict:
         "download_path": f"/product-workflows/artifacts/{artifact['artifact_id']}",
         "next_stage": "automated_qa",
         "notice": "Blueprint starter pack only; it is not a finished or QA-approved commercial product.",
+    }
+
+
+@router.post("/{workflow_id}/run-automated-qa")
+def run_automated_qa(workflow_id: UUID, request: Request) -> dict:
+    """Run deterministic ZIP/manifest QA; product-specific claims remain untested."""
+    runtime = _runtime_for_request(request)
+    repo = repository(request)
+    workflow = repo.get(workflow_id)
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Product workflow not found.")
+    if workflow["stages"][4]["status"] != "in_progress":
+        raise HTTPException(status_code=409, detail="Automated QA must be the active workflow stage.")
+    artifact_refs = workflow["stages"][3]["artifact_refs"]
+    if len(artifact_refs) != 1 or not artifact_refs[0].startswith("artifact://"):
+        raise HTTPException(status_code=409, detail="A generated blueprint artifact is required before QA.")
+    try:
+        artifact_id = UUID(artifact_refs[0].removeprefix("artifact://"))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="The stored artifact reference is invalid.") from exc
+    artifact_root = Path(runtime.store.database).expanduser().resolve().parent / "product_artifacts"
+    artifact_path = artifact_root / f"{artifact_id}.zip"
+    qa_result = verify_product_blueprint(artifact_path)
+    evidence = (
+        [f"passed:{item}" for item in qa_result["passed_checks"]]
+        + [f"failed:{item}" for item in qa_result["failed_checks"]]
+        + [f"untested:{item}" for item in qa_result["untested_claims"]]
+    )
+    updated = _run(
+        repo.complete_stage,
+        workflow_id,
+        "automated_qa",
+        output=(
+            "Deterministic blueprint archive checks completed. "
+            "This does not validate future product assets, visual quality, engine behavior, legal rights, or demand."
+        ),
+        artifact_refs=[f"artifact://{artifact_id}"],
+        evidence=evidence,
+        qa_result=qa_result,
+    )
+    return {
+        "workflow_id": str(workflow_id),
+        "workflow_status": updated["status"],
+        "qa_result": qa_result,
+        "next_action": "return_to_production" if qa_result["failed_checks"] else "start_human_preview",
     }
 
 
