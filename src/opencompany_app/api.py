@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import sqlite3
 import tempfile
 import time
 from threading import Lock
@@ -2351,7 +2352,9 @@ def manager_review_specialist_work(
             try:
                 _auto_queue_task(runtime, updated, assigned, action="manager.rework_auto_queued")
                 queued_ids.append(str(item_id))
-            except (QueueError, ValueError) as exc:
+            except (QueueError, ValueError, sqlite3.IntegrityError) as exc:
+                # A worker-triggered review still owns the queue lease; its
+                # completion hook atomically reuses that lease for rework.
                 queue_errors.append(type(exc).__name__)
 
     if decision.approved and auto_queue_enabled and free_provider_ready:
