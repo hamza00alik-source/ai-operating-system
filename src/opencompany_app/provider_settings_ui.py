@@ -50,11 +50,13 @@ OWNER_PROVIDER_SETTINGS_JS = r"""
     try{
       const status=await request("/settings/providers/unorouter");
       byId("unorouter-state").textContent=status.configured?"Credentials saved · "+(status.model||"free model"):"Not configured";
-      byId("unorouter-detail").textContent=status.configured
-        ?"Encrypted credentials are saved on the server. API key: hidden. Model: "+status.model+". Live inference: "+(status.real_inference_verified?"verified":"not yet tested")+"."
-        :"No saved UnoRouter credentials. The provider gateway remains disabled.";
+      byId("unorouter-detail").textContent=status.configuration_error
+        ?status.configuration_error
+        :(status.configured
+          ?"Encrypted credentials are saved on the server. API key: hidden. Model: "+status.model+". Live inference: "+(status.real_inference_verified?"verified":"not yet tested")+"."
+          :"No saved UnoRouter credentials. The provider gateway remains disabled.");
       byId("unorouter-test").disabled=!status.configured;
-      byId("unorouter-remove").disabled=!status.configured;
+      byId("unorouter-remove").disabled=!status.api_key_present;
       if(status.configured) byId("unorouter-model").value=status.model||"";
     }catch(error){byId("unorouter-detail").textContent=error.message;}
   }
