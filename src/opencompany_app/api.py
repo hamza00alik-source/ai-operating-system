@@ -1736,7 +1736,8 @@ def create_ai_learning_proposal(
         id=uuid4(), occurred_at=now, actor_type="agent", actor_id="learning-reviewer",
         action="learning.ai_proposal_created", subject_type="improvement_proposal",
         subject_id=str(proposal.id), outcome="proposed", correlation_id=str(uuid4()),
-        details={"role_key": role_key, "provider": model_result.provider, "model": model_result.model},
+        details={"role_key": role_key, "business_id": business_id,
+                 "provider": model_result.provider, "model": model_result.model},
     )
     try:
         runtime.learning.save_proposal(proposal, event)
@@ -1775,7 +1776,8 @@ def apply_approved_learning_proposal(
         id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
         action="learning.approved_note_applied", subject_type="agent_role",
         subject_id=proposal["target"], outcome="applied", correlation_id=str(uuid4()),
-        details={"proposal_id": str(proposal_id), "evidence_ids": proposal["based_on_evaluations"]},
+        details={"proposal_id": str(proposal_id), "evidence_ids": proposal["based_on_evaluations"],
+                 "business_id": proposal["business_id"]},
     )
     try:
         note_id = runtime.learning.apply_proposal_as_note(proposal_id, owner_id="owner", record=event)
@@ -1826,7 +1828,7 @@ def create_approved_learning_note(
         id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
         action="learning.role_note_approved", subject_type="agent_role",
         subject_id=payload.role_key, outcome="approved", correlation_id=str(uuid4()),
-        details={"evidence_refs": payload.evidence_refs},
+        details={"evidence_refs": payload.evidence_refs, "business_id": payload.business_id},
     )
     try:
         if payload.business_id not in BUSINESS_UNIT_IDS:
