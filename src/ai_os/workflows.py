@@ -6,6 +6,7 @@ import json
 from ai_os.db import connect, initialize_database
 from ai_os.brain import BUSINESS_IDS
 from ai_os.workflow_dag import COMPANY_CYCLE_DEPENDENCIES
+from ai_os.business_scope import validate_workflow_scope
 
 TEMPLATES = {
     "digital-product-launch": {
@@ -107,8 +108,7 @@ def list_templates() -> dict:
         "execution_policy": "Only the first step is queued. Later steps remain blocked until the preceding step completes. Each step requires an explicit owner-triggered execution."}
 
 def create_workflow(template_id: str, business_id: str = "core") -> dict:
-    if business_id not in BUSINESS_IDS:
-        raise ValueError("Unknown business environment.")
+    validate_workflow_scope(template_id, business_id)
     if template_id not in TEMPLATES:
         raise LookupError("Workflow template not found")
     initialize_workflows()
