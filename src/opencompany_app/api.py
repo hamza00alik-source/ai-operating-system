@@ -193,8 +193,7 @@ def initialize_autonomous_runtime() -> None:
         return
     bootstrap_enabled = os.environ.get("OPENCOMPANY_BOOTSTRAP_WORKFORCE", "false").casefold() == "true"
     activate_enabled = os.environ.get("OPENCOMPANY_AUTO_ACTIVATE_WORKFORCE", "false").casefold() == "true"
-    worker_autostart = os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true"
-    if not (bootstrap_enabled or activate_enabled or worker_autostart):
+    if not (bootstrap_enabled or activate_enabled):
         return
     runtime = _default_runtime()
     if bootstrap_enabled:
@@ -203,8 +202,9 @@ def initialize_autonomous_runtime() -> None:
         bootstrap_executive_orchestrator(runtime.store)
     if activate_enabled:
         runtime.store.activate_all_draft_agents_with_audit()
-    if worker_autostart and runtime.gateway.eligible_providers(request_budget_usd=0.0):
-        runtime.fleet.start()
+    # Never start inference at process boot from saved credentials alone.
+    # The owner must run the live zero-cost provider test in this process;
+    # that verified action is the only path to start_workers_if_ready().
 
 
 @app.on_event("shutdown")
