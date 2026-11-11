@@ -2273,7 +2273,18 @@ def manager_review_specialist_work(
         raise HTTPException(status_code=409, detail="An active department manager is required for internal review.")
     if assigned is None or assigned.department != item.department or assigned.role_key == manager_role_key:
         raise HTTPException(status_code=409, detail="Manager review is limited to specialist work; self-review is not permitted.")
+    try:
+        assigned_role = default_workforce().get(assigned.role_key)
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail="Assigned specialist role is not registered.") from exc
+    if (
+        assigned.role_key not in department.role_keys
+        or assigned.team_key != assigned_role.team_key
+    ):
+        raise HTTPException(status_code=409, detail="Assigned specialist profile does not match the department role catalogue.")
     deliverables = store.list_deliverables(item_id)
+    if any(row["role_key"] != assigned.role_key for row in deliverables):
+        raise HTTPException(status_code=409, detail="Deliverable role identity does not match the assigned specialist.")
     try:
         decision = review_specialist_deliverables(
             item, manager_role_key, deliverables, runtime.gateway,
