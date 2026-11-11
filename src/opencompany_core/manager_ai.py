@@ -50,6 +50,7 @@ def recommend_department_plan(
         f"Department mission: {department.mission}\n"
         f"Manager operating procedure:\n{manager_steps}\n"
         f"Business unit: {item.business_id}. Keep all context inside this business unit.\n"
+        "Commercial scope is strict: serve only the customer's stated need within this business. Never cross-sell, bundle, or substitute products/services from another business unit. If the work item requests an unrelated category or its scope is ambiguous, recommend owner clarification instead of expanding scope.\n"
         f"Work item title: {item.title}\n"
         f"Work item objective: {item.objective}\n"
         "Select the smallest useful set of exact capability identifiers from the allowed catalogue. "
