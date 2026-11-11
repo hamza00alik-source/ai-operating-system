@@ -2327,6 +2327,8 @@ def manager_review_specialist_work(
 
     queued_ids = []
     queue_errors = []
+    auto_queue_enabled = _auto_queue_approved_work_enabled()
+    free_provider_ready = _free_provider_ready(runtime) if auto_queue_enabled else False
     if not decision.approved:
         retry_item = store.get_work_item(item_id)
         updated = replace(
@@ -2345,14 +2347,14 @@ def manager_review_specialist_work(
             details={"instruction_length": len(decision.rework_instructions)},
         )
         store.save_work_item_with_audit(updated, retry_event)
-        if _auto_queue_approved_work_enabled() and _free_provider_ready(runtime):
+        if auto_queue_enabled and free_provider_ready:
             try:
                 _auto_queue_task(runtime, updated, assigned, action="manager.rework_auto_queued")
                 queued_ids.append(str(item_id))
             except (QueueError, ValueError) as exc:
                 queue_errors.append(type(exc).__name__)
 
-    if decision.approved and _auto_queue_approved_work_enabled() and _free_provider_ready(runtime):
+    if decision.approved and auto_queue_enabled and free_provider_ready:
         completed_ids = {
             value.id for value in store.list_work_items(limit=1000)
             if value.state == TaskState.COMPLETED
@@ -2392,6 +2394,8 @@ def manager_review_specialist_work(
         "provider": decision.provider, "model": decision.model,
         "queued_work_item_ids": queued_ids,
         "queue_errors": queue_errors,
+        "auto_queue_enabled": auto_queue_enabled,
+        "free_provider_ready": free_provider_ready,
         "external_actions_performed": False,
         "owner_final_review_still_required": True,
     }
