@@ -53,7 +53,7 @@ def test_owner_approval_materializes_child_tasks_atomically(tmp_path):
     assert delegations.get_proposal(UUID(proposal["id"]))["status"] == "approved"
     assert store.verify_audit_chain() is True
     assert store.approve_delegation_proposal(UUID(proposal["id"]), (task,), records) is False
-    assert store.list_work_items(limit=10) == (saved,)
+    assert {item.id for item in store.list_work_items(limit=10)} == {parent_id, child_id}
     store.close()
     delegations.close()
 
