@@ -6,7 +6,7 @@ OWNER_DASHBOARD_HTML = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>OpenCompany Owner Console</title>
+<title>OpenCompany AIOS · Owner Console</title>
 <style>
 :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#0b1020;color:#eef2ff}
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#101a32,#0b1020 55%);min-height:100vh}
@@ -24,7 +24,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
 <body>
 <main>
   <div class="top">
-    <div><h1>OpenCompany</h1><div class="muted">Owner control centre · independent core</div></div>
+    <div><h1>OpenCompany AIOS</h1><div class="muted">One company · one intelligence engine · owner-governed operations</div></div>
     <span class="pill">Owner approval controls enabled</span>
   </div>
   <section class="panel">
