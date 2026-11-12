@@ -231,6 +231,12 @@ class DurableWorkerQueue:
                 )
                 if cursor.rowcount != 1:
                     raise QueueError("work item already has queued or actively leased work")
+                # An owner-reviewed re-admission is a new task revision. Never
+                # reuse an earlier specialist output for the revised request.
+                self._db.execute(
+                    "DELETE FROM worker_checkpoints WHERE work_item_id=?",
+                    (str(item.id),),
+                )
                 cursor = self._db.execute(
                     "UPDATE work_items SET state=? WHERE id=? AND state=?",
                     (TaskState.QUEUED.value, str(item.id), TaskState.READY.value),
