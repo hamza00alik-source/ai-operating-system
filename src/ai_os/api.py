@@ -655,7 +655,8 @@ def get_approvals():
 @app.post(
     "/approvals/{approval_id}/decision",
     response_model=ApprovalOut,
-    dependencies=[Depends(require_api_key)],
+    # Approval decisions must never inherit the development-mode auth bypass.
+    dependencies=[Depends(require_owner_key)],
 )
 def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     try:
