@@ -1574,6 +1574,10 @@ def create_work_item(
         default_organization().get(payload.department)
     except LookupError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        _assert_operational_business_unit(_default_runtime(), payload.business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload.business_id not in BUSINESS_UNIT_IDS:
         raise HTTPException(status_code=422, detail="Unknown business unit.")
     item = WorkItem(
@@ -2384,6 +2388,10 @@ def create_executive_work_plan(
     store: SQLiteStore = Depends(get_store),
 ) -> dict:
     """Ask the active CEO orchestrator to decompose an owner objective into draft tasks."""
+    try:
+        _assert_operational_business_unit(runtime, payload.business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload.business_id not in BUSINESS_UNIT_IDS:
         raise HTTPException(status_code=422, detail="Unknown business unit.")
     ceo = next(
@@ -3110,6 +3118,11 @@ def list_venture_opportunity_events(
 # It does not activate operations or connect external services.
 def _business_unit_registry(runtime: OpenCompanyRuntime) -> BusinessUnitRegistry:
     return BusinessUnitRegistry(runtime.store._connection, runtime.store._lock)
+
+
+def _assert_operational_business_unit(runtime: OpenCompanyRuntime, business_id: str) -> dict:
+    """Fail closed before creating work for a unit without an operational scope."""
+    return _business_unit_registry(runtime).require_operational(business_id)
 
 
 @app.get("/business-units", dependencies=[Depends(require_owner_key)])
