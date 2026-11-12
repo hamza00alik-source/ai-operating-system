@@ -80,3 +80,24 @@ def test_unapproved_jobs_are_never_claimed(tmp_path, monkeypatch):
         cost_basis="No cost",
     )
     assert video_jobs.claim_job("gpu-worker-a", 60) is None
+
+
+
+def test_worker_http_routes_require_shared_secret(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from ai_os.api import app
+
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "owner-test-key")
+    monkeypatch.setenv("VIDEO_WORKER_TOKEN", "worker-test-secret")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'worker-api.db'}")
+    with TestClient(app) as client:
+        denied = client.post("/video/worker/claim", json={"worker_id": "test-worker"})
+        assert denied.status_code == 401
+        accepted = client.post(
+            "/video/worker/claim",
+            headers={"X-Video-Worker-Token": "worker-test-secret"},
+            json={"worker_id": "test-worker", "lease_seconds": 60},
+        )
+        assert accepted.status_code == 200
+        assert accepted.json() is None
