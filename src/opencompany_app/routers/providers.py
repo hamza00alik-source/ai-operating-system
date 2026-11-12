@@ -135,10 +135,8 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
         raise HTTPException(status_code=422, detail="Owner must explicitly confirm the selected model is free.")
     if payload.model != UNOROUTER_AUTO_FREE_MODEL and not payload.model.endswith(":free"):
         raise HTTPException(status_code=422, detail="Only explicitly free model IDs or automatic free-catalog routing are accepted.")
-    if payload.model != UNOROUTER_AUTO_FREE_MODEL:
-        discovered = _discover_free_models(payload.api_key)
-        if discovered is not None and payload.model not in discovered:
-            raise HTTPException(status_code=409, detail="The selected model is not currently listed as free, online, and available to this API key. Load the free-model list again.")
+    # Saving credentials is a local encrypted write only. Live model access and
+    # zero-cost behaviour are verified by the separate owner-triggered test.
     try:
         runtime.stop_workers_for_provider_change()
         revision = runtime.secret_vault.put("unorouter", {"api_key": payload.api_key, "model": payload.model})
