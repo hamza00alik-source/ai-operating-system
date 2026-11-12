@@ -106,8 +106,9 @@ def heartbeat_loop(job_id, lease, stop, cancellation):
                 lease,
             )
             if result.get("cancel_requested"):
+                # Keep renewing the lease until the current inference call returns;
+                # otherwise another worker could duplicate a still-running GPU job.
                 cancellation.set()
-                return
         except Exception:
             # Lease expiry is safer than continuing to report success after a lost API.
             cancellation.set()
