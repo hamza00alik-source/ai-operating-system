@@ -710,6 +710,9 @@ def list_commercial_orders(
     return {"count": len(orders), "orders": orders}
 
 
+app.include_router(work_items_router)
+
+
 def _auto_queue_approved_work_enabled() -> bool:
     return os.environ.get("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK", "false").strip().casefold() in {"1", "true", "yes", "on"}
 
@@ -798,8 +801,6 @@ def enqueue_work_item(
         "worker_started": False,
     }
 
-
-app.include_router(work_items_router)
 
 app.include_router(workers_router)
 
