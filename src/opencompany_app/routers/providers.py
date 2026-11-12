@@ -26,6 +26,11 @@ from opencompany_app.runtime import OpenCompanyRuntime
 
 router = APIRouter()
 
+def _discover_free_models(api_key: str, *, force_refresh: bool = False):
+    from opencompany_app import api as api_module
+    return api_module.discover_free_models(api_key, force_refresh=force_refresh)
+
+
 # In-memory owner-authenticated provider-test jobs; clients poll bounded jobs
 # because an inference request can outlive browser/proxy request timeouts.
 _UNOROUTER_TESTS: dict[str, dict] = {}
@@ -38,7 +43,7 @@ _UNOROUTER_TESTS_MAX = 50
 @router.post("/settings/providers/unorouter/discover", dependencies=[Depends(require_owner_key)])
 def discover_unorouter_models(payload: UnoRouterDiscoveryInput) -> dict:
     try:
-        models = discover_free_models(payload.api_key)
+        models = _discover_free_models(payload.api_key)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ProviderUnavailable as exc:
@@ -77,7 +82,7 @@ def list_unorouter_free_models(runtime: OpenCompanyRuntime = Depends(get_runtime
     if not saved:
         raise HTTPException(status_code=409, detail="Save the UnoRouter API key first.")
     try:
-        models = discover_free_models(saved["api_key"], force_refresh=True)
+        models = _discover_free_models(saved["api_key"], force_refresh=True)
     except ProviderUnavailable as exc:
         raise HTTPException(status_code=502, detail=f"UnoRouter catalogue refresh failed safely: {exc}") from exc
     return {
@@ -124,7 +129,7 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
         raise HTTPException(status_code=422, detail="Only explicitly free model IDs or automatic free-catalog routing are accepted.")
     if payload.model != UNOROUTER_AUTO_FREE_MODEL:
         try:
-            discovered = discover_free_models(payload.api_key)
+            discovered = _discover_free_models(payload.api_key)
         except ProviderUnavailable as exc:
             raise HTTPException(status_code=502, detail=f"UnoRouter could not revalidate the selected free model: {exc}") from exc
         if payload.model not in discovered:
