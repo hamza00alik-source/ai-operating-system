@@ -110,6 +110,7 @@ class PrivateFilesystemAssetStorage:
         expected_sha256: str,
         expected_size: int,
         chunks: Iterable[bytes],
+        expected_media_type: str | None = None,
     ) -> dict[str, str | int]:
         """Verify the received stream and atomically store it without overwrite."""
         try:
@@ -154,7 +155,8 @@ class PrivateFilesystemAssetStorage:
                     if len(prefix) < 4096:
                         prefix.extend(data[:4096 - len(prefix)])
                     stream.write(data)
-                validate_asset_media_type(expected_media_type, bytes(prefix))
+                if expected_media_type is not None:
+                    validate_asset_media_type(expected_media_type, bytes(prefix))
                 stream.flush()
                 os.fsync(stream.fileno())
             actual_hash = digest.hexdigest()
