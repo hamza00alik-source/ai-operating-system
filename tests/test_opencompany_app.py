@@ -2034,3 +2034,109 @@ def test_workflow_reconciliation_is_owner_authenticated_and_does_not_start_worke
     assert payload["worker_started"] is False
     assert payload["model_invoked"] is False
     assert payload["external_actions_performed"] is False
+
+
+def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempotently(owner_client, monkeypatch):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
+    assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research international demand",
+        "objective": "Produce a multi-specialist evidence report",
+        "department": "intelligence-research",
+    })
+    assert created.status_code == 200
+    parent_id = UUID(created.json()["item_id"])
+    proposed = owner_client.post(
+        f"/work-items/{parent_id}/delegation-proposals", headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert proposed.status_code == 200
+    proposal = proposed.json()
+
+    agents = {
+        agent["id"]: agent
+        for agent in owner_client.get("/agents", headers=headers).json()["agents"]
+    }
+    for child in proposal["children"]:
+        profile = agents[child["assigned_agent_id"]]
+        active = owner_client.post(
+            f"/agents/{profile['id']}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": profile["revision"]},
+        )
+        assert active.status_code == 200
+        agents[profile["id"]]["revision"] = active.json()["agent"]["revision"]
+
+    manager = next(
+        value for value in agents.values()
+        if value["role_key"] == "market_intelligence_analyst"
+    )
+    if manager["state"] != "active":
+        active = owner_client.post(
+            f"/agents/{manager['id']}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": manager["revision"]},
+        )
+        assert active.status_code == 200
+
+    approved = owner_client.post(
+        f"/work-items/{parent_id}/delegation-proposals/{proposal['id']}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
+    store = app.dependency_overrides[get_store]()
+    for child in proposal["children"]:
+        child_id = UUID(child["id"])
+        task = store.get_work_item(child_id)
+        assert task is not None
+        started = AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action="test.reconcile_child_started",
+            subject_type="work_item", subject_id=str(child_id), outcome="recorded",
+            correlation_id=str(parent_id),
+        )
+        store.save_work_item_with_audit(replace(task, state=TaskState.IN_PROGRESS), started)
+        deliverable = AgentDeliverable(
+            id=uuid4(), work_item_id=child_id, role_key=child["role_key"],
+            content=f"Approved evidence from {child['role_key']}",
+            provider="test", model="deterministic-free", cost_usd=0.0,
+        )
+        saved = AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+            actor_id=child["assigned_agent_id"], action="worker.deliverable_saved",
+            subject_type="work_item", subject_id=str(child_id), outcome="recorded",
+            correlation_id=str(parent_id),
+        )
+        assert store.save_deliverable_with_audit(deliverable, saved)
+        reviewed = owner_client.post(
+            f"/work-items/{child_id}/review", headers=headers,
+            json={"approved": True, "rationale": "Approve prerequisite evidence."},
+        )
+        assert reviewed.status_code == 200
+        assert reviewed.json()["state"] == "completed"
+
+    runtime = app.dependency_overrides[get_runtime]()
+    monkeypatch.setattr(
+        runtime.gateway, "eligible_providers",
+        lambda **kwargs: [object()],
+    )
+
+    recovered = owner_client.post("/workflows/reconcile", headers=headers)
+    assert recovered.status_code == 200
+    payload = recovered.json()
+    assert payload["queued_work_item_ids"] == [str(parent_id)]
+    assert payload["worker_started"] is False
+    assert payload["model_invoked"] is False
+    assert runtime.queue.get_entry(parent_id)["state"] == "queued"
+
+    repeated = owner_client.post("/workflows/reconcile", headers=headers)
+    assert repeated.status_code == 200
+    assert str(parent_id) not in repeated.json()["queued_work_item_ids"]
+    assert any(
+        value["work_item_id"] == str(parent_id)
+        and value["reason"] == "queue_entry_already_exists"
+        for value in repeated.json()["skipped"]
+    )
+    assert runtime.queue.get_entry(parent_id)["state"] == "queued"
