@@ -653,7 +653,7 @@ class BusinessUnitRegistry:
         blockers.append("asset_retrieval_adapter")
         checks.append({
             "key": "asset_retrieval_adapter", "ready": False,
-            "evidence": "Business-scoped retrieval authorization, controlled downloads, revocation and delivery approval are not implemented. Even a clean asset remains unavailable.",
+            "evidence": "Owner-only, explicit-confirmation downloads are available only after a current clean scan and same-descriptor size/SHA-256 verification. Customer/agent recipient authorization, expiring links, revocation, public delivery, and delivery approval remain unimplemented; assets remain unavailable to customers and agents.",
         })
 
         blockers.append("owner_activation_approval")
