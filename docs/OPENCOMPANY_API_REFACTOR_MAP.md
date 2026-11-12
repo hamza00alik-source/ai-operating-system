@@ -1,6 +1,6 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, read-only catalogue-router extraction, health/readiness-router extraction, and read-only UnoRouter provider-route extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, read-only catalogue-router extraction, health/readiness-router extraction, and complete UnoRouter provider-router extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
@@ -8,7 +8,7 @@ Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unifi
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 85 direct route decorators in `api.py`, four read-only UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). All three routers are included at their original positions so registration order relative to the remaining API routes is preserved.
+- The API now has 81 direct route decorators in `api.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). All three routers are included at their original positions so registration order relative to the remaining API routes is preserved.
 - The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py` and `system.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
@@ -39,7 +39,7 @@ Keep `api.py` as a thin composition root that creates the FastAPI app and includ
 | `routers/auth.py` | Session creation/status/logout and owner dashboard/backup endpoints |
 | `routers/system.py` | Health/readiness probes |
 | `routers/catalogue.py` | Workforce roles/route preview, departments and media capabilities (extracted) |
-| `routers/providers.py` | UnoRouter discovery, saved settings status, accessible free-model list and catalogue (partially extracted) |
+| `routers/providers.py` | All UnoRouter settings, discovery, free-model catalogue, save/remove, and asynchronous zero-dollar inference-test routes |
 | `routers/integrations.py` | GitHub evolution settings and API-Anything read-only integration routes |
 | `routers/agents.py` | Agent listing/state and bootstrap endpoints |
 | `routers/commercial.py` | Suppliers, opportunities, products, quotes and orders |
@@ -93,9 +93,9 @@ Static verification after the write fetched the file back from GitHub, confirmed
 - No tests or CI runs before 2026-12-01, per owner instruction.
 - No merge, deploy, production routing change, paid provider use, external publishing, customer commitment, or financial action is authorized by this plan.
 
-## UnoRouter read/discovery route extraction
+## UnoRouter provider-route extraction
 
-Four owner-authenticated UnoRouter discovery and read-only settings endpoints were moved into `src/opencompany_app/routers/providers.py`:
+All eight owner-authenticated UnoRouter endpoints now live in `src/opencompany_app/routers/providers.py`. The first four are discovery and read-only settings endpoints:
 
 - `POST /settings/providers/unorouter/discover`
 - `GET /settings/providers/unorouter`
@@ -104,6 +104,19 @@ Four owner-authenticated UnoRouter discovery and read-only settings endpoints we
 
 The extracted handler block was compared with the source block after changing only the decorator target from `app` to `router`; the bodies and route metadata match exactly. All four routes retain their explicit `require_owner_key` dependency. The settings response exposes only whether a credential is present/decryptable and the selected model; it does not return the API key. The new router is included immediately before the existing provider-save route, preserving the original registration position of the moved endpoints relative to provider mutations.
 
-Provider writes, deletion, and asynchronous inference testing remain in `api.py` for now. This intentionally avoids moving the worker-stop/configuration transaction, encrypted-secret writes, background job state and zero-dollar inference test until their shared lifecycle and module-level state can be extracted as one cohesive unit. No credential values, confirmation requirements, paid-fallback policy, or worker behavior were changed.
+Provider save, deletion, and asynchronous inference testing were subsequently moved into the same router as one cohesive unit. The worker-stop/configuration transaction, encrypted-secret writes, in-memory background-job state, and bounded zero-dollar inference test now share the provider router module. The `_worker_autostart_enabled` helper is imported by the API startup hook from that router so startup behavior remains unchanged. No credential values, confirmation requirements, paid-fallback policy, or worker behavior were intentionally changed.
 
-Static verification after re-fetching all four route-bearing modules found 85 direct API decorators, four provider routes, four catalogue routes and two system routes (95 total). There were no duplicate method/path pairs across these modules. All four provider routes retain owner authentication. No imports, app startup, OpenAPI generation, tests or runtime checks were performed.
+Static verification after re-fetching all four route-bearing modules found 81 direct API decorators, eight provider routes, four catalogue routes and two system routes (95 total). There were no duplicate method/path pairs across these modules. All four provider routes retain owner authentication. No imports, app startup, OpenAPI generation, tests or runtime checks were performed.
+
+## UnoRouter mutation and inference-test extraction
+
+The remaining four UnoRouter endpoints and their shared background-job state were moved from `api.py` into `src/opencompany_app/routers/providers.py`:
+
+- `PUT /settings/providers/unorouter` — owner-confirmed free-model validation, worker-stop coordination, encrypted secret-vault write and runtime reconfiguration
+- `POST /settings/providers/unorouter/test` — bounded asynchronous zero-dollar inference test
+- `GET /settings/providers/unorouter/test/{job_id}` — owner-authenticated job polling
+- `DELETE /settings/providers/unorouter` — worker-stop coordination, encrypted secret removal and runtime reconfiguration
+
+The module now owns the in-memory job dictionary, lock and retention bound. The API startup hook imports `_worker_autostart_enabled` from the router so the existing startup decision uses the same helper. The original endpoint bodies and job lifecycle were moved without intended behavioral changes; explicit owner confirmation, free-only model checks, no paid fallback, worker-busy conflict responses, and encrypted vault usage remain in place. No inference test was invoked and no credentials were changed.
+
+Static re-fetch verification found 81 direct API decorators, eight provider routes, four catalogue routes and two system routes (95 total). No duplicate HTTP-method/path pairs were found. All eight provider endpoints retain explicit owner authentication. The API no longer contains the provider test job state or provider mutation handlers. These checks do not prove import or runtime correctness.
