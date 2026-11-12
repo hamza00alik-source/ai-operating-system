@@ -82,6 +82,7 @@ from opencompany_app.routers.learning import router as learning_router
 from opencompany_app.routers.portfolio import router as portfolio_router
 from opencompany_app.routers.auth import router as auth_router
 from opencompany_app.routers.operations import backup_router as operations_backup_router, diagnostics_router as operations_diagnostics_router
+from opencompany_app.routers.planning import planning_router, queue_router, delegation_router
 from opencompany_app.runtime import OpenCompanyRuntime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -239,165 +240,19 @@ def provider_candidates() -> dict:
     }
 
 
-@app.post("/plans/preview")
-def preview_plan(payload: PlanPreviewInput) -> dict:
-    if any(candidate.business_id not in BUSINESS_UNIT_IDS for candidate in payload.items):
-        raise HTTPException(status_code=422, detail="Plan contains an unknown business unit.")
-    try:
-        for candidate in payload.items:
-            default_organization().get(candidate.department)
-    except LookupError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    items = tuple(
-        WorkItem(
-            id=item.id, title=item.title, objective=item.objective,
-            department=item.department, state=item.state, depends_on=item.depends_on,
-            business_id=item.business_id,
-        )
-        for item in payload.items
-    )
-    try:
-        plan = WorkPlan(items)
-    except PlanError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {
-        "item_count": len(items),
-        "ready_item_ids": [str(item.id) for item in plan.ready_items()],
-        "blocked_items": [
-            {
-                "id": str(item.id),
-                "waiting_for": [
-                    str(dependency) for dependency in item.depends_on
-                    if plan.by_id[dependency].state != TaskState.COMPLETED
-                ],
-            }
-            for item in plan.blocked_items()
-        ],
-        "execution_performed": False,
-    }
-
-
-@app.get("/policy/protected-actions")
-def protected_actions() -> dict[str, list[str]]:
-    actions = (
-        "publish", "purchase", "pay", "send_customer_message",
-        "make_customer_commitment", "change_production", "change_credentials",
-        "deploy_production", "delete_customer_data",
-    )
-    return {
-        "owner_approval_required": [
-            action for action in actions if action_requires_owner_approval(action)
-        ]
-    }
-
-
+app.include_router(planning_router)
 app.include_router(agents_router)
 app.include_router(commercial_router)
 
 
 app.include_router(work_items_router)
-
-
-@app.post("/work-items/{item_id}/enqueue", dependencies=[Depends(require_owner_key)])
-def enqueue_work_item(
-    item_id: UUID,
-    runtime: OpenCompanyRuntime = Depends(get_runtime),
-) -> dict:
-    """Owner explicitly admits an approved, assigned READY task to the durable queue."""
-    from datetime import datetime, timezone
-
-    item = runtime.store.get_work_item(item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found.")
-    if item.state != TaskState.READY or item.assigned_agent_id is None:
-        raise HTTPException(status_code=409, detail="Only READY tasks with an explicit assignee can be queued.")
-    agent = runtime.store.get_agent(item.assigned_agent_id)
-    if agent is None or agent.state != AgentState.ACTIVE or agent.department != item.department:
-        raise HTTPException(status_code=409, detail="Assigned agent must be active in the task department.")
-    if not agent.role_key or not agent.team_key:
-        raise HTTPException(status_code=409, detail="Assigned agent must have a verified role and team.")
-    try:
-        department = default_organization().get(item.department)
-        role = default_workforce().get(agent.role_key)
-    except LookupError as exc:
-        raise HTTPException(status_code=409, detail="Assigned agent role is not in the original workforce catalogue.") from exc
-    expected_team = (
-        "executive" if agent.role_key == "chief_executive_orchestrator"
-        else "management" if agent.role_key == department.manager_role_key
-        else role.team_key
-    )
-    if agent.role_key not in department.role_keys or expected_team != agent.team_key:
-        raise HTTPException(status_code=409, detail="Assigned agent role or team does not match the department catalogue.")
-    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
-        raise HTTPException(status_code=503, detail="No owner-configured free inference provider is available; queue admission is blocked.")
-    event = AuditRecord(
-        id=uuid4(), occurred_at=datetime.now(timezone.utc),
-        actor_type="owner", actor_id="owner", action="work_item.queued",
-        subject_type="work_item", subject_id=str(item.id), outcome="recorded",
-        correlation_id=str(uuid4()),
-        details={"agent_id": str(agent.id), "role_key": agent.role_key,
-                 "team_key": agent.team_key, "business_id": item.business_id},
-    )
-    try:
-        runtime.queue.enqueue_authorized(
-            item, agent.id, {"role_key": agent.role_key, "team_key": agent.team_key}, event
-        )
-    except (QueueError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {
-        "item_id": str(item.id), "agent_id": str(agent.id),
-        "state": TaskState.QUEUED.value, "queue_admitted": True,
-        "worker_started": False,
-    }
+app.include_router(queue_router)
 
 
 app.include_router(workers_router)
+app.include_router(delegation_router)
 
 
-@app.post("/work-items/{item_id}/delegation-preview", dependencies=[Depends(require_owner_key)])
-def preview_work_item_delegation(
-    item_id: UUID,
-    payload: DelegationPreviewInput,
-    store: SQLiteStore = Depends(get_store),
-) -> dict:
-    item = store.get_work_item(item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Work item not found.")
-    try:
-        plan = plan_department_work(
-            item, payload.required_capabilities,
-            max_specialists=payload.max_specialists,
-        )
-    except (LookupError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {
-        "work_item_id": plan.work_item_id,
-        "department": plan.department,
-        "manager": {
-            "role_key": plan.manager_role_key,
-            "title": plan.manager_title,
-        },
-        "mode": plan.mode.value,
-        "selected_team_key": plan.selected_team_key,
-        "selected_team_keys": list(dict.fromkeys(specialist.team_key for specialist in plan.specialists)),
-        "specialists": [
-            {
-                "role_key": specialist.role_key,
-                "title": specialist.title,
-                "team_key": specialist.team_key,
-                "matched_capabilities": list(specialist.matched_capabilities),
-                "supporting_member": specialist.supporting_member,
-                "permitted_outputs": list(specialist.permitted_outputs),
-            }
-            for specialist in plan.specialists
-        ],
-        "manager_covered_capabilities": list(plan.manager_covered_capabilities),
-        "uncovered_capabilities": list(plan.uncovered_capabilities),
-        "assignment_performed": plan.assignment_performed,
-        "execution_started": plan.execution_started,
-    }
-
-    
 app.include_router(integrations_router)
 
 
