@@ -69,10 +69,6 @@ def initialize():
             worker_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL,
             capabilities_json TEXT NOT NULL DEFAULT '{}'
         )""")
-        db.execute("""CREATE TABLE IF NOT EXISTS video_worker_presence (
-            worker_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL,
-            capabilities_json TEXT NOT NULL DEFAULT '{}'
-        )""")
 
 
 def _event(db, job_id, event, details=None):
@@ -216,8 +212,8 @@ def heartbeat(job_id,token,*,progress=None,message=""):
         db.execute("UPDATE video_worker_presence SET last_seen_at=? WHERE worker_id=?",(_iso(),row["lease_owner"]))
         if progress is not None and not 0<=progress<=100: raise ValueError("progress must be between 0 and 100.")
         now=_now(); expires=(now+timedelta(seconds=int(os.getenv("VIDEO_JOB_LEASE_SECONDS","120")))).isoformat()
-        db.execute("UPDATE video_generation_jobs SET lease_expires_at=?,updated_at=?,progress=COALESCE(?,progress),progress_message=? WHERE id=?",
-                   (expires,now.isoformat(),progress,message[:240],job_id))
+        db.execute("UPDATE video_generation_jobs SET lease_expires_at=?,updated_at=?,progress=COALESCE(?,progress),progress_message=CASE WHEN ?='' THEN progress_message ELSE ? END WHERE id=?",
+                   (expires,now.isoformat(),progress,message[:240],message[:240],job_id))
         _event(db,job_id,"heartbeat",{"progress":progress,"message":message[:240],"cancel_requested":bool(row["cancel_requested"])})
     return {"cancel_requested":bool(row["cancel_requested"]),"lease_expires_at":expires}
 
