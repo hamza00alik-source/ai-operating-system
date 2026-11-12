@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 from datetime import datetime, timezone
+from threading import Event, Thread
 from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5, uuid4
 
@@ -61,14 +62,41 @@ class OpenCompanyWorker:
         lease = self.queue.claim(agent_id)
         if lease is None:
             return "idle"
+
+        # Long model requests must not let their lease expire and be reclaimed
+        # by another process. A failed heartbeat fences this worker from saving.
+        heartbeat_stop = Event()
+        lease_lost = Event()
+        heartbeat_interval = max(0.1, min(60.0, self.queue.lease_seconds / 3))
+
+        def keep_lease_alive() -> None:
+            while not heartbeat_stop.wait(heartbeat_interval):
+                try:
+                    if not self.queue.renew(lease):
+                        lease_lost.set()
+                        return
+                except Exception:
+                    lease_lost.set()
+                    return
+
+        heartbeat = Thread(
+            target=keep_lease_alive,
+            name=f"opencompany-lease-{lease.work_item_id}",
+            daemon=True,
+        )
+        heartbeat.start()
         try:
             existing_item = self.store.get_work_item(lease.work_item_id)
             if existing_item is not None and existing_item.state == TaskState.REVIEW:
                 saved = self.store.list_deliverables(lease.work_item_id)
                 if any(value["role_key"] == role_key for value in saved):
+                    if lease_lost.is_set():
+                        raise QueueError("worker lease was lost before queue acknowledgement")
                     self.queue.complete(lease)
                     return "completed_review_required"
             deliverable = self._execute_lease(lease, role_key)
+            if lease_lost.is_set():
+                raise QueueError("worker lease was lost during execution; result was not persisted")
             # A retry of the same work/role must address the same artifact key.
             # This lets a durable sink safely deduplicate after a crash between
             # saving the artifact and acknowledging the queue lease.
@@ -78,6 +106,8 @@ class OpenCompanyWorker:
             )
             deliverable = replace(deliverable, id=stable_id)
             self.artifact_sink.save(deliverable)
+            if lease_lost.is_set():
+                raise QueueError("worker lease was lost before deliverable persistence")
             saved = self.store.save_deliverable_with_audit(
                 deliverable,
                 self._audit(
@@ -90,6 +120,8 @@ class OpenCompanyWorker:
             )
             if not saved:
                 raise WorkerConfigurationError("work item is no longer in progress")
+            if lease_lost.is_set():
+                raise QueueError("worker lease was lost before queue acknowledgement")
             self.queue.complete(lease)
             return "completed_review_required"
         except Exception as exc:
@@ -108,6 +140,9 @@ class OpenCompanyWorker:
             else:
                 self.store.append_audit_record(failure_event)
             raise
+        finally:
+            heartbeat_stop.set()
+            heartbeat.join(timeout=max(1.0, heartbeat_interval * 2))
 
     def _execute_lease(self, lease: WorkerLease, role_key: str) -> AgentDeliverable:
         item = self.store.get_work_item(lease.work_item_id)
