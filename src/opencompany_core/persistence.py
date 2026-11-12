@@ -1210,7 +1210,8 @@ class SQLiteStore:
                         actor_id,rationale,occurred_at)
                        VALUES(?,?,?,?, 'recorded',?,?,?,?)""",
                     (event_id, entry_id, business_id, finance_scope_id,
-                     audit.actor_type, audit.actor_id, "Internal record created; no payment or transfer was initiated.",
+                     "owner" if audit.actor_type == "owner" else "system", audit.actor_id,
+                     "Internal record created; no payment or transfer was initiated.",
                      audit.occurred_at.isoformat()),
                 )
                 previous = self._connection.execute(
@@ -1237,6 +1238,66 @@ class SQLiteStore:
                 )
                 self._connection.execute("COMMIT")
                 return event_hash
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
+
+    def append_finance_review_event(
+        self, entry_id: str, action: str, rationale: str, audit: AuditRecord
+    ) -> bool:
+        """Append an owner decision; approval is a record only and never executes payment."""
+        if audit.actor_type != "owner":
+            raise PermissionError("finance review decisions require an authenticated owner actor")
+        if action not in {"owner_verified", "owner_rejected", "owner_approved"}:
+            raise ValueError("unsupported owner finance review action")
+        if not isinstance(rationale, str) or len(rationale) > 2000:
+            raise ValueError("rationale must be at most 2000 characters")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                entry = self._connection.execute(
+                    "SELECT id,business_id,finance_scope_id FROM opencompany_finance_entries WHERE id=?",
+                    (entry_id,),
+                ).fetchone()
+                if entry is None:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                _assert_operational_commercial_scope(
+                    self._connection, self._lock, entry["business_id"]
+                )
+                self._connection.execute(
+                    """INSERT INTO opencompany_finance_entry_events
+                       (event_id,entry_id,business_id,finance_scope_id,action,actor_type,
+                        actor_id,rationale,occurred_at)
+                       VALUES(?,?,?,?,?,'owner',?,?,?)""",
+                    (str(uuid4()), entry_id, entry["business_id"], entry["finance_scope_id"],
+                     action, audit.actor_id, rationale.strip(), audit.occurred_at.isoformat()),
+                )
+                previous = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                details = dict(audit.details)
+                details.update({"business_id": entry["business_id"], "finance_entry_id": entry_id,
+                                "finance_decision": action})
+                audited = AuditRecord(
+                    id=audit.id, occurred_at=audit.occurred_at, actor_type="owner",
+                    actor_id=audit.actor_id, action=audit.action, subject_type="finance_entry",
+                    subject_id=entry_id, outcome=action, correlation_id=audit.correlation_id,
+                    details=details,
+                )
+                payload = _audit_payload(audited, previous_hash)
+                self._connection.execute(
+                    """INSERT INTO audit_events
+                       (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                       VALUES(?,?,?,?,?)""",
+                    (str(audited.id), audited.occurred_at.isoformat(), _json(payload),
+                     previous_hash, _digest(payload)),
+                )
+                self._connection.execute("COMMIT")
+                return True
             except Exception:
                 if self._connection.in_transaction:
                     self._connection.execute("ROLLBACK")
