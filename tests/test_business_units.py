@@ -1,5 +1,7 @@
 import pytest
+from datetime import datetime, timezone
 
+from opencompany_core.domain import AuditRecord
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.venture_portfolio import VenturePortfolio
 from opencompany_core.business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
@@ -231,3 +233,63 @@ def test_work_item_domain_accepts_valid_new_business_slug_but_rejects_invalid_sl
     assert item.business_id == "new-software-company"
     with pytest.raises(ValueError, match="lowercase slug"):
         WorkItem(uuid4(), "Bad task", "Invalid identity", "research", business_id="Bad Unit")
+
+
+
+def test_dynamic_physical_unit_uses_generic_supplier_relationship_after_operational_gate():
+    store, portfolio, registry = setup()
+    try:
+        opportunity = approved_opportunity(portfolio)
+        unit = provision(
+            registry, portfolio, opportunity,
+            business_id="specialty-goods-unit",
+            name="Specialty Goods Unit",
+            unit_type="other",
+            delivery_class="physical-goods",
+        )
+        # Test fixture represents a unit already activated by a separately
+        # approved process; this test does not implement or authorize activation.
+        store._connection.execute(
+            "UPDATE opencompany_business_units SET status='active' WHERE business_id=?",
+            (unit["business_id"],),
+        )
+        now = datetime.now(timezone.utc).isoformat()
+
+        def audit(action, subject_type, subject_id):
+            return AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner", action=action,
+                subject_type=subject_type, subject_id=subject_id,
+                outcome="recorded", correlation_id="dynamic-unit-test",
+                details={"test": True},
+            )
+
+        opportunity_record = {
+            "id": "dynamic-opportunity-1", "business_id": unit["business_id"],
+            "customer_name": "International Buyer", "customer_need": "Specialty goods",
+            "created_at": now, "updated_at": now,
+        }
+        store.create_commercial_opportunity(
+            opportunity_record, audit("commercial.opportunity.created", "opportunity", "dynamic-opportunity-1")
+        )
+        product_record = {
+            "id": "dynamic-product-1", "business_id": unit["business_id"],
+            "name": "Specialty Product", "description": "A physical product",
+            "category": "specialty", "created_at": now, "updated_at": now,
+        }
+        store.create_commercial_product(
+            product_record, audit("commercial.product.created", "product", "dynamic-product-1")
+        )
+        assert store.list_commercial_products(business_id=unit["business_id"])[0]["id"] == "dynamic-product-1"
+
+        supplier_record = {
+            "id": "dynamic-supplier-1", "business_id": unit["business_id"],
+            "relationship_type": "supplier", "name": "Specialty Supplier",
+            "product_categories": ["specialty"], "created_at": now, "updated_at": now,
+        }
+        store.create_commercial_supplier(
+            supplier_record, audit("commercial.supplier.created", "supplier", "dynamic-supplier-1")
+        )
+        assert store.list_commercial_suppliers(business_id=unit["business_id"])[0]["relationship_type"] == "supplier"
+    finally:
+        store.close()
