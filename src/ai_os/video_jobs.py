@@ -67,6 +67,17 @@ def create_job(*, prompt, parameters=None, provider="longcat-video", idempotency
             (idempotency_key,),
         ).fetchone()
         if existing:
+            same_request = (
+                existing["provider"] == provider.strip()
+                and existing["prompt"] == prompt
+                and existing["parameters_json"] == json.dumps(parameters or {}, ensure_ascii=False, sort_keys=True)
+                and existing["estimated_cost_minor"] == estimated_cost_minor
+                and existing["approved_budget_minor"] == approved_budget_minor
+                and existing["currency"] == currency.upper()
+                and existing["cost_basis"] == cost_basis.strip()
+            )
+            if not same_request:
+                raise ValueError("Idempotency key was already used for a different request.")
             return _serialize(existing)
         db.execute(
             """INSERT INTO video_generation_jobs
