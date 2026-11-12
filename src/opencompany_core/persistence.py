@@ -1284,9 +1284,8 @@ class SQLiteStore:
             clauses.append("state=?")
             values.append(state.value)
         if business_id is not None:
-            from .domain import BUSINESS_UNIT_IDS
-            if business_id not in BUSINESS_UNIT_IDS:
-                raise ValueError(f"unknown business unit: {business_id}")
+            if not isinstance(business_id, str) or not _WORK_ITEM_BUSINESS_ID.fullmatch(business_id):
+                raise ValueError("business_id must be a 2-63 character lowercase slug")
             clauses.append("business_id=?")
             values.append(business_id)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
