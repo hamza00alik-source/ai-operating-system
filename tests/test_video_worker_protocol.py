@@ -30,6 +30,10 @@ def test_claim_requires_approval_and_lease_token(tmp_path, monkeypatch):
     beat = video_jobs.heartbeat(job["id"], claimed["lease_token"], progress=20, message="loading")
     assert beat["cancel_requested"] is False
     assert video_jobs.get_job(job["id"])["progress"] == 20
+    # Empty heartbeat updates renew the lease without erasing useful progress text.
+    preserved = video_jobs.heartbeat(job["id"], claimed["lease_token"])
+    assert preserved["cancel_requested"] is False
+    assert video_jobs.get_job(job["id"])["progress_message"] == "loading"
 
 
 def test_retry_and_bounded_attempts(tmp_path, monkeypatch):
