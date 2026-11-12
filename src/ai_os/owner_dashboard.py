@@ -249,7 +249,7 @@ th{background:#101b2c}
 </head>
 <body><div id="loginPanel" style="position:fixed;inset:0;z-index:20;background:#080d19ee;display:flex;align-items:center;justify-content:center;padding:20px"><form id="loginForm" class="panel" style="width:min(420px,100%)"><h2>Owner sign in</h2><p class="small">Enter your Owner API Key once. AIOS will create a secure 14-day browser session. The key is not saved in browser storage.</p><input id="loginKey" type="password" autocomplete="current-password" placeholder="AIOS Owner API Key" required style="width:100%;margin:8px 0"><button id="loginButton" type="submit" style="width:100%">Sign in securely</button><div id="loginStatus" class="status" role="status"></div></form></div><main>
 <div class="top"><div><div class="muted">AI OPERATING SYSTEM / OWNER CONSOLE</div><h1>AI Company Control Center</h1><div class="hint">Your AI company, workforce, research pipeline and approvals — in one supervised workspace.</div></div><div class="toolbar"><span class="tag">Owner-supervised · bounded AI execution</span><span id="apiHealth" class="tag">Checking API…</span><button id="logoutButton" class="secondary">Log out</button></div></div>
-<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a><a href="#business" data-view="business">Business</a><a href="#code-assets" data-view="code-assets">Code Assets</a></nav>
+<nav class="toolbar main-nav" aria-label="Main sections"><a href="#overview" data-view="overview">Company</a><a href="#workforce" data-view="workforce">Workforce</a><a href="#sources" data-view="sources">Repositories</a><a href="#tasks" data-view="tasks">Tasks & approvals</a><a href="#workflows" data-view="workflows">Department workflows</a><a href="#discovery" data-view="discovery">Technology</a><a href="#models" data-view="models">AI models</a><a href="#research" data-view="research">Research Evidence</a><a href="#brain" data-view="brain">AI Brain</a><a href="#virtual-office" data-view="virtual-office">3D Office</a><a href="#social-media" data-view="social-media">Social & Video</a><a href="#business" data-view="business">Business</a><a href="#code-assets" data-view="code-assets">Code Assets</a></nav>
 <section class="command-stage" aria-label="AI employee command stage">
  <div class="stage-head"><div><div class="eyebrow">Neural command deck / workforce visualization</div><div class="stage-title">Meet the AI workforce</div><div class="stage-note">Stylized role representations generated from the live workforce catalogue — not fabricated active-worker status.</div></div><span id="stageRuntime" class="stage-indicator">Runtime status loading</span></div>
  <div id="employeeStage" class="employee-stage"><div class="stage-empty">Loading real specialist roles from the AIOS workforce catalogue…</div></div>
@@ -345,7 +345,33 @@ th{background:#101b2c}
 <pre id="modelOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1425;border:1px solid var(--line);border-radius:9px;padding:12px;min-height:60px">No live inference run yet.</pre>
 </section>
 
-<section id="business" class="panel section" data-view-panel="business">
+
+<section id="social-media" class="panel section" data-view-panel="social-media">
+<h2>Social Media & Video Production</h2>
+<p class="small">Create social drafts and video production briefs. This workspace stores work locally in AIOS. Publishing, scheduling, paid generation and media uploads are disabled until the relevant provider adapter is configured, tested and owner-approved.</p>
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+ <div class="panel"><h3>Social content draft</h3><form id="socialDraftForm">
+ <input name="title" required maxlength="180" placeholder="Campaign / post title" style="width:100%;margin:6px 0">
+ <select name="content_type" style="width:100%;margin:6px 0"><option value="post">Post</option><option value="carousel">Carousel</option><option value="reel">Reel</option><option value="short">Short</option><option value="story">Story</option></select>
+ <div class="small">Channels</div><div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+ <label><input type="checkbox" name="channels" value="instagram"> instagram</label><label><input type="checkbox" name="channels" value="facebook"> facebook</label><label><input type="checkbox" name="channels" value="tiktok"> tiktok</label><label><input type="checkbox" name="channels" value="youtube"> youtube</label><label><input type="checkbox" name="channels" value="linkedin"> linkedin</label><label><input type="checkbox" name="channels" value="x"> x</label><label><input type="checkbox" name="channels" value="pinterest"> pinterest</label><label><input type="checkbox" name="channels" value="threads"> threads</label>
+ </div>
+ <textarea name="body" maxlength="10000" placeholder="Caption, script or post copy" style="width:100%;min-height:120px;margin:6px 0"></textarea>
+ <button type="submit">Save content draft</button></form></div>
+ <div class="panel"><h3>Video production brief</h3><form id="videoBriefForm">
+ <input name="title" required maxlength="180" placeholder="Video title / concept" style="width:100%;margin:6px 0">
+ <select name="content_type" style="width:100%;margin:6px 0"><option value="video">Long-form video</option><option value="short">Short-form video</option><option value="reel">Reel</option></select>
+ <textarea name="body" maxlength="10000" placeholder="Creative direction, script, hook, scenes, CTA" style="width:100%;min-height:120px;margin:6px 0"></textarea>
+ <input name="platform" maxlength="40" placeholder="Target platform" style="width:100%;margin:6px 0">
+ <input name="duration" maxlength="40" placeholder="Target duration (e.g. 30 seconds)" style="width:100%;margin:6px 0">
+ <button type="submit">Save video brief</button></form></div>
+</div>
+<div class="panel"><h3>Integration readiness</h3><div id="socialIntegrations" class="grid">Loading integration status…</div><p class="small">A configured credential is not proof of free usage or a working integration. No credentials are accepted in this browser form.</p></div>
+<div id="socialMessage" class="status" role="status"></div>
+<h3>Content workspace</h3><div class="scroll"><table><thead><tr><th>Title</th><th>Type</th><th>Channels</th><th>Status</th><th>Actions</th></tr></thead><tbody id="socialContentRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
+<p class="small">Approval means “approved for scheduling” only. It does not publish or schedule content. Every actual external action requires a separately implemented and tested connector.</p>
+</section>
+\n<section id="business" class="panel section" data-view-panel="business">
 <h2>Business operations · financial ledger & customers</h2>
 <p class="small">Persistent records stored in the AIOS database. Only owner-confirmed payments count as revenue. Expenses are recorded for review; no payment is initiated by this dashboard.</p>
 <div id="businessSummary" class="grid"><div class="metric"><strong>—</strong><span>Customers</span></div><div class="metric"><strong>—</strong><span>Verified revenue records</span></div><div class="metric"><strong>—</strong><span>Expenses awaiting approval</span></div></div>
@@ -765,7 +791,21 @@ fallback.style.display="none";
  }
  $("assetForm").addEventListener("submit",async e=>{e.preventDefault();const data=formData(e.currentTarget);data.token_estimate=data.token_estimate?Number(data.token_estimate):null;try{await send("/code-assets",data);e.currentTarget.reset();$("assetMessage").textContent="Asset registered. Ownership and dependency checks remain explicit.";await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
  $("licenseForm").addEventListener("submit",async e=>{e.preventDefault();try{const result=await send("/code-assets/license-offers",formData(e.currentTarget));$("assetMessage").textContent="Draft created. Owner approval request "+result.approval_id+" is pending. No code was shared.";e.currentTarget.reset();await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
- const businessLink=document.querySelector('nav.main-nav a[data-view="business"]');businessLink?.addEventListener("click",loadBusiness);
+
+ async function loadSocial(){
+  try{
+   const [status,items]=await Promise.all([api("/social/status"),api("/social/content")]);
+   $("socialIntegrations").innerHTML=Object.entries(status.integrations).map(([name,value])=>'<div class="metric"><strong>'+esc(name)+' · '+(value.configured?'credentials detected':'not configured')+'</strong><span>'+esc(value.note)+'</span></div>').join("");
+   $("socialContentRows").innerHTML=items.map(x=>'<tr><td>'+esc(x.title)+'</td><td>'+esc(x.kind==='video_brief'?'Video brief':x.content_type)+'</td><td>'+esc(x.channels.join(", ")||"—")+'</td><td>'+esc(x.status)+'</td><td>'+(x.status==="draft"?'<button data-id="'+esc(x.id)+'" class="social-review">Request approval</button>':x.status==="awaiting_approval"?'Awaiting owner decision':x.status==="approved_for_scheduling"?'Approved · not scheduled':'—')+'</td></tr>').join("")||'<tr><td colspan="5">No content drafts yet.</td></tr>';
+   document.querySelectorAll(".social-review").forEach(btn=>btn.addEventListener("click",async()=>{try{await api("/social/content/"+btn.dataset.id+"/request-approval",{method:"POST"});$("socialMessage").textContent="Approval request created. No content was published.";await loadSocial()}catch(e){$("socialMessage").textContent=e.message}}));
+  }catch(e){$("socialMessage").textContent=e.message}
+ }
+ $("socialDraftForm").addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget;const data=Object.fromEntries(new FormData(f).entries());data.channels=[...f.querySelectorAll('input[name="channels"]:checked')].map(x=>x.value);try{await api("/social/content?kind=social_post",{method:"POST",body:JSON.stringify(data)});f.reset();$("socialMessage").textContent="Social draft saved.";await loadSocial()}catch(err){$("socialMessage").textContent=err.message}});
+ $("videoBriefForm").addEventListener("submit",async e=>{e.preventDefault();const f=e.currentTarget;const data=Object.fromEntries(new FormData(f).entries());const brief={platform:data.platform||"",duration:data.duration||""};delete data.platform;delete data.duration;data.brief=brief;data.channels=[];try{await api("/social/content?kind=video_brief",{method:"POST",body:JSON.stringify(data)});f.reset();$("socialMessage").textContent="Video production brief saved. No generation or paid service was invoked.";await loadSocial()}catch(err){$("socialMessage").textContent=err.message}});
+ const socialLink=document.querySelector('nav.main-nav a[data-view="social-media"]');socialLink?.addEventListener("click",loadSocial);
+ if(location.hash==="#social-media")loadSocial();
+ window.addEventListener("hashchange",()=>{if(location.hash==="#social-media")loadSocial()});
+\n const businessLink=document.querySelector('nav.main-nav a[data-view="business"]');businessLink?.addEventListener("click",loadBusiness);
  const assetsLink=document.querySelector('nav.main-nav a[data-view="code-assets"]');assetsLink?.addEventListener("click",loadAssets);
  if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets();
  window.addEventListener("hashchange",()=>{if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets()});
