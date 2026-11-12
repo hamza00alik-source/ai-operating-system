@@ -774,6 +774,7 @@ def test_owner_can_start_and_stop_worker_fleet_explicitly(owner_client):
     assert status.status_code == 200
     assert status.json()["running"] is False
     runtime = app.dependency_overrides[get_runtime]()
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
 
     class NoFreeGateway:
         def eligible_providers(self, *, request_budget_usd=0.0):
@@ -1026,6 +1027,7 @@ def test_owner_can_generate_isolated_code_evolution_draft_pr(owner_client):
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
     runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     runtime.gateway = ModelGateway.configure(((
         ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
         _CodeEvolutionFakeAdapter(),
@@ -1049,6 +1051,7 @@ def test_code_evolution_config_status_does_not_expose_credentials(owner_client):
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
     runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     response = owner_client.get("/code-evolution/config-status", headers={"X-OpenCompany-API-Key": "test-owner-key"})
     assert response.status_code == 200
     assert response.json()["enabled"] is True
@@ -1261,7 +1264,8 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
 
     runtime.gateway.ready = True
     api_module.initialize_autonomous_runtime()
-    assert calls == ["started"]
+    # Provider credentials becoming eligible is not a substitute for a live, owner-triggered test.
+    assert calls == []
 
 
 def test_runtime_factory_never_starts_background_workers(monkeypatch, tmp_path):
