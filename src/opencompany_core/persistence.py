@@ -459,6 +459,11 @@ def _migrate_v9_finance_ledger(connection: sqlite3.Connection) -> None:
                 BEFORE DELETE ON {table}
                 BEGIN SELECT RAISE(ABORT, 'finance ledger records are append-only'); END
             """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_units_finance_scope_no_update
+            BEFORE UPDATE OF finance_scope_id ON opencompany_business_units
+            BEGIN SELECT RAISE(ABORT, 'business-unit finance scope is immutable'); END
+        """)
         if connection.execute("PRAGMA foreign_key_check").fetchall():
             raise RuntimeError("finance-ledger migration produced foreign-key violations")
         connection.execute("PRAGMA user_version = 10")
