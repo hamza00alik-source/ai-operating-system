@@ -7,7 +7,7 @@ import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
 from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
-from opencompany_core.domain import AuditRecord, TaskState
+from opencompany_core.domain import AgentState, AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy, ProviderUnavailable
@@ -1728,4 +1728,29 @@ def test_stale_delegation_proposal_cannot_reopen_parent_work(owner_client):
     assert "changed after planning" in rejected.json()["detail"]
     assert store.get_work_item(UUID(created["item_id"])).state == TaskState.READY
     assert len(store.list_work_items(business_id="physical-agency", limit=1000)) == 1
+
+def test_delegation_rejects_paused_department_manager(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    store = app.dependency_overrides[get_store]()
+    manager = next(
+        agent for agent in store.list_agents(department="intelligence-research", limit=1000)
+        if agent.team_key == "management"
+    )
+    from dataclasses import replace
+    store.save_agent(replace(manager, state=AgentState.PAUSED, revision=manager.revision + 1))
+
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research buyer demand",
+        "objective": "Prepare a sourced buyer-demand assessment",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    }).json()
+    rejected = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert rejected.status_code == 409
+    assert "must be ACTIVE" in rejected.json()["detail"]
 
