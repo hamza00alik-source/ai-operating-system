@@ -1765,7 +1765,7 @@ def test_executive_portfolio_groups_work_and_filters_business_units(owner_client
     second = owner_client.post("/work-items", headers=headers, json={
         "title": "Prepare digital product opportunity",
         "objective": "Assess a downloadable product opportunity",
-        "department": "product-development",
+        "department": "product-innovation",
         "business_id": "digital-products",
     })
     assert first.status_code == 200
