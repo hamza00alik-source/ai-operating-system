@@ -42,7 +42,9 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Provider-neutral LLM adapter
 - [ ] WooCommerce
 - [x] Social/video department registry and persistent content/brief workspace\n- [x] Draft-to-owner-approval lifecycle with explicit no-publish boundary\n- [ ] Metricool publishing/analytics adapter with mandatory approval\n- [ ] Canva media creation/export adapter\n- [x] Provider-neutral SQLite video-job queue, owner approval, budget gate, idempotency, and status API
-- [ ] LongCat provider adapter, authenticated worker claim/lease protocol, GPU worker, result storage/validation, and execution retries
+- [x] Authenticated worker claim/lease protocol, heartbeat, cancellation, bounded retries, event audit, and result reporting
+- [x] Optional single-GPU LongCat text-to-video worker and private MP4 artifact path
+- [ ] End-to-end GPU inference verification and multi-GPU/image-to-video/continuation adapters
 - [ ] Email and support adapters
 - [ ] Payment-status verification only
 
