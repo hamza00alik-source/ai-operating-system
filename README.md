@@ -1,17 +1,23 @@
-# OpenCompany — AI Operating System
+# OpenCompany AIOS
 
-A human-supervised AI company runtime with original departments, specialist roles, CEO planning, manager delegation, durable worker execution, owner review, learning, and cost-controlled model routing.
+**One product. One codebase. One company operating system.**
+
+OpenCompany AIOS unifies the company application and its intelligence engine: original departments and specialist roles, CEO planning, manager delegation, durable worker execution, owner review, shared company learning, research, and cost-controlled model routing.
 
 ## Current product and branch policy
 
-The current product implementation is the standalone OpenCompany application in `src/opencompany_app` and `src/opencompany_core`. The production OpenCompany service is sourced from `fix/release-hardening`. The active implementation branch for the current workflow upgrades is `feature/opencompany-full-workflow-upgrade`.
+The current product is **OpenCompany AIOS**, implemented as one application across `src/opencompany_app` (API, runtime composition, owner console) and `src/opencompany_core` (the AIOS engine and shared domain services). The production OpenCompany service is sourced from `fix/release-hardening`. The active implementation branch for the current workflow upgrades is `feature/opencompany-full-workflow-upgrade`.
 
-The legacy `src/ai_os` application and the older dashboard branch are reference-only for this rebuild. Do not modify them, merge their code over OpenCompany, or use their dashboard as the implementation base. The new app must be developed and verified through its own API, runtime, persistence, worker, integration, and owner-console workflows.
+The legacy `src/ai_os` package and older dashboard are quarantined reference-only material. They are not a second product, are not imported by the new runtime, and must not be merged over the independently authored OpenCompany AIOS implementation. The new app must be developed and verified through its own API, runtime, persistence, worker, integration, and owner-console workflows.
 
 The original OpenCompany organization contains ten departments, 500 specialist role contracts (50 per department across 100 capability teams), ten department-manager roles, and one owner-subordinate executive orchestrator: 511 role contracts in total. These are role definitions, not 511 continuously running agents. Work executes only after the owner-approved planning, delegation, assignment, queue-admission, and provider-cost gates.
 
 The internal CEO-to-manager-to-specialist workflow is implemented in code, including durable queue execution, review-required deliverables, handoffs, audit records, learning proposals, and strict free-only model routing. Work items, role-learning notes, and model-cost records are scoped to one of four business units (core, physical-products agency, own physical-product brand, or digital products); dependencies and learning retrieval are restricted to that same unit. External store/customer/finance account isolation still requires dedicated connectors. WooCommerce, social publishing, customer messaging, marketplace publishing, fulfillment, and payment-status verification are not yet connected as operational workflows. This is not yet a fully autonomous company.
 
+
+## Unified OpenCompany AIOS architecture
+
+OpenCompany and AIOS are not separate applications. **OpenCompany** is the product and company identity; **AIOS** is the intelligence and execution engine inside that same product. Both are versioned, deployed, configured, and operated together through one API, one owner console, one persistence layer, and one governance boundary. Business units share approved platform capabilities but retain separate business identities, work scopes, records, credentials, and financial boundaries. See [the unified architecture charter](docs/OPENCOMPANY_AIOS_ARCHITECTURE.md).
 
 ## Company structure
 
