@@ -127,8 +127,7 @@ class ModelGateway:
             raise ValueError("request budget must be finite and non-negative")
 
     def eligible_providers(self, *, request_budget_usd: float = 0.0) -> tuple[str, ...]:
-        """Return free providers, plus paid providers explicitly owner-approved
-        with a request budget covering their configured per-request ceiling.
+        """Return only explicitly confirmed-free providers. Paid inference is disabled.
         """
         self._validate_budget(request_budget_usd)
         return tuple(
