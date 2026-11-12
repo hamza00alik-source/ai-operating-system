@@ -409,7 +409,7 @@ def test_reassignment_rejects_leased_and_delegated_work(tmp_path):
     queue.enqueue_authorized(leased, old_id, {"role_key": "market_intelligence_analyst",
         "team_key": "intelligence-research__team_1"}, record("work_item.queued", leased.id))
     assert queue.claim(old_id) is not None
-    with pytest.raises(QueueError, match="only queued work"):
+    with pytest.raises(QueueError, match="only pending work"):
         queue.reassign_queued_work_item(leased.id, new_id, record("work_item.reassigned", leased.id), expected_current_agent_id=old_id)
     assert store.get_work_item(leased.id).assigned_agent_id == old_id
 
@@ -520,5 +520,50 @@ def test_reassignment_rejects_inactive_or_cross_department_target(tmp_path):
         queue.reassign_queued_work_item(item.id, wrong_department_id, reassignment_record(), expected_current_agent_id=old_id)
     assert store.get_work_item(item.id).assigned_agent_id == old_id
     assert queue.get_entry(item.id)["agent_id"] == str(old_id)
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_reassignment_recovers_unleased_in_progress_retry_to_queued(tmp_path):
+    store = SQLiteStore(tmp_path / "reassign-recovery.sqlite3")
+    old_id, new_id = uuid4(), uuid4()
+    for agent_id, name in ((old_id, "Old Researcher"), (new_id, "New Researcher")):
+        store.save_agent(AgentProfile(
+            id=agent_id, name=name, department="intelligence-research",
+            purpose="Prepare evidence", capabilities=("research",),
+            state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
+            team_key="intelligence-research__team_1",
+        ))
+    item = WorkItem(
+        id=uuid4(), title="Interrupted research", objective="Prepare report",
+        department="intelligence-research", state=TaskState.READY, assigned_agent_id=old_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue_authorized(item, old_id, {"role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1"}, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action="work_item.queued", subject_type="work_item",
+            subject_id=str(item.id), outcome="recorded", correlation_id="recovery-admission",
+        ))
+    # Model the runner's retry state after a lease has been released.
+    with store._lock:
+        store._connection.execute(
+            "UPDATE work_items SET state=? WHERE id=?",
+            (TaskState.IN_PROGRESS.value, str(item.id)),
+        )
+    result = queue.reassign_queued_work_item(item.id, new_id, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.reassigned", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="recovery-reassign",
+        details={"previous_state": "in_progress"},
+    ), expected_current_agent_id=old_id)
+    assert result["previous_state"] == TaskState.IN_PROGRESS.value
+    recovered = store.get_work_item(item.id)
+    assert recovered.state == TaskState.QUEUED
+    assert recovered.assigned_agent_id == new_id
+    lease = queue.claim(new_id)
+    assert lease is not None and lease.work_item_id == item.id
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
     assert store.verify_audit_chain()
     store.close()
