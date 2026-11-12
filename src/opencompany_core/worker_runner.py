@@ -187,9 +187,9 @@ class OpenCompanyWorker:
                 if lease_lost.is_set():
                     raise QueueError("worker lease was lost before queue acknowledgement")
                 self.queue.complete(lease)
-                self.queue.clear_checkpoint(
-                    lease.work_item_id, role_key, "specialist_output"
-                )
+            self.queue.clear_checkpoint(
+                lease.work_item_id, role_key, "specialist_output"
+            )
             return "completed_review_required"
         except Exception as exc:
             # A cancellation request takes precedence over an executor error.
