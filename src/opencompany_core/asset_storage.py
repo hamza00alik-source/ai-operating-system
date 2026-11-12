@@ -26,7 +26,7 @@ class AssetStorageError(ValueError):
 
 _MEDIA_SIGNATURES = {
     "model/gltf-binary": lambda data: len(data) >= 12 and data[:4] == b"glTF" and data[4:8] == b"\x02\x00\x00\x00",
-    "image/png": lambda data: data.startswith(b"\x89PNG\\r\\n\x1a\\n"),
+    "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
     "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
     "image/gif": lambda data: data.startswith((b"GIF87a", b"GIF89a")),
     "image/webp": lambda data: len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
