@@ -141,6 +141,13 @@ def test_worker_retry_uses_stable_artifact_id_after_sink_failure(tmp_path):
     with pytest.raises(OSError, match="temporary sink failure"):
         worker.run_once(agent, "marketplace_operations_analyst")
     assert queue.counts() == {"queued": 1}
+    # Advance the durable schedule without sleeping so this test exercises the
+    # worker retry path independently of wall-clock timing.
+    with queue._lock:
+        queue._db.execute(
+            "UPDATE worker_queue SET next_attempt_at=? WHERE work_item_id=?",
+            ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), str(item.id)),
+        )
     assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
     assert len(sink.items) == 1
     assert queue.counts() == {"done": 1}
