@@ -554,7 +554,12 @@ def test_business_integration_registry_isolated_and_never_connects(tmp_path, mon
     assert result["status"] == "pending_review"
     assert result["network_connection_attempted"] is False
     assert integrations.list("physical-agency")[0]["permissions"] == ["catalog:read", "orders:read"]
+    assert integrations.list("physical-agency")[0]["credential_available"] is True
     assert integrations.list("physical-brand") == ()
+    assert credentials.delete(
+        "physical-agency", "marketplace-api", audit_record("business.credential.deleted")
+    ) is True
+    assert integrations.list("physical-agency")[0]["credential_available"] is False
     assert integrations.events("physical-agency", result["integration_id"])[0]["action"] == "registered"
     with pytest.raises(ValueError, match="stored credential"):
         integrations.register(
