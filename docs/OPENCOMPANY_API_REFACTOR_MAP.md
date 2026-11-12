@@ -438,3 +438,11 @@ No imports, application startup, OpenAPI generation, tests, CI, migrations or da
 - Static re-fetch confirms each moved method is defined once in its new mixin and absent from `persistence.py`; the delegation transaction still contains the exact-child guard, state transitions, audit writes, commit and rollback. The audit mixin retains chain-link and digest verification.
 - Source review also found that `_SCHEMA_VERSION` was referenced by `SQLiteStore._initialize` but had no definition in the module or its explicit imports. Defined it as 7, matching the existing final migration version; this is a source-level correction, not a schema migration.
 - No imports, app startup, OpenAPI generation, tests, CI, migrations or database operations were performed. Runtime transaction equivalence and the schema-version correction remain unverified until the test window. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
+
+## SQLite schema initialization extraction (2026-11-12)
+
+- Added `src/opencompany_core/schema_persistence.py` with `SchemaInitializationMixin`; moved the complete `SQLiteStore._initialize` method, including schema creation and migrations from versions 0 through 7, without changing its method body.
+- `SQLiteStore` now composes the schema mixin alongside the work-item, agent, commercial, delegation and audit mixins. It retains ownership of the SQLite connection, re-entrant lock, constructor, close operation and consistent backup operation.
+- Static comparison against the pre-extraction source at commit `9d74552de0d754c2b12cbe574bf2ea3027fbfaea` confirms the moved initializer body is byte-for-byte identical (215 lines). The schema mixin defines `_SCHEMA_VERSION = 7`; no migration logic or schema version was changed.
+- The composition module is now 71 lines, down from 290. Static re-fetch confirms `_initialize` is absent from `persistence.py`, the mixin is inherited, and `close`/ `backup_to` remain on SQLiteStore.
+- No imports, app startup, tests, CI, migrations or database operations were performed. Runtime initialization remains unverified. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
