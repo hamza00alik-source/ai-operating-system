@@ -81,6 +81,7 @@ from opencompany_app.routers.lifecycle import router as lifecycle_router
 from opencompany_app.routers.learning import router as learning_router
 from opencompany_app.routers.portfolio import router as portfolio_router
 from opencompany_app.routers.auth import router as auth_router
+from opencompany_app.routers.operations import backup_router as operations_backup_router, diagnostics_router as operations_diagnostics_router
 from opencompany_app.runtime import OpenCompanyRuntime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -160,33 +161,7 @@ def owner_dashboard() -> HTMLResponse:
 
 
 app.include_router(system_router)
-
-
-@app.get("/owner/backup", dependencies=[Depends(require_owner_key)])
-def download_owner_database_backup(store: SQLiteStore = Depends(get_store)) -> FileResponse:
-    """Download a consistent, integrity-checked SQLite snapshot for owner backup."""
-    descriptor, backup_path = tempfile.mkstemp(prefix="opencompany-backup-", suffix=".sqlite3")
-    os.close(descriptor)
-    try:
-        store.backup_to(backup_path)
-    except Exception as exc:
-        try:
-            os.unlink(backup_path)
-        except FileNotFoundError:
-            pass
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database backup failed safely: {type(exc).__name__}",
-        ) from exc
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return FileResponse(
-        backup_path,
-        media_type="application/vnd.sqlite3",
-        filename=f"opencompany-backup-{stamp}.sqlite3",
-        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
-        background=BackgroundTask(os.unlink, backup_path),
-    )
-
+app.include_router(operations_backup_router)
 
 
 app.include_router(catalogue_router)
@@ -548,26 +523,8 @@ app.include_router(orchestration_router)
 app.include_router(lifecycle_router)
 
 
-@app.get("/usage/model", dependencies=[Depends(require_owner_key)])
-def model_usage_summary(
-    business_id: str | None = None,
-    runtime: OpenCompanyRuntime = Depends(get_runtime),
-) -> dict:
-    """Owner-only, durable inference usage and cost accounting, optionally scoped by business."""
-    if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
-        raise HTTPException(status_code=422, detail="Unknown business unit.")
-    return runtime.usage.summary(limit=100, business_id=business_id)
-
-
-@app.get("/audit/verify", dependencies=[Depends(require_owner_key)])
-def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
-    return {
-        "event_count": store.audit_event_count(),
-        "chain_valid": store.verify_audit_chain(),
-    }
-
-
 app.include_router(commercial_supplier_router)
 app.include_router(portfolio_router)
 app.include_router(auth_router)
+app.include_router(operations_diagnostics_router)
 
