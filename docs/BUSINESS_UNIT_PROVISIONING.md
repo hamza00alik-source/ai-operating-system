@@ -36,3 +36,12 @@ Provisioning does not create or activate agents, tasks, queues, websites, market
 - `GET /business-units/{business_id}/events` — inspect append-only provisioning history.
 
 The foundational three business records are registered with their original delivery classes. Existing operations remain unchanged by this registry.
+
+
+## Activation readiness (read-only)
+
+The owner-authenticated endpoint `GET /business-units/{business_id}/activation-readiness` returns a non-mutating checklist. It verifies that all seven registry scope identifiers are present and distinct, inspects the actual commercial SQLite schema for fixed business-ID allowlists and customer-scope columns, checks for finance/ledger/payment persistence, and reports the missing credential, integration, memory, and asset enforcement adapters plus the separate owner activation approval.
+
+For a newly provisioned unit, the report is expected to remain blocked today. In particular, the commercial tables still constrain business IDs to the original three units, and their customer records do not yet persist the new customer scope. The readiness report does not change registry status. There is deliberately no activation endpoint until these storage and service boundaries are implemented and reviewed. Foundational units are reported as already operational; they are not re-activated.
+
+This is a safety gate, not a claim that scope identifiers alone isolate data. Existing commercial records and schema constraints are preserved; no migration or customer/order data rewrite is performed by this increment.
