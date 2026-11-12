@@ -1888,8 +1888,17 @@ def test_workflow_view_exposes_secret_free_execution_attempt_history(owner_clien
     empty = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
     assert empty.status_code == 200
     assert empty.json()["execution_attempts"] == []
+    assert empty.json()["recovery"]["queue_state"] is None
 
+    retry_at = "2026-11-12T00:01:00+00:00"
+    runtime.queue.enqueue(UUID(item_id), uuid4(), {"kind": "internal_draft"})
     with runtime.queue._lock:
+        runtime.queue._db.execute(
+            """UPDATE worker_queue
+               SET attempts=1,last_error='ProviderTimeout',next_attempt_at=?
+               WHERE work_item_id=?""",
+            (retry_at, item_id),
+        )
         runtime.queue._db.execute(
             """INSERT INTO worker_attempts
                (work_item_id,agent_id,attempt,lease_token,status,started_at,finished_at,error_code)
@@ -1905,6 +1914,15 @@ def test_workflow_view_exposes_secret_free_execution_attempt_history(owner_clien
     assert response.status_code == 200
     attempts = response.json()["execution_attempts"]
     assert len(attempts) == 1
+    assert response.json()["recovery"] == {
+        "queue_state": "queued",
+        "last_error": "ProviderTimeout",
+        "attempts_used": 1,
+        "attempts_remaining": 2,
+        "can_retry": True,
+        "next_attempt_at": retry_at,
+        "retry_scheduled": True,
+    }
     assert attempts[0] == {
         "attempt": 1,
         "status": "retryable_failed",
