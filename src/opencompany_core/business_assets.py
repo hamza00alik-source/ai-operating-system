@@ -34,7 +34,10 @@ class BusinessAssetRegistry:
               BEGIN SELECT RAISE(ABORT,'append-only asset declarations'); END;
             CREATE TRIGGER IF NOT EXISTS opencompany_assets_no_update BEFORE UPDATE ON opencompany_business_assets
               WHEN OLD.asset_id != NEW.asset_id OR OLD.business_id != NEW.business_id OR OLD.asset_key != NEW.asset_key
-              BEGIN SELECT RAISE(ABORT,'asset identity is immutable'); END;
+                OR OLD.title != NEW.title OR OLD.asset_type != NEW.asset_type OR OLD.filename != NEW.filename
+                OR OLD.media_type != NEW.media_type OR OLD.checksum_sha256 != NEW.checksum_sha256
+                OR OLD.byte_size != NEW.byte_size OR OLD.source != NEW.source OR OLD.asset_scope_id != NEW.asset_scope_id
+              BEGIN SELECT RAISE(ABORT,'asset declaration metadata is immutable'); END;
             CREATE TRIGGER IF NOT EXISTS opencompany_asset_events_no_update BEFORE UPDATE ON opencompany_business_asset_events
               BEGIN SELECT RAISE(ABORT,'append-only asset events'); END;
             CREATE TRIGGER IF NOT EXISTS opencompany_asset_events_no_delete BEFORE DELETE ON opencompany_business_asset_events
@@ -119,6 +122,7 @@ class BusinessAssetRegistry:
             if item["storage_key"] is not None: raise ValueError("asset has already been stored")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("stored asset checksum or size does not match declaration")
             if not isinstance(storage_key,str) or not re.fullmatch(r"[a-f0-9]{64}/"+re.escape(item["asset_id"])+r"\.blob",storage_key): raise ValueError("invalid business-scoped storage key")
+            if audit.actor_type != "owner": raise PermissionError("only the owner may record asset storage")
             self._audit_dict(audit)
             self.connection.execute("UPDATE opencompany_business_assets SET storage_key=?,storage_state='private_stored_unscanned',status='pending_scan' WHERE business_id=? AND asset_id=?",(storage_key,business_id,item["asset_id"]))
             self._event(business_id,item["asset_id"],"stored_unscanned",audit); self.connection.commit()
@@ -133,6 +137,9 @@ class BusinessAssetRegistry:
 
     def record_scan_result(self,business_id,asset_id,*,scanner_key,status,checksum_sha256,byte_size,verdict,audit):
         if status not in ("clean","infected"): raise ValueError("invalid malware scan status")
+        if not isinstance(scanner_key,str) or not scanner_key.strip(): raise ValueError("scanner identity is required")
+        if not isinstance(verdict,str) or (status=="clean" and not verdict.endswith(": OK")) or (status=="infected" and not verdict.endswith(" FOUND")):
+            raise ValueError("scanner verdict does not match the recorded status")
         with self.lock:
             item=self._get(business_id,asset_id)
             if item["storage_state"]!="private_stored_unscanned": raise ValueError("asset is not awaiting scan")
