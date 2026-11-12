@@ -15,7 +15,7 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
     <button id="unorouter-test" type="button" disabled>Test free connection</button>
     <button id="unorouter-remove" type="button" disabled>Remove credentials</button>
     <button id="unorouter-refresh" type="button">Refresh status</button>
-    <button id="unorouter-discover" type="button" disabled>Import full model catalogue</button>
+    <button id="unorouter-discover" type="button" disabled>Discover all free models and import full catalogue</button>
   </div>
   <p id="unorouter-model-catalogue" class="muted" aria-live="polite">Full UnoRouter catalogue has not been imported. Paid and unsupported models will be shown as blocked.</p>
   <details id="unorouter-catalog-details"><summary>View imported catalogue</summary><div id="unorouter-catalog-rows"></div></details>
