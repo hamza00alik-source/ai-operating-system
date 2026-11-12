@@ -2384,6 +2384,115 @@ def deliver_agent_handoff(
     return {"handoff": _handoff_payload(updated)}
 
 
+@app.get("/executive/portfolio", dependencies=[Depends(require_owner_key)])
+def get_executive_portfolio(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Give the owner a company-wide view of CEO and department execution."""
+    if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
+
+    profiles = store.list_agents(limit=1000)
+    ceo = next((agent for agent in profiles
+                if agent.role_key == "chief_executive_orchestrator"), None)
+    work_items = store.list_work_items(business_id=business_id, limit=1000)
+    known = {item.id: item for item in work_items}
+    department_rows: dict[str, dict] = {}
+    items_payload = []
+    for item in work_items:
+        department = default_organization().get(item.department)
+        manager = next((agent for agent in profiles
+                        if agent.role_key == department.manager_role_key
+                        and agent.department == item.department
+                        and agent.team_key == "management"), None)
+        dependencies = []
+        for dependency_id in item.depends_on:
+            dependency = store.get_work_item(dependency_id)
+            if dependency is None:
+                dependencies.append({
+                    "work_item_id": str(dependency_id), "state": "missing",
+                    "completed_with_deliverable": False,
+                })
+                continue
+            if dependency.business_id != item.business_id:
+                raise HTTPException(status_code=409, detail="Work dependency crossed a business boundary.")
+            dependency_deliverables = store.list_deliverables(dependency_id)
+            dependencies.append({
+                "work_item_id": str(dependency_id), "state": dependency.state.value,
+                "deliverable_count": len(dependency_deliverables),
+                "completed_with_deliverable": (
+                    dependency.state == TaskState.COMPLETED and bool(dependency_deliverables)
+                ),
+            })
+        manager_ready = (
+            bool(item.depends_on) and manager is not None
+            and manager.state == AgentState.ACTIVE
+            and all(value["completed_with_deliverable"] for value in dependencies)
+        )
+        deliverables = store.list_deliverables(item.id)
+        row = {
+            "id": str(item.id), "title": item.title, "objective": item.objective,
+            "business_id": item.business_id, "department": item.department,
+            "state": item.state.value,
+            "assigned_agent_id": str(item.assigned_agent_id) if item.assigned_agent_id else None,
+            "manager": ({
+                "agent_id": str(manager.id), "role_key": manager.role_key,
+                "state": manager.state.value,
+            } if manager else None),
+            "dependency_count": len(dependencies),
+            "blocked_dependencies": [
+                value["work_item_id"] for value in dependencies
+                if not value["completed_with_deliverable"]
+            ],
+            "deliverable_count": len(deliverables),
+            "manager_synthesis_ready": manager_ready,
+        }
+        items_payload.append(row)
+        key = f"{item.business_id}:{item.department}"
+        aggregate = department_rows.setdefault(key, {
+            "business_id": item.business_id, "department": item.department,
+            "work_item_count": 0, "states": {}, "blocked_count": 0,
+            "review_count": 0, "completed_count": 0,
+            "manager_synthesis_ready_count": 0,
+        })
+        aggregate["work_item_count"] += 1
+        aggregate["states"][item.state.value] = aggregate["states"].get(item.state.value, 0) + 1
+        aggregate["blocked_count"] += bool(row["blocked_dependencies"])
+        aggregate["review_count"] += item.state == TaskState.REVIEW
+        aggregate["completed_count"] += item.state == TaskState.COMPLETED
+        aggregate["manager_synthesis_ready_count"] += manager_ready
+
+    return {
+        "platform": "opencompany-aios",
+        "business_filter": business_id or "all",
+        "ceo": ({
+            "agent_id": str(ceo.id), "state": ceo.state.value,
+            "active": ceo.state == AgentState.ACTIVE,
+        } if ceo else None),
+        "departments": list(department_rows.values()),
+        "work_items": items_payload,
+        "summary": {
+            "work_item_count": len(items_payload),
+            "department_count": len(department_rows),
+            "blocked_work_item_count": sum(
+                1 for item in items_payload if item["blocked_dependencies"]
+            ),
+            "awaiting_owner_review_count": sum(
+                1 for item in items_payload if item["state"] == TaskState.REVIEW.value
+            ),
+            "completed_work_item_count": sum(
+                1 for item in items_payload if item["state"] == TaskState.COMPLETED.value
+            ),
+            "manager_synthesis_ready_count": sum(
+                1 for item in items_payload if item["manager_synthesis_ready"]
+            ),
+        },
+        "execution_or_external_actions_performed": False,
+    }
+
+
 @app.post("/executive/plan", dependencies=[Depends(require_owner_key)])
 def create_executive_work_plan(
     payload: ExecutivePlanInput,
