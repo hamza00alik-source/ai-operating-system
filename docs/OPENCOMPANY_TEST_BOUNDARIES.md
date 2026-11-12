@@ -2,13 +2,24 @@
 
 ## Default discovery
 
-The default pytest configuration discovers only `test_opencompany_*.py` files.
-This keeps the independent OpenCompany suite separate from the historical
-`ai_os` test suite while the legacy runtime remains quarantined.
+The default pytest configuration retains normal test discovery and excludes
+only the 11 historical test files that directly import the quarantined `ai_os`
+package. Other tests, including the wider `opencompany_*` unit and integration
+tests, remain part of default discovery.
 
-The current independent suite is:
+The excluded legacy files are:
 
-- `tests/test_opencompany_app.py`
+- `tests/test_agent_runtime.py`
+- `tests/test_api.py`
+- `tests/test_brain.py`
+- `tests/test_business_ops.py`
+- `tests/test_credentials.py`
+- `tests/test_owner_session_auth.py`
+- `tests/test_provider_failover.py`
+- `tests/test_research_sources.py`
+- `tests/test_sessions_and_workforce.py`
+- `tests/test_website_api.py`
+- `tests/test_workflows.py`
 
 ## Legacy suite
 
