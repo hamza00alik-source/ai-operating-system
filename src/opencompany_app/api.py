@@ -2778,6 +2778,66 @@ def list_work_item_delegation_proposals(
     return {"count": len(proposals), "proposals": proposals}
 
 
+@app.get("/work-items/{item_id}/workflow", dependencies=[Depends(require_owner_key)])
+def get_work_item_workflow(
+    item_id: UUID,
+    store: SQLiteStore = Depends(get_store),
+    delegations: DelegationRepository = Depends(get_delegation_store),
+) -> dict:
+    """Return an owner-facing, business-scoped view of a work item and its delegation lifecycle."""
+    parent = store.get_work_item(item_id)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+
+    profiles = {str(agent.id): agent for agent in store.list_agents(limit=1000)}
+    manager = profiles.get(str(parent.assigned_agent_id)) if parent.assigned_agent_id else None
+    proposals = delegations.list_for_parent(item_id)
+    children_by_id = {}
+    for proposal in proposals:
+        for child in proposal["children"]:
+            child_id = str(child["id"])
+            task = store.get_work_item(UUID(child_id))
+            if task is None:
+                children_by_id[child_id] = {
+                    "id": child_id, "title": child["title"], "role_key": child["role_key"],
+                    "team_key": child["team_key"], "state": "draft",
+                    "assigned_agent_id": child["assigned_agent_id"], "materialized": False,
+                    "deliverables": [],
+                }
+                continue
+            if task.business_id != parent.business_id:
+                raise HTTPException(status_code=409, detail="Delegated work crossed a business boundary.")
+            agent = profiles.get(str(task.assigned_agent_id)) if task.assigned_agent_id else None
+            children_by_id[child_id] = {
+                "id": child_id, "title": task.title, "role_key": child["role_key"],
+                "team_key": child["team_key"], "state": task.state.value,
+                "assigned_agent_id": str(task.assigned_agent_id) if task.assigned_agent_id else None,
+                "assignee_state": agent.state.value if agent else "missing",
+                "materialized": True,
+                "deliverables": store.list_deliverables(task.id),
+            }
+
+    return {
+        "work_item": {
+            "id": str(parent.id), "title": parent.title, "objective": parent.objective,
+            "department": parent.department, "business_id": parent.business_id,
+            "state": parent.state.value,
+            "assigned_agent_id": str(parent.assigned_agent_id) if parent.assigned_agent_id else None,
+            "depends_on": [str(value) for value in parent.depends_on],
+            "deliverables": store.list_deliverables(parent.id),
+        },
+        "manager": ({
+            "agent_id": str(manager.id), "role_key": manager.role_key,
+            "team_key": manager.team_key, "department": manager.department,
+            "state": manager.state.value,
+        } if manager else None),
+        "delegation_proposals": proposals,
+        "child_work_items": list(children_by_id.values()),
+        "owner_review_required": parent.state == TaskState.REVIEW,
+        "external_actions_performed": False,
+    }
+
+
 @app.post("/work-items/{item_id}/review", dependencies=[Depends(require_owner_key)])
 def review_work_item(
     item_id: UUID, payload: WorkItemReviewInput,
