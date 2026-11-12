@@ -35,8 +35,8 @@ class PrivateFilesystemAssetStorage:
 
     def __init__(self, root: str | Path):
         candidate = Path(root).expanduser()
-        if not candidate.is_absolute():
-            raise AssetStorageError("asset storage root must be an absolute path")
+        if not candidate.is_absolute() or ".." in candidate.parts:
+            raise AssetStorageError("asset storage root must be absolute and must not contain parent traversal")
         self.root = candidate
         self._prepare_private_directory(self.root)
 
