@@ -36,6 +36,35 @@ class DelegationPersistenceMixin:
                 if expected_ids != {str(item.id) for item in items}:
                     self._connection.execute("ROLLBACK")
                     raise ValueError("materialized tasks do not match the proposal's draft children")
+                parent_id_row = self._connection.execute(
+                    "SELECT business_id FROM work_items WHERE id=?",
+                    (self._connection.execute(
+                        "SELECT parent_work_item_id FROM delegation_proposals WHERE id=?",
+                        (str(proposal_id),),
+                    ).fetchone()["parent_work_item_id"],),
+                ).fetchone()
+                if parent_id_row is None:
+                    self._connection.execute("ROLLBACK")
+                    raise ValueError("delegation parent work item does not exist")
+                parent_business_id = parent_id_row["business_id"]
+                if any(item.business_id != parent_business_id for item in items):
+                    self._connection.execute("ROLLBACK")
+                    raise ValueError("delegated child tasks must belong to the parent business unit")
+                proposal_children = self._connection.execute(
+                    """SELECT id,assigned_agent_id,title,objective
+                       FROM delegation_child_tasks WHERE proposal_id=? AND state='draft'""",
+                    (str(proposal_id),),
+                ).fetchall()
+                expected_children = {row["id"]: row for row in proposal_children}
+                for item in items:
+                    expected = expected_children[str(item.id)]
+                    if (
+                        item.title != expected["title"]
+                        or item.objective != expected["objective"]
+                        or str(item.assigned_agent_id) != expected["assigned_agent_id"]
+                    ):
+                        self._connection.execute("ROLLBACK")
+                        raise ValueError("materialized child task fields do not match the approved delegation draft")
                 if parent_update is not None:
                     parent_row = self._connection.execute(
                         "SELECT state,assigned_agent_id,department,business_id FROM work_items WHERE id=?",
