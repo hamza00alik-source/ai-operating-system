@@ -7,7 +7,7 @@ import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
 from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
-from opencompany_core.domain import AgentState, AuditRecord, TaskState
+from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy, ProviderUnavailable
@@ -1870,3 +1870,86 @@ def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
     assert all(value["state"] == "ready" for value in payload["dependencies"])
     assert payload["external_actions_performed"] is False
 
+
+
+def test_owner_can_reassign_queued_work_through_api_and_unauthorized_call_is_blocked(owner_client):
+    runtime = api_module._default_runtime()
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    current_id, target_id = uuid4(), uuid4()
+    for agent_id, name in ((current_id, "Current Analyst"), (target_id, "Target Analyst")):
+        runtime.store.save_agent(AgentProfile(
+            id=agent_id, name=name, department="intelligence-research",
+            purpose="Research evidence", capabilities=("research",),
+            state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
+            team_key="intelligence-research__team_1",
+        ))
+    item = WorkItem(
+        id=uuid4(), title="API reassignment", objective="Prepare an internal evidence report",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=current_id, business_id="physical-agency",
+    )
+    runtime.store.save_work_item(item)
+    runtime.queue.enqueue_authorized(item, current_id, {
+        "role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1",
+    }, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.queued", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="api-queue",
+    ))
+
+    denied = owner_client.post(
+        f"/work-items/{item.id}/reassign",
+        json={"target_agent_id": str(target_id), "rationale": "Unauthorized request"},
+    )
+    assert denied.status_code == 401
+
+    response = owner_client.post(
+        f"/work-items/{item.id}/reassign", headers=headers,
+        json={"target_agent_id": str(target_id), "rationale": "Balance the research workload"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["assigned_agent_id"] == str(target_id)
+    assert runtime.store.get_work_item(item.id).assigned_agent_id == target_id
+    assert runtime.queue.get_entry(item.id)["agent_id"] == str(target_id)
+    assert runtime.store.verify_audit_chain()
+
+
+def test_reassignment_rejects_stale_expected_assignee(tmp_path):
+    store = SQLiteStore(tmp_path / "stale-reassign.sqlite3")
+    first_id, second_id, third_id = uuid4(), uuid4(), uuid4()
+    for agent_id, name in ((first_id, "First Analyst"), (second_id, "Second Analyst"),
+                           (third_id, "Third Analyst")):
+        store.save_agent(AgentProfile(
+            id=agent_id, name=name, department="intelligence-research",
+            purpose="Research evidence", capabilities=("research",),
+            state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
+            team_key="intelligence-research__team_1",
+        ))
+    item = WorkItem(
+        id=uuid4(), title="Stale reassignment", objective="Prepare report",
+        department="intelligence-research", state=TaskState.READY, assigned_agent_id=first_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue_authorized(item, first_id, {"role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1"}, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action="work_item.queued", subject_type="work_item",
+            subject_id=str(item.id), outcome="recorded", correlation_id="stale-admission",
+        ))
+    queue.reassign_queued_work_item(item.id, second_id, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.reassigned", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="first-reassign",
+    ), expected_current_agent_id=first_id)
+    with pytest.raises(QueueError, match="assignee changed"):
+        queue.reassign_queued_work_item(item.id, third_id, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action="work_item.reassigned", subject_type="work_item",
+            subject_id=str(item.id), outcome="recorded", correlation_id="stale-reassign",
+        ), expected_current_agent_id=first_id)
+    assert store.get_work_item(item.id).assigned_agent_id == second_id
+    assert queue.get_entry(item.id)["agent_id"] == str(second_id)
+    assert store.verify_audit_chain()
+    store.close()
