@@ -170,7 +170,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         durable_confirmed = os.environ.get("OPENCOMPANY_ASSET_STORAGE_DURABLE", "false").strip().casefold() in {"1", "true", "yes", "on"}
         storage_path = Path(asset_storage_path).expanduser()
         data_mount = Path("/data")
-        if not durable_confirmed or not storage_path.is_absolute() or not storage_path.is_relative_to(data_mount):
+        if not durable_confirmed or not storage_path.is_absolute() or ".." in storage_path.parts or storage_path == data_mount or not storage_path.is_relative_to(data_mount):
             raise RuntimeError("asset storage requires an absolute path under /data and OPENCOMPANY_ASSET_STORAGE_DURABLE=true")
         if not data_mount.is_mount():
             raise RuntimeError("asset storage is disabled because /data is not verified as a mounted persistent volume")
