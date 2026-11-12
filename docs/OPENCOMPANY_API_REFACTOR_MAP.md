@@ -485,3 +485,10 @@ No imports, application startup, OpenAPI generation, tests, CI, migrations or da
 - Opportunity creation retains its existing business-unit allowlist, transaction, audit-chain append and rollback behavior. Read methods retain their existing access scoping and query behavior.
 - `SQLiteStore` composes `OpportunityPersistenceMixin`; quote and order methods remain in `CommercialPersistenceMixin`. Commercial persistence module reduced from 333 to 273 lines.
 - Static re-fetch confirms all three methods appear once in the opportunity mixin, are absent from the commercial mixin, and the mixin is inherited by SQLiteStore. No imports, startup, tests, CI or database operations were run. The December 1 test/CI deferral remains active.
+
+## Commercial quote persistence extraction (2026-11-12)
+
+- [solution] Added `src/opencompany_core/quote_persistence.py` with `QuotePersistenceMixin`; moved quote creation, listing and status-transition methods out of `commercial_persistence.py`.
+- [insight] The complete quote method block was moved without editing its method bodies; it retains opportunity/business matching, active same-business product checks, currency and amount bounds, subtotal validation, quote-state transitions, acceptance evidence requirements, accepted-order void protection, atomic audit-chain appends and rollback.
+- [solution] `SQLiteStore` composes the quote mixin. Order creation and order-status methods remain in the commercial mixin; order creation still requires an accepted quote and does not trigger payment or fulfilment.
+- [context] Static source verification only; no imports, startup, tests, CI or database operations. December 1 test/CI deferral remains active. No merge, deployment or production change.
