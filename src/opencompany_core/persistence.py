@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 13
+_SCHEMA_VERSION = 14
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -690,6 +690,70 @@ def _migrate_v12_business_memory(connection: sqlite3.Connection) -> None:
         raise
 
 
+def _migrate_v13_business_assets(connection: sqlite3.Connection) -> None:
+    """Create a metadata-only asset registry bound to immutable business asset scopes."""
+    if connection.in_transaction:
+        raise RuntimeError("business-asset migration cannot run inside an existing transaction")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_asset_scope ON opencompany_business_units(business_id,asset_scope_id)")
+        connection.execute("""CREATE TABLE opencompany_business_assets (
+            asset_id TEXT NOT NULL,
+            business_id TEXT NOT NULL,
+            asset_scope_id TEXT NOT NULL,
+            asset_key TEXT NOT NULL CHECK(length(asset_key) BETWEEN 1 AND 80),
+            title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 200),
+            asset_type TEXT NOT NULL CHECK(length(asset_type) BETWEEN 2 AND 40),
+            filename TEXT NOT NULL CHECK(length(filename) BETWEEN 1 AND 255),
+            media_type TEXT NOT NULL CHECK(length(media_type) BETWEEN 3 AND 120),
+            checksum_sha256 TEXT NOT NULL CHECK(length(checksum_sha256)=64),
+            byte_size INTEGER NOT NULL CHECK(byte_size BETWEEN 0 AND 104857600),
+            source TEXT NOT NULL CHECK(length(source) BETWEEN 1 AND 500),
+            storage_state TEXT NOT NULL CHECK(storage_state='metadata_only'),
+            status TEXT NOT NULL CHECK(status='pending_storage'),
+            actor_type TEXT NOT NULL CHECK(actor_type='owner'),
+            actor_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(business_id,asset_scope_id,asset_key),
+            UNIQUE(asset_id,business_id,asset_scope_id),
+            FOREIGN KEY(business_id,asset_scope_id)
+                REFERENCES opencompany_business_units(business_id,asset_scope_id)
+        )""")
+        connection.execute("""CREATE TABLE opencompany_business_asset_events (
+            event_id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            business_id TEXT NOT NULL,
+            asset_scope_id TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('declared')),
+            actor_type TEXT NOT NULL CHECK(actor_type='owner'),
+            actor_id TEXT NOT NULL,
+            details_json TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            FOREIGN KEY(asset_id,business_id,asset_scope_id)
+                REFERENCES opencompany_business_assets(asset_id,business_id,asset_scope_id)
+        )""")
+        connection.execute("CREATE INDEX idx_opencompany_business_assets_scope ON opencompany_business_assets(business_id,asset_scope_id,created_at DESC)")
+        connection.execute("CREATE INDEX idx_opencompany_business_asset_events_history ON opencompany_business_asset_events(business_id,asset_scope_id,asset_id,occurred_at)")
+        connection.execute("""CREATE TRIGGER opencompany_business_assets_no_update BEFORE UPDATE ON opencompany_business_assets
+            BEGIN SELECT RAISE(ABORT,'business asset declarations are immutable'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_assets_no_delete BEFORE DELETE ON opencompany_business_assets
+            BEGIN SELECT RAISE(ABORT,'business asset declarations are immutable'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_asset_events_no_update BEFORE UPDATE ON opencompany_business_asset_events
+            BEGIN SELECT RAISE(ABORT,'business asset events are append-only'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_asset_events_no_delete BEFORE DELETE ON opencompany_business_asset_events
+            BEGIN SELECT RAISE(ABORT,'business asset events are append-only'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_units_asset_scope_no_update BEFORE UPDATE OF asset_scope_id ON opencompany_business_units
+            BEGIN SELECT RAISE(ABORT,'business-unit asset scope is immutable'); END""")
+        if connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("business-asset migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version=14")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -963,6 +1027,9 @@ class SQLiteStore:
                 version = 12
             if version == 12:
                 _migrate_v12_business_memory(self._connection)
+                version = 13
+            if version == 13:
+                _migrate_v13_business_assets(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
