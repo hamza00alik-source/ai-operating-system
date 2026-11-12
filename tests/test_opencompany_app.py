@@ -1987,3 +1987,56 @@ def test_business_asset_scan_route_records_clean_verdict_but_keeps_download_disa
         f"/business-units/digital-products/assets/{asset_id}/events", headers=headers
     ).json()["events"]
     assert [event["action"] for event in history][-1] == "scan_clean"
+
+
+def test_private_download_requires_clean_scan_and_owner_confirmation(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    payload = b"glTF" + b"\\x02\\x00\\x00\\x00" + b"\\x18\\x00\\x00\\x00" + b"test"
+    digest = hashlib.sha256(payload).hexdigest()
+    declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
+        "asset_key": "download-demo", "title": "Download demo", "asset_type": "3d-model",
+        "filename": "download-demo.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": digest, "byte_size": len(payload),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    assert declared.status_code == 200
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    uploaded = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload,
+    )
+    assert uploaded.status_code == 200
+    url = f"/business-units/digital-products/assets/{asset_id}/download"
+    blocked = owner_client.get(url, headers={**headers, "X-Confirm-Owner-Download": "true"})
+    assert blocked.status_code == 409
+    unconfirmed = owner_client.get(url, headers=headers)
+    assert unconfirmed.status_code == 422
+
+    class Scanner:
+        def scan(self, chunks):
+            content = b"".join(chunks)
+            return {"status": "clean", "scanner_key": "clamav-unix-socket",
+                    "checksum_sha256": hashlib.sha256(content).hexdigest(),
+                    "byte_size": len(content), "verdict": "stream: OK"}
+
+    runtime.asset_scanner = Scanner()
+    scanned = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers={**headers, "X-Confirm-Owner-Scan": "true"},
+    )
+    assert scanned.status_code == 200
+    downloaded = owner_client.get(url, headers={**headers, "X-Confirm-Owner-Download": "true"})
+    assert downloaded.status_code == 200
+    assert downloaded.content == payload
+    assert downloaded.headers["content-disposition"] == 'attachment; filename="download-demo.glb"'
+    assert downloaded.headers["cache-control"] == "private, no-store, max-age=0"
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+
+    declaration = runtime.business_assets.scan_declaration("digital-products", asset_id)
+    stored_path = runtime.asset_storage.root / declaration["storage_key"]
+    stored_path.write_bytes(b"tampered after scan")
+    tampered = owner_client.get(url, headers={**headers, "X-Confirm-Owner-Download": "true"})
+    assert tampered.status_code == 503
