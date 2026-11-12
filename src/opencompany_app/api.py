@@ -51,6 +51,7 @@ from opencompany_core.github_evolution import GitHubEvolutionError
 from opencompany_core.code_evolution import CodeEvolutionError, generate_code_evolution_pr
 from opencompany_core.api_anything import ApiAnythingError
 from opencompany_core.venture_portfolio import VenturePortfolio, VenturePortfolioError
+from opencompany_core.business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -136,6 +137,16 @@ class VentureOpportunityInput(BaseModel):
 class VentureOpportunityStatusInput(BaseModel):
     status: str = Field(min_length=1, max_length=40)
     rationale: str = Field(default="", max_length=2000)
+    confirm_owner_approval: bool = False
+
+
+class BusinessUnitProvisionInput(BaseModel):
+    business_id: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    name: str = Field(min_length=1, max_length=160)
+    unit_type: str = Field(min_length=1, max_length=40)
+    delivery_class: str = Field(min_length=1, max_length=40)
+    description: str = Field(min_length=1, max_length=5000)
+    target_market: str = Field(min_length=1, max_length=300)
     confirm_owner_approval: bool = False
 
 
@@ -3093,3 +3104,55 @@ def list_venture_opportunity_events(
     if portfolio.get(opportunity_id) is None:
         raise HTTPException(status_code=404, detail="Venture opportunity not found.")
     return {"items": list(portfolio.events(opportunity_id))}
+
+
+# Provisioning creates internal business identity and isolated scope identifiers.
+# It does not activate operations or connect external services.
+def _business_unit_registry(runtime: OpenCompanyRuntime) -> BusinessUnitRegistry:
+    return BusinessUnitRegistry(runtime.store._connection, runtime.store._lock)
+
+
+@app.get("/business-units", dependencies=[Depends(require_owner_key)])
+def list_business_units(
+    limit: int = 100,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        items = _business_unit_registry(runtime).list(limit=limit)
+        return {"items": list(items), "count": len(items)}
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/provision-business-unit", dependencies=[Depends(require_owner_key)])
+def provision_business_unit(
+    opportunity_id: str,
+    payload: BusinessUnitProvisionInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    registry = _business_unit_registry(runtime)
+    try:
+        unit = registry.provision_from_opportunity(
+            _venture_portfolio(runtime), opportunity_id,
+            business_id=payload.business_id, name=payload.name,
+            unit_type=payload.unit_type, delivery_class=payload.delivery_class,
+            description=payload.description, target_market=payload.target_market,
+            confirm_owner_approval=payload.confirm_owner_approval,
+        )
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "business_unit": unit,
+        "message": "An isolated internal business unit has been provisioned. It is not active; external accounts, integrations, spending, publishing, customer contact, and order fulfilment remain disabled.",
+    }
+
+
+@app.get("/business-units/{business_id}/events", dependencies=[Depends(require_owner_key)])
+def list_business_unit_events(
+    business_id: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    registry = _business_unit_registry(runtime)
+    if registry.get(business_id) is None:
+        raise HTTPException(status_code=404, detail="Business unit not found.")
+    return {"items": list(registry.events(business_id))}
