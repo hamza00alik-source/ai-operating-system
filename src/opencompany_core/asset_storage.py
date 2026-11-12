@@ -1,9 +1,8 @@
 """Private, local asset-byte storage primitives for OpenCompany.
 
-This adapter is intentionally not wired to an HTTP upload or download route yet.
-It accepts only server-supplied business scope identity and verifies actual
-bytes before atomically placing them in a private directory. It never serves
-files and never claims malware scanning or durable-host verification.
+Uploads are owner-confirmed at the API boundary, stream through bounded staging,
+and are verified against server-declared size, SHA-256 and supported file signatures.
+The adapter never serves files and never claims durable-host verification.
 """
 from __future__ import annotations
 
