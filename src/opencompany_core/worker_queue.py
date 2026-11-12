@@ -192,6 +192,7 @@ class DurableWorkerQueue:
                          attempts=0,
                          lease_token=NULL,
                          lease_expires_at=NULL,
+                         cancel_requested=0,
                          last_error=NULL,
                          created_at=excluded.created_at,
                          updated_at=excluded.updated_at
