@@ -188,6 +188,81 @@ class WorkItemPersistenceMixin:
                     self._connection.execute("ROLLBACK")
                 raise
 
+    def save_deliverable_with_audit_and_lease(self, deliverable: Any, record: AuditRecord, lease: Any) -> bool:
+        """Fence the lease and atomically persist the draft, task transition, audit and queue completion."""
+        if not deliverable.review_required:
+            raise ValueError("worker deliverables must require review")
+        now_iso = datetime.now().astimezone().isoformat()
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                owned = self._connection.execute(
+                    """SELECT 1 FROM worker_queue
+                       WHERE work_item_id=? AND agent_id=? AND state='leased'
+                         AND lease_token=? AND lease_expires_at>?""",
+                    (str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token), now_iso),
+                ).fetchone()
+                if owned is None:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                item = self._connection.execute(
+                    "SELECT state FROM work_items WHERE id=?", (str(deliverable.work_item_id),)
+                ).fetchone()
+                if item is None or item["state"] != TaskState.IN_PROGRESS.value:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                values = (str(deliverable.work_item_id), deliverable.role_key, deliverable.content,
+                          deliverable.provider, deliverable.model, float(deliverable.cost_usd),
+                          deliverable.created_at.isoformat(), 1)
+                existing = self._connection.execute(
+                    "SELECT * FROM deliverables WHERE id=?", (str(deliverable.id),)
+                ).fetchone()
+                if existing is not None:
+                    old = (existing["work_item_id"], existing["role_key"], existing["content"],
+                           existing["provider"], existing["model"], float(existing["cost_usd"]),
+                           existing["created_at"], int(existing["review_required"]))
+                    if old != values:
+                        raise ValueError("deliverable ID already exists with different content")
+                else:
+                    self._connection.execute(
+                        """INSERT INTO deliverables
+                           (id,work_item_id,role_key,content,provider,model,cost_usd,created_at,review_required)
+                           VALUES(?,?,?,?,?,?,?,?,?)""",
+                        (str(deliverable.id), *values),
+                    )
+                self._connection.execute(
+                    "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                    (TaskState.REVIEW.value, str(deliverable.work_item_id), TaskState.IN_PROGRESS.value),
+                )
+                row = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                self._connection.execute(
+                    """INSERT INTO audit_events
+                       (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                       VALUES(?,?,?,?,?)""",
+                    (str(record.id), record.occurred_at.isoformat(), _json(payload),
+                     previous_hash, _digest(payload)),
+                )
+                cursor = self._connection.execute(
+                    """UPDATE worker_queue SET state='done',lease_token=NULL,
+                       lease_expires_at=NULL,last_error=NULL,updated_at=?
+                       WHERE work_item_id=? AND agent_id=? AND state='leased'
+                         AND lease_token=? AND lease_expires_at>?""",
+                    (now_iso, str(lease.work_item_id), str(lease.agent_id),
+                     str(lease.lease_token), now_iso),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("worker lease changed before atomic completion")
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
     def review_work_item_with_audit(self, work_item_id: UUID, *, approved: bool, rationale: str, record: AuditRecord) -> TaskState | None:
         """Record an owner review decision and transition REVIEW atomically."""
         if not isinstance(approved, bool) or not rationale.strip() or len(rationale) > 2000:
