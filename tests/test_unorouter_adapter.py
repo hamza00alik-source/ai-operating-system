@@ -226,4 +226,4 @@ def test_unorouter_discovery_rejects_invalid_key_and_malformed_catalogue(monkeyp
 
     monkeypatch.setattr(unorouter_adapter, "urlopen", lambda *a, **k: FakeResponse())
     with pytest.raises(ProviderUnavailable, match="pricing catalogue"):
-        unorouter_adapter.discover_free_models("secret-api-key")
+        unorouter_adapter.discover_free_models("secret-api-key", force_refresh=True)
