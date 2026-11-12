@@ -267,6 +267,13 @@ class DurableWorkerQueue:
                 ).fetchall()
                 for cancelled in expired_cancelled:
                     self._db.execute(
+                        """UPDATE worker_attempts SET status='cancelled',finished_at=?
+                           WHERE lease_token=(SELECT lease_token FROM worker_queue
+                               WHERE work_item_id=? AND state='leased' AND cancel_requested=1)
+                             AND status='running'""",
+                        (instant.isoformat(), cancelled["work_item_id"]),
+                    )
+                    self._db.execute(
                         "UPDATE work_items SET state=? WHERE id=? AND state IN (?,?)",
                         (TaskState.CANCELLED.value, cancelled["work_item_id"],
                          TaskState.QUEUED.value, TaskState.IN_PROGRESS.value),
