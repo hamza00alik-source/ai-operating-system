@@ -239,6 +239,8 @@ class UnoRouterAdapter:
             if (input_tokens is not None and input_tokens < 0) or (output_tokens is not None and output_tokens < 0):
                 raise ValueError("provider token usage must be non-negative")
         except (AttributeError, KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as exc:
+            if "transaction cost" in str(exc):
+                raise ProviderUnavailable("UnoRouter omitted transaction cost in an invalid chat-completion response.") from exc
             raise ProviderUnavailable("UnoRouter returned an invalid chat-completion response.") from exc
 
         if returned_model not in {model, model.removesuffix(":free")}:
