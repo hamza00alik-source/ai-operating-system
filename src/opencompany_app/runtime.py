@@ -100,8 +100,16 @@ class OpenCompanyRuntime:
         self.secret_vault_errors.pop("github_evolution", None)
 
     def close(self) -> None:
-        # Queue shares the store connection; only the store owns its lifecycle.
+        # Never close SQLite while a worker may still be using the shared connection.
+        # A timed-out drain is a hard shutdown gate, not permission to tear down
+        # resources underneath an active inference/persistence cycle.
         self.fleet.stop(timeout_seconds=5.0)
+        if self.fleet.status().running:
+            raise RuntimeError(
+                "worker fleet did not stop within the shutdown deadline; "
+                "shared runtime resources remain open"
+            )
+        # Queue shares the store connection; only the store owns its lifecycle.
         self.delegations.close()
         self.store.close()
 
