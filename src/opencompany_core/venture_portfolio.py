@@ -66,6 +66,17 @@ class VenturePortfolio:
                 )
             """)
             self._db.execute("CREATE INDEX IF NOT EXISTS idx_venture_portfolio_status ON venture_opportunities(status, updated_at)")
+            # Preserve the event history as append-only evidence at the database layer.
+            self._db.execute("""
+                CREATE TRIGGER IF NOT EXISTS venture_events_no_update
+                BEFORE UPDATE ON venture_portfolio_events
+                BEGIN SELECT RAISE(ABORT, 'venture portfolio events are append-only'); END
+            """)
+            self._db.execute("""
+                CREATE TRIGGER IF NOT EXISTS venture_events_no_delete
+                BEFORE DELETE ON venture_portfolio_events
+                BEGIN SELECT RAISE(ABORT, 'venture portfolio events are append-only'); END
+            """)
 
     @staticmethod
     def _validate_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, str]]:
