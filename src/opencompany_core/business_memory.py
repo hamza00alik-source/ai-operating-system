@@ -19,7 +19,8 @@ class BusinessMemoryStore:
     def _scope(self, business_id: str) -> str:
         if not isinstance(business_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,62}", business_id):
             raise ValueError("business_id must be a 2-63 character lowercase slug")
-        row = self._db.execute("SELECT memory_scope_id FROM opencompany_business_units WHERE business_id=?", (business_id,)).fetchone()
+        with self._lock:
+            row = self._db.execute("SELECT memory_scope_id FROM opencompany_business_units WHERE business_id=?", (business_id,)).fetchone()
         if row is None:
             raise ValueError("unknown business unit")
         return row["memory_scope_id"]
