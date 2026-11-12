@@ -214,6 +214,44 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       </div>
     </div>
   </section>
+
+  <section class="panel">
+    <h2 class="section-title">Business-unit provisioning</h2>
+    <p class="muted">Only opportunities explicitly approved for launch planning can be provisioned. This creates separate internal identity and scope namespaces. It does not activate the unit or connect external services.</p>
+    <div class="grid">
+      <div class="item">
+        <label for="provision-venture">Approved opportunity</label>
+        <select id="provision-venture"><option value="">Choose an approved opportunity</option></select>
+        <label for="unit-id">New business ID</label>
+        <input id="unit-id" maxlength="63" placeholder="e.g. niche-research-studio">
+        <label for="unit-name">Business name</label>
+        <input id="unit-name" maxlength="160" placeholder="Business identity">
+        <label for="unit-type">Business type</label>
+        <select id="unit-type">
+          <option value="software">Software / SaaS</option><option value="services">Services</option>
+          <option value="physical-agency">Physical-product agency</option><option value="physical-brand">Own physical brand</option>
+          <option value="digital-products">Digital products</option><option value="content-media">Content / media</option>
+          <option value="licensing">Licensing</option><option value="partnership">Partnership</option><option value="other">Other</option>
+        </select>
+        <label for="unit-delivery">Primary delivery class (strict)</label>
+        <select id="unit-delivery">
+          <option value="physical-goods">Physical goods</option><option value="digital-files">Digital files</option>
+          <option value="software-access">Software access</option><option value="professional-service">Professional service</option>
+          <option value="media-content">Media / content</option><option value="license">License</option><option value="referral">Referral</option>
+        </select>
+        <label for="unit-market">Target market</label>
+        <input id="unit-market" maxlength="300" placeholder="Target customer segment">
+        <label for="unit-description">Business scope and offer</label>
+        <textarea id="unit-description" rows="3" maxlength="5000" placeholder="What this business sells and what it must never substitute"></textarea>
+        <label><input type="checkbox" id="unit-owner-confirm"> I approve creating this separate internal business unit</label>
+        <button id="provision-business-unit" disabled>Provision isolated business unit</button>
+      </div>
+      <div>
+        <h3>Registered business units</h3>
+        <div id="business-units" class="list"><p class="muted">Connect to load business units.</p></div>
+      </div>
+    </div>
+  </section>
 </main>
 <script>
 (() => {
@@ -438,6 +476,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
           try{
             await request("/venture-opportunities/"+item.id+"/status",{method:"POST",body:JSON.stringify({status:next,rationale:"Owner decision recorded in OpenCompany.",confirm_owner_approval:protectedStep})});
             await loadVenturePortfolio();
+      await loadBusinessUnits();
             setMessage("Opportunity moved to "+next+". No external action was performed.","success");
           }catch(error){setMessage(error.message,"error");action.disabled=false;}
         });
@@ -446,6 +485,24 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("venture-opportunities").append(card);
     });
     byId("create-venture").disabled=false;
+  }
+
+  async function loadBusinessUnits(){
+    const [units,opportunities]=await Promise.all([request("/business-units"),request("/venture-opportunities?status=approved_to_launch")]);
+    clear("business-units","No business units registered.");
+    units.items.forEach(unit=>{
+      const card=document.createElement("article");card.className="item";
+      const heading=document.createElement("h3");heading.textContent=unit.name+" · "+unit.status;card.append(heading);
+      const detail=document.createElement("p");detail.textContent=unit.business_id+" · "+unit.unit_type+" · delivery: "+unit.delivery_class;card.append(detail);
+      const scopes=document.createElement("p");scopes.textContent="Separate customer, finance, credential, integration, memory and asset scopes assigned.";card.append(scopes);
+      const note=document.createElement("p");note.textContent="Provisioned internally only. External operations remain disabled.";card.append(note);
+      byId("business-units").append(card);
+    });
+    const select=byId("provision-venture");const previous=select.value;
+    select.replaceChildren(new Option("Choose an approved opportunity",""));
+    opportunities.items.forEach(item=>select.add(new Option(item.title+" · "+item.business_model,item.id)));
+    if(opportunities.items.some(item=>item.id===previous))select.value=previous;
+    byId("provision-business-unit").disabled=opportunities.items.length===0;
   }
   async function load(){
     byId("provision").disabled=true;
@@ -686,6 +743,23 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       await loadVenturePortfolio();setMessage("Opportunity added to the company-wide research portfolio.","success");
     }catch(error){setMessage(error.message,"error");button.disabled=false;}
   });
+
+  byId("provision-business-unit").addEventListener("click",async()=>{
+    const opportunityId=byId("provision-venture").value;
+    const businessId=byId("unit-id").value.trim(),name=byId("unit-name").value.trim();
+    const market=byId("unit-market").value.trim(),description=byId("unit-description").value.trim();
+    if(!opportunityId||!businessId||!name||!market||!description||!byId("unit-owner-confirm").checked){setMessage("Choose an approved opportunity, complete all fields, and confirm owner approval.","error");return;}
+    const button=byId("provision-business-unit");button.disabled=true;
+    try{
+      await request("/venture-opportunities/"+opportunityId+"/provision-business-unit",{method:"POST",body:JSON.stringify({
+        business_id:businessId,name,unit_type:byId("unit-type").value,delivery_class:byId("unit-delivery").value,
+        target_market:market,description,confirm_owner_approval:true
+      })});
+      ["unit-id","unit-name","unit-market","unit-description"].forEach(id=>byId(id).value="");
+      byId("unit-owner-confirm").checked=false;
+      await loadBusinessUnits();setMessage("Separate business unit provisioned. It remains inactive and cannot make external commitments.","success");
+    }catch(error){setMessage(error.message,"error");button.disabled=false;}
+  });
   byId("business-filter").addEventListener("change",()=>{if(csrfToken)load();});
   byId("connect").addEventListener("click",async()=>{
     const apiKey=keyInput.value.trim();
@@ -702,9 +776,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{if(csrfToken) await fetch("/auth/logout",{method:"POST",headers:{"X-CSRF-Token":csrfToken},credentials:"same-origin",cache:"no-store"});}
     finally{
       csrfToken="";keyInput.value="";
-      ["departments","agents","capabilities","work-items","commercial-opportunities","commercial-products","commercial-quotes","commercial-orders","venture-opportunities"].forEach(id=>clear(id,"Disconnected."));
+      ["departments","agents","capabilities","work-items","commercial-opportunities","commercial-products","commercial-quotes","commercial-orders","venture-opportunities","business-units"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
-      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("create-venture").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
+      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("create-venture").disabled=true;byId("provision-business-unit").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
   });
   byId("create-opportunity").addEventListener("click",async()=>{
