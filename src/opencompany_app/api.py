@@ -3578,6 +3578,7 @@ async def upload_business_asset_content(
             asset_id=str(asset_id),
             expected_sha256=declaration["checksum_sha256"],
             expected_size=declaration["byte_size"],
+            expected_media_type=declaration["media_type"],
             chunks=request.stream(),
         )
         result = runtime.business_assets.record_storage(
