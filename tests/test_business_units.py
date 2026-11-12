@@ -195,6 +195,9 @@ def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blocke
         )
         assert integration_check["ready"] is True
         assert "integration_execution_adapter" in report["blockers"]
+        assert "asset_storage_adapter" in report["blockers"]
+        assert "asset_scanning_adapter" in report["blockers"]
+        assert "asset_retrieval_adapter" in report["blockers"]
         assert "owner_activation_approval" in report["blockers"]
         assert registry.get(unit["business_id"])["status"] == "provisioning"
     finally:
