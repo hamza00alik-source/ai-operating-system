@@ -409,6 +409,13 @@ class SQLiteStore:
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
+                product = self._connection.execute(
+                    "SELECT business_id FROM commercial_products WHERE id=?", (product_id,)
+                ).fetchone()
+                if product is None:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                _assert_operational_commercial_scope(self._connection, self._lock, product["business_id"])
                 cursor = self._connection.execute(
                     "UPDATE commercial_products SET status=?,updated_at=? WHERE id=? AND status!='archived'",
                     (status, datetime.now(timezone.utc).isoformat(), product_id),
@@ -711,8 +718,8 @@ class SQLiteStore:
                 raise
 
     def list_commercial_orders(self, *, business_id: str | None = None) -> tuple[dict[str, Any], ...]:
-        if business_id is not None and business_id not in {"physical-agency", "physical-brand", "digital-products"}:
-            raise ValueError("unknown commercial business unit")
+        if business_id is not None:
+            _assert_operational_commercial_scope(self._connection, self._lock, business_id)
         sql = "SELECT * FROM commercial_orders"
         values: tuple[Any, ...] = ()
         if business_id is not None:
@@ -1410,6 +1417,13 @@ class SQLiteStore:
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
+                supplier = self._connection.execute(
+                    "SELECT business_id FROM commercial_suppliers WHERE id=?", (supplier_id,)
+                ).fetchone()
+                if supplier is None:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                _assert_operational_commercial_scope(self._connection, self._lock, supplier["business_id"])
                 cursor = self._connection.execute(
                     "UPDATE commercial_suppliers SET verification_status=?,updated_at=? WHERE id=? AND verification_status!='blocked'",
                     (status, datetime.now(timezone.utc).isoformat(), supplier_id),
