@@ -156,15 +156,37 @@ class WorkItemPersistenceMixin:
                     self._connection.execute("ROLLBACK")
                 raise
 
-    def save_deliverable_with_audit(self, deliverable: Any, record: AuditRecord) -> bool:
-        """Persist a draft, move its task to review, and audit atomically."""
+    def save_deliverable_with_audit(
+        self, deliverable: Any, record: AuditRecord, *, expected_agent_id: UUID | None = None
+    ) -> bool:
+        """Persist a draft, move its task to review, and audit atomically.
+
+        Worker writes are fenced against reassignment or agent deactivation in
+        the same transaction as the deliverable and task update.
+        """
         if not deliverable.review_required:
             raise ValueError("worker deliverables must require review")
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
-                item = self._connection.execute("SELECT state FROM work_items WHERE id=?", (str(deliverable.work_item_id),)).fetchone()
-                if item is None or item["state"] != TaskState.IN_PROGRESS.value:
+                if expected_agent_id is None:
+                    item = self._connection.execute(
+                        "SELECT state FROM work_items WHERE id=?", (str(deliverable.work_item_id),)
+                    ).fetchone()
+                    authorized = item is not None and item["state"] == TaskState.IN_PROGRESS.value
+                else:
+                    item = self._connection.execute(
+                        """SELECT w.state,w.assigned_agent_id,a.state AS agent_state
+                           FROM work_items w LEFT JOIN agent_profiles a ON a.id=w.assigned_agent_id
+                           WHERE w.id=?""", (str(deliverable.work_item_id),)
+                    ).fetchone()
+                    authorized = (
+                        item is not None
+                        and item["state"] == TaskState.IN_PROGRESS.value
+                        and item["assigned_agent_id"] == str(expected_agent_id)
+                        and item["agent_state"] == "active"
+                    )
+                if not authorized:
                     self._connection.execute("ROLLBACK")
                     return False
                 values = (str(deliverable.work_item_id), deliverable.role_key, deliverable.content, deliverable.provider, deliverable.model, float(deliverable.cost_usd), deliverable.created_at.isoformat(), 1)
