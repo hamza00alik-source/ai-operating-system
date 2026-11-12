@@ -1568,14 +1568,16 @@ def list_work_items(
 
 @app.post("/work-items", dependencies=[Depends(require_owner_key)])
 def create_work_item(
-    payload: WorkItemCreateInput, store: SQLiteStore = Depends(get_store)
+    payload: WorkItemCreateInput,
+    store: SQLiteStore = Depends(get_store),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
 ) -> dict:
     try:
         default_organization().get(payload.department)
     except LookupError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
-        _assert_operational_business_unit(_default_runtime(), payload.business_id)
+        _assert_operational_business_unit(runtime, payload.business_id)
     except BusinessUnitProvisioningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload.business_id not in BUSINESS_UNIT_IDS:
