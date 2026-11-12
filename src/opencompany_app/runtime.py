@@ -165,7 +165,16 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     business_memory = BusinessMemoryStore(store._connection, store._lock)
     business_assets = BusinessAssetRegistry(store._connection, store._lock)
     asset_storage_path = os.environ.get("OPENCOMPANY_ASSET_STORAGE_PATH", "").strip()
-    asset_storage = PrivateFilesystemAssetStorage(asset_storage_path) if asset_storage_path else None
+    asset_storage = None
+    if asset_storage_path:
+        durable_confirmed = os.environ.get("OPENCOMPANY_ASSET_STORAGE_DURABLE", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        storage_path = Path(asset_storage_path).expanduser()
+        data_mount = Path("/data")
+        if not durable_confirmed or not storage_path.is_absolute() or not storage_path.is_relative_to(data_mount):
+            raise RuntimeError("asset storage requires an absolute path under /data and OPENCOMPANY_ASSET_STORAGE_DURABLE=true")
+        if not data_mount.is_mount():
+            raise RuntimeError("asset storage is disabled because /data is not verified as a mounted persistent volume")
+        asset_storage = PrivateFilesystemAssetStorage(storage_path)
     usage = ModelUsageRepository(store._connection, store._lock)
     secret_vault_errors: dict[str, str] = {}
     try:
