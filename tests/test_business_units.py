@@ -3,6 +3,8 @@ import pytest
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.venture_portfolio import VenturePortfolio
 from opencompany_core.business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
+from opencompany_core.worker_queue import DurableWorkerQueue, QueueError
+from uuid import uuid4
 
 
 def setup():
@@ -128,4 +130,29 @@ def test_only_foundational_or_active_units_can_resolve_operational_scopes():
         with pytest.raises(BusinessUnitProvisioningError, match="unknown business unit"):
             registry.require_operational("not-registered")
     finally:
+        store.close()
+
+
+
+def test_worker_queue_rejects_provisioning_unit_even_through_low_level_enqueue():
+    store, portfolio, registry = setup()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    try:
+        opportunity = approved_opportunity(portfolio)
+        unit = provision(registry, portfolio, opportunity)
+        work_id, agent_id = uuid4(), uuid4()
+        store._connection.execute(
+            """INSERT INTO work_items
+               (id,title,objective,department,business_id,state,assigned_agent_id,
+                dependencies_json,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?)""",
+            (str(work_id), "Blocked task", "Must not enter queue",
+             "intelligence-research", unit["business_id"], "ready",
+             str(agent_id), "[]", "2026-01-01T00:00:00+00:00"),
+        )
+        with pytest.raises(QueueError, match="not operational"):
+            queue.enqueue(work_id, agent_id, {"operation": "blocked"})
+        assert queue.get_entry(work_id) is None
+    finally:
+        queue.close()
         store.close()
