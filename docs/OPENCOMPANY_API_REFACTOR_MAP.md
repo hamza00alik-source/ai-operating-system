@@ -1,6 +1,6 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, read-only catalogue-router extraction, health/readiness-router extraction, and complete UnoRouter provider-router extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue and system router extractions, complete UnoRouter provider-router extraction, and GitHub integration/code-evolution router extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
@@ -8,8 +8,8 @@ Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unifi
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 81 direct route decorators in `api.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). All three routers are included at their original positions so registration order relative to the remaining API routes is preserved.
-- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py` and `system.py`, in addition to the composition, dashboard and runtime modules.
+- The API now has 74 direct route decorators in `api.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). The two GitHub routers and the existing routers are included at their original route-group positions.
+- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py` and `github_evolution.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
@@ -40,13 +40,13 @@ Keep `api.py` as a thin composition root that creates the FastAPI app and includ
 | `routers/system.py` | Health/readiness probes |
 | `routers/catalogue.py` | Workforce roles/route preview, departments and media capabilities (extracted) |
 | `routers/providers.py` | All UnoRouter settings, discovery, free-model catalogue, save/remove, and asynchronous zero-dollar inference-test routes |
-| `routers/integrations.py` | GitHub evolution settings and API-Anything read-only integration routes |
+| `routers/github_evolution.py` | Owner-controlled GitHub settings/access verification and draft-only code-evolution proposal/status routes (extracted) |
 | `routers/agents.py` | Agent listing/state and bootstrap endpoints |
 | `routers/commercial.py` | Suppliers, opportunities, products, quotes and orders |
 | `routers/work.py` | Work-item CRUD/admission, worker queue/fleet, state transitions, review and deliverables |
 | `routers/orchestration.py` | Delegation previews/proposals, manager/executive planning, workflow views and handoffs |
 | `routers/learning.py` | Outcome evaluations, learning proposals/decisions and approved learning notes |
-| `routers/evolution.py` | Code-evolution proposals and pull-request status |
+| `routers/evolution.py` | Reserved for future evolution capabilities not already owned by `routers/github_evolution.py` |
 | `routers/portfolio.py` | Venture opportunity lifecycle and event history |
 | `routers/usage_audit.py` | Model usage and audit verification |
 
@@ -81,11 +81,12 @@ Static verification after the write fetched the file back from GitHub, confirmed
 3. [x] Extract all 36 request schemas into `api_schemas.py` without changing their definitions or validation rules.
 4. [x] Extract the cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency into `api_dependencies.py`.
 5. [x] Extract the four read-only catalogue endpoints into `routers/catalogue.py` with identical handler bodies and preserved registration position.
-6. Extract the next cohesive router group one at a time; preserve endpoint names, methods, response shapes, dependency declarations, and registration order.
-7. Keep app startup/shutdown hooks and runtime ownership in the composition layer unless a dedicated lifecycle module can be introduced without changing startup semantics.
-8. Continue including routers at their original registration positions; document deterministic composition order.
-9. After the test deferral ends on 2026-12-01, run focused route/auth tests, inspect generated OpenAPI for duplicate operations, then run the OpenCompany test suite. Do not claim the refactor is verified before those checks.
-10. Only after review and explicit owner approval consider merge, deployment, or production routing changes.
+6. [x] Extract the GitHub settings/access and code-evolution route groups into `routers/github_evolution.py`; preserve endpoint names, methods, response shapes, dependency declarations, and registration positions.
+7. Continue extracting the next cohesive router group one at a time; preserve endpoint names, methods, response shapes, dependency declarations, and registration order.
+8. Keep app startup/shutdown hooks and runtime ownership in the composition layer unless a dedicated lifecycle module can be introduced without changing startup semantics.
+9. Continue including routers at their original registration positions; document deterministic composition order.
+10. After the test deferral ends on 2026-12-01, run focused route/auth tests, inspect generated OpenAPI for duplicate operations, then run the OpenCompany test suite. Do not claim the refactor is verified before those checks.
+11. Only after review and explicit owner approval consider merge, deployment, or production routing changes.
 
 ## Non-goals and safety boundaries
 
@@ -120,3 +121,17 @@ The remaining four UnoRouter endpoints and their shared background-job state wer
 The module now owns the in-memory job dictionary, lock and retention bound. The API startup hook imports `_worker_autostart_enabled` from the router so the existing startup decision uses the same helper. The original endpoint bodies and job lifecycle were moved without intended behavioral changes; explicit owner confirmation, free-only model checks, no paid fallback, worker-busy conflict responses, and encrypted vault usage remain in place. No inference test was invoked and no credentials were changed.
 
 Static re-fetch verification found 81 direct API decorators, eight provider routes, four catalogue routes and two system routes (95 total). No duplicate HTTP-method/path pairs were found. All eight provider endpoints retain explicit owner authentication. The API no longer contains the provider test job state or provider mutation handlers. These checks do not prove import or runtime correctness.
+
+
+## GitHub integration and code-evolution router extraction
+
+Seven owner-authenticated endpoints now live in `src/opencompany_app/routers/github_evolution.py`, split into two routers so each group remains included at its original registration position:
+
+- `settings_router` — `GET /settings/integrations/github-evolution`, `PUT /settings/integrations/github-evolution`, `POST /settings/integrations/github-evolution/test`, and `DELETE /settings/integrations/github-evolution`
+- `evolution_router` — `GET /code-evolution/config-status`, `POST /code-evolution/proposals`, and `GET /code-evolution/pull-requests/{number}`
+
+The module owns the route-specific imports for the GitHub client errors, code-evolution generator, request schemas, encrypted secret-vault operations, persistence audit record, and runtime/store dependencies. The original seven route-handler blocks were compared against the immediately preceding API source after normalizing only the decorator target; all seven comparisons matched exactly.
+
+Safety boundaries remain unchanged: all seven routes explicitly require owner authentication; saving requires explicit confirmation that GitHub access is for draft PR creation only; credentials remain in the encrypted secret vault and are never echoed; proposal generation still requires both the owner-triggered zero-cost provider test and read-only GitHub access verification; and the code-evolution client creates draft pull requests only. The API response continues to report `draft: true`, `merged: false`, `deployed: false`, and owner review required. No GitHub token was changed, no access test was invoked, and no PR was created.
+
+Static re-fetch verification found 74 direct API decorators, seven GitHub routes, eight provider routes, four catalogue routes and two system routes (95 total). No duplicate HTTP-method/path pairs were found across these route-bearing modules, and every GitHub route retains its explicit owner-auth dependency. This is static source verification only; no imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed.
