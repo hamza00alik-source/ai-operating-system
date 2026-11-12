@@ -652,6 +652,7 @@ class SQLiteStore:
                 ).fetchone()
                 if quote is None or quote["status"] != "accepted":
                     raise ValueError("an order requires a quote with recorded customer acceptance")
+                _assert_operational_commercial_scope(self._connection, self._lock, quote["business_id"])
                 existing_order = self._connection.execute(
                     "SELECT id FROM commercial_orders WHERE quote_id=?", (quote_id,)
                 ).fetchone()
