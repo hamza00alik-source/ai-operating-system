@@ -86,8 +86,8 @@ def enqueue_work_item(
     item = runtime.store.get_work_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found.")
-    if item.state != TaskState.READY or item.assigned_agent_id is None:
-        raise HTTPException(status_code=409, detail="Only READY tasks with an explicit assignee can be queued.")
+    if item.state != TaskState.READY:
+        raise HTTPException(status_code=409, detail="Only READY tasks can be queued.")
     # Enforce dependency gates at the durable queue boundary, not only at
     # lifecycle transitions. Delegated manager-synthesis tasks are READY while
     # their children are running, so state alone is not sufficient authority.
@@ -101,6 +101,8 @@ def enqueue_work_item(
             raise HTTPException(status_code=409, detail="All prerequisites must be completed and owner-approved before queue admission.")
         if not runtime.store.list_deliverables(dependency_id):
             raise HTTPException(status_code=409, detail="Every completed prerequisite must have a saved deliverable before queue admission.")
+    if item.assigned_agent_id is None:
+        raise HTTPException(status_code=409, detail="An explicit assignee is required before queue admission.")
     agent = runtime.store.get_agent(item.assigned_agent_id)
     if agent is None or agent.state != AgentState.ACTIVE or agent.department != item.department:
         raise HTTPException(status_code=409, detail="Assigned agent must be active in the task department.")
