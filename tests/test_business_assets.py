@@ -176,3 +176,22 @@ def test_infected_asset_scan_is_quarantined_and_hash_mismatch_rejected(tmp_path)
     assert result["download_enabled"] is False
     assert assets.list("physical-agency")[0]["status"]=="quarantined"
     store.close()
+
+
+def test_asset_registry_rejects_unregistered_or_inactive_business_units(tmp_path):
+    store=SQLiteStore(tmp_path/"asset-business-unit-validation.sqlite3")
+    units=BusinessUnitRegistry(store._connection,store._lock)
+    assets=BusinessAssetRegistry(store._connection,store._lock)
+    with pytest.raises(ValueError,match="not found or inactive"):
+        declare(assets,business_id="made-up-business")
+    with store._lock:
+        store._connection.execute(
+            "UPDATE opencompany_business_units SET status='inactive' WHERE business_id='physical-brand'"
+        )
+        store._connection.commit()
+    with pytest.raises(ValueError,match="not found or inactive"):
+        declare(assets,business_id="physical-brand")
+    with pytest.raises(ValueError,match="not found or inactive"):
+        assets.list("physical-brand")
+    assert units.require_active("physical-agency")["status"] == "active"
+    store.close()
