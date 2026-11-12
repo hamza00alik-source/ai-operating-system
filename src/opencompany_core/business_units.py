@@ -502,11 +502,10 @@ class BusinessUnitRegistry:
             for fk in integration_fks.get("opencompany_business_integrations", [])
         )
         integration_credential_pair = any(
-            fk["table"] == "opencompany_business_credentials"
+            fk["table"] == "opencompany_business_units"
             and {(x["from"], x["to"]) for x in integration_fks.get("opencompany_business_integrations", [])
                  if x["id"] == fk["id"]} == {
-                     ("business_id", "business_id"), ("credential_scope_id", "credential_scope_id"),
-                     ("credential_key", "credential_key")
+                     ("business_id", "business_id"), ("credential_scope_id", "credential_scope_id")
                  }
             for fk in integration_fks.get("opencompany_business_integrations", [])
         )
