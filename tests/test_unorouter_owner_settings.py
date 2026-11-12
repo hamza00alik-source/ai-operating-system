@@ -350,6 +350,7 @@ def test_manual_worker_start_requires_live_provider_verification(monkeypatch, tm
     starts = []
     runtime.gateway.eligible_providers = lambda request_budget_usd=0.0: ("unorouter",)
     runtime.fleet.start = lambda: starts.append(True) or True
+    runtime.fleet.status = lambda: type("Status", (), {"running": bool(starts)})()
     api.app.dependency_overrides[api.get_runtime] = lambda: runtime
     client = TestClient(api.app)
     headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
