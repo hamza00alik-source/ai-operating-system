@@ -89,16 +89,19 @@ def test_owner_dashboard_is_served():
     assert "Queue scan" in response.text
 
 
-def test_discovery_scan_queue_and_read_endpoints():
+def test_discovery_scan_queue_and_read_endpoints(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    headers = {"X-API-Key": "test-owner-key"}
     with TestClient(app) as client:
-        response = client.post("/discovery/scans", json={"categories": ["agent-frameworks"]})
+        response = client.post("/discovery/scans", headers=headers, json={"categories": ["agent-frameworks"]})
         assert response.status_code == 202
         scan = response.json()
         assert scan["status"] == "queued"
-        scans = client.get("/discovery/scans")
+        scans = client.get("/discovery/scans", headers=headers)
         assert scans.status_code == 200
         assert any(item["id"] == scan["id"] for item in scans.json())
-        candidates = client.get("/discovery/candidates")
+        candidates = client.get("/discovery/candidates", headers=headers)
         assert candidates.status_code == 200
 
 
@@ -153,9 +156,15 @@ def test_free_api_catalog_sync_is_owner_controlled(monkeypatch):
     assert response.json()["imported"] == 79
 
 
-def test_discovery_scan_rejects_empty_categories():
+def test_discovery_scan_rejects_empty_categories(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
     with TestClient(app) as client:
-        response = client.post("/discovery/scans", json={"categories": []})
+        response = client.post(
+            "/discovery/scans",
+            headers={"X-API-Key": "test-owner-key"},
+            json={"categories": []},
+        )
     assert response.status_code == 422
 
 
