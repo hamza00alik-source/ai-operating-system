@@ -39,6 +39,15 @@ the owner login key. If it is lost or rotated, provider credentials already
 stored in SQLite cannot be decrypted and must be entered again. The database
 backup and encryption key should be stored separately with restricted access.
 
+## Private business asset storage (optional)
+
+Business asset uploads are disabled unless a separate persistent volume is mounted at `/data`. After verifying that the mount survives a service redeploy, configure:
+
+- `OPENCOMPANY_ASSET_STORAGE_PATH=/data/opencompany-assets`
+- `OPENCOMPANY_ASSET_STORAGE_DURABLE=true`
+
+The application refuses to enable uploads unless `/data` is an actual mount point, the configured path is absolute and contained below `/data`, and the durable-storage confirmation is set. This mount-point check does not replace a backup/restore or redeploy-persistence rehearsal. Asset bytes remain private and unavailable; this setting does not enable malware scanning or downloads.
+
 ## Optional integrations and worker controls
 
 - UnoRouter can be configured through the owner dashboard: enter the API key,
