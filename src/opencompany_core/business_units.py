@@ -314,6 +314,31 @@ class BusinessUnitRegistry:
                     "'opencompany_business_units_finance_scope_no_update')"
                 ).fetchall()
             }
+            credential_tables = {
+                row["name"]: row["sql"] or ""
+                for row in self._db.execute(
+                    "SELECT name,sql FROM sqlite_master WHERE type='table' "
+                    "AND name IN ('opencompany_business_credentials','opencompany_business_credential_events')"
+                ).fetchall()
+            }
+            credential_columns = {
+                name: {row["name"] for row in self._db.execute(
+                    f'PRAGMA table_info("{name}")'
+                ).fetchall()}
+                for name in credential_tables
+            }
+            credential_fks = {
+                name: self._db.execute(f'PRAGMA foreign_key_list("{name}")').fetchall()
+                for name in credential_tables
+            }
+            credential_triggers = {
+                row["name"] for row in self._db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' "
+                    "AND name IN ('opencompany_business_credential_events_no_update',"
+                    "'opencompany_business_credential_events_no_delete',"
+                    "'opencompany_business_units_credential_scope_no_update')"
+                ).fetchall()
+            }
 
         constrained = sorted(
             name for name, sql in tables.items()
@@ -396,8 +421,51 @@ class BusinessUnitRegistry:
         if not finance_ready:
             blockers.append("finance_ledger_scope")
 
+        credential_pair = any(
+            fk["table"] == "opencompany_business_units"
+            and {(x["from"], x["to"]) for x in credential_fks.get("opencompany_business_credentials", [])
+                 if x["id"] == fk["id"]} == {
+                     ("business_id", "business_id"), ("credential_scope_id", "credential_scope_id")
+                 }
+            for fk in credential_fks.get("opencompany_business_credentials", [])
+        )
+        credential_events_pair = any(
+            fk["table"] == "opencompany_business_units"
+            and {(x["from"], x["to"]) for x in credential_fks.get("opencompany_business_credential_events", [])
+                 if x["id"] == fk["id"]} == {
+                     ("business_id", "business_id"), ("credential_scope_id", "credential_scope_id")
+                 }
+            for fk in credential_fks.get("opencompany_business_credential_events", [])
+        )
+        credential_history_ready = {
+            "opencompany_business_credential_events_no_update",
+            "opencompany_business_credential_events_no_delete",
+            "opencompany_business_units_credential_scope_no_update",
+        }.issubset(credential_triggers)
+        credential_ready = (
+            {"opencompany_business_credentials", "opencompany_business_credential_events"}
+                .issubset(credential_tables)
+            and {"business_id", "credential_scope_id", "credential_key", "nonce", "ciphertext", "revision"}
+                .issubset(credential_columns.get("opencompany_business_credentials", set()))
+            and {"business_id", "credential_scope_id", "credential_key", "action", "revision"}
+                .issubset(credential_columns.get("opencompany_business_credential_events", set()))
+            and credential_pair and credential_events_pair and credential_history_ready
+        )
+        checks.append({
+            "key": "credential_scope_adapter",
+            "ready": credential_ready,
+            "evidence": (
+                "Encrypted business-specific credentials are stored under composite business/credential scopes; "
+                "change history is append-only and the registry credential scope is immutable."
+                if credential_ready else
+                "Credential isolation requires encrypted credential storage, scoped foreign keys, "
+                "append-only change history, and an immutable registry scope."
+            ),
+        })
+        if not credential_ready:
+            blockers.append("credential_scope_adapter")
+
         for key, label in (
-            ("credential_scope_id", "credential_scope_adapter"),
             ("integration_scope_id", "integration_scope_adapter"),
             ("memory_scope_id", "memory_scope_adapter"),
             ("asset_scope_id", "asset_scope_adapter"),
