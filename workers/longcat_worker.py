@@ -6,6 +6,7 @@ same public pipeline classes directly and passes the approved job prompt.
 """
 import json
 import os
+import sys
 import time
 import uuid
 import threading
@@ -16,7 +17,9 @@ from pathlib import Path
 API = os.environ["OPENCOMPANY_API_URL"].rstrip("/")
 WORKER_TOKEN = os.environ["VIDEO_WORKER_TOKEN"]
 WORKER_ID = os.getenv("VIDEO_WORKER_ID", f"longcat-{os.uname().nodename}")
-CHECKPOINT = Path(os.environ["LONGCAT_CHECKPOINT_DIR"])
+LONGCAT_REPO = Path(os.environ["LONGCAT_REPO_DIR"]).resolve()
+sys.path.insert(0, str(LONGCAT_REPO))
+CHECKPOINT = Path(os.environ["LONGCAT_CHECKPOINT_DIR"]).resolve()
 OUTPUT_DIR = Path(os.getenv("LONGCAT_OUTPUT_DIR", "./outputs"))
 POLL_SECONDS = int(os.getenv("VIDEO_WORKER_POLL_SECONDS", "5"))
 LEASE_SECONDS = int(os.getenv("VIDEO_JOB_LEASE_SECONDS", "180"))
@@ -71,6 +74,7 @@ def load_pipeline():
         raise RuntimeError("LongCat worker requires a CUDA GPU; no CPU fallback is attempted.")
     if not CHECKPOINT.is_dir():
         raise RuntimeError(f"LongCat checkpoint directory not found: {CHECKPOINT}")
+    torch.cuda.set_device(int(os.getenv("LOCAL_RANK", "0")))
     import torch.distributed as dist
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
@@ -117,14 +121,14 @@ def generate_one(pipe, torch, job):
     width = int(params.get("width", 832))
     height = int(params.get("height", 480))
     frames = int(params.get("num_frames", 49))
-    steps = int(params.get("num_inference_steps", 16))
+    steps = int(params.get("num_inference_steps", 50))
     fps = int(params.get("fps", 15))
     guidance = float(params.get("guidance_scale", 4.0))
     if width not in (640, 832) or height not in (384, 480):
         raise ValueError("This worker supports only approved 640/832 by 384/480 output sizes.")
     if not 17 <= frames <= 129 or frames % 4 != 1:
         raise ValueError("num_frames must be 17–129 and congruent to 1 modulo 4.")
-    if not 8 <= steps <= 60 or not 8 <= fps <= 30 or not 1 <= guidance <= 8:
+    if not 20 <= steps <= 60 or not 8 <= fps <= 30 or not 1 <= guidance <= 8:
         raise ValueError("Inference steps, FPS, or guidance scale is outside the safe range.")
     generator = torch.Generator(device="cuda").manual_seed(int(params.get("seed", 42)))
     output = pipe.generate_t2v(
