@@ -53,6 +53,7 @@ from opencompany_core.api_anything import ApiAnythingError
 from opencompany_core.venture_portfolio import VenturePortfolio, VenturePortfolioError
 from opencompany_core.business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
 from opencompany_core.asset_storage import AssetStorageError
+from opencompany_core.asset_scanning import AssetScanError
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -3619,6 +3620,58 @@ async def upload_business_asset_content(
         "malware_scan_completed": False,
         "download_enabled": False,
         "message": "Bytes are stored privately and remain unavailable until scanning and retrieval authorization are implemented.",
+    }
+
+
+@app.post("/business-units/{business_id}/assets/{asset_id}/scan", dependencies=[Depends(require_owner_key)])
+def scan_business_asset(
+    business_id: str,
+    asset_id: UUID,
+    x_confirm_owner_scan: bool = Header(default=False, alias="X-Confirm-Owner-Scan"),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Run the configured local malware scanner; a clean result still cannot be downloaded."""
+    if x_confirm_owner_scan is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to scan this asset.")
+    if runtime.asset_storage is None or runtime.asset_scanner is None:
+        raise HTTPException(status_code=503, detail="Private storage and a local ClamAV scanner must both be configured.")
+    try:
+        declaration = runtime.business_assets.scan_declaration(business_id, str(asset_id))
+        scanned = runtime.asset_scanner.scan(runtime.asset_storage.read_chunks(
+            business_id=business_id,
+            asset_scope_id=declaration["asset_scope_id"],
+            asset_id=str(asset_id),
+        ))
+        result = runtime.business_assets.record_scan_result(
+            business_id, str(asset_id),
+            scanner_key=scanned["scanner_key"],
+            status=scanned["status"],
+            checksum_sha256=scanned["checksum_sha256"],
+            byte_size=scanned["byte_size"],
+            verdict=scanned["verdict"],
+            audit=AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="system", actor_id="clamav-unix-socket",
+                action="business.asset_scanned", subject_type="business_asset",
+                subject_id=f"{business_id}:{asset_id}", outcome=f"scan_{scanned['status']}",
+                correlation_id=str(uuid4()),
+                details={"business_id": business_id, "asset_id": str(asset_id),
+                         "scanner_key": scanned["scanner_key"]},
+            ),
+        )
+    except AssetScanError as exc:
+        raise HTTPException(status_code=503, detail=f"Malware scan did not complete safely ({exc.code}).") from exc
+    except AssetStorageError as exc:
+        raise HTTPException(status_code=503, detail="Private asset bytes could not be read safely for scanning.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+    return {
+        "asset": result,
+        "malware_scan_completed": True,
+        "scan_status": scanned["status"],
+        "download_enabled": False,
+        "delivery_approved": False,
+        "message": "A clean scan does not authorize retrieval, publishing, or delivery.",
     }
 
 
