@@ -2123,11 +2123,55 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
         assert reviewed.json()["state"] == "completed"
 
     runtime = app.dependency_overrides[get_runtime]()
+    fresh_agents = {
+        agent["id"]: agent
+        for agent in owner_client.get("/agents", headers=headers).json()["agents"]
+    }
+    manager = fresh_agents[manager["id"]]
+    paused = owner_client.post(
+        f"/agents/{manager['id']}/state", headers=headers,
+        json={"target_state": "paused", "expected_revision": manager["revision"]},
+    )
+    assert paused.status_code == 200
     monkeypatch.setattr(
         runtime.gateway, "eligible_providers",
         lambda **kwargs: [object()],
     )
+    inactive_manager = owner_client.post("/workflows/reconcile", headers=headers)
+    assert inactive_manager.status_code == 200
+    assert inactive_manager.json()["queued_work_item_ids"] == []
+    assert any(
+        value["work_item_id"] == str(parent_id)
+        and value["reason"] == "manager_not_active"
+        for value in inactive_manager.json()["skipped"]
+    )
 
+    fresh_agents = {
+        agent["id"]: agent
+        for agent in owner_client.get("/agents", headers=headers).json()["agents"]
+    }
+    manager = fresh_agents[manager["id"]]
+    reactivated = owner_client.post(
+        f"/agents/{manager['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": manager["revision"]},
+    )
+    assert reactivated.status_code == 200
+
+    monkeypatch.setattr(runtime.gateway, "eligible_providers", lambda **kwargs: [])
+    no_free_provider = owner_client.post("/workflows/reconcile", headers=headers)
+    assert no_free_provider.status_code == 200
+    assert no_free_provider.json()["queued_work_item_ids"] == []
+    assert any(
+        value["work_item_id"] == str(parent_id)
+        and value["reason"] == "no_zero_cost_provider_available"
+        for value in no_free_provider.json()["skipped"]
+    )
+    assert runtime.queue.get_entry(parent_id) is None
+
+    monkeypatch.setattr(
+        runtime.gateway, "eligible_providers",
+        lambda **kwargs: [object()],
+    )
     recovered = owner_client.post("/workflows/reconcile", headers=headers)
     assert recovered.status_code == 200
     payload = recovered.json()
