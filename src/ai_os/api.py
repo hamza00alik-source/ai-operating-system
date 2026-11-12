@@ -27,6 +27,7 @@ from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
 from ai_os import business_ops
 from ai_os import social_media
+from ai_os import video_jobs
 from pydantic import BaseModel, Field
 
 
@@ -837,3 +838,74 @@ def decide_social_content(content_id: str, payload: SocialDecisionRequest):
         raise HTTPException(status_code=404, detail="Linked approval request not found.")
     updated = social_media.set_decision(content_id, payload.decision)
     return {"content": updated, "approval": approval, "publishing_performed": False}
+
+
+# Provider-neutral video queue. Approval only queues work; it never starts a
+# provider, allocates compute, incurs cost, or publishes generated media.
+class VideoJobCreate(BaseModel):
+    prompt: str = Field(min_length=1, max_length=8000)
+    provider: str = Field(default="longcat-video", min_length=1, max_length=80)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    parameters: dict = Field(default_factory=dict)
+    estimated_cost_minor: int = Field(ge=0)
+    approved_budget_minor: int = Field(ge=0)
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    cost_basis: str = Field(min_length=1, max_length=300)
+
+
+class VideoJobDecision(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+    approval_note: str = Field(default="", max_length=1000)
+
+
+@app.get("/video/status", dependencies=[Depends(require_api_key)])
+def get_video_status():
+    video_jobs.initialize()
+    return {
+        "queue": "sqlite-durable",
+        "provider_adapter_configured": False,
+        "worker_connected": False,
+        "generation_enabled": False,
+        "publishing_enabled": False,
+        "note": "Approved jobs can be queued, but no worker/provider is connected in this release.",
+    }
+
+
+@app.post("/video/jobs", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_video_job(payload: VideoJobCreate):
+    try:
+        return video_jobs.create_job(
+            prompt=payload.prompt, provider=payload.provider,
+            idempotency_key=payload.idempotency_key, parameters=payload.parameters,
+            estimated_cost_minor=payload.estimated_cost_minor,
+            approved_budget_minor=payload.approved_budget_minor,
+            currency=payload.currency, cost_basis=payload.cost_basis,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/video/jobs", dependencies=[Depends(require_api_key)])
+def get_video_jobs(status: str | None = Query(default=None, pattern="^(awaiting_approval|queued|running|succeeded|failed|rejected|cancelled)$")):
+    return video_jobs.list_jobs(status)
+
+
+@app.get("/video/jobs/{job_id}", dependencies=[Depends(require_api_key)])
+def get_video_job(job_id: str):
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    return item
+
+
+@app.post("/video/jobs/{job_id}/decision", dependencies=[Depends(require_owner_key)])
+def decide_video_job(job_id: str, payload: VideoJobDecision):
+    try:
+        item = video_jobs.decide_job(
+            job_id, payload.decision, approval_note=payload.approval_note
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    return {"job": item, "generation_started": False, "publishing_performed": False}
