@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 9
+_SCHEMA_VERSION = 10
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -396,6 +396,81 @@ def _migrate_v8_customer_scopes(connection: sqlite3.Connection) -> None:
         raise RuntimeError("customer-scope migration failed post-commit foreign-key validation")
 
 
+
+def _migrate_v9_finance_ledger(connection: sqlite3.Connection) -> None:
+    """Create the OpenCompany-native, business-scoped append-only finance ledger."""
+    if connection.in_transaction:
+        raise RuntimeError("finance-ledger migration cannot run inside an existing transaction")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_finance_scope "
+        "ON opencompany_business_units(business_id,finance_scope_id)"
+    )
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute("""
+            CREATE TABLE opencompany_finance_entries (
+                id TEXT PRIMARY KEY,
+                business_id TEXT NOT NULL,
+                finance_scope_id TEXT NOT NULL,
+                entry_type TEXT NOT NULL CHECK(entry_type IN ('revenue','expense','refund','adjustment')),
+                amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+                currency TEXT NOT NULL CHECK(length(currency)=3 AND currency=upper(currency)),
+                description TEXT NOT NULL CHECK(length(trim(description)) BETWEEN 1 AND 2000),
+                source_reference TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(id,business_id,finance_scope_id),
+                FOREIGN KEY(business_id,finance_scope_id)
+                    REFERENCES opencompany_business_units(business_id,finance_scope_id)
+            )
+        """)
+        connection.execute("""
+            CREATE INDEX idx_opencompany_finance_entries_scope
+            ON opencompany_finance_entries(business_id,created_at,id)
+        """)
+        connection.execute("""
+            CREATE TABLE opencompany_finance_entry_events (
+                event_id TEXT PRIMARY KEY,
+                entry_id TEXT NOT NULL,
+                business_id TEXT NOT NULL,
+                finance_scope_id TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('recorded','owner_verified','owner_rejected','owner_approved')),
+                actor_type TEXT NOT NULL CHECK(actor_type IN ('system','owner')),
+                actor_id TEXT,
+                rationale TEXT NOT NULL DEFAULT '',
+                occurred_at TEXT NOT NULL,
+                FOREIGN KEY(business_id,finance_scope_id)
+                    REFERENCES opencompany_business_units(business_id,finance_scope_id),
+                FOREIGN KEY(entry_id,business_id,finance_scope_id)
+                    REFERENCES opencompany_finance_entries(id,business_id,finance_scope_id)
+            )
+        """)
+        connection.execute("""
+            CREATE INDEX idx_opencompany_finance_events_entry
+            ON opencompany_finance_entry_events(entry_id,occurred_at,event_id)
+        """)
+        for table in ("opencompany_finance_entries", "opencompany_finance_entry_events"):
+            connection.execute(f"""
+                CREATE TRIGGER {table}_no_update
+                BEFORE UPDATE ON {table}
+                BEGIN SELECT RAISE(ABORT, 'finance ledger records are append-only'); END
+            """)
+            connection.execute(f"""
+                CREATE TRIGGER {table}_no_delete
+                BEFORE DELETE ON {table}
+                BEGIN SELECT RAISE(ABORT, 'finance ledger records are append-only'); END
+            """)
+        if connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("finance-ledger migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version = 10")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
+        raise RuntimeError("foreign-key enforcement is disabled after finance-ledger migration")
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -657,6 +732,9 @@ class SQLiteStore:
                 version = 8
             if version == 8:
                 _migrate_v8_customer_scopes(self._connection)
+                version = 9
+            if version == 9:
+                _migrate_v9_finance_ledger(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
@@ -1079,6 +1157,111 @@ class SQLiteStore:
         sql += " ORDER BY created_at DESC,id"
         with self._lock:
             rows = self._connection.execute(sql, values).fetchall()
+        return tuple(dict(row) for row in rows)
+
+
+    def create_finance_entry(self, record: dict[str, Any], audit: AuditRecord) -> str:
+        """Record an internal financial fact; this method never moves money."""
+        business_id = record.get("business_id")
+        unit = _assert_operational_commercial_scope(self._connection, self._lock, business_id)
+        entry_type = record.get("entry_type")
+        if entry_type not in {"revenue", "expense", "refund", "adjustment"}:
+            raise ValueError("unsupported finance entry type")
+        amount_minor = record.get("amount_minor")
+        if isinstance(amount_minor, bool) or not isinstance(amount_minor, int) or amount_minor <= 0:
+            raise ValueError("amount_minor must be a positive integer in the currency's minor unit")
+        currency = record.get("currency")
+        if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
+            raise ValueError("currency must be a three-letter uppercase ISO currency code")
+        description = record.get("description")
+        if not isinstance(description, str) or not description.strip() or len(description) > 2000:
+            raise ValueError("description must contain 1-2000 characters")
+        source_reference = record.get("source_reference")
+        if source_reference is not None and (
+            not isinstance(source_reference, str) or len(source_reference) > 300
+        ):
+            raise ValueError("source_reference must be at most 300 characters")
+        entry_id = record.get("id")
+        created_at = record.get("created_at")
+        if not isinstance(entry_id, str) or not entry_id.strip() or len(entry_id) > 128:
+            raise ValueError("finance entry id is required")
+        if not isinstance(created_at, str) or not created_at.strip() or len(created_at) > 80:
+            raise ValueError("created_at is required")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                # Re-resolve inside the transaction; callers cannot choose a finance scope.
+                current_unit = _assert_operational_commercial_scope(
+                    self._connection, self._lock, business_id
+                )
+                finance_scope_id = current_unit["finance_scope_id"]
+                self._connection.execute(
+                    """INSERT INTO opencompany_finance_entries
+                       (id,business_id,finance_scope_id,entry_type,amount_minor,currency,
+                        description,source_reference,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (entry_id, business_id, finance_scope_id, entry_type, amount_minor,
+                     currency, description.strip(), source_reference, created_at),
+                )
+                event_id = str(uuid4())
+                self._connection.execute(
+                    """INSERT INTO opencompany_finance_entry_events
+                       (event_id,entry_id,business_id,finance_scope_id,action,actor_type,
+                        actor_id,rationale,occurred_at)
+                       VALUES(?,?,?,?, 'recorded',?,?,?,?)""",
+                    (event_id, entry_id, business_id, finance_scope_id,
+                     audit.actor_type, audit.actor_id, "Internal record created; no payment or transfer was initiated.",
+                     audit.occurred_at.isoformat()),
+                )
+                previous = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                details = dict(audit.details)
+                details.update({"business_id": business_id, "finance_entry_id": entry_id,
+                                "amount_minor": amount_minor, "currency": currency})
+                audited = AuditRecord(
+                    id=audit.id, occurred_at=audit.occurred_at, actor_type=audit.actor_type,
+                    actor_id=audit.actor_id, action=audit.action, subject_type="finance_entry",
+                    subject_id=entry_id, outcome=audit.outcome, correlation_id=audit.correlation_id,
+                    details=details,
+                )
+                payload = _audit_payload(audited, previous_hash)
+                event_hash = _digest(payload)
+                self._connection.execute(
+                    """INSERT INTO audit_events
+                       (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                       VALUES(?,?,?,?,?)""",
+                    (str(audited.id), audited.occurred_at.isoformat(), _json(payload),
+                     previous_hash, event_hash),
+                )
+                self._connection.execute("COMMIT")
+                return event_hash
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
+    def list_finance_entries(
+        self, *, business_id: str | None = None, limit: int = 500
+    ) -> tuple[dict[str, Any], ...]:
+        """List only entries in the requested operational business scope."""
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        sql = """SELECT e.*, (
+                    SELECT v.action FROM opencompany_finance_entry_events v
+                    WHERE v.entry_id=e.id ORDER BY v.occurred_at DESC,v.event_id DESC LIMIT 1
+                 ) AS latest_review_action
+                 FROM opencompany_finance_entries e"""
+        values: list[Any] = []
+        if business_id is not None:
+            _assert_operational_commercial_scope(self._connection, self._lock, business_id)
+            sql += " WHERE e.business_id=?"
+            values.append(business_id)
+        sql += " ORDER BY e.created_at DESC,e.id LIMIT ?"
+        values.append(limit)
+        with self._lock:
+            rows = self._connection.execute(sql, tuple(values)).fetchall()
         return tuple(dict(row) for row in rows)
 
     def close(self) -> None:
