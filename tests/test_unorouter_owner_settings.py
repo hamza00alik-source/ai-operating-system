@@ -87,8 +87,15 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
             json={"api_key":"private-unorouter-token-123456","model":"qwen/model:free","confirm_free":True})
         assert saved.status_code == 200
         assert worker_starts == []
-        tested = client.post("/settings/providers/unorouter/test", headers=headers, json={})
+        started = client.post("/settings/providers/unorouter/test", headers=headers, json={})
+        assert started.status_code == 202
+        assert started.json()["status"] == "queued"
+        tested = client.get(
+            f"/settings/providers/unorouter/test/{started.json()['job_id']}",
+            headers=headers,
+        )
         assert tested.status_code == 200
+        assert tested.json()["status"] == "succeeded"
         assert tested.json()["cost_usd"] == 0
         assert tested.json()["paid_fallback"] is False
         assert tested.json()["worker_autostart_enabled"] is True
