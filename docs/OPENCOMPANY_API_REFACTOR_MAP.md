@@ -399,3 +399,17 @@ The shared dependency module was split into focused modules while retaining its 
 Static re-fetch checks confirm constant-time API-key comparison, session-bound CSRF enforcement for mutating requests, same-origin validation, the existing login failure throttle, the cached singleton and owner-key configuration guards remain present in the new modules. The API still imports the compatibility facade, contains zero direct route decorators, and neither new module imports `api_dependencies.py`; no direct circular dependency is visible in these source files.
 
 This is source-level verification only. The full import graph was not executed, and no imports, app startup, OpenAPI generation, tests, CI or runtime verification were performed. The existing process-local singleton remains process-local; this change does not add multi-process coordination. Test/CI deferral until 2026-12-01 remains active. No merge, deployment, credentials, sessions or production settings were changed.
+
+
+## Agent-profile persistence extraction (2026-11-12)
+
+The agent-profile repository methods were separated from the remaining SQLite store implementation:
+
+- Added `src/opencompany_core/agent_persistence.py` with `AgentPersistenceMixin`: `save_agent`, `list_agents`, `save_agent_with_audit`, `update_agent_with_audit`, `activate_all_draft_agents_with_audit`, and `get_agent`.
+- `SQLiteStore` now composes `AgentPersistenceMixin` and `CommercialPersistenceMixin`; both continue to use the same store-owned `_connection` and `_lock`.
+- The agent mixin imports the existing domain types and canonical audit/serialization helpers. The atomic agent-plus-audit transactions, revision checks, draft activation checks and audit hash-chain writes were moved with their method bodies, not rewritten.
+- `persistence.py` reduced from 872 to 699 lines. The schema initialization and migration code was outside the moved method block and was not edited; no schema migration was added.
+
+Static re-fetch verification confirms all six agent methods are defined in the new mixin and no longer directly in `persistence.py`; `SQLiteStore` inherits both persistence mixins; the commercial mixin and canonical audit/serialization utility module remain separate. This verifies source placement and shared-helper references only, not runtime transaction equivalence.
+
+No imports, app startup, OpenAPI generation, tests, CI, migrations or database operations were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
