@@ -65,6 +65,10 @@ def initialize():
             event TEXT NOT NULL, details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
         )""")
         db.execute("CREATE INDEX IF NOT EXISTS idx_video_events_job ON video_generation_events(job_id,id)")
+        db.execute("""CREATE TABLE IF NOT EXISTS video_worker_presence (
+            worker_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL,
+            capabilities_json TEXT NOT NULL DEFAULT '{}'
+        )""")
 
 
 def _event(db, job_id, event, details=None):
