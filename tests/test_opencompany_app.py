@@ -1940,7 +1940,7 @@ def test_business_asset_api_is_owner_confirmed_and_metadata_only(owner_client):
 def test_business_asset_scan_route_records_clean_verdict_but_keeps_download_disabled(owner_client, tmp_path):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     runtime = app.dependency_overrides[get_runtime]()
-    payload = b"glTF" + b"\\x02\\x00\\x00\\x00" + b"\\x18\\x00\\x00\\x00" + b"test"
+    payload = b"glTF" + b"\x02\x00\x00\x00" + b"\x18\x00\x00\x00" + b"test"
     digest = hashlib.sha256(payload).hexdigest()
     declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
         "asset_key": "scan-demo", "title": "Scan demo", "asset_type": "3d-model",
