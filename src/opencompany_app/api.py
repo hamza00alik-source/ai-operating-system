@@ -3556,7 +3556,8 @@ async def upload_business_asset_content(
     try:
         declaration = runtime.business_assets.storage_declaration(business_id, str(asset_id))
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        status_code = 409 if "already been stored" in str(exc) else 404
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
     supplied_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if supplied_type != declaration["media_type"]:
