@@ -3581,20 +3581,29 @@ async def upload_business_asset_content(
             expected_media_type=declaration["media_type"],
             chunks=request.stream(),
         )
-        result = runtime.business_assets.record_storage(
-            business_id, str(asset_id),
-            storage_key=stored["storage_key"],
-            checksum_sha256=stored["checksum_sha256"],
-            byte_size=stored["byte_size"],
-            audit=AuditRecord(
-                id=uuid4(), occurred_at=datetime.now(timezone.utc),
-                actor_type="owner", actor_id="owner", action="business.asset_bytes_stored",
-                subject_type="business_asset", subject_id=f"{business_id}:{asset_id}",
-                outcome="stored_unscanned", correlation_id=str(uuid4()),
-                details={"business_id": business_id, "asset_id": str(asset_id),
-                         "checksum_verified": True, "malware_scan_completed": False},
-            ),
-        )
+        try:
+            result = runtime.business_assets.record_storage(
+                business_id, str(asset_id),
+                storage_key=stored["storage_key"],
+                checksum_sha256=stored["checksum_sha256"],
+                byte_size=stored["byte_size"],
+                audit=AuditRecord(
+                    id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                    actor_type="owner", actor_id="owner", action="business.asset_bytes_stored",
+                    subject_type="business_asset", subject_id=f"{business_id}:{asset_id}",
+                    outcome="stored_unscanned", correlation_id=str(uuid4()),
+                    details={"business_id": business_id, "asset_id": str(asset_id),
+                             "checksum_verified": True, "malware_scan_completed": False},
+                ),
+            )
+        except Exception:
+            runtime.asset_storage.discard_uncommitted(
+                business_id=business_id,
+                asset_scope_id=declaration["asset_scope_id"],
+                asset_id=str(asset_id),
+                storage_key=stored["storage_key"],
+            )
+            raise
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except AssetStorageError as exc:
