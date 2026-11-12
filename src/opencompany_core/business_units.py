@@ -643,7 +643,17 @@ class BusinessUnitRegistry:
         blockers.append("asset_storage_adapter")
         checks.append({
             "key": "asset_storage_adapter", "ready": False,
-            "evidence": "Owner-authenticated uploads now stream into private storage and append a business-scoped stored_unscanned event only after actual size and SHA-256 verification. The configured host volume is not verified as durable at runtime; malware scanning, scan-result lifecycle, retrieval authorization, controlled downloads, and delivery approval remain absent. Stored files remain unavailable.",
+            "evidence": "Private owner-confirmed uploads verify actual size, checksum and supported file signatures, and record storage lifecycle events. Durable hosted volume verification is not proven by this readiness check; uploads remain unavailable on hosted deployments until a persistent volume is configured and verified.",
+        })
+        blockers.append("asset_scanning_adapter")
+        checks.append({
+            "key": "asset_scanning_adapter", "ready": False,
+            "evidence": "A local ClamAV Unix-socket adapter, owner-confirmed scan route and append-only business-scoped scan verdict history are implemented. A real scanner socket is not configured or health-verified here; no asset is marked clean without a definitive scanner verdict.",
+        })
+        blockers.append("asset_retrieval_adapter")
+        checks.append({
+            "key": "asset_retrieval_adapter", "ready": False,
+            "evidence": "Business-scoped retrieval authorization, controlled downloads, revocation and delivery approval are not implemented. Even a clean asset remains unavailable.",
         })
 
         blockers.append("owner_activation_approval")
