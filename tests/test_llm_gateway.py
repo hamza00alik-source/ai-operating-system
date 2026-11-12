@@ -88,6 +88,9 @@ def test_openrouter_is_blocked_unless_owner_confirms_free(monkeypatch):
 
 
 def test_llm_endpoint_blocks_unconfigured_provider(monkeypatch):
+    # This endpoint test is about provider eligibility, not deployment auth.
+    # Development mode must now be an explicit test opt-in.
+    monkeypatch.setenv("AI_OS_ENV", "development")
     clear_provider_env(monkeypatch)
     with TestClient(app) as client:
         response = client.post("/llm/test", json={"provider": "groq", "prompt": "hello"})
