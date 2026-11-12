@@ -81,7 +81,6 @@ from opencompany_app.api_dependencies import (
     get_runtime,
     get_store,
     require_owner_key,
-    work_item_audit_record as _record,
 )
 from opencompany_app.routers.catalogue import router as catalogue_router
 from opencompany_app.routers.system import router as system_router
