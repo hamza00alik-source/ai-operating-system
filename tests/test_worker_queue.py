@@ -9,9 +9,20 @@ from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskS
 from opencompany_core.delegation_records import DelegationRepository
 
 
+def _saved_core_task(store):
+    item = WorkItem(
+        id=uuid4(), title="Queue test task", objective="Internal queue test",
+        department="intelligence-research",
+    )
+    store.save_work_item(item)
+    return item.id
+
+
+
 def test_queue_claim_complete_and_duplicate_protection(tmp_path):
-    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3")
-    work, agent = uuid4(), uuid4()
+    store = SQLiteStore(tmp_path / "queue.sqlite3")
+    work, agent = _saved_core_task(store), uuid4()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
     queue.enqueue(work, agent, {"kind": "internal_draft"})
     with pytest.raises(QueueError):
         queue.enqueue(work, agent, {})
@@ -21,11 +32,13 @@ def test_queue_claim_complete_and_duplicate_protection(tmp_path):
     queue.complete(lease)
     assert queue.counts() == {"done": 1}
     queue.close()
+    store.close()
 
 
 def test_stale_lease_cannot_complete(tmp_path):
-    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3", lease_seconds=10)
-    work, agent = uuid4(), uuid4()
+    store = SQLiteStore(tmp_path / "queue.sqlite3")
+    work, agent = _saved_core_task(store), uuid4()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock, lease_seconds=10)
     queue.enqueue(work, agent, {})
     first = queue.claim(agent)
     assert first is not None
@@ -39,8 +52,9 @@ def test_stale_lease_cannot_complete(tmp_path):
 
 
 def test_retry_limit_moves_item_to_dead_letter_state(tmp_path):
-    queue = DurableWorkerQueue(tmp_path / "queue.sqlite3", max_attempts=2)
-    work, agent = uuid4(), uuid4()
+    store = SQLiteStore(tmp_path / "queue.sqlite3")
+    work, agent = _saved_core_task(store), uuid4()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock, max_attempts=2)
     queue.enqueue(work, agent, {})
     first = queue.claim(agent)
     assert first is not None
@@ -51,6 +65,7 @@ def test_retry_limit_moves_item_to_dead_letter_state(tmp_path):
     assert queue.claim(agent) is None
     assert queue.counts() == {"dead": 1}
     queue.close()
+    store.close()
 
 
 def test_payload_and_configuration_are_bounded(tmp_path):
