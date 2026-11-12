@@ -67,11 +67,14 @@ class OpenCompanyWorker:
         # by another process. A failed heartbeat fences this worker from saving.
         heartbeat_stop = Event()
         lease_lost = Event()
-        heartbeat_interval = max(0.1, min(60.0, self.queue.lease_seconds / 3))
+        cancellation_requested = Event()
+        heartbeat_interval = max(0.1, min(1.0, self.queue.lease_seconds / 3))
 
         def keep_lease_alive() -> None:
             while not heartbeat_stop.wait(heartbeat_interval):
                 try:
+                    if self.queue.is_cancel_requested(lease):
+                        cancellation_requested.set()
                     if not self.queue.renew(lease):
                         lease_lost.set()
                         return
@@ -95,6 +98,12 @@ class OpenCompanyWorker:
                     self.queue.complete(lease)
                     return "completed_review_required"
             deliverable = self._execute_lease(lease, role_key)
+            if cancellation_requested.is_set() or self.queue.is_cancel_requested(lease):
+                if self.queue.finalize_cancel(
+                    lease, self._audit(lease, "worker.execution_cancelled", {"role_key": role_key})
+                ):
+                    return "cancelled"
+                raise QueueError("worker lease was lost before cancellation could be committed")
             if lease_lost.is_set():
                 raise QueueError("worker lease was lost during execution; result was not persisted")
             # A retry of the same work/role must address the same artifact key.
@@ -123,8 +132,18 @@ class OpenCompanyWorker:
                     deliverable, audit_record, lease
                 )
                 if not saved:
-                    raise QueueError("worker lease is stale or work item is no longer in progress")
+                    if self.queue.is_cancel_requested(lease) and self.queue.finalize_cancel(
+                        lease, self._audit(lease, "worker.execution_cancelled", {"role_key": role_key})
+                    ):
+                        return "cancelled"
+                    raise QueueError("worker lease is stale, cancelled, or work item is no longer in progress")
             else:
+                if cancellation_requested.is_set() or self.queue.is_cancel_requested(lease):
+                    if self.queue.finalize_cancel(
+                        lease, self._audit(lease, "worker.execution_cancelled", {"role_key": role_key})
+                    ):
+                        return "cancelled"
+                    raise QueueError("worker lease was lost before cancellation could be committed")
                 self.artifact_sink.save(deliverable)
                 if lease_lost.is_set():
                     raise QueueError("worker lease was lost before deliverable persistence")
@@ -136,6 +155,15 @@ class OpenCompanyWorker:
                 self.queue.complete(lease)
             return "completed_review_required"
         except Exception as exc:
+            # A cancellation request takes precedence over an executor error.
+            try:
+                if cancellation_requested.is_set() or self.queue.is_cancel_requested(lease):
+                    if self.queue.finalize_cancel(
+                        lease, self._audit(lease, "worker.execution_cancelled", {"role_key": role_key})
+                    ):
+                        return "cancelled"
+            except QueueError:
+                pass
             # Do not leak exception text into persistent queue metadata.
             queue_state = None
             try:
@@ -197,6 +225,6 @@ class OpenCompanyWorker:
             id=uuid4(), occurred_at=datetime.now(timezone.utc),
             actor_type="agent", actor_id=str(lease.agent_id), action=action,
             subject_type="work_item", subject_id=str(lease.work_item_id),
-            outcome="recorded" if action.endswith("saved") else "failed",
+            outcome="recorded" if action.endswith(("saved", "cancelled")) else "failed",
             correlation_id=str(lease.lease_token), details=details,
         )
