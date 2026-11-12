@@ -41,7 +41,7 @@ A feature is complete only when tested and its operating limits are documented.
 ## Phase 4 — Integrations
 - [ ] Provider-neutral LLM adapter
 - [ ] WooCommerce
-- [ ] Social adapters with mandatory approval
+- [x] Social/video department registry and persistent content/brief workspace\n- [x] Draft-to-owner-approval lifecycle with explicit no-publish boundary\n- [ ] Metricool publishing/analytics adapter with mandatory approval\n- [ ] Canva media creation/export adapter\n- [ ] Video generation adapter with verified free-cost gate
 - [ ] Email and support adapters
 - [ ] Payment-status verification only
 
