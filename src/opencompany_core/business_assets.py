@@ -5,6 +5,7 @@ from datetime import timezone
 from pathlib import PurePosixPath
 from uuid import uuid4
 from .domain import AuditRecord
+from .business_units import BusinessUnitRegistry
 
 _HASH = re.compile(r"^[a-f0-9]{64}$")
 _KEY = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}$")
@@ -13,6 +14,7 @@ _BUSINESS = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 class BusinessAssetRegistry:
     def __init__(self, connection: sqlite3.Connection, lock):
         self.connection, self.lock = connection, lock
+        self.business_units = BusinessUnitRegistry(connection, lock)
         with lock:
             connection.executescript("""
             CREATE TABLE IF NOT EXISTS opencompany_business_assets (
@@ -73,12 +75,14 @@ class BusinessAssetRegistry:
               (str(uuid4()),business_id,asset_id,action,payload["occurred_at"],json.dumps(payload,sort_keys=True)))
 
     def _get(self,business_id,asset_id):
+        self.business_units.require_active(business_id)
         row=self.connection.execute("SELECT * FROM opencompany_business_assets WHERE business_id=? AND asset_id=?",(business_id,str(asset_id))).fetchone()
         if row is None: raise ValueError("business asset not found")
         return dict(row)
 
     def declare(self,business_id,*,asset_key,title,asset_type,filename,media_type,checksum_sha256,byte_size,source,audit):
         if not isinstance(business_id,str) or not _BUSINESS.fullmatch(business_id): raise ValueError("invalid business identity")
+        self.business_units.require_active(business_id)
         if not isinstance(asset_key,str) or not _KEY.fullmatch(asset_key): raise ValueError("invalid asset key")
         if not isinstance(title,str) or not title.strip() or len(title)>200: raise ValueError("invalid asset title")
         if not isinstance(filename,str) or filename in (".","..") or PurePosixPath(filename).name!=filename or "/" in filename or "\\" in filename: raise ValueError("unsafe asset filename")
@@ -100,11 +104,13 @@ class BusinessAssetRegistry:
             return result
 
     def list(self,business_id):
+        self.business_units.require_active(business_id)
         with self.lock:
             rows=self.connection.execute("SELECT * FROM opencompany_business_assets WHERE business_id=? ORDER BY created_at,asset_id",(business_id,)).fetchall()
         return tuple({**dict(r),"file_bytes_received":bool(r["file_bytes_received"])} for r in rows)
 
     def events(self,business_id,asset_id):
+        self.business_units.require_active(business_id)
         with self.lock:
             rows=self.connection.execute("SELECT action,occurred_at,audit_json FROM opencompany_business_asset_events WHERE business_id=? AND asset_id=? ORDER BY rowid",(business_id,str(asset_id))).fetchall()
         return tuple({"action":r["action"],"occurred_at":r["occurred_at"],"audit":json.loads(r["audit_json"])} for r in rows)
