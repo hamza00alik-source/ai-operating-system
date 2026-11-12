@@ -40,14 +40,22 @@ class DurableWorkerQueue:
         *,
         max_attempts: int = 3,
         lease_seconds: int = 300,
+        retry_base_seconds: int = 5,
+        retry_max_seconds: int = 300,
         lock: RLock | None = None,
     ) -> None:
         if not 1 <= max_attempts <= 10:
             raise ValueError("max_attempts must be between 1 and 10")
         if not 10 <= lease_seconds <= 3600:
             raise ValueError("lease_seconds must be between 10 and 3600")
+        if not 1 <= retry_base_seconds <= 3600:
+            raise ValueError("retry_base_seconds must be between 1 and 3600")
+        if not retry_base_seconds <= retry_max_seconds <= 86400:
+            raise ValueError("retry_max_seconds must be between retry_base_seconds and 86400")
         self.max_attempts = max_attempts
         self.lease_seconds = lease_seconds
+        self.retry_base_seconds = retry_base_seconds
+        self.retry_max_seconds = retry_max_seconds
         self._lock = lock or RLock()
         self._owns_connection = not isinstance(database, sqlite3.Connection)
         self._db = database if isinstance(database, sqlite3.Connection) else sqlite3.connect(
@@ -80,7 +88,8 @@ class DurableWorkerQueue:
                 lease_expires_at TEXT,
                 last_error TEXT,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                next_attempt_at TEXT
             )
         """)
         columns = {
@@ -90,6 +99,8 @@ class DurableWorkerQueue:
             self._db.execute(
                 "ALTER TABLE worker_queue ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0"
             )
+        if "next_attempt_at" not in columns:
+            self._db.execute("ALTER TABLE worker_queue ADD COLUMN next_attempt_at TEXT")
         self._db.execute("""
             CREATE TABLE IF NOT EXISTS worker_attempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +222,7 @@ class DurableWorkerQueue:
                          lease_token=NULL,
                          lease_expires_at=NULL,
                          cancel_requested=0,
+                         next_attempt_at=NULL,
                          last_error=NULL,
                          created_at=excluded.created_at,
                          updated_at=excluded.updated_at
@@ -316,19 +328,31 @@ class DurableWorkerQueue:
                        )""",
                     (instant.isoformat(), instant.isoformat()),
                 )
+                expired_retryable = self._db.execute(
+                    """SELECT work_item_id,attempts FROM worker_queue
+                       WHERE state='leased' AND lease_expires_at<=? AND attempts<?""",
+                    (instant.isoformat(), self.max_attempts),
+                ).fetchall()
+                for recovered in expired_retryable:
+                    self._db.execute(
+                        """UPDATE worker_queue SET state='queued',lease_token=NULL,
+                           lease_expires_at=NULL,next_attempt_at=?,updated_at=?
+                           WHERE work_item_id=? AND state='leased'""",
+                        (self._retry_at(int(recovered["attempts"]), instant).isoformat(),
+                         instant.isoformat(), recovered["work_item_id"]),
+                    )
                 self._db.execute(
-                    """UPDATE worker_queue SET
-                       state=CASE WHEN attempts>=? THEN 'dead' ELSE 'queued' END,
-                       lease_token=NULL, lease_expires_at=NULL,
-                       last_error=CASE WHEN attempts>=? THEN 'lease_expired_retry_limit' ELSE last_error END,
-                       updated_at=?
-                       WHERE state='leased' AND lease_expires_at<=?""",
-                    (self.max_attempts, self.max_attempts, instant.isoformat(), instant.isoformat()),
+                    """UPDATE worker_queue SET state='dead',lease_token=NULL,
+                       lease_expires_at=NULL,next_attempt_at=NULL,
+                       last_error='lease_expired_retry_limit',updated_at=?
+                       WHERE state='leased' AND lease_expires_at<=? AND attempts>=?""",
+                    (instant.isoformat(), instant.isoformat(), self.max_attempts),
                 )
                 row = self._db.execute(
                     """SELECT * FROM worker_queue WHERE state='queued' AND agent_id=?
-                       AND attempts<? ORDER BY created_at,work_item_id LIMIT 1""",
-                    (str(agent_id), self.max_attempts),
+                       AND attempts<? AND (next_attempt_at IS NULL OR next_attempt_at<=?)
+                       ORDER BY created_at,work_item_id LIMIT 1""",
+                    (str(agent_id), self.max_attempts, instant.isoformat()),
                 ).fetchone()
                 if row is None:
                     self._db.execute("COMMIT")
@@ -379,6 +403,11 @@ class DurableWorkerQueue:
                 if self._db.in_transaction:
                     self._db.execute("ROLLBACK")
                 raise
+
+    def _retry_at(self, attempt: int, instant: datetime) -> datetime:
+        """Return a deterministic capped exponential retry time."""
+        delay = min(self.retry_base_seconds * (2 ** max(0, attempt - 1)), self.retry_max_seconds)
+        return instant + timedelta(seconds=delay)
 
     def renew(self, lease: WorkerLease, *, now: datetime | None = None) -> bool:
         """Extend a live lease only while its exact token still owns the task."""
@@ -502,9 +531,14 @@ class DurableWorkerQueue:
     def complete(self, lease: WorkerLease) -> None:
         self._finish(lease, "done", None)
 
-    def fail(self, lease: WorkerLease, error_code: str) -> str:
+    def fail(
+        self, lease: WorkerLease, error_code: str, *, now: datetime | None = None
+    ) -> str:
         if not error_code or len(error_code) > 120:
             raise ValueError("error_code must contain 1-120 characters")
+        instant = now or datetime.now(timezone.utc)
+        if instant.tzinfo is None or instant.utcoffset() != timedelta(0):
+            raise ValueError("now must be timezone-aware UTC")
         with self._lock:
             row = self._db.execute(
                 "SELECT attempts FROM worker_queue WHERE work_item_id=? AND state='leased' AND lease_token=?",
@@ -512,16 +546,24 @@ class DurableWorkerQueue:
             ).fetchone()
             if row is None:
                 raise QueueError("lease is stale or no longer owned by this worker")
-            state = "dead" if int(row["attempts"]) >= self.max_attempts else "queued"
-            self._finish(lease, state, error_code)
+            attempts = int(row["attempts"])
+            state = "dead" if attempts >= self.max_attempts else "queued"
+            retry_at = self._retry_at(attempts, instant) if state == "queued" else None
+            self._finish(lease, state, error_code, now=instant, next_attempt_at=retry_at)
             return state
 
-    def _finish(self, lease: WorkerLease, state: str, error: str | None) -> None:
+    def _finish(
+        self, lease: WorkerLease, state: str, error: str | None, *,
+        now: datetime | None = None, next_attempt_at: datetime | None = None,
+    ) -> None:
+        instant = now or datetime.now(timezone.utc)
         with self._lock:
             cursor = self._db.execute(
                 """UPDATE worker_queue SET state=?,lease_token=NULL,lease_expires_at=NULL,
-                   last_error=?,updated_at=? WHERE work_item_id=? AND state='leased' AND lease_token=?""",
-                (state, error, datetime.now(timezone.utc).isoformat(),
+                   next_attempt_at=?,last_error=?,updated_at=?
+                   WHERE work_item_id=? AND state='leased' AND lease_token=?""",
+                (state, next_attempt_at.isoformat() if next_attempt_at else None,
+                 error, instant.isoformat(),
                  str(lease.work_item_id), str(lease.lease_token)),
             )
             if cursor.rowcount != 1:
@@ -554,9 +596,10 @@ class DurableWorkerQueue:
         with self._lock:
             rows = self._db.execute(
                 """SELECT DISTINCT agent_id FROM worker_queue
-                   WHERE state='queued' OR (state='leased' AND lease_expires_at<=?)
+                   WHERE (state='queued' AND (next_attempt_at IS NULL OR next_attempt_at<=?))
+                      OR (state='leased' AND lease_expires_at<=?)
                    ORDER BY agent_id""",
-                (instant.isoformat(),),
+                (instant.isoformat(), instant.isoformat()),
             ).fetchall()
         return tuple(UUID(row["agent_id"]) for row in rows)
 
@@ -565,7 +608,7 @@ class DurableWorkerQueue:
         with self._lock:
             row = self._db.execute(
                 """SELECT work_item_id,agent_id,state,attempts,lease_expires_at,
-                          last_error,created_at,updated_at
+                          next_attempt_at,last_error,created_at,updated_at
                    FROM worker_queue WHERE work_item_id=?""",
                 (str(work_item_id),),
             ).fetchone()
