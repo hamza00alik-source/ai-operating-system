@@ -1783,5 +1783,15 @@ def test_business_integration_registry_requires_owner_and_never_connects(owner_c
     )
     assert history.status_code == 200
     assert history.json()["events"][0]["action"] == "registered"
+    removed = owner_client.request(
+        "DELETE", "/business-units/physical-agency/credentials/marketplace-api",
+        headers=headers, json={"confirm_owner_deletion": True},
+    )
+    assert removed.status_code == 200
+    after_removal = owner_client.get(
+        "/business-units/physical-agency/integrations", headers=headers
+    )
+    assert after_removal.status_code == 200
+    assert after_removal.json()["integrations"][0]["credential_available"] is False
 
 
