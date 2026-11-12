@@ -230,8 +230,8 @@ class DurableWorkerQueue:
                 ).fetchone()
                 if task is None or queue is None:
                     raise QueueError("queued work item or queue entry was not found")
-                if task["state"] != TaskState.QUEUED.value or queue["state"] != "queued":
-                    raise QueueError("only queued work with no active lease can be reassigned")
+                if task["state"] not in {TaskState.QUEUED.value, TaskState.IN_PROGRESS.value} or queue["state"] != "queued":
+                    raise QueueError("only pending work with no active lease can be reassigned")
                 if not task["assigned_agent_id"] or queue["agent_id"] != task["assigned_agent_id"]:
                     raise QueueError("work item and queue assignee are inconsistent")
                 if task["assigned_agent_id"] != (str(expected_current_agent_id) if expected_current_agent_id else None):
@@ -264,10 +264,10 @@ class DurableWorkerQueue:
                 if len(encoded) > 24000:
                     raise QueueError("updated worker payload exceeds 24000 characters")
                 cursor = self._db.execute(
-                    """UPDATE work_items SET assigned_agent_id=?
+                    """UPDATE work_items SET assigned_agent_id=?,state=?
                        WHERE id=? AND state=? AND assigned_agent_id=?""",
-                    (str(target_agent_id), str(work_item_id), TaskState.QUEUED.value,
-                     task["assigned_agent_id"]),
+                    (str(target_agent_id), TaskState.QUEUED.value, str(work_item_id),
+                     task["state"], task["assigned_agent_id"]),
                 )
                 if cursor.rowcount != 1:
                     raise QueueError("work item changed during reassignment")
@@ -283,6 +283,7 @@ class DurableWorkerQueue:
                 return {
                     "work_item_id": str(work_item_id),
                     "previous_agent_id": task["assigned_agent_id"],
+                    "previous_state": task["state"],
                     "assigned_agent_id": str(target_agent_id),
                     "business_id": task["business_id"],
                     "role_key": target["role_key"],
