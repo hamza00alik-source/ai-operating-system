@@ -49,6 +49,7 @@ def test_stale_lease_cannot_complete(tmp_path):
         queue.complete(first)
     queue.complete(second)
     queue.close()
+    store.close()
 
 
 def test_retry_limit_moves_item_to_dead_letter_state(tmp_path):
