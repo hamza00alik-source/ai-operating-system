@@ -45,7 +45,7 @@ def test_authenticated_worker_can_upload_private_mp4_artifact(monkeypatch, tmp_p
         lease = claim.json()["lease_token"]
         assert claim.json()["id"] == job_id
 
-        mp4 = b"\\x00\\x00\\x00\\x18ftypisom" + b"synthetic-mp4-payload"
+        mp4 = b"\x00\x00\x00\x18ftypisom" + b"synthetic-mp4-payload"
         unauthorized = client.put(
             f"/video/worker/jobs/{job_id}/artifact",
             content=mp4,
@@ -116,7 +116,7 @@ def test_worker_cannot_upload_after_owner_cancellation(monkeypatch, tmp_path):
 
         response = client.put(
             f"/video/worker/jobs/{job_id}/artifact",
-            content=b"\\x00\\x00\\x00\\x18ftypisomsynthetic",
+            content=b"\x00\x00\x00\x18ftypisomsynthetic",
             headers={
                 **worker_headers,
                 "X-Job-Lease": lease,
