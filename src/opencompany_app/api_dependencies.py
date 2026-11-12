@@ -12,10 +12,10 @@ from functools import lru_cache
 from threading import Lock
 from urllib.parse import urlsplit
 
-from fastapi import Cookie, Depends, Header, HTTPException, Request
-
-from uuid import uuid4
 from datetime import datetime, timezone
+from uuid import uuid4
+
+from fastapi import Cookie, Depends, Header, HTTPException, Request
 
 from opencompany_core.domain import AuditRecord, WorkItem
 from opencompany_core.persistence import SQLiteStore
@@ -138,8 +138,6 @@ def require_owner_key(
 
 
 def work_item_audit_record(item: WorkItem, action: str) -> AuditRecord:
-    from datetime import datetime, timezone
-
     return AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc),
         actor_type="owner", actor_id="owner", action=action,
