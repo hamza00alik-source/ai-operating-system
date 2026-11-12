@@ -436,3 +436,89 @@ def test_reassignment_rejects_leased_and_delegated_work(tmp_path):
     assert queue.get_entry(delegated.id)["agent_id"] == str(old_id)
     assert store.verify_audit_chain()
     store.close()
+
+
+def test_reassignment_rolls_back_both_records_when_audit_append_fails(tmp_path):
+    store = SQLiteStore(tmp_path / "reassign-audit-rollback.sqlite3")
+    old_id, new_id = uuid4(), uuid4()
+    for agent_id, name in ((old_id, "Old Researcher"), (new_id, "New Researcher")):
+        store.save_agent(AgentProfile(
+            id=agent_id, name=name, department="intelligence-research",
+            purpose="Prepare evidence", capabilities=("research",),
+            state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
+            team_key="intelligence-research__team_1",
+        ))
+    item = WorkItem(
+        id=uuid4(), title="Queued research", objective="Prepare report",
+        department="intelligence-research", state=TaskState.READY, assigned_agent_id=old_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    admission_event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.queued", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="admission",
+    )
+    queue.enqueue_authorized(item, old_id, {
+        "role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1",
+    }, admission_event)
+    # Reusing an existing audit ID forces the append to fail after both UPDATEs.
+    with pytest.raises(Exception):
+        queue.reassign_queued_work_item(item.id, new_id, AuditRecord(
+            id=admission_event.id, occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner", action="work_item.reassigned",
+            subject_type="work_item", subject_id=str(item.id), outcome="recorded",
+            correlation_id="duplicate-audit",
+        ))
+    assert store.get_work_item(item.id).assigned_agent_id == old_id
+    entry = queue.get_entry(item.id)
+    assert entry["agent_id"] == str(old_id) and entry["state"] == "queued"
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_reassignment_rejects_inactive_or_cross_department_target(tmp_path):
+    store = SQLiteStore(tmp_path / "reassign-target-gates.sqlite3")
+    old_id, paused_id, wrong_department_id = uuid4(), uuid4(), uuid4()
+    store.save_agent(AgentProfile(
+        id=old_id, name="Current Researcher", department="intelligence-research",
+        purpose="Research", capabilities=("research",), state=AgentState.ACTIVE,
+        role_key="market_intelligence_analyst", team_key="intelligence-research__team_1",
+    ))
+    store.save_agent(AgentProfile(
+        id=paused_id, name="Paused Researcher", department="intelligence-research",
+        purpose="Research", capabilities=("research",), state=AgentState.PAUSED,
+        role_key="market_intelligence_analyst", team_key="intelligence-research__team_1",
+    ))
+    store.save_agent(AgentProfile(
+        id=wrong_department_id, name="Engineer", department="engineering-ai-systems",
+        purpose="Build systems", capabilities=("engineering",), state=AgentState.ACTIVE,
+        role_key="software_engineering_lead", team_key="management",
+    ))
+    item = WorkItem(
+        id=uuid4(), title="Queued research", objective="Prepare report",
+        department="intelligence-research", state=TaskState.READY, assigned_agent_id=old_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue_authorized(item, old_id, {"role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1"}, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action="work_item.queued", subject_type="work_item",
+            subject_id=str(item.id), outcome="recorded", correlation_id="admission",
+        ))
+    def reassignment_record():
+        return AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action="work_item.reassigned", subject_type="work_item",
+            subject_id=str(item.id), outcome="recorded", correlation_id=str(uuid4()),
+        )
+    with pytest.raises(QueueError, match="active, role-assigned"):
+        queue.reassign_queued_work_item(item.id, paused_id, reassignment_record())
+    with pytest.raises(QueueError, match="active, role-assigned"):
+        queue.reassign_queued_work_item(item.id, wrong_department_id, reassignment_record())
+    assert store.get_work_item(item.id).assigned_agent_id == old_id
+    assert queue.get_entry(item.id)["agent_id"] == str(old_id)
+    assert store.verify_audit_chain()
+    store.close()
