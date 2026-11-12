@@ -82,14 +82,14 @@ def test_private_storage_rejects_symlinked_root(tmp_path):
 
 def test_private_storage_accepts_async_bounded_stream(tmp_path):
     storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
-    payload = b"streamed private asset"
+    payload = b"glTF" + b"\\x02\\x00\\x00\\x00" + b"\\x18\\x00\\x00\\x00" + b"test"
     async def chunks():
         yield payload[:7]
         yield payload[7:]
     result = asyncio.run(storage.store_stream(
         business_id="digital-products", asset_scope_id="digital-scope",
         asset_id=str(uuid4()), expected_sha256=hashlib.sha256(payload).hexdigest(),
-        expected_size=len(payload), chunks=chunks(),
+        expected_size=len(payload), expected_media_type="model/gltf-binary", chunks=chunks(),
     ))
     assert result["checksum_sha256"] == hashlib.sha256(payload).hexdigest()
     assert result["byte_size"] == len(payload)
@@ -99,3 +99,17 @@ def test_private_storage_accepts_async_bounded_stream(tmp_path):
 def test_private_storage_rejects_parent_traversal_root(tmp_path):
     with pytest.raises(AssetStorageError, match="parent traversal"):
         PrivateFilesystemAssetStorage(tmp_path / ".." / "outside")
+
+
+def test_private_storage_rejects_mismatched_detected_media_type(tmp_path):
+    storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    payload = b"not a PNG file"
+    async def chunks():
+        yield payload
+    with pytest.raises(AssetStorageError, match="do not match"):
+        asyncio.run(storage.store_stream(
+            business_id="digital-products", asset_scope_id="digital-scope",
+            asset_id=str(uuid4()), expected_sha256=hashlib.sha256(payload).hexdigest(),
+            expected_size=len(payload), expected_media_type="image/png", chunks=chunks(),
+        ))
+    assert not list((tmp_path / "private-assets").rglob("*.blob"))
