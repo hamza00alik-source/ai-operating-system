@@ -238,19 +238,22 @@ class DurableWorkerQueue:
                     "WHERE state='leased' AND lease_expires_at<=? AND attempts>=?",
                     (instant.isoformat(), self.max_attempts),
                 ).fetchall()
-                for expired in expired_dead:
-                    cursor = self._db.execute(
-                        "UPDATE work_items SET state=? WHERE id=? AND state=?",
-                        (TaskState.FAILED.value, expired["work_item_id"], TaskState.IN_PROGRESS.value),
-                    )
-                    if cursor.rowcount == 1:
-                        self._append_audit(AuditRecord(
-                            id=uuid4(), occurred_at=instant, actor_type="worker",
-                            actor_id=expired["agent_id"], action="worker.lease_dead_lettered",
-                            subject_type="work_item", subject_id=expired["work_item_id"],
-                            outcome="failed", correlation_id=str(uuid4()),
-                            details={"reason": "lease_expired_retry_limit"},
-                        ), self._db)
+                # A standalone queue database has no work_items/audit tables.
+                # Only the composed core-store connection can finalize task state.
+                if not self._owns_connection:
+                    for expired in expired_dead:
+                        cursor = self._db.execute(
+                            "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                            (TaskState.FAILED.value, expired["work_item_id"], TaskState.IN_PROGRESS.value),
+                        )
+                        if cursor.rowcount == 1:
+                            self._append_audit(AuditRecord(
+                                id=uuid4(), occurred_at=instant, actor_type="worker",
+                                actor_id=expired["agent_id"], action="worker.lease_dead_lettered",
+                                subject_type="work_item", subject_id=expired["work_item_id"],
+                                outcome="failed", correlation_id=str(uuid4()),
+                                details={"reason": "lease_expired_retry_limit"},
+                            ), self._db)
                 self._db.execute(
                     """UPDATE worker_queue SET
                        state=CASE WHEN attempts>=? THEN 'dead' ELSE 'queued' END,
@@ -260,6 +263,13 @@ class DurableWorkerQueue:
                        WHERE state='leased' AND lease_expires_at<=?""",
                     (self.max_attempts, self.max_attempts, instant.isoformat(), instant.isoformat()),
                 )
+                if not self._owns_connection:
+                    profile = self._db.execute(
+                        "SELECT state FROM agent_profiles WHERE id=?", (str(agent_id),)
+                    ).fetchone()
+                    if profile is None or profile["state"] != AgentState.ACTIVE.value:
+                        self._db.execute("COMMIT")
+                        return None
                 row = self._db.execute(
                     """SELECT * FROM worker_queue WHERE state='queued' AND agent_id=?
                        AND attempts<? ORDER BY created_at,work_item_id LIMIT 1""",
@@ -333,8 +343,10 @@ class DurableWorkerQueue:
             raise ValueError("error_code must contain 1-120 characters")
         with self._lock:
             row = self._db.execute(
-                "SELECT attempts FROM worker_queue WHERE work_item_id=? AND state='leased' AND lease_token=?",
-                (str(lease.work_item_id), str(lease.lease_token)),
+                """SELECT attempts FROM worker_queue WHERE work_item_id=? AND agent_id=?
+                   AND state='leased' AND lease_token=? AND lease_expires_at>?""",
+                (str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token),
+                 datetime.now(timezone.utc).isoformat()),
             ).fetchone()
             if row is None:
                 raise QueueError("lease is stale or no longer owned by this worker")
@@ -346,9 +358,11 @@ class DurableWorkerQueue:
         with self._lock:
             cursor = self._db.execute(
                 """UPDATE worker_queue SET state=?,lease_token=NULL,lease_expires_at=NULL,
-                   last_error=?,updated_at=? WHERE work_item_id=? AND state='leased' AND lease_token=?""",
+                   last_error=?,updated_at=? WHERE work_item_id=? AND agent_id=?
+                     AND state='leased' AND lease_token=? AND lease_expires_at>?""",
                 (state, error, datetime.now(timezone.utc).isoformat(),
-                 str(lease.work_item_id), str(lease.lease_token)),
+                 str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token),
+                 datetime.now(timezone.utc).isoformat()),
             )
             if cursor.rowcount != 1:
                 raise QueueError("lease is stale or no longer owned by this worker")
