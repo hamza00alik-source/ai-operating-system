@@ -168,7 +168,8 @@ def cancel_job(job_id):
     return get_job(job_id)
 
 
-def claim_job(worker_id, lease_seconds=120):
+def claim_job(worker_id, lease_seconds=120, provider="longcat-video"):
+    if provider != "longcat-video": raise ValueError("This worker protocol instance only serves the longcat-video provider.")
     if not worker_id or len(worker_id)>100: raise ValueError("worker_id must contain 1–100 characters.")
     if not 30<=lease_seconds<=900: raise ValueError("lease_seconds must be between 30 and 900.")
     initialize(); now=_now(); now_s=now.isoformat(); expires=(now+timedelta(seconds=lease_seconds)).isoformat()
@@ -186,7 +187,7 @@ def claim_job(worker_id, lease_seconds=120):
             else:
                 db.execute("UPDATE video_generation_jobs SET status='queued',lease_owner=NULL,lease_token_hash=NULL,lease_expires_at=NULL,updated_at=?,error='Previous worker lease expired; queued for retry' WHERE id=?",(now_s,row["id"]))
                 _event(db,row["id"],"lease_expired_retry",{"attempts":row["attempts"]})
-        row=db.execute("SELECT * FROM video_generation_jobs WHERE status='queued' AND cancel_requested=0 ORDER BY created_at LIMIT 1").fetchone()
+        row=db.execute("SELECT * FROM video_generation_jobs WHERE status='queued' AND cancel_requested=0 AND provider=? ORDER BY created_at LIMIT 1",(provider,)).fetchone()
         if row is None: return None
         token=secrets.token_urlsafe(32); attempt=row["attempts"]+1
         db.execute("""UPDATE video_generation_jobs SET status='running',attempts=?,lease_owner=?,
