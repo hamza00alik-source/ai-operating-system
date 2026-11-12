@@ -50,6 +50,7 @@ from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, Ou
 from opencompany_core.github_evolution import GitHubEvolutionError
 from opencompany_core.code_evolution import CodeEvolutionError, generate_code_evolution_pr
 from opencompany_core.api_anything import ApiAnythingError
+from opencompany_core.venture_portfolio import VenturePortfolio, VenturePortfolioError
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
