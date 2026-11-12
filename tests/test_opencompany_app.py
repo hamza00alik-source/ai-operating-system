@@ -1622,3 +1622,63 @@ def test_unknown_business_unit_is_rejected(owner_client):
         },
     )
     assert response.status_code == 422
+
+
+def test_finance_ledger_routes_require_owner_and_never_initiate_payments(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "business_id": "physical-agency",
+        "entry_type": "expense",
+        "amount_minor": 4999,
+        "currency": "USD",
+        "description": "Recorded expense request; no purchase made",
+        "confirm_owner_record": True,
+    }
+    unauthorized = owner_client.post("/finance/entries", json=payload)
+    assert unauthorized.status_code == 401
+
+    missing_confirmation = owner_client.post(
+        "/finance/entries", headers=headers,
+        json={**payload, "confirm_owner_record": False},
+    )
+    assert missing_confirmation.status_code == 422
+
+    created = owner_client.post("/finance/entries", headers=headers, json=payload)
+    assert created.status_code == 200
+    result = created.json()
+    assert result["recorded"] is True
+    assert result["external_payment_initiated"] is False
+    assert result["spending_authorized"] is False
+
+    entry_id = result["entry_id"]
+    review = owner_client.post(
+        f"/finance/entries/{entry_id}/review", headers=headers,
+        json={"action": "owner_approved", "rationale": "Approved as an internal record only.",
+              "confirm_owner_decision": True},
+    )
+    assert review.status_code == 200
+    assert review.json()["external_payment_initiated"] is False
+    assert review.json()["spending_authorized"] is False
+
+    listed = owner_client.get("/finance/entries?business_id=physical-agency", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["entries"][0]["latest_review_action"] == "owner_approved"
+
+
+def test_finance_review_rejects_missing_owner_confirmation(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/finance/entries", headers=headers, json={
+        "business_id": "physical-brand", "entry_type": "revenue",
+        "amount_minor": 100, "currency": "PKR", "description": "Test revenue",
+        "confirm_owner_record": True,
+    })
+    assert created.status_code == 200
+    response = owner_client.post(
+        f"/finance/entries/{created.json()['entry_id']}/review",
+        headers=headers,
+        json={"action": "owner_verified", "rationale": "test",
+              "confirm_owner_decision": False},
+    )
+    assert response.status_code == 422
+
