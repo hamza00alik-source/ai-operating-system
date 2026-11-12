@@ -156,3 +156,32 @@ def test_worker_queue_rejects_provisioning_unit_even_through_low_level_enqueue()
     finally:
         queue.close()
         store.close()
+
+
+
+def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blockers():
+    store, portfolio, registry = setup()
+    try:
+        item = approved_opportunity(portfolio)
+        unit = provision(registry, portfolio, item)
+        report = registry.activation_readiness(unit["business_id"])
+        assert report["status"] == "provisioning"
+        assert report["activation_allowed"] is False
+        assert "commercial_persistence_dynamic_business_ids" in report["blockers"]
+        assert "customer_scope_enforcement" in report["blockers"]
+        assert "finance_ledger_scope" in report["blockers"]
+        assert "owner_activation_approval" in report["blockers"]
+        assert registry.get(unit["business_id"])["status"] == "provisioning"
+    finally:
+        store.close()
+
+
+def test_foundational_unit_activation_readiness_is_already_operational():
+    store, _, registry = setup()
+    try:
+        report = registry.activation_readiness("physical-agency")
+        assert report["status"] == "foundational_operational"
+        assert report["activation_allowed"] is True
+        assert report["blockers"] == []
+    finally:
+        store.close()
