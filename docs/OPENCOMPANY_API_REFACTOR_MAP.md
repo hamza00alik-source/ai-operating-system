@@ -1,6 +1,6 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, and first read-only catalogue-router extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, read-only catalogue-router extraction, and health/readiness-router extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
@@ -8,8 +8,8 @@ Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unifi
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 91 direct route decorators in `api.py` plus four routes in `routers/catalogue.py` (95 total registrations by static composition count). The catalogue router is included at the original position in the module so registration order relative to the remaining API routes is preserved.
-- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, in addition to the composition, dashboard and runtime modules.
+- The API now has 89 direct route decorators in `api.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). Both routers are included at their original positions so registration order relative to the remaining API routes is preserved.
+- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py` and `system.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
@@ -55,6 +55,10 @@ Names are provisional. Before extraction, inspect every route's referenced globa
 ## First route-group extraction: read-only catalogue
 
 Four read-only endpoints were moved into `src/opencompany_app/routers/catalogue.py`: `GET /workforce/roles`, `POST /workforce/route-preview`, `GET /organization/departments`, and `GET /media/capabilities`. The router has no owner-auth dependency because these endpoints were public before extraction; no authorization policy was changed. The `WorkforceRoutePreviewInput` schema moved with its import to the router. The original route-handler block was compared with the extracted block after changing only the decorator target from `app` to `router`; the bodies and route metadata were identical. The router is included at the original position in `api.py`, preserving route registration order. Static checks confirmed 91 remaining direct route decorators plus four router decorators, all four moved paths absent from direct API registration, and the workflow route still registered once. No import or runtime check was performed.
+
+## Health and readiness router extraction
+
+`GET /health` and `GET /ready` were moved into `src/opencompany_app/routers/system.py`. Their handler bodies and route metadata were compared against the immediately preceding API source after changing only the decorator target from `app` to `router`; the extracted block is identical. The router imports the existing cached runtime dependency and platform metadata. It is included at the original position before the owner-backup route. The public liveness probe and database/worker readiness checks are unchanged. No authentication policy was added or removed. Static checks confirmed both paths are absent from direct API registration and remain present once in the new router. No import or runtime check was performed.
 
 ## Resolved duplicate workflow route
 
