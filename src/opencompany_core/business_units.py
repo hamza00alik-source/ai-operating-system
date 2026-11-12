@@ -390,7 +390,7 @@ class BusinessUnitRegistry:
                 "pairing, same-scope entry/event relationships, and database-level append-only triggers."
                 if finance_ready else
                 "Finance ledger enforcement is incomplete: both scoped tables, composite foreign keys, "
-                "required columns, and all four append-only triggers must be present."
+                "required columns, four ledger append-only triggers, and the immutable registry finance-scope trigger must be present."
             ),
         })
         if not finance_ready:
