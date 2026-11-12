@@ -2817,6 +2817,29 @@ def get_work_item_workflow(
                 "deliverables": store.list_deliverables(task.id),
             }
 
+    dependency_status = []
+    for dependency_id in parent.depends_on:
+        dependency = store.get_work_item(dependency_id)
+        if dependency is None:
+            dependency_status.append({
+                "work_item_id": str(dependency_id), "state": "missing",
+                "deliverable_count": 0, "completed_with_deliverable": False,
+            })
+            continue
+        if dependency.business_id != parent.business_id:
+            raise HTTPException(status_code=409, detail="Work dependency crossed a business boundary.")
+        dependency_deliverables = store.list_deliverables(dependency_id)
+        dependency_status.append({
+            "work_item_id": str(dependency_id), "state": dependency.state.value,
+            "deliverable_count": len(dependency_deliverables),
+            "completed_with_deliverable": (
+                dependency.state == TaskState.COMPLETED and bool(dependency_deliverables)
+            ),
+        })
+    synthesis_ready = bool(parent.depends_on) and bool(manager) and all(
+        value["completed_with_deliverable"] for value in dependency_status
+    )
+
     return {
         "work_item": {
             "id": str(parent.id), "title": parent.title, "objective": parent.objective,
@@ -2833,6 +2856,16 @@ def get_work_item_workflow(
         } if manager else None),
         "delegation_proposals": proposals,
         "child_work_items": list(children_by_id.values()),
+        "dependencies": dependency_status,
+        "manager_synthesis": {
+            "ready": synthesis_ready,
+            "blocked_by": [
+                value["work_item_id"] for value in dependency_status
+                if not value["completed_with_deliverable"]
+            ],
+            "requires_completed_child_deliverables": True,
+            "queue_admission_requires_owner_action": True,
+        },
         "owner_review_required": parent.state == TaskState.REVIEW,
         "external_actions_performed": False,
     }
