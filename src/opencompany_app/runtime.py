@@ -133,12 +133,20 @@ class WorkQueue(SharedRepository):
             item=self.store.get_work_item(item_id)
             if not item or not item.assigned_agent_id or item.assigned_agent_id!=agent_id: raise ValueError("work must be assigned to an active agent")
             self._db.execute("INSERT OR REPLACE INTO opencompany_queue VALUES(?,?,?,'queued')",(str(item_id),str(agent_id),role_key));self._db.commit()
-    def claim(self,agent_id,role_key):
+    def claim(self,agent_id,role_key=None):
         with self._lock:
-            row=self._db.execute("SELECT work_item_id FROM opencompany_queue WHERE agent_id=? AND role_key=? AND state='queued' ORDER BY rowid LIMIT 1",(str(agent_id),role_key)).fetchone()
+            if role_key is None:
+                row=self._db.execute("SELECT work_item_id,role_key FROM opencompany_queue WHERE agent_id=? AND state='queued' ORDER BY rowid LIMIT 1",(str(agent_id),)).fetchone()
+                if row: role_key=row["role_key"]
+            else:
+                row=self._db.execute("SELECT work_item_id,role_key FROM opencompany_queue WHERE agent_id=? AND role_key=? AND state='queued' ORDER BY rowid LIMIT 1",(str(agent_id),role_key)).fetchone()
             if not row:return None
             self._db.execute("UPDATE opencompany_queue SET state='running' WHERE work_item_id=?",(row["work_item_id"],));self._db.commit()
             lease=QueueLease(UUID(row["work_item_id"]),agent_id,role_key,str(uuid4()));self._leases[lease.lease_id]=lease
+            from dataclasses import replace
+            item=self.store.get_work_item(lease.work_item_id)
+            if item and item.state != TaskState.IN_PROGRESS:
+                self.store.save_work_item_with_audit(replace(item,state=TaskState.IN_PROGRESS),_audit("queue.claim",item.id,"worker"))
             return lease
     def complete(self,lease):
         with self._lock:
@@ -207,7 +215,7 @@ class Runtime:
         self.worker=DeterministicWorker(self);self.github_evolution=None
         self.github_evolution_tested_at=None;self.unorouter_tested_at=None
         self.secret_vault=SharedRepository(self.sqlite._connection,self.sqlite._lock)
-        self.asset_storage=None
+        self.asset_storage=None;self.agents={}
     def close(self):self.sqlite.close()
 
 def create_runtime(database_path):
