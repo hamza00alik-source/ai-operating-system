@@ -2020,3 +2020,17 @@ def test_owner_cannot_enqueue_delegated_synthesis_until_every_child_is_complete(
     assert response.status_code == 409
     assert "prerequisites must be completed" in response.json()["detail"]
     assert owner_client.get("/workers/queue", headers=headers).json()["total"] == 0
+
+
+def test_workflow_reconciliation_is_owner_authenticated_and_does_not_start_workers(owner_client):
+    unauthorized = owner_client.post("/workflows/reconcile")
+    assert unauthorized.status_code == 401
+
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    response = owner_client.post("/workflows/reconcile", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["queued_work_item_ids"] == []
+    assert payload["worker_started"] is False
+    assert payload["model_invoked"] is False
+    assert payload["external_actions_performed"] is False
