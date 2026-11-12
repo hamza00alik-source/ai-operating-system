@@ -779,6 +779,7 @@ def test_owner_can_start_and_stop_worker_fleet_explicitly(owner_client):
         def eligible_providers(self, *, request_budget_usd=0.0):
             return ()
 
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     runtime.gateway = NoFreeGateway()
     blocked = owner_client.post("/workers/start", headers=headers, json={})
     assert blocked.status_code == 503
@@ -1026,6 +1027,7 @@ def test_owner_can_generate_isolated_code_evolution_draft_pr(owner_client):
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
     runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     runtime.gateway = ModelGateway.configure(((
         ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
         _CodeEvolutionFakeAdapter(),
@@ -1049,6 +1051,7 @@ def test_code_evolution_config_status_does_not_expose_credentials(owner_client):
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
     runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     response = owner_client.get("/code-evolution/config-status", headers={"X-OpenCompany-API-Key": "test-owner-key"})
     assert response.status_code == 200
     assert response.json()["enabled"] is True
@@ -1233,7 +1236,7 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     assert runtime.store.verify_audit_chain() is True
 
 
-def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
+def test_api_startup_never_starts_workers_without_live_owner_provider_test(monkeypatch):
     calls = []
 
     class Fleet:
@@ -1247,21 +1250,30 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
         def eligible_providers(self, *, request_budget_usd=0.0):
             return (object(),) if self.ready else ()
 
+    class Store:
+        pass
+
     class Runtime:
         fleet = Fleet()
         gateway = Gateway()
+        store = Store()
 
     runtime = Runtime()
     monkeypatch.setenv("OPENCOMPANY_WORKER_AUTOSTART", "true")
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
+    monkeypatch.setenv("OPENCOMPANY_BOOTSTRAP_WORKFORCE", "true")
+    monkeypatch.setenv("OPENCOMPANY_AUTO_ACTIVATE_WORKFORCE", "true")
     monkeypatch.setattr(api_module, "_default_runtime", lambda: runtime)
+    monkeypatch.setattr(api_module, "bootstrap_department_managers", lambda store: None)
+    monkeypatch.setattr(api_module, "bootstrap_specialist_profiles", lambda store: None)
+    monkeypatch.setattr(api_module, "bootstrap_executive_orchestrator", lambda store: None)
 
     api_module.initialize_autonomous_runtime()
     assert calls == []
 
     runtime.gateway.ready = True
     api_module.initialize_autonomous_runtime()
-    assert calls == ["started"]
+    assert calls == []
 
 
 def test_runtime_factory_never_starts_background_workers(monkeypatch, tmp_path):
