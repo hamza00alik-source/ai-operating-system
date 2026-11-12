@@ -286,7 +286,7 @@ def get_company_departments():
             "specialist_count": specialist_count,
             "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
             "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
-            "workflow_status": "catalogue-only",
+            "workflow_status": item.get("workflow_state", "catalogue-only"),
         })
     return {
         "department_count": len(departments),
