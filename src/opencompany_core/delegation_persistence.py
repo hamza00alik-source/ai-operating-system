@@ -51,7 +51,7 @@ class DelegationPersistenceMixin:
                     self._connection.execute("ROLLBACK")
                     raise ValueError("delegated child tasks must belong to the parent business unit")
                 proposal_children = self._connection.execute(
-                    """SELECT id,assigned_agent_id,title,objective
+                    """SELECT id,assigned_agent_id,role_key,team_key,title,objective
                        FROM delegation_child_tasks WHERE proposal_id=? AND state='draft'""",
                     (str(proposal_id),),
                 ).fetchall()
