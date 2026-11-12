@@ -1,45 +1,71 @@
-# Clean-Room Quarantine Register
+# Legacy Quarantine and Provenance Register
 
-**Applies to:** `clean-room-rebuild`  
-**Status:** Active; release-blocking items remain  
-**Rule:** Listed material must not be imported, executed, loaded at runtime, or used as implementation input by the new OpenCompany application.
+**Applies to:** the independent OpenCompany implementation, including `feature/opencompany-aios-unification`.  
+**Status:** active; quarantine is in place, but full provenance and release reviews remain open.
+
+## Product boundary
+
+The current product is OpenCompany AIOS. The independent runtime is implemented in:
+
+- `src/opencompany_app/` — FastAPI application, runtime composition and owner console.
+- `src/opencompany_core/` — domain services, orchestration, persistence, model gateway and business logic.
+
+The legacy `src/ai_os/` package is not the new runtime and must not be imported by OpenCompany. Historical files may remain in Git for traceability, but must be excluded from production build context and package/runtime entrypoints.
 
 ## Quarantined material
 
-| Path | Reason | Required disposition |
+| Path or area | Reason | Required treatment |
 |---|---|---|
-| `data/agency_agents_manifest.json` | Imported catalogue of third-party specialist definitions and source paths | Remove from the clean application; retain provenance evidence outside runtime/build inputs if needed |
-| `src/ai_os/agent_runtime.py` | Legacy runtime fetches specialist instruction files from the Agency-Agent GitHub repository | Do not call from the new app; replace only through independent requirements-first implementation |
-| `src/ai_os/api.py` workforce routes | Legacy endpoints read the imported workforce manifest and expose catalogue-derived counts | Do not use as the clean application entrypoint; independently replace required endpoints |
-| `data/company_departments.json` | Department registry contains mappings to imported source-catalogue departments | Re-author from OpenCompany business needs before use by the new app |
-| `data/repository_sources.json` | Inventory of external reference projects | Provenance record only; must not drive code generation, role creation, runtime loading, or dependency installation |
-| Legacy workforce/runtime tests | Some tests may encode behaviour of the imported catalogue and runtime | Audit each test; write new tests from OpenCompany acceptance criteria rather than porting test code |
-| Legacy README and architecture documents | Some claims describe imported workforce counts and runtime behaviour | Correct before public release; clearly distinguish legacy and clean-room capabilities |
+| `src/ai_os/` | Legacy implementation; separate runtime and historical code | Keep out of OpenCompany imports, package artifacts and Docker image |
+| `data/agency_agents_manifest.json` | Third-party Agency Agents role catalogue | Historical/provenance reference only; exclude from runtime/build context |
+| `data/repository_sources.json` | External project/source inventory | Provenance record only; must not drive runtime loading or code generation |
+| Legacy tests importing `ai_os` | Validate the legacy implementation, not the independent runtime | Keep separate from OpenCompany acceptance suite |
+| Old Agency Agents documentation and prompts | Third-party reference material | Do not present as OpenCompany-authored role playbooks or capabilities |
 
-## Clean-room implementation already added
+`data/company_departments.json` must be treated as legacy/reference data unless a current OpenCompany module explicitly owns and validates its use. Do not assume it is a source of truth for the new company structure.
 
-The new standalone package is `src/opencompany_core/` and the new read-only application is `src/opencompany_app/`. They do not import the legacy `ai_os` package and do not load the quarantined manifest.
+## Independent implementation facts
 
-Current independently authored capabilities:
-- Ten original OpenCompany departments and 261 role contracts: 250 specialist titles, ten department-manager roles and one executive orchestrator.
-- Domain contracts, dependency-aware planning, guarded task transitions and protected-action policy checks.
-- Owner-authenticated APIs for agent draft provisioning, profile state changes, work-item creation/transitions and audit-chain verification.
-- Agent profiles now persist explicit role/team identity; worker execution checks active state, assigned identity, role and department.
-- Structured handoff and learning proposal contracts, plus a bounded queue, worker runner and foreground supervisor.
-- A separate owner console and API; this is not read-only, but it does not yet invoke models or perform external business actions.
-- The 250 specialist entries are currently generated from distinct titles with templated missions/capabilities; they are not yet 250 deeply differentiated specialist playbooks.
+- The OpenCompany runtime has its own application composition, persistence, owner authentication/session controls, audit records, worker queue, deliverable review and model gateway.
+- The current role catalogue contains 500 specialist role contracts, ten manager roles and one executive orchestrator: 511 contracts total. These are not 511 continuously running agents.
+- Specialist procedures are generated from a shared playbook template and role-specific title/mission/capability data. They are differentiated role contracts, not 500 separately authored expert manuals.
+- Four business-unit scopes are represented: core, physical-products agency, own physical-product brand and digital products. Continue enforcing unit-level isolation for records, work, credentials and external integrations.
+- Agency Agents and Teamily AI may be consulted for selective ideas only. Neither is the architecture or codebase to copy; OpenCompany must remain independently designed and owned.
 
-## Release blockers
+## Audit evidence and limits (2026-11-12)
 
-1. Keep the legacy runtime's external specialist-file retrieval and imported catalogue out of any clean-room deployable entrypoint.
-2. Finish manager-led task assignment, queue integration, durable artifacts and persisted collaboration/learning.
-3. Replace the new dashboard's raw sessionStorage API key with revocable HttpOnly owner sessions.
-4. Complete the source/provenance review across every remaining tracked file and test; retain the manifest only as quarantined evidence if needed.
-5. Review direct and transitive dependencies and produce a software bill of materials.
-6. Resolve UnoRouter business-use eligibility in writing before any company workload uses it; keep consumer personal tests isolated.
-7. Update deployment configuration only after the independent app has equivalent required owner controls, secure authentication, persistence, backup/restore and end-to-end tests.
-8. Obtain a qualified legal review before commercial distribution.
+- The inspected repository tree contained 161 tracked files.
+- Exact whole-file hash comparison found zero duplicate-file groups in the inspected tree.
+- A direct-reference scan of all 42 Python files under `src/opencompany_app` and `src/opencompany_core` found no direct imports or textual references matching the scanned Agency Agents identifiers/URLs or legacy `ai_os` import patterns.
+- Eleven legacy test modules still import `ai_os`: `test_agent_runtime.py`, `test_api.py`, `test_brain.py`, `test_business_ops.py`, `test_credentials.py`, `test_owner_session_auth.py`, `test_provider_failover.py`, `test_research_sources.py`, `test_sessions_and_workforce.py`, `test_website_api.py` and `test_workflows.py`.
+- The audit also found outdated documentation and an old `AI_OS_...` environment template, which this cleanup is intended to correct.
+- This is not a semantic similarity, function-level duplication, AST clone-detection or legal provenance review. Zero whole-file duplicates and zero direct references do not prove that every function is original or that all licensing obligations have been satisfied.
+- Tests were not executed. The owner has deferred CI/testing until 2026-12-01; do not report test pass status.
 
-## Operational boundary
+## Build and packaging rules
 
-This register does not authorize merge, deployment, production database changes, migrations, paid API usage, purchases, publishing, customer contact, or financial actions.
+The Docker build must exclude at least:
+
+- `src/ai_os/`
+- `data/agency_agents_manifest.json`
+- `data/repository_sources.json`
+- `tests/`, local virtual environments, Git metadata, caches and local secret files
+
+Keep the historical source and provenance evidence in Git where useful; excluding it from the image does not mean deleting the historical record. Review every future Docker build-context change to ensure the legacy runtime does not re-enter the production image.
+
+## Remaining release and independence work
+
+1. Complete function-level/AST and semantic similarity review, plus a human provenance/licensing review.
+2. Review direct and transitive dependencies and produce a software bill of materials.
+3. Ensure legacy tests are isolated and create/maintain independent OpenCompany acceptance coverage after the testing deferral ends.
+4. Resolve the UnoRouter provider's commercial-use, privacy and account eligibility in writing before company workloads rely on it.
+5. Complete security review, owner/operator permission model, secret rotation and session recovery guidance.
+6. Complete workflow cancellation/resume, failure diagnostics, multi-host coordination and controlled knowledge access/retention.
+7. Complete external integrations individually with business-unit isolation and owner approval boundaries.
+8. Establish encrypted off-host backups, restore rehearsal, monitoring and incident runbooks.
+9. Complete mobile-browser and production acceptance, followed by a separate owner-approved staging/cutover/rollback plan.
+10. Obtain qualified legal review before commercial distribution.
+
+## Explicit non-authorization
+
+This register does not authorize merging branches, deploying, changing `vercel.json`, modifying production routing or data, running tests before the deferred date, spending money, enabling paid inference, publishing, contacting customers or taking financial actions.
