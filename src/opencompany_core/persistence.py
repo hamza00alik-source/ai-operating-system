@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 15
+_SCHEMA_VERSION = 16
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -795,6 +795,47 @@ def _migrate_v14_business_asset_storage(connection: sqlite3.Connection) -> None:
         raise
 
 
+
+def _migrate_v15_business_asset_scans(connection: sqlite3.Connection) -> None:
+    """Store immutable malware-scan verdicts linked to an actually stored asset."""
+    if connection.in_transaction:
+        raise RuntimeError("business-asset scan migration cannot run inside an existing transaction")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute("""CREATE TABLE opencompany_business_asset_scan_events (
+            event_id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            business_id TEXT NOT NULL,
+            asset_scope_id TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('scan_clean','scan_infected')),
+            scanner_key TEXT NOT NULL CHECK(scanner_key='clamav-unix-socket'),
+            checksum_sha256 TEXT NOT NULL CHECK(length(checksum_sha256)=64),
+            byte_size INTEGER NOT NULL CHECK(byte_size BETWEEN 0 AND 104857600),
+            verdict TEXT NOT NULL CHECK(length(verdict) BETWEEN 1 AND 500),
+            actor_type TEXT NOT NULL CHECK(actor_type='scanner'),
+            actor_id TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            FOREIGN KEY(business_id,asset_scope_id,asset_id)
+                REFERENCES opencompany_business_asset_storage_events(business_id,asset_scope_id,asset_id)
+        )""")
+        connection.execute("""CREATE INDEX idx_opencompany_asset_scan_scope
+            ON opencompany_business_asset_scan_events(business_id,asset_scope_id,asset_id,occurred_at)""")
+        connection.execute("""CREATE TRIGGER opencompany_business_asset_scan_events_no_update
+            BEFORE UPDATE ON opencompany_business_asset_scan_events
+            BEGIN SELECT RAISE(ABORT,'asset scan history is append-only'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_asset_scan_events_no_delete
+            BEFORE DELETE ON opencompany_business_asset_scan_events
+            BEGIN SELECT RAISE(ABORT,'asset scan history is append-only'); END""")
+        if connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("business-asset scan migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version=16")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -1074,6 +1115,9 @@ class SQLiteStore:
                 version = 14
             if version == 14:
                 _migrate_v14_business_asset_storage(self._connection)
+                version = 15
+            if version == 15:
+                _migrate_v15_business_asset_scans(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
