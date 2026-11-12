@@ -34,14 +34,19 @@ Keep `api.py` as a thin composition root that creates the FastAPI app and includ
 
 Names are provisional. Before extraction, inspect every route's referenced globals and shared helpers; avoid circular imports by placing dependencies/schemas in lower-level modules and injecting dependencies through FastAPI.
 
-## Confirmed issue to resolve before route extraction
+## Resolved duplicate workflow route
 
-There are two GET handlers registered with the exact same path:
+The duplicate `GET /work-items/{item_id}/workflow` handlers were consolidated in commit `38f0f53caccd6fb722323d00525ec6fa32f1cd92`.
 
-- First registration near line 2892: `GET /work-items/{item_id}/workflow`. It returns a business-scoped workflow/delegation view and checks child/dependency business boundaries.
-- Second registration near line 3119: `GET /work-items/{item_id}/workflow`. It returns a broader lifecycle view including prerequisites, dependents, queue, delegation proposals, handoffs and deliverables.
+Evidence used before consolidation:
 
-This is a route collision, not merely a naming/style concern. Depending on router registration order, one handler may shadow the other. Do not silently delete or rename either contract during a mechanical split. First establish the intended public response contract, compare frontend/client usage and OpenAPI behavior, then consolidate into one endpoint or introduce a versioned/additive route with an explicit compatibility decision. This needs runtime verification after the user's test/CI deferral.
+- `src/opencompany_app/dashboard.py` consumes lifecycle fields including `next_action`, `prerequisites`, `dependents`, `queue`, `delegation_proposals`, `handoffs`, `deliverables`, and `counts`.
+- `tests/test_opencompany_app.py` contains assertions for both response families: lifecycle/next-action fields and business-scoped manager/delegation/child-work fields.
+- Both handlers used the same HTTP method and path, so retaining two registrations did not provide two independently addressable contracts.
+
+The single handler now returns the union of both response families, retaining the business-scoped child/dependency checks. Its dependent-work list is filtered to the same business unit so the lifecycle view does not disclose other business units' work-item titles or states.
+
+Static verification after the write fetched the file back from GitHub, confirmed exactly one matching route decorator, and confirmed source presence of all expected response-key declarations. This is not runtime verification: tests, imports, app startup, and OpenAPI generation remain deferred until 2026-12-01.
 
 ## Safe extraction sequence
 
