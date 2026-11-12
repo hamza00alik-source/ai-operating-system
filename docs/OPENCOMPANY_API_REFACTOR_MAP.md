@@ -413,3 +413,19 @@ The agent-profile repository methods were separated from the remaining SQLite st
 Static re-fetch verification confirms all six agent methods are defined in the new mixin and no longer directly in `persistence.py`; `SQLiteStore` inherits both persistence mixins; the commercial mixin and canonical audit/serialization utility module remain separate. This verifies source placement and shared-helper references only, not runtime transaction equivalence.
 
 No imports, app startup, OpenAPI generation, tests, CI, migrations or database operations were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
+
+
+## Work-item and deliverable persistence extraction (2026-11-12)
+
+Added `src/opencompany_core/work_item_persistence.py` with `WorkItemPersistenceMixin`, moving ten repository methods from `SQLiteStore`:
+
+- Work-item save, audited save and atomic multi-item plan save.
+- Deliverable staging and audited deliverable-to-review transition.
+- Owner review decision and failed-task transition with audit evidence.
+- Deliverable listing and work-item get/list reads.
+
+`SQLiteStore` now composes `WorkItemPersistenceMixin`, `AgentPersistenceMixin` and `CommercialPersistenceMixin`. The extracted methods retain use of the same `self._connection`, `self._lock`, canonical audit payload/digest helpers and `BEGIN IMMEDIATE` transaction pattern. Business-unit immutability checks and task-state guards remain in the moved method bodies. The persistence composition module is now 430 lines (down from 699 before this extraction).
+
+Static re-fetch verification confirms all ten methods exist once in the new mixin and no longer as direct definitions in `persistence.py`; transaction begin/rollback, audit-chain helpers, task-state transitions and business-unit immutability checks remain visible in the extracted source. The schema initialization/migration section was outside the extracted ranges and was not edited. This is source inspection only and does not prove runtime transaction equivalence.
+
+No imports, application startup, OpenAPI generation, tests, CI, migrations or database operations were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
