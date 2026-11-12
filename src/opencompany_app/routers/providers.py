@@ -32,9 +32,6 @@ _UNOROUTER_TESTS_LOCK = Lock()
 _UNOROUTER_TESTS_MAX = 50
 
 
-def _worker_autostart_enabled() -> bool:
-    return os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
-
 
 
 @router.post("/settings/providers/unorouter/discover", dependencies=[Depends(require_owner_key)])
