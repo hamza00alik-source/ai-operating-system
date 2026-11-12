@@ -1,37 +1,62 @@
-"""Small thread-safe SQLite persistence boundary for OpenCompany."""
-from __future__ import annotations
-import sqlite3
-import threading
-from pathlib import Path
+"""Local durable storage for the independent OpenCompany core.
 
-class SQLiteStore:
-    def __init__(self, database_path: str | Path):
-        self.path = str(database_path)
-        self._lock = threading.RLock()
-        self._connection = sqlite3.connect(self.path, check_same_thread=False)
+SQLite is used as a small, inspectable persistence layer. All writes are
+transactional; audit events are linked with SHA-256 hashes to make later
+alteration detectable. This is tamper-evident, not a substitute for backups
+or access controls.
+"""
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+from threading import RLock
+
+from .commercial_persistence import CommercialPersistenceMixin
+from .delegation_persistence import DelegationPersistenceMixin
+from .audit_persistence import AuditPersistenceMixin
+from .agent_persistence import AgentPersistenceMixin
+from .work_item_persistence import WorkItemPersistenceMixin
+from .backup_persistence import BackupPersistenceMixin
+from .schema_persistence import SchemaInitializationMixin
+from .supplier_persistence import SupplierPersistenceMixin
+from .product_persistence import ProductPersistenceMixin
+from .opportunity_persistence import OpportunityPersistenceMixin
+from .quote_persistence import QuotePersistenceMixin
+from .order_persistence import OrderPersistenceMixin
+from .persistence_utils import _ZERO_HASH, _audit_payload, _digest, _json
+
+
+class SQLiteStore(
+    WorkItemPersistenceMixin,
+    AgentPersistenceMixin,
+    CommercialPersistenceMixin,
+    DelegationPersistenceMixin,
+    AuditPersistenceMixin,
+    SchemaInitializationMixin,
+    BackupPersistenceMixin,
+    SupplierPersistenceMixin,
+    ProductPersistenceMixin,
+    OpportunityPersistenceMixin,
+    QuotePersistenceMixin,
+    OrderPersistenceMixin,
+):
+    """Thread-safe repository for core records and append-only audit evidence."""
+
+    def __init__(self, database: str | Path) -> None:
+        self.database = str(database)
+        if self.database != ":memory:":
+            parent = Path(self.database).expanduser().resolve().parent
+            if not parent.exists():
+                raise FileNotFoundError(f"database directory does not exist: {parent}")
+        self._lock = RLock()
+        self._connection = sqlite3.connect(
+            self.database, timeout=10, check_same_thread=False, isolation_level=None
+        )
         self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA foreign_keys=ON")
-        self._connection.execute("PRAGMA busy_timeout=5000")
-        if self.path != ":memory:":
-            self._connection.execute("PRAGMA journal_mode=WAL")
-        self._connection.commit()
+        self._connection.execute("PRAGMA foreign_keys = ON")
+        self._connection.execute("PRAGMA busy_timeout = 10000")
+        self._initialize()
 
     def close(self) -> None:
         with self._lock:
             self._connection.close()
-
-    def transaction(self):
-        return _Transaction(self._connection, self._lock)
-
-class _Transaction:
-    def __init__(self, connection, lock):
-        self.connection, self.lock = connection, lock
-    def __enter__(self):
-        self.lock.acquire()
-        self.connection.execute("BEGIN IMMEDIATE")
-        return self.connection
-    def __exit__(self, exc_type, exc, tb):
-        try:
-            self.connection.rollback() if exc_type else self.connection.commit()
-        finally:
-            self.lock.release()

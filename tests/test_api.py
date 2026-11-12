@@ -10,30 +10,55 @@ def test_health():
     assert response.json()["status"] == "ok"
 
 
-def test_task_and_approval_flow():
+def test_task_and_approval_flow(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    headers = {"X-API-Key": "test-owner-key"}
     with TestClient(app) as client:
-        task = client.post("/tasks", json={"title": "Research demand", "department": "research"})
+        task = client.post("/tasks", headers=headers, json={"title": "Research demand", "department": "research"})
         assert task.status_code == 201
-        approval = client.post("/approvals", json={
+        approval = client.post("/approvals", headers=headers, json={
             "task_id": task.json()["id"], "action": "publish_content"
         })
         assert approval.status_code == 201
         aid = approval.json()["id"]
-        decision = client.post(f"/approvals/{aid}/decision", json={"decision": "rejected"})
+        decision = client.post(f"/approvals/{aid}/decision", headers=headers, json={"decision": "rejected"})
         assert decision.status_code == 200
         assert decision.json()["status"] == "rejected"
 
 
-def test_approval_cannot_be_decided_twice():
+def test_approval_cannot_be_decided_twice(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    headers = {"X-API-Key": "test-owner-key"}
     with TestClient(app) as client:
-        approval = client.post("/approvals", json={"action": "spend_money"}).json()
+        approval = client.post("/approvals", headers=headers, json={"action": "spend_money"}).json()
         aid = approval["id"]
         assert client.post(
-            f"/approvals/{aid}/decision", json={"decision": "approved"}
+            f"/approvals/{aid}/decision", headers=headers, json={"decision": "approved"}
         ).status_code == 200
         assert client.post(
-            f"/approvals/{aid}/decision", json={"decision": "rejected"}
+            f"/approvals/{aid}/decision", headers=headers, json={"decision": "rejected"}
         ).status_code == 409
+
+
+def test_approval_decision_never_uses_development_auth_bypass(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    with TestClient(app) as client:
+        approval = client.post("/approvals", json={"action": "publish_content"})
+        assert approval.status_code == 201
+        approval_id = approval.json()["id"]
+        denied = client.post(
+            f"/approvals/{approval_id}/decision", json={"decision": "approved"}
+        )
+        assert denied.status_code == 401
+        allowed = client.post(
+            f"/approvals/{approval_id}/decision",
+            headers={"X-API-Key": "test-owner-key"},
+            json={"decision": "rejected"},
+        )
+        assert allowed.status_code == 200
 
 
 def test_production_routes_require_api_key(monkeypatch):
@@ -64,16 +89,19 @@ def test_owner_dashboard_is_served():
     assert "Queue scan" in response.text
 
 
-def test_discovery_scan_queue_and_read_endpoints():
+def test_discovery_scan_queue_and_read_endpoints(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    headers = {"X-API-Key": "test-owner-key"}
     with TestClient(app) as client:
-        response = client.post("/discovery/scans", json={"categories": ["agent-frameworks"]})
+        response = client.post("/discovery/scans", headers=headers, json={"categories": ["agent-frameworks"]})
         assert response.status_code == 202
         scan = response.json()
         assert scan["status"] == "queued"
-        scans = client.get("/discovery/scans")
+        scans = client.get("/discovery/scans", headers=headers)
         assert scans.status_code == 200
         assert any(item["id"] == scan["id"] for item in scans.json())
-        candidates = client.get("/discovery/candidates")
+        candidates = client.get("/discovery/candidates", headers=headers)
         assert candidates.status_code == 200
 
 
@@ -128,9 +156,15 @@ def test_free_api_catalog_sync_is_owner_controlled(monkeypatch):
     assert response.json()["imported"] == 79
 
 
-def test_discovery_scan_rejects_empty_categories():
+def test_discovery_scan_rejects_empty_categories(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
     with TestClient(app) as client:
-        response = client.post("/discovery/scans", json={"categories": []})
+        response = client.post(
+            "/discovery/scans",
+            headers={"X-API-Key": "test-owner-key"},
+            json={"categories": []},
+        )
     assert response.status_code == 422
 
 
