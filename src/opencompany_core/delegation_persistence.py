@@ -65,6 +65,19 @@ class DelegationPersistenceMixin:
                     ):
                         self._connection.execute("ROLLBACK")
                         raise ValueError("materialized child task fields do not match the approved delegation draft")
+                    assignee = self._connection.execute(
+                        "SELECT state,department,role_key,team_key FROM agent_profiles WHERE id=?",
+                        (expected["assigned_agent_id"],),
+                    ).fetchone()
+                    if (
+                        assignee is None
+                        or assignee["state"] != "active"
+                        or assignee["department"] != item.department
+                        or assignee["role_key"] != expected["role_key"]
+                        or assignee["team_key"] != expected["team_key"]
+                    ):
+                        self._connection.execute("ROLLBACK")
+                        raise ValueError("delegated child must be assigned to an active agent with the approved department, role and team")
                 if parent_update is not None:
                     parent_row = self._connection.execute(
                         "SELECT state,assigned_agent_id,department,business_id FROM work_items WHERE id=?",
