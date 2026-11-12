@@ -98,13 +98,16 @@ def load_pipeline():
 
 
 def heartbeat_loop(job_id, lease, stop, cancellation):
+    first_heartbeat = True
     while not stop.wait(30):
         try:
             result = request_json(
                 f"/video/worker/jobs/{job_id}/heartbeat",
-                {"progress": None, "message": ""},
+                {"progress": 10, "message": "LongCat inference running"}
+                if first_heartbeat else {"progress": None, "message": ""},
                 lease,
             )
+            first_heartbeat = False
             if result.get("cancel_requested"):
                 # Keep renewing the lease until the current inference call returns;
                 # otherwise another worker could duplicate a still-running GPU job.
