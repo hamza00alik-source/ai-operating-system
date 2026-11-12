@@ -105,24 +105,35 @@ class OpenCompanyWorker:
                 f"opencompany:deliverable:{lease.work_item_id}:{role_key}",
             )
             deliverable = replace(deliverable, id=stable_id)
-            self.artifact_sink.save(deliverable)
-            if lease_lost.is_set():
-                raise QueueError("worker lease was lost before deliverable persistence")
-            saved = self.store.save_deliverable_with_audit(
-                deliverable,
-                self._audit(
-                    lease, "worker.deliverable_saved",
-                    {"role_key": role_key, "deliverable_id": str(deliverable.id),
-                     "provider": deliverable.provider, "model": deliverable.model,
-                     "cost_usd": deliverable.cost_usd, "review_required": True,
-                     "task_state": "review"},
-                ),
+            audit_record = self._audit(
+                lease, "worker.deliverable_saved",
+                {"role_key": role_key, "deliverable_id": str(deliverable.id),
+                 "provider": deliverable.provider, "model": deliverable.model,
+                 "cost_usd": deliverable.cost_usd, "review_required": True,
+                 "task_state": "review"},
             )
-            if not saved:
-                raise WorkerConfigurationError("work item is no longer in progress")
-            if lease_lost.is_set():
-                raise QueueError("worker lease was lost before queue acknowledgement")
-            self.queue.complete(lease)
+            atomic_shared_store = (
+                self.artifact_sink is self.store
+                and self.queue._db is self.store._connection
+            )
+            if atomic_shared_store:
+                if lease_lost.is_set():
+                    raise QueueError("worker lease was lost before deliverable persistence")
+                saved = self.store.save_deliverable_with_audit_and_lease(
+                    deliverable, audit_record, lease
+                )
+                if not saved:
+                    raise QueueError("worker lease is stale or work item is no longer in progress")
+            else:
+                self.artifact_sink.save(deliverable)
+                if lease_lost.is_set():
+                    raise QueueError("worker lease was lost before deliverable persistence")
+                saved = self.store.save_deliverable_with_audit(deliverable, audit_record)
+                if not saved:
+                    raise WorkerConfigurationError("work item is no longer in progress")
+                if lease_lost.is_set():
+                    raise QueueError("worker lease was lost before queue acknowledgement")
+                self.queue.complete(lease)
             return "completed_review_required"
         except Exception as exc:
             # Do not leak exception text into persistent queue metadata.
