@@ -28,18 +28,16 @@ router = APIRouter()
 
 def _discover_free_models(api_key: str, *, force_refresh: bool = False):
     from opencompany_app import api as api_module
-    if force_refresh:
-        try:
+    try:
+        if force_refresh:
             return api_module.discover_free_models(api_key, force_refresh=True)
-        except TypeError as exc:
-            if "force_refresh" not in str(exc):
-                raise
-            try:
+        return api_module.discover_free_models(api_key)
+    except TypeError as exc:
+        if "force_refresh" not in str(exc):
+            raise
         return api_module.discover_free_models(api_key)
     except ProviderUnavailable:
         return None
-    return api_module.discover_free_models(api_key)
-
 
 # In-memory owner-authenticated provider-test jobs; clients poll bounded jobs
 # because an inference request can outlive browser/proxy request timeouts.
