@@ -185,3 +185,84 @@ def preview_work_item_delegation(
         "assignment_performed": plan.assignment_performed,
         "execution_started": plan.execution_started,
     }
+
+
+
+@queue_router.post("/workflows/reconcile", dependencies=[Depends(require_owner_key)])
+def reconcile_interrupted_workflows(
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Owner-triggered, idempotent recovery of eligible manager synthesis queue admissions.
+
+    This only admits work to the durable queue. It never starts workers or invokes
+    a model provider. Existing queue entries are left untouched.
+    """
+    candidates = []
+    queued_ids = []
+    skipped = []
+    errors = []
+    ready = [
+        item for item in runtime.store.list_work_items(limit=1000)
+        if item.state == TaskState.READY and item.depends_on
+    ]
+    provider_ready = bool(runtime.gateway.eligible_providers(request_budget_usd=0.0))
+    for task in ready:
+        proposals = runtime.delegations.list_for_parent(task.id)
+        approved = [
+            proposal for proposal in proposals
+            if proposal["status"] == "approved"
+            and proposal.get("manager_agent_id")
+            and {UUID(child["id"]) for child in proposal["children"]} == set(task.depends_on)
+        ]
+        if not approved:
+            continue
+        proposal = approved[-1]
+        proposal_manager_id = UUID(proposal["manager_agent_id"])
+        if task.assigned_agent_id != proposal_manager_id:
+            skipped.append({"work_item_id": str(task.id), "reason": "manager_assignment_changed"})
+            continue
+        dependencies_ready = True
+        for dependency_id in task.depends_on:
+            dependency = runtime.store.get_work_item(dependency_id)
+            if dependency is None or dependency.business_id != task.business_id:
+                skipped.append({"work_item_id": str(task.id), "reason": "missing_or_cross_business_prerequisite"})
+                dependencies_ready = False
+                break
+            if dependency.state != TaskState.COMPLETED or not runtime.store.list_deliverables(dependency_id):
+                skipped.append({"work_item_id": str(task.id), "reason": "prerequisites_not_approved_with_deliverables"})
+                dependencies_ready = False
+                break
+        if not dependencies_ready:
+            continue
+        existing = runtime.queue.get_entry(task.id)
+        if existing is not None:
+            skipped.append({"work_item_id": str(task.id), "reason": "queue_entry_already_exists"})
+            continue
+        if not provider_ready:
+            skipped.append({"work_item_id": str(task.id), "reason": "no_zero_cost_provider_available"})
+            continue
+        agent = runtime.store.get_agent(proposal_manager_id)
+        if agent is None or agent.state != AgentState.ACTIVE:
+            skipped.append({"work_item_id": str(task.id), "reason": "manager_not_active"})
+            continue
+        try:
+            _auto_queue_task(
+                runtime, task, agent,
+                action="work_item.manager_synthesis_reconciled",
+            )
+            queued_ids.append(str(task.id))
+        except (QueueError, ValueError) as exc:
+            errors.append({
+                "work_item_id": str(task.id),
+                "error_type": type(exc).__name__,
+            })
+    return {
+        "scanned_ready_tasks": len(ready),
+        "provider_ready": provider_ready,
+        "queued_work_item_ids": queued_ids,
+        "skipped": skipped,
+        "errors": errors,
+        "worker_started": False,
+        "model_invoked": False,
+        "external_actions_performed": False,
+    }
