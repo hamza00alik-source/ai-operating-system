@@ -40,9 +40,9 @@ The foundational three business records are registered with their original deliv
 
 ## Activation readiness (read-only)
 
-The owner-authenticated endpoint `GET /business-units/{business_id}/activation-readiness` returns a non-mutating checklist. It verifies that all seven registry scope identifiers are present and distinct, inspects the actual commercial SQLite schema for fixed business-ID allowlists and composite customer-scope foreign keys, checks for finance/ledger/payment persistence, and reports the missing credential, integration, memory, and asset enforcement adapters plus the separate owner activation approval.
+The owner-authenticated endpoint `GET /business-units/{business_id}/activation-readiness` returns a non-mutating checklist. It verifies that all seven registry scope identifiers are present and distinct, inspects the actual commercial SQLite schema for fixed business-ID allowlists and composite customer-scope foreign keys, checks the finance ledger's actual composite foreign keys and append-only triggers, and reports the missing credential, integration, memory, and asset enforcement adapters plus the separate owner activation approval.
 
-For a newly provisioned unit, the report remains blocked. The customer-scope check can now pass because opportunities, quotes, and orders persist customer scope and the database enforces business/scope pairing and same-scope parent relationships. Finance scope, credential/integration/memory/asset adapters, and separate owner activation approval remain blockers. The readiness report does not change registry status. There is deliberately no activation endpoint until all remaining storage and service boundaries are implemented and reviewed. Foundational units are reported as already operational; they are not re-activated.
+For a newly provisioned unit, the report remains blocked. The customer-scope check can now pass because opportunities, quotes, and orders persist customer scope and the database enforces business/scope pairing and same-scope parent relationships. Credential/integration/memory/asset adapters and separate owner activation approval remain blockers; finance scope is enforced by the OpenCompany ledger. The readiness report does not change registry status. There is deliberately no activation endpoint until all remaining storage and service boundaries are implemented and reviewed. Foundational units are reported as already operational; they are not re-activated.
 
 A scope identifier alone is not isolation. The customer data path below is backed by composite database foreign keys; other scope identifiers remain non-operational until their own persistence adapters enforce them.
 
@@ -66,3 +66,12 @@ The migrations are applied automatically when schema-version-7 or schema-version
 
 
 The persistence guard reads the already-initialized registry directly and avoids executing registry DDL from inside a commercial transaction. If the registry is absent during an active transaction, the write fails closed rather than performing an implicit SQLite commit. Accepted-quote order creation rechecks operational eligibility immediately before inserting the order.
+
+
+## Finance ledger isolation (SQLite schema version 10)
+
+OpenCompany now owns a finance ledger in its own persistence layer; it does not reuse the legacy `ai_os` finance code. Each entry stores an integer amount in currency minor units, a three-letter uppercase currency code, a business ID, and a finance scope derived from the registered business unit. The caller cannot override the finance scope. Composite foreign keys bind entries to the correct business/finance-scope pair, and review events must reference an entry in that same pair.
+
+Both finance entries and their review events are protected by database-level update/delete triggers. Owner-authenticated API routes provide scoped listing, internal record creation, and append-only owner review decisions. Recording or approving an entry is strictly a record-keeping action: it does not initiate a payment, transfer funds, purchase goods/services, or authorize spending. External financial actions are not implemented.
+
+Schema version 10 adds the ledger tables and constraints transactionally, creates the registry's composite finance-scope key, validates foreign-key integrity, and leaves all existing business units and commercial records unchanged. Activation readiness now checks the actual finance columns, composite foreign keys, and all four append-only triggers rather than treating the presence of any vaguely named finance table as sufficient.
