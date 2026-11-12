@@ -214,13 +214,12 @@ def heartbeat(job_id,token,*,progress=None,message=""):
     with connect() as db:
         row=_verify_lease(db,job_id,token)
         db.execute("UPDATE video_worker_presence SET last_seen_at=? WHERE worker_id=?",(_iso(),row["lease_owner"]))
-        if row["cancel_requested"]: return {"cancel_requested":True,"lease_expires_at":row["lease_expires_at"]}
         if progress is not None and not 0<=progress<=100: raise ValueError("progress must be between 0 and 100.")
         now=_now(); expires=(now+timedelta(seconds=int(os.getenv("VIDEO_JOB_LEASE_SECONDS","120")))).isoformat()
         db.execute("UPDATE video_generation_jobs SET lease_expires_at=?,updated_at=?,progress=COALESCE(?,progress),progress_message=? WHERE id=?",
                    (expires,now.isoformat(),progress,message[:240],job_id))
-        _event(db,job_id,"heartbeat",{"progress":progress,"message":message[:240]})
-    return {"cancel_requested":False,"lease_expires_at":expires}
+        _event(db,job_id,"heartbeat",{"progress":progress,"message":message[:240],"cancel_requested":bool(row["cancel_requested"])})
+    return {"cancel_requested":bool(row["cancel_requested"]),"lease_expires_at":expires}
 
 
 def complete_job(job_id,token,*,result_uri,metadata=None):
