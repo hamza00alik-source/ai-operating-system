@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
-from opencompany_core.platform import PLATFORM_NAME, PLATFORM_VERSION
+from opencompany_core.platform import PLATFORM_ID, PLATFORM_NAME, PLATFORM_VERSION
 from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.lifecycle import StateTransitionError, transition_work_item
 from opencompany_core.persistence import SQLiteStore
