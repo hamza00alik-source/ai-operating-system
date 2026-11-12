@@ -25,6 +25,7 @@ from opencompany_core.github_evolution import GitHubEvolutionClient
 from opencompany_core.api_anything import ApiAnythingClient
 from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import BusinessCredentialVault, ProviderSecretVault, SecretVaultError
+from opencompany_core.integration_registry import BusinessIntegrationRegistry
 from opencompany_core.model_usage import ModelUsageRepository
 
 
@@ -43,6 +44,7 @@ class OpenCompanyRuntime:
     api_anything: ApiAnythingClient | None
     secret_vault: ProviderSecretVault
     business_credentials: BusinessCredentialVault
+    integrations: BusinessIntegrationRegistry
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
@@ -153,6 +155,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     learning = LearningRepository(store._connection, store._lock)
     secret_vault = ProviderSecretVault(store._connection, store._lock)
     business_credentials = BusinessCredentialVault(store._connection, store._lock)
+    integrations = BusinessIntegrationRegistry(store._connection, store._lock)
     usage = ModelUsageRepository(store._connection, store._lock)
     secret_vault_errors: dict[str, str] = {}
     try:
@@ -232,6 +235,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         learning=learning, github_evolution=github_evolution, api_anything=api_anything,
         secret_vault=secret_vault,
         business_credentials=business_credentials,
+        integrations=integrations,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
     )
