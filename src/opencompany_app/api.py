@@ -89,6 +89,16 @@ from opencompany_app.api_schemas import (
     CommercialSupplierInput,
     CommercialSupplierStatusInput,
 )
+from opencompany_app.api_dependencies import (
+    _clear_login_failures,
+    _default_runtime,
+    _login_retry_after,
+    get_delegation_store,
+    get_optional_runtime,
+    get_runtime,
+    get_store,
+    require_owner_key,
+)
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -101,51 +111,12 @@ app = FastAPI(
 
 # Per-process login throttling. The API key is a bootstrap credential; this
 # protects the session exchange endpoint from unlimited online guessing.
-_LOGIN_FAILURES: dict[str, list[float]] = {}
-_LOGIN_LOCK = Lock()
-_LOGIN_WINDOW_SECONDS = 900
-_LOGIN_MAX_FAILURES = 5
-_LOGIN_MAX_TRACKED_CLIENTS = 10_000
-
 # In-memory, owner-authenticated async provider-test jobs. The inference request
 # may outlive browser/proxy request timeouts; clients poll the job instead.
 _UNOROUTER_TESTS: dict[str, dict] = {}
 _UNOROUTER_TESTS_LOCK = Lock()
 _UNOROUTER_TESTS_MAX = 50
 _LOGGER = logging.getLogger(__name__)
-
-
-def _login_retry_after(client_key: str, *, failed: bool = False) -> int:
-    now = time.monotonic()
-    with _LOGIN_LOCK:
-        for key, attempts in list(_LOGIN_FAILURES.items()):
-            fresh = [stamp for stamp in attempts if now - stamp < _LOGIN_WINDOW_SECONDS]
-            if fresh:
-                _LOGIN_FAILURES[key] = fresh
-            else:
-                _LOGIN_FAILURES.pop(key, None)
-        if client_key not in _LOGIN_FAILURES and len(_LOGIN_FAILURES) >= _LOGIN_MAX_TRACKED_CLIENTS:
-            oldest_key = min(
-                _LOGIN_FAILURES,
-                key=lambda key: _LOGIN_FAILURES[key][-1] if _LOGIN_FAILURES[key] else now,
-            )
-            _LOGIN_FAILURES.pop(oldest_key, None)
-        attempts = _LOGIN_FAILURES.setdefault(client_key, [])
-        if failed:
-            attempts.append(now)
-        if len(attempts) < _LOGIN_MAX_FAILURES:
-            return 0
-        return max(1, int(_LOGIN_WINDOW_SECONDS - (now - attempts[0])))
-
-
-def _clear_login_failures(client_key: str) -> None:
-    with _LOGIN_LOCK:
-        _LOGIN_FAILURES.pop(client_key, None)
-
-
-@lru_cache(maxsize=1)
-def _default_runtime() -> OpenCompanyRuntime:
-    return create_runtime()
 
 
 @app.on_event("startup")
@@ -182,84 +153,6 @@ def close_autonomous_runtime() -> None:
     if _default_runtime.cache_info().currsize:
         _default_runtime().close()
         _default_runtime.cache_clear()
-
-
-def get_runtime() -> OpenCompanyRuntime:
-    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
-        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
-    return _default_runtime()
-
-
-def get_optional_runtime() -> OpenCompanyRuntime | None:
-    # Provider readiness is intentionally public and credential-free. Only
-    # load owner-persisted settings when the owner runtime is configured.
-    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
-        return None
-    return _default_runtime()
-
-
-def get_delegation_store() -> DelegationRepository:
-    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
-        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
-    return _default_runtime().delegations
-
-
-def get_store() -> SQLiteStore:
-    if not os.environ.get("OPENCOMPANY_OWNER_API_KEY"):
-        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
-    return _default_runtime().store
-
-
-def require_owner_key(
-    request: Request,
-    runtime: OpenCompanyRuntime = Depends(get_runtime),
-    x_opencompany_api_key: str | None = Header(default=None),
-    x_csrf_token: str | None = Header(default=None),
-    opencompany_session: str | None = Cookie(default=None),
-) -> str:
-    expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
-    if not expected:
-        raise HTTPException(status_code=503, detail="Owner API authentication is not configured.")
-    if opencompany_session:
-        mutating = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
-        if runtime.sessions.validate(
-            opencompany_session, x_csrf_token, require_csrf=mutating
-        ):
-            # Browser sessions are same-origin only. SameSite cookies and a
-            # session-bound CSRF token are required, and Origin must match Host.
-            # API-key clients remain available for explicit server-to-server use.
-            if mutating:
-                origin = request.headers.get("origin")
-                host = request.headers.get("host", "").casefold()
-                try:
-                    origin_parts = urlsplit(origin or "")
-                    origin_host = origin_parts.netloc.casefold()
-                    valid_origin = (
-                        origin_parts.scheme in {"http", "https"}
-                        and bool(origin_host)
-                        and origin_host == host
-                        and origin_parts.path in {"", "/"}
-                        and not origin_parts.query
-                        and not origin_parts.fragment
-                    )
-                except ValueError:
-                    valid_origin = False
-                if not valid_origin:
-                    raise HTTPException(status_code=403, detail="Owner session requests must use the same origin.")
-            return "owner"
-    client_key = request.client.host if request.client else "unknown"
-    if x_opencompany_api_key and hmac.compare_digest(x_opencompany_api_key, expected):
-        _clear_login_failures(client_key)
-        return "owner"
-    if x_opencompany_api_key:
-        retry_after = _login_retry_after(client_key, failed=True)
-        if retry_after:
-            raise HTTPException(
-                status_code=429,
-                detail="Too many failed owner authentication attempts. Try again later.",
-                headers={"Retry-After": str(retry_after)},
-            )
-    raise HTTPException(status_code=401, detail="Owner authentication failed.")
 
 
 def _handoff_payload(item: AgentHandoff) -> dict:
