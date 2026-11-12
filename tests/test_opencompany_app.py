@@ -1236,7 +1236,7 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     assert runtime.store.verify_audit_chain() is True
 
 
-def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
+def test_worker_autostart_flag_does_not_start_fleet_during_api_startup(monkeypatch):
     calls = []
 
     class Fleet:
