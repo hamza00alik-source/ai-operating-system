@@ -57,7 +57,7 @@ class ClamAVUnixSocketScanner:
         client.settimeout(self.timeout_seconds)
         try:
             client.connect(str(self.socket_path))
-            client.sendall(b"zINSTREAM\\0")
+            client.sendall(b"zINSTREAM\0")
             for chunk in chunks:
                 if not isinstance(chunk, (bytes, bytearray, memoryview)):
                     raise AssetScanError("invalid_stream", "Scanner input must contain bytes")
@@ -77,7 +77,7 @@ class ClamAVUnixSocketScanner:
                 if not block:
                     break
                 response.extend(block)
-                if b"\\0" in response or b"\\n" in response:
+                if b"\0" in response or b"\\n" in response:
                     break
         except socket.timeout as exc:
             raise AssetScanError("scanner_timeout", "Local malware scanner timed out") from exc
@@ -86,7 +86,7 @@ class ClamAVUnixSocketScanner:
         finally:
             client.close()
 
-        verdict = bytes(response).split(b"\\0", 1)[0].decode("utf-8", errors="replace").strip()
+        verdict = bytes(response).split(b"\0", 1)[0].decode("utf-8", errors="replace").strip()
         if verdict.endswith(": OK") or verdict == "stream: OK":
             status = "clean"
         elif verdict.endswith(" FOUND"):
