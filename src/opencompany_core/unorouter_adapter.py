@@ -70,7 +70,7 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
     catalog_models = pricing.get("models")
     key_models = available.get("data")
     if not isinstance(catalog_models, list) or not isinstance(key_models, list):
-        raise ProviderUnavailable("UnoRouter did not return the expected model catalogue format.")
+        raise ProviderUnavailable("UnoRouter did not return the expected pricing catalogue and model-list format.")
     key_ids = {
         item["id"].strip() for item in key_models
         if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip()
