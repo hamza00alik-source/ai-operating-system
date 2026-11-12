@@ -87,14 +87,20 @@ def test_openrouter_is_blocked_unless_owner_confirms_free(monkeypatch):
     assert status["eligible"] is False
 
 
-def test_llm_endpoint_blocks_unconfigured_provider(monkeypatch):
-    # This endpoint test is about provider eligibility, not deployment auth.
-    # Development mode must now be an explicit test opt-in.
+def test_llm_endpoint_requires_owner_auth_and_blocks_unconfigured_provider(monkeypatch):
+    # Model requests are external actions and must not inherit development auth bypass.
     monkeypatch.setenv("AI_OS_ENV", "development")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
     clear_provider_env(monkeypatch)
     with TestClient(app) as client:
-        response = client.post("/llm/test", json={"provider": "groq", "prompt": "hello"})
-    assert response.status_code == 403
+        denied = client.post("/llm/test", json={"provider": "groq", "prompt": "hello"})
+        allowed = client.post(
+            "/llm/test",
+            headers={"X-API-Key": "test-owner-key"},
+            json={"provider": "groq", "prompt": "hello"},
+        )
+    assert denied.status_code == 401
+    assert allowed.status_code == 403
 
 
 
