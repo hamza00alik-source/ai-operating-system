@@ -105,3 +105,27 @@ def test_business_delivery_class_is_strict_and_ids_are_unique():
             provision(registry, portfolio, item)
     finally:
         store.close()
+
+
+
+def test_only_foundational_or_active_units_can_resolve_operational_scopes():
+    store, portfolio, registry = setup()
+    try:
+        foundational = registry.require_operational("physical-agency")
+        assert foundational["status"] == "foundational"
+        scope = registry.scope_for("physical-agency")
+        assert set(scope) == {
+            "namespace_id", "customer_scope_id", "finance_scope_id",
+            "credential_scope_id", "integration_scope_id", "memory_scope_id",
+            "asset_scope_id",
+        }
+        item = approved_opportunity(portfolio)
+        unit = provision(registry, portfolio, item)
+        with pytest.raises(BusinessUnitProvisioningError, match="not operational"):
+            registry.require_operational(unit["business_id"])
+        with pytest.raises(BusinessUnitProvisioningError, match="not operational"):
+            registry.scope_for(unit["business_id"])
+        with pytest.raises(BusinessUnitProvisioningError, match="unknown business unit"):
+            registry.require_operational("not-registered")
+    finally:
+        store.close()
