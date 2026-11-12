@@ -254,3 +254,39 @@ def test_worker_heartbeats_long_running_execution_before_lease_expiry(tmp_path):
     assert queue.counts() == {"done": 1}
     queue.close()
     store.close()
+
+
+def test_agent_deactivated_during_execution_cannot_persist_deliverable(tmp_path):
+    agent_id, item, store, queue = setup(tmp_path)
+
+    class DeactivatingExecutor(FakeExecutor):
+        def execute(self, role_key, work_item, **kwargs):
+            current = store.get_agent(agent_id)
+            paused = AgentProfile(
+                id=current.id, name=current.name, department=current.department,
+                purpose=current.purpose, capabilities=current.capabilities,
+                state=AgentState.PAUSED, revision=current.revision + 1,
+                role_key=current.role_key, team_key=current.team_key,
+            )
+            assert store.update_agent_with_audit(
+                paused,
+                AuditRecord(
+                    id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                    actor_type="owner", actor_id="owner", action="agent.paused",
+                    subject_type="agent", subject_id=str(agent_id), outcome="recorded",
+                    correlation_id="deactivation-race-test",
+                ),
+                expected_revision=current.revision,
+            )
+            return super().execute(role_key, work_item, **kwargs)
+
+    sink = MemorySink()
+    worker = OpenCompanyWorker(queue, store, DeactivatingExecutor(), sink)
+    with pytest.raises(WorkerConfigurationError, match="authorization changed"):
+        worker.run_once(agent_id, "marketplace_operations_analyst")
+    assert store.list_deliverables(item.id) == ()
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+    assert queue.counts() == {"queued": 1}
+    assert store.verify_audit_chain()
+    queue.close()
+    store.close()
