@@ -441,7 +441,7 @@ def test_checkpoint_write_is_rejected_for_stale_or_cancelled_lease(tmp_path):
         subject_type="work_item", subject_id=str(item.id), outcome="recorded",
         correlation_id=str(uuid4()), details={"reason": "owner_requested"},
     )) == "cancellation_requested"
-    assert store.save_execution_checkpoint(
+    assert queue.save_checkpoint(
         lease, "marketplace_operations_analyst", "specialist_output", {"content": "must not save"}
     ) is False
     assert queue.list_checkpoints(item.id) == ()
