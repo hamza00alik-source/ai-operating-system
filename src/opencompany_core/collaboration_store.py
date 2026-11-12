@@ -136,6 +136,29 @@ class HandoffRepository:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
+                persisted = self._db.execute(
+                    "SELECT * FROM agent_handoffs WHERE id=?", (str(updated.id),)
+                ).fetchone()
+                if persisted is None or persisted["state"] != expected.value:
+                    self._db.execute("ROLLBACK")
+                    return False
+                # A transition may change lifecycle fields only. Bind every
+                # immutable identity/context field to the persisted handoff so
+                # a caller cannot substitute another work item or business unit.
+                immutable_match = (
+                    persisted["work_item_id"] == str(updated.work_item_id)
+                    and persisted["sender_agent_id"] == str(updated.sender_agent_id)
+                    and persisted["recipient_agent_id"] == str(updated.recipient_agent_id)
+                    and persisted["purpose"] == updated.purpose
+                    and persisted["requested_result"] == updated.requested_result
+                    and persisted["context"] == updated.context
+                    and tuple(UUID(v) for v in json.loads(persisted["artifact_ids_json"])) == updated.artifact_ids
+                    and persisted["created_at"] == updated.created_at.isoformat()
+                )
+                if not immutable_match:
+                    raise ValueError("handoff transition cannot change its original identity or context")
+                if updated.state != HandoffState.DELIVERED and updated.response_artifact_ids:
+                    raise ValueError("only delivered handoffs may contain response artifacts")
                 if updated.state == HandoffState.DELIVERED:
                     for artifact_id in updated.response_artifact_ids:
                         artifact = self._db.execute(
