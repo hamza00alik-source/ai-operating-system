@@ -73,8 +73,8 @@ def initialize_autonomous_runtime() -> None:
     # budget for every inference call; unavailable free models fail closed.
     if autostart_enabled:
         try:
-            if runtime.gateway.eligible_providers(request_budget_usd=0.0):
-                runtime.fleet.start()
+            if not runtime.start_workers_if_ready():
+                _LOGGER.info("Worker autostart remains stopped until a successful owner-triggered zero-cost provider test in this process.")
             else:
                 _LOGGER.warning("Worker autostart was requested but no confirmed-free provider is configured.")
         except Exception:
