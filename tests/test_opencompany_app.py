@@ -148,6 +148,7 @@ def test_unorouter_discovery_requires_owner_and_returns_only_free_models(owner_c
 
 
 def test_unorouter_credentials_save_without_network_and_wait_for_live_test(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
     discovery_calls = []
     monkeypatch.setattr(api_module, "discover_free_models", lambda api_key: discovery_calls.append(api_key) or [])
     response = owner_client.put(
@@ -1826,7 +1827,18 @@ def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
         json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
     )
     assert proposed.status_code == 200
-    proposal_id = proposed.json()["id"]
+    proposal_data = proposed.json()
+    proposal_id = proposal_data["id"]
+    profiles = owner_client.get("/agents", headers=headers).json()["agents"]
+    manager = next(agent for agent in profiles if agent["role_key"] == "market_intelligence_analyst")
+    activation_ids = [manager["id"]] + [child["assigned_agent_id"] for child in proposal_data["children"]]
+    for agent_id in dict.fromkeys(activation_ids):
+        agent = next(profile for profile in profiles if profile["id"] == agent_id)
+        activated = owner_client.post(
+            f"/agents/{agent_id}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": agent["revision"]},
+        )
+        assert activated.status_code == 200
 
     before = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
     assert before.status_code == 200
