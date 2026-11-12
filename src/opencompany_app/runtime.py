@@ -27,6 +27,7 @@ from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import BusinessCredentialVault, ProviderSecretVault, SecretVaultError
 from opencompany_core.integration_registry import BusinessIntegrationRegistry
 from opencompany_core.business_memory import BusinessMemoryStore
+from opencompany_core.business_assets import BusinessAssetRegistry
 from opencompany_core.model_usage import ModelUsageRepository
 
 
@@ -47,6 +48,7 @@ class OpenCompanyRuntime:
     business_credentials: BusinessCredentialVault
     integrations: BusinessIntegrationRegistry
     business_memory: BusinessMemoryStore
+    business_assets: BusinessAssetRegistry
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
@@ -159,6 +161,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     business_credentials = BusinessCredentialVault(store._connection, store._lock)
     integrations = BusinessIntegrationRegistry(store._connection, store._lock)
     business_memory = BusinessMemoryStore(store._connection, store._lock)
+    business_assets = BusinessAssetRegistry(store._connection, store._lock)
     usage = ModelUsageRepository(store._connection, store._lock)
     secret_vault_errors: dict[str, str] = {}
     try:
@@ -240,6 +243,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         business_credentials=business_credentials,
         integrations=integrations,
         business_memory=business_memory,
+        business_assets=business_assets,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
     )
