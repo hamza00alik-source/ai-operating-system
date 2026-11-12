@@ -146,6 +146,7 @@ def get_work_item_workflow(
         "prerequisites": prerequisites,
         "dependents": dependents,
         "queue": runtime.queue.get_entry(item_id),
+        "execution_attempts": list(runtime.queue.list_attempts(item_id)),
         "manager": ({
             "agent_id": str(manager.id), "role_key": manager.role_key,
             "team_key": manager.team_key, "department": manager.department,
