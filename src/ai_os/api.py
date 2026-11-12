@@ -26,6 +26,7 @@ from ai_os.workflows import list_templates, create_workflow, get_workflow, list_
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
 from ai_os import business_ops
+from ai_os import social_media
 from pydantic import BaseModel, Field
 
 
@@ -762,3 +763,77 @@ def call_api_anything_read(site: str, operation: str, payload: WebsiteApiCallReq
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except website_api.WebsiteApiUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# Social media and creative production: drafts/briefs only; no external side effects.
+class SocialContentCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    body: str = Field(default="", max_length=10000)
+    channels: list[str] = Field(default_factory=list, max_length=8)
+    content_type: str = Field(default="post", max_length=30)
+    brief: dict = Field(default_factory=dict)
+
+
+class SocialDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+
+
+@app.get("/social/status", dependencies=[Depends(require_api_key)])
+def get_social_status():
+    social_media.initialize()
+    return {
+        "department": "social-media-video",
+        "integrations": social_media.integration_status(),
+        "publishing_enabled": False,
+        "paid_generation_enabled": False,
+        "approval_required": True,
+    }
+
+
+@app.get("/social/content", dependencies=[Depends(require_api_key)])
+def get_social_content(kind: str | None = Query(default=None, pattern="^(social_post|video_brief)$")):
+    return social_media.list_content(kind)
+
+
+@app.post("/social/content", status_code=201, dependencies=[Depends(require_owner_key)])
+def post_social_content(payload: SocialContentCreate, kind: str = Query(default="social_post", pattern="^(social_post|video_brief)$")):
+    try:
+        return social_media.create_content(
+            kind=kind, title=payload.title, body=payload.body,
+            channels=payload.channels, content_type=payload.content_type,
+            brief=payload.brief,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/social/content/{content_id}/request-approval", dependencies=[Depends(require_owner_key)])
+def request_social_content_approval(content_id: str):
+    item = social_media.get_content(content_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Content draft not found.")
+    if item["status"] != "draft":
+        raise HTTPException(status_code=409, detail="Only draft content can be submitted for approval.")
+    approval = create_approval(ApprovalCreate(
+        action="Review social/video content",
+        details=json.dumps({"content_id": content_id, "kind": item["kind"], "title": item["title"]}),
+    ))
+    updated = social_media.attach_approval(content_id, approval["id"])
+    return {"content": updated, "approval": approval, "external_action": "none"}
+
+
+@app.post("/social/content/{content_id}/decision", dependencies=[Depends(require_owner_key)])
+def decide_social_content(content_id: str, payload: SocialDecisionRequest):
+    item = social_media.get_content(content_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Content draft not found.")
+    if item["status"] != "awaiting_approval" or not item["approval_id"]:
+        raise HTTPException(status_code=409, detail="Content is not awaiting approval.")
+    try:
+        approval = decide_approval(item["approval_id"], ApprovalDecision(decision=payload.decision))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if approval is None:
+        raise HTTPException(status_code=404, detail="Linked approval request not found.")
+    updated = social_media.set_decision(content_id, payload.decision)
+    return {"content": updated, "approval": approval, "publishing_performed": False}
