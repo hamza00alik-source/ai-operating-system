@@ -96,3 +96,34 @@ def test_dependency_context_returns_business_attribution_for_valid_dependency():
     assert result[0]["business_id"] == "physical-brand"
     assert result[0]["deliverables"][0]["content"] == "Evidence"
 
+
+
+def test_runtime_does_not_close_shared_store_when_worker_drain_times_out():
+    import pytest
+    from opencompany_app.runtime import OpenCompanyRuntime
+
+    class RunningFleet:
+        def stop(self, *, timeout_seconds):
+            assert timeout_seconds == 5.0
+            return False
+
+        def status(self):
+            return type("Status", (), {"running": True})()
+
+    class CloseTracker:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    runtime = OpenCompanyRuntime.__new__(OpenCompanyRuntime)
+    runtime.fleet = RunningFleet()
+    runtime.delegations = CloseTracker()
+    runtime.store = CloseTracker()
+
+    with pytest.raises(RuntimeError, match="shared runtime resources remain open"):
+        runtime.close()
+
+    assert runtime.delegations.closed is False
+    assert runtime.store.closed is False
