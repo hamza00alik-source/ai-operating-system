@@ -1956,22 +1956,57 @@ def test_workflow_view_exposes_secret_free_execution_attempt_history(owner_clien
     assert unauthorized.status_code == 401
 
 
-def test_owner_cannot_enqueue_ready_delegated_synthesis_before_all_children_complete(owner_client):
+def test_owner_cannot_enqueue_delegated_synthesis_until_every_child_is_complete(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
-    prerequisite = owner_client.post("/work-items", headers=headers, json={
-        "title": "Collect evidence", "objective": "Gather primary sources",
+    first = owner_client.post("/work-items", headers=headers, json={
+        "title": "Collect evidence A", "objective": "Gather primary sources A",
+        "department": "intelligence-research",
+    }).json()
+    second = owner_client.post("/work-items", headers=headers, json={
+        "title": "Collect evidence B", "objective": "Gather primary sources B",
         "department": "intelligence-research",
     }).json()
     synthesis = owner_client.post("/work-items", headers=headers, json={
         "title": "Synthesize evidence", "objective": "Combine approved child outputs",
-        "department": "intelligence-research", "depends_on": [prerequisite["item_id"]],
+        "department": "intelligence-research",
+        "depends_on": [first["item_id"], second["item_id"]],
     }).json()
+
+    # Complete and owner-approve one child; the other remains unfinished.
+    from dataclasses import replace
+    store = app.dependency_overrides[get_store]()
+    first_id = UUID(first["item_id"])
+    current = store.get_work_item(first_id)
+    start_event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.child_started", subject_type="work_item",
+        subject_id=str(first_id), outcome="recorded", correlation_id="multi-child-gate",
+    )
+    store.save_work_item_with_audit(replace(current, state=TaskState.IN_PROGRESS), start_event)
+    deliverable = AgentDeliverable(
+        id=uuid4(), work_item_id=first_id, role_key="market_intelligence_analyst",
+        content="Approved child evidence", provider="fake", model="deterministic",
+        cost_usd=0.0,
+    )
+    saved_event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+        actor_id="test-agent", action="worker.deliverable_saved",
+        subject_type="work_item", subject_id=str(first_id), outcome="recorded",
+        correlation_id="multi-child-gate",
+    )
+    assert store.save_deliverable_with_audit(deliverable, saved_event)
+    reviewed = owner_client.post(
+        f"/work-items/{first_id}/review", headers=headers,
+        json={"approved": True, "rationale": "Child output approved."},
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["state"] == "completed"
+
     ready = owner_client.post(
         f"/work-items/{synthesis['item_id']}/transition", headers=headers,
         json={"target_state": "ready"},
     )
     assert ready.status_code == 200
-
     response = owner_client.post(
         f"/work-items/{synthesis['item_id']}/enqueue", headers=headers,
     )
