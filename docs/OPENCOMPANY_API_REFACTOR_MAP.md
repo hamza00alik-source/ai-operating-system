@@ -386,3 +386,16 @@ Static re-fetch checks confirm all 15 commercial methods are present in the mixi
 The API dependency module was also reviewed (190 lines): it currently centralizes the process-local runtime singleton, owner authentication/session validation and throttling, plus shared audit/auto-queue policy helpers. These concerns have clear seams, but splitting them now would require coordinated changes across many routers. Defer that follow-up until imports can be validated; do not create a risky speculative refactor before the scheduled test window.
 
 No imports, app startup, OpenAPI generation, tests, CI, migrations or database operations were performed. Existing database schema version remains 7; no migration was added. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production changes occurred.
+
+
+## Authentication and runtime dependency separation (2026-11-12)
+
+The shared dependency module was split into focused modules while retaining its existing import surface for routers and the API composition root:
+
+- Added `src/opencompany_app/runtime_dependencies.py` for the cached process-local runtime singleton and guarded runtime/store accessors (`get_runtime`, `get_optional_runtime`, `get_store`, `get_delegation_store`).
+- Added `src/opencompany_app/auth_dependencies.py` for owner API-key/browser-session authentication and login-failure throttling.
+- Reduced `api_dependencies.py` from 190 to 79 lines. It now re-exports the runtime and owner-auth dependencies for compatibility and retains shared work-item audit-record and automatic-queue policy helpers. Existing routers need not change imports in this extraction.
+
+Static re-fetch checks confirm constant-time API-key comparison, session-bound CSRF enforcement for mutating requests, same-origin validation, the existing login failure throttle, the cached singleton and owner-key configuration guards remain present in the new modules. The API still imports the compatibility facade, contains zero direct route decorators, and neither new module imports `api_dependencies.py`; no direct circular dependency is visible in these source files.
+
+This is source-level verification only. The full import graph was not executed, and no imports, app startup, OpenAPI generation, tests, CI or runtime verification were performed. The existing process-local singleton remains process-local; this change does not add multi-process coordination. Test/CI deferral until 2026-12-01 remains active. No merge, deployment, credentials, sessions or production settings were changed.
