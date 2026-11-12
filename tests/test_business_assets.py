@@ -144,7 +144,8 @@ def test_asset_scan_verdict_is_scoped_append_only_and_never_downloadable(tmp_pat
     listed=assets.list("physical-agency")[0]
     assert listed["storage_state"]=="private_scanned_clean"
     assert listed["status"]=="pending_delivery_approval"
-    assert assets.scan_declaration("physical-brand",declared["asset_id"]) if False else True
+    with pytest.raises(ValueError,match="not found"):
+        assets.scan_declaration("physical-brand",declared["asset_id"])
     history=assets.events("physical-agency",declared["asset_id"])
     assert [event["action"] for event in history]==["declared","stored_unscanned","scan_clean"]
     with store._lock:
