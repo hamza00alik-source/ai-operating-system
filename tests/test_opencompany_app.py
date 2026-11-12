@@ -1667,3 +1667,65 @@ def test_work_item_creation_rejects_missing_dependencies(owner_client):
     assert rejected.status_code == 422
     assert rejected.json()["detail"] == f"Dependency {missing_id} does not exist."
 
+def test_delegation_planning_rejects_non_draft_parent(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Already approved work",
+        "objective": "This task has already moved beyond draft planning",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    }).json()
+    store = app.dependency_overrides[get_store]()
+    from dataclasses import replace
+    current = store.get_work_item(UUID(created["item_id"]))
+    store.save_work_item_with_audit(replace(current, state=TaskState.READY), AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.mark_ready", subject_type="work_item",
+        subject_id=created["item_id"], outcome="recorded", correlation_id="stale-proposal-test",
+    ))
+
+    rejected = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert rejected.status_code == 409
+    assert "unassigned draft work items" in rejected.json()["detail"]
+
+
+def test_stale_delegation_proposal_cannot_reopen_parent_work(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare buyer research",
+        "objective": "Prepare a sourced buyer-demand assessment",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    }).json()
+    proposal_response = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert proposal_response.status_code == 200
+    proposal_id = proposal_response.json()["id"]
+
+    store = app.dependency_overrides[get_store]()
+    from dataclasses import replace
+    current = store.get_work_item(UUID(created["item_id"]))
+    store.save_work_item_with_audit(replace(current, state=TaskState.READY), AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.advance_parent", subject_type="work_item",
+        subject_id=created["item_id"], outcome="recorded", correlation_id="stale-proposal-test",
+    ))
+
+    rejected = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals/{proposal_id}/approve",
+        headers=headers,
+    )
+    assert rejected.status_code == 409
+    assert "changed after planning" in rejected.json()["detail"]
+    assert store.get_work_item(UUID(created["item_id"])).state == TaskState.READY
+    assert len(store.list_work_items(business_id="physical-agency", limit=1000)) == 1
+
