@@ -571,7 +571,7 @@ def owner_dashboard() -> HTMLResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness probe: the ASGI process is responsive."""
-    return {"status": "ok", "service": "opencompany-core", "mode": "owner-authenticated"}
+    return {"status": "ok", "service": PLATFORM_ID, "product": PLATFORM_NAME, "version": PLATFORM_VERSION, "mode": "owner-authenticated"}
 
 
 @app.get("/ready")
@@ -601,7 +601,9 @@ def readiness(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
         raise HTTPException(status_code=503, detail="OpenCompany storage is not ready.") from exc
     return {
         "status": "ready",
-        "service": "opencompany-core",
+        "service": PLATFORM_ID,
+        "product": PLATFORM_NAME,
+        "version": PLATFORM_VERSION,
         "storage": "ok",
         "worker_fleet_running": fleet.running,
         "provider_required_for_readiness": False,
