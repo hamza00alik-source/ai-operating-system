@@ -1935,3 +1935,55 @@ def test_business_asset_api_is_owner_confirmed_and_metadata_only(owner_client):
         f"/business-units/physical-agency/assets/{asset_id}/events", headers=headers
     )
     assert events.status_code == 200 and len(events.json()["events"]) == 1
+
+
+def test_business_asset_scan_route_records_clean_verdict_but_keeps_download_disabled(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    payload = b"glTF" + b"\\x02\\x00\\x00\\x00" + b"\\x18\\x00\\x00\\x00" + b"test"
+    digest = hashlib.sha256(payload).hexdigest()
+    declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
+        "asset_key": "scan-demo", "title": "Scan demo", "asset_type": "3d-model",
+        "filename": "scan-demo.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": digest, "byte_size": len(payload),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    assert declared.status_code == 200
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    upload = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload,
+    )
+    assert upload.status_code == 200
+
+    class Scanner:
+        def scan(self, chunks):
+            content = b"".join(chunks)
+            return {
+                "status": "clean", "scanner_key": "clamav-unix-socket",
+                "checksum_sha256": hashlib.sha256(content).hexdigest(),
+                "byte_size": len(content), "verdict": "stream: OK",
+            }
+
+    runtime.asset_scanner = Scanner()
+    unconfirmed = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan", headers=headers
+    )
+    assert unconfirmed.status_code == 422
+    scanned = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers={**headers, "X-Confirm-Owner-Scan": "true"},
+    )
+    assert scanned.status_code == 200
+    assert scanned.json()["scan_status"] == "clean"
+    assert scanned.json()["download_enabled"] is False
+    assert scanned.json()["delivery_approved"] is False
+    listed = owner_client.get("/business-units/digital-products/assets", headers=headers).json()["assets"][0]
+    assert listed["storage_state"] == "private_scanned_clean"
+    assert listed["status"] == "pending_delivery_approval"
+    history = owner_client.get(
+        f"/business-units/digital-products/assets/{asset_id}/events", headers=headers
+    ).json()["events"]
+    assert [event["action"] for event in history][-1] == "scan_clean"
