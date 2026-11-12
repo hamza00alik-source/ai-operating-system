@@ -10,6 +10,7 @@ from opencompany_core.persistence import SQLiteStore
 from opencompany_core.planning import PlanError, WorkPlan
 from opencompany_core.organization import default_organization
 from opencompany_core.workforce import default_workforce
+from opencompany_core.worker_queue import QueueError
 from opencompany_app.api_schemas import WorkItemCreateInput, WorkItemReassignInput
 from opencompany_app.api_dependencies import get_runtime, get_store, require_owner_key, work_item_audit_record
 from opencompany_app.runtime import OpenCompanyRuntime
