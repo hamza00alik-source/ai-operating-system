@@ -90,6 +90,25 @@ class DurableWorkerQueue:
             self._db.execute(
                 "ALTER TABLE worker_queue ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0"
             )
+        self._db.execute("""
+            CREATE TABLE IF NOT EXISTS worker_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                work_item_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                attempt INTEGER NOT NULL,
+                lease_token TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL CHECK(status IN
+                    ('running','succeeded','retryable_failed','failed','interrupted','cancelled')),
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                error_code TEXT,
+                UNIQUE(work_item_id, attempt)
+            )
+        """)
+        self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_worker_attempts_item "
+            "ON worker_attempts(work_item_id, attempt)"
+        )
         self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_worker_queue_ready "
             "ON worker_queue(state, created_at)"
@@ -284,6 +303,14 @@ class DurableWorkerQueue:
                             details={"reason": "lease_expired_retry_limit"},
                         ), self._db)
                 self._db.execute(
+                    """UPDATE worker_attempts SET status='interrupted',finished_at=?
+                       WHERE status='running' AND lease_token IN (
+                           SELECT lease_token FROM worker_queue
+                           WHERE state='leased' AND lease_expires_at<=?
+                       )""",
+                    (instant.isoformat(), instant.isoformat()),
+                )
+                self._db.execute(
                     """UPDATE worker_queue SET
                        state=CASE WHEN attempts>=? THEN 'dead' ELSE 'queued' END,
                        lease_token=NULL, lease_expires_at=NULL,
@@ -329,6 +356,12 @@ class DurableWorkerQueue:
                     """UPDATE worker_queue SET state='leased',attempts=?,lease_token=?,
                        lease_expires_at=?,updated_at=? WHERE work_item_id=? AND state='queued'""",
                     (attempt, str(token), expires.isoformat(), instant.isoformat(), row["work_item_id"]),
+                )
+                self._db.execute(
+                    """INSERT INTO worker_attempts
+                       (work_item_id,agent_id,attempt,lease_token,status,started_at)
+                       VALUES(?,?,?,?, 'running', ?)""",
+                    (row["work_item_id"], row["agent_id"], attempt, str(token), instant.isoformat()),
                 )
                 self._db.execute("COMMIT")
                 return WorkerLease(
@@ -447,6 +480,11 @@ class DurableWorkerQueue:
                 )
                 if cursor.rowcount != 1:
                     raise QueueError("worker lease changed during cancellation")
+                self._db.execute(
+                    """UPDATE worker_attempts SET status='cancelled',finished_at=?
+                       WHERE lease_token=? AND status='running'""",
+                    (now, str(lease.lease_token)),
+                )
                 self._append_audit(record, self._db)
                 self._db.execute("COMMIT")
                 return True
@@ -482,6 +520,27 @@ class DurableWorkerQueue:
             )
             if cursor.rowcount != 1:
                 raise QueueError("lease is stale or no longer owned by this worker")
+            attempt_status = {
+                "done": "succeeded",
+                "queued": "retryable_failed",
+                "dead": "failed",
+            }[state]
+            self._db.execute(
+                """UPDATE worker_attempts SET status=?,finished_at=?,error_code=?
+                   WHERE lease_token=? AND status='running'""",
+                (attempt_status, datetime.now(timezone.utc).isoformat(), error,
+                 str(lease.lease_token)),
+            )
+
+    def list_attempts(self, work_item_id: UUID) -> tuple[dict, ...]:
+        """Return ordered, secret-free execution history for one work item."""
+        with self._lock:
+            rows = self._db.execute(
+                """SELECT attempt,status,started_at,finished_at,error_code
+                   FROM worker_attempts WHERE work_item_id=? ORDER BY attempt""",
+                (str(work_item_id),),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
 
     def available_agent_ids(self, *, now: datetime | None = None) -> tuple[UUID, ...]:
         """Return only agents with queued work or an expired lease to recover."""
