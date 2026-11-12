@@ -41,6 +41,20 @@ def _assert_operational_work_item_scope(connection: sqlite3.Connection, lock: RL
 
 
 
+
+def _assert_operational_commercial_scope(
+    connection: sqlite3.Connection, lock: RLock, business_id: str,
+) -> dict[str, Any]:
+    """Require an existing, operational registry unit at every commercial write boundary."""
+    if not isinstance(business_id, str) or not _WORK_ITEM_BUSINESS_ID.fullmatch(business_id):
+        raise ValueError("business_id must be a 2-63 character lowercase slug")
+    from .business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
+    try:
+        return BusinessUnitRegistry(connection, lock).require_operational(business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -302,9 +316,7 @@ class SQLiteStore:
 
     def create_commercial_opportunity(self, record: dict[str, Any], audit: AuditRecord) -> str:
         """Create one customer opportunity scoped to exactly one commercial business."""
-        allowed = {"physical-agency", "physical-brand", "digital-products"}
-        if record.get("business_id") not in allowed:
-            raise ValueError("opportunities must belong to one commercial business unit")
+        _assert_operational_commercial_scope(self._connection, self._lock, record.get("business_id"))
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
@@ -345,10 +357,8 @@ class SQLiteStore:
     ) -> tuple[dict[str, Any], ...]:
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
-        if business_id is not None and business_id not in {
-            "physical-agency", "physical-brand", "digital-products"
-        }:
-            raise ValueError("unknown commercial business unit")
+        if business_id is not None:
+            _assert_operational_commercial_scope(self._connection, self._lock, business_id)
         sql = "SELECT * FROM commercial_opportunities"
         values: list[Any] = []
         if business_id is not None:
@@ -362,9 +372,7 @@ class SQLiteStore:
 
     def create_commercial_product(self, record: dict[str, Any], audit: AuditRecord) -> str:
         """Create a draft catalogue entry inside exactly one commercial unit."""
-        allowed = {"physical-agency", "physical-brand", "digital-products"}
-        if record.get("business_id") not in allowed:
-            raise ValueError("catalogue products must belong to one commercial business unit")
+        _assert_operational_commercial_scope(self._connection, self._lock, record.get("business_id"))
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
@@ -466,6 +474,7 @@ class SQLiteStore:
                 if opportunity is None:
                     raise ValueError("commercial opportunity not found")
                 business_id = opportunity["business_id"]
+                _assert_operational_commercial_scope(self._connection, self._lock, business_id)
                 if business_id != record["business_id"]:
                     raise ValueError("quote business must match its opportunity")
                 if opportunity["stage"] in {"lost", "on_hold"}:
@@ -532,8 +541,8 @@ class SQLiteStore:
     def list_commercial_quotes(
         self, *, opportunity_id: str | None = None, business_id: str | None = None
     ) -> tuple[dict[str, Any], ...]:
-        if business_id is not None and business_id not in {"physical-agency", "physical-brand", "digital-products"}:
-            raise ValueError("unknown commercial business unit")
+        if business_id is not None:
+            _assert_operational_commercial_scope(self._connection, self._lock, business_id)
         clauses, values = [], []
         if opportunity_id is not None:
             clauses.append("q.opportunity_id=?")
@@ -565,11 +574,12 @@ class SQLiteStore:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
                 quote = self._connection.execute(
-                    "SELECT status FROM commercial_quotes WHERE id=?", (quote_id,)
+                    "SELECT status,business_id FROM commercial_quotes WHERE id=?", (quote_id,)
                 ).fetchone()
                 if quote is None:
                     self._connection.execute("ROLLBACK")
                     return False
+                _assert_operational_commercial_scope(self._connection, self._lock, quote["business_id"])
                 current = quote["status"]
                 allowed = {
                     "draft": {"approved_for_delivery", "void"},
@@ -664,11 +674,12 @@ class SQLiteStore:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
                 order = self._connection.execute(
-                    "SELECT status FROM commercial_orders WHERE id=?", (order_id,)
+                    "SELECT status,business_id FROM commercial_orders WHERE id=?", (order_id,)
                 ).fetchone()
                 if order is None:
                     self._connection.execute("ROLLBACK")
                     return False
+                _assert_operational_commercial_scope(self._connection, self._lock, order["business_id"])
                 current = order["status"]
                 allowed = {
                     "awaiting_owner_fulfilment": {"in_progress", "cancelled"},
@@ -1335,9 +1346,13 @@ class SQLiteStore:
 
     def create_commercial_supplier(self, record: dict[str, Any], audit: AuditRecord) -> str:
         """Create a private supplier relationship scoped to one physical business."""
-        allowed = {("physical-agency", "agency_supplier"), ("physical-brand", "own_brand_supplier")}
-        if (record.get("business_id"), record.get("relationship_type")) not in allowed:
-            raise ValueError("supplier relationship type does not match its owning business")
+        unit = _assert_operational_commercial_scope(self._connection, self._lock, record.get("business_id"))
+        if unit.get("delivery_class") != "physical-goods":
+            raise ValueError("supplier records are available only to physical-goods business units")
+        if record.get("business_id") == "physical-agency" and record.get("relationship_type") != "agency_supplier":
+            raise ValueError("agency suppliers must remain in the physical-agency unit")
+        if record.get("business_id") == "physical-brand" and record.get("relationship_type") != "own_brand_supplier":
+            raise ValueError("own-brand suppliers must remain in the physical-brand unit")
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
@@ -1370,8 +1385,10 @@ class SQLiteStore:
     def list_commercial_suppliers(self, *, business_id: str | None = None, limit: int = 500) -> tuple[dict[str, Any], ...]:
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
-        if business_id is not None and business_id not in {"physical-agency", "physical-brand"}:
-            raise ValueError("supplier records are available only to physical business units")
+        if business_id is not None:
+            unit = _assert_operational_commercial_scope(self._connection, self._lock, business_id)
+            if unit.get("delivery_class") != "physical-goods":
+                raise ValueError("supplier records are available only to physical-goods business units")
         sql = "SELECT * FROM commercial_suppliers"
         values: list[Any] = []
         if business_id is not None:
