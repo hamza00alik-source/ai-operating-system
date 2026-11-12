@@ -454,3 +454,10 @@ No imports, application startup, OpenAPI generation, tests, CI, migrations or da
 - [insight] `persistence.py` is now a 52-line composition/connection-lifecycle module: it owns SQLite connection setup and `close()`, and composes the work-item, agent, commercial, delegation, audit, schema-initialization and backup mixins. Static re-fetch confirmed the schema migration statements remain in the schema mixin and backup integrity/cleanup safeguards remain in the backup mixin.
 - [context] The schema-mixin extraction was present on the branch when this continuation re-fetched the file; this update records the observed current architecture and does not claim authorship of that earlier change. This continuation extracted backup persistence and updated the composition root.
 - [context] Static source checks only. No imports, startup, database operations, backup generation, schema migration, tests or CI were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
+
+## Backup persistence composition follow-up (2026-11-12)
+
+- Current branch source also contains `src/opencompany_core/backup_persistence.py` with `BackupPersistenceMixin`; `SQLiteStore` composes it and retains `close`, while the consistent snapshot implementation is no longer defined directly in `persistence.py`.
+- Static comparison against the pre-extraction `persistence.py` at commit `9d74552de0d754c2b12cbe574bf2ea3027fbfaea` confirms the 27-line `backup_to` method body is byte-for-byte identical in the mixin. It still uses SQLite's online backup API and runs `PRAGMA integrity_check`, removing a failed destination on error.
+- The current `persistence.py` composition root is 52 lines and composes seven mixins: work-item, agent, commercial, delegation, audit, schema initialization and backup. The constructor and connection/lock ownership remain in `SQLiteStore`.
+- Static source review only; no backup was generated and no runtime/import/test/CI operation was performed. Test/CI deferral until 2026-12-01 remains active.
