@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import os
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState
+from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState
+from opencompany_core.worker_queue import QueueError
 from opencompany_app.api_dependencies import get_runtime, require_owner_key
 from opencompany_app.runtime import OpenCompanyRuntime
 
@@ -64,6 +66,39 @@ def start_worker_fleet(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> di
 def stop_worker_fleet(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     stopped = runtime.fleet.stop(timeout_seconds=10.0)
     return {"running": runtime.fleet.status().running, "stopped_now": stopped}
+
+
+@router.post("/work-items/{work_item_id}/cancel", dependencies=[Depends(require_owner_key)])
+def cancel_work_item(
+    work_item_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Owner-request cancellation of queued or executing internal work."""
+    item = runtime.store.get_work_item(work_item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state not in {TaskState.QUEUED, TaskState.IN_PROGRESS, TaskState.CANCELLED}:
+        raise HTTPException(status_code=409, detail="Only queued or executing work can be cancelled.")
+    record = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner", action="work_item.cancellation_requested",
+        subject_type="work_item", subject_id=str(work_item_id), outcome="recorded",
+        correlation_id=str(uuid4()), details={"business_id": item.business_id},
+    )
+    try:
+        result = runtime.queue.request_cancel(work_item_id, record)
+    except QueueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    current = runtime.store.get_work_item(work_item_id)
+    return {
+        "work_item_id": str(work_item_id),
+        "result": result,
+        "task_state": current.state.value if current else None,
+        "note": (
+            "Cancellation is recorded. The active model request may need to finish before the worker can finalize it."
+            if result == "cancellation_requested" else "Work was cancelled."
+        ),
+    }
 
 
 @router.post("/workers/{agent_id}/run-once", dependencies=[Depends(require_owner_key)])
