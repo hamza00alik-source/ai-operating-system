@@ -101,7 +101,7 @@ class DurableWorkerQueue:
                     ('running','succeeded','retryable_failed','failed','interrupted','cancelled')),
                 started_at TEXT NOT NULL,
                 finished_at TEXT,
-                error_code TEXT,
+                error_code TEXT
             )
         """)
         self._db.execute(
