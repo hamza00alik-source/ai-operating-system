@@ -22,7 +22,7 @@ include = ["opencompany_app*", "opencompany_core*"]
 exclude = ["ai_os*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 testpaths = ["tests"]
 # Exclude only the 11 historical tests that import the quarantined ai_os package.
 # All independent OpenCompany tests retain normal pytest discovery.
