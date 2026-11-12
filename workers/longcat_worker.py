@@ -5,6 +5,7 @@ The official demo script hardcodes its sample prompt, so this worker calls the
 same public pipeline classes directly and passes the approved job prompt.
 """
 import json
+import http.client
 import os
 import sys
 import time
@@ -12,6 +13,7 @@ import uuid
 import threading
 import urllib.error
 import urllib.request
+import urllib.parse
 from pathlib import Path
 
 API = os.environ["OPENCOMPANY_API_URL"].rstrip("/")
@@ -45,19 +47,42 @@ def upload_artifact(job_id, lease, path):
         head = stream.read(12)
         if len(head) < 12 or head[4:8] != b"ftyp":
             raise ValueError("Generated output is not a valid MP4 container")
-        stream.seek(0)
-        body = stream.read()
+
+    # Stream fixed-size chunks instead of loading up to 300 MB into RAM.
+    target = urllib.parse.urlsplit(API)
+    if target.scheme not in ("https", "http") or not target.hostname:
+        raise ValueError("OPENCOMPANY_API_URL must be an absolute HTTP(S) URL")
+    connection_type = http.client.HTTPSConnection if target.scheme == "https" else http.client.HTTPConnection
+    connection = connection_type(target.hostname, target.port, timeout=180)
+    endpoint = (target.path.rstrip("/") + f"/video/worker/jobs/{job_id}/artifact") or "/"
+    if target.query:
+        endpoint += "?" + target.query
     headers = {
         "X-Video-Worker-Token": WORKER_TOKEN,
         "X-Job-Lease": lease,
         "Content-Type": "video/mp4",
+        "Content-Length": str(size),
+        "Connection": "close",
     }
-    req = urllib.request.Request(
-        API + f"/video/worker/jobs/{job_id}/artifact",
-        data=body, headers=headers, method="PUT",
-    )
-    with urllib.request.urlopen(req, timeout=180) as response:
-        return json.loads(response.read())
+    try:
+        connection.putrequest("PUT", endpoint)
+        for name, value in headers.items():
+            connection.putheader(name, value)
+        connection.endheaders()
+        with path.open("rb") as stream:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                connection.send(chunk)
+        response = connection.getresponse()
+        raw = response.read()
+        if response.status < 200 or response.status >= 300:
+            detail = raw.decode("utf-8", errors="replace")[:1000]
+            raise RuntimeError(f"Artifact upload failed: HTTP {response.status}: {detail}")
+        return json.loads(raw) if raw else {}
+    finally:
+        connection.close()
 
 
 def load_pipeline():
