@@ -40,7 +40,7 @@ def _fake_clamd(socket_path, verdict, *, terminate=True):
                     if size == 0:
                         break
                     received.extend(read_exact(conn, size))
-                conn.sendall(verdict + b"\0")
+                conn.sendall(verdict + (b"\0" if terminate else b""))
         finally:
             server.close()
 
