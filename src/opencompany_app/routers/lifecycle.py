@@ -134,7 +134,7 @@ def get_work_item_workflow(
 
     queue_entry = runtime.queue.get_entry(item_id)
     attempts = list(runtime.queue.list_attempts(item_id))
-    checkpoints = list(runtime.store.list_execution_checkpoints(item_id))
+    checkpoints = list(runtime.queue.list_checkpoints(item_id))
     attempts_used = int(queue_entry["attempts"]) if queue_entry else 0
     recovery = {
         "queue_state": queue_entry["state"] if queue_entry else None,
