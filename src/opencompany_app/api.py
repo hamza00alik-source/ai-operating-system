@@ -21,7 +21,7 @@ from uuid import UUID, uuid4
 from urllib.parse import urlsplit
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
@@ -3673,6 +3673,64 @@ def scan_business_asset(
         "delivery_approved": False,
         "message": "A clean scan does not authorize retrieval, publishing, or delivery.",
     }
+
+
+@app.get("/business-units/{business_id}/assets/{asset_id}/download", dependencies=[Depends(require_owner_key)])
+def download_business_asset(
+    business_id: str,
+    asset_id: UUID,
+    x_confirm_owner_download: bool = Header(default=False, alias="X-Confirm-Owner-Download"),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+):
+    """Owner-only download after a current clean scan; never creates a public URL."""
+    if x_confirm_owner_download is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to download this asset.")
+    if runtime.asset_storage is None:
+        raise HTTPException(status_code=503, detail="Private asset storage is not configured.")
+    try:
+        declaration = runtime.business_assets.authorize_download(
+            business_id, str(asset_id),
+            audit=AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner",
+                action="business.asset_download_authorized",
+                subject_type="business_asset", subject_id=f"{business_id}:{asset_id}",
+                outcome="owner_only_authorized", correlation_id=str(uuid4()),
+                details={"business_id": business_id, "asset_id": str(asset_id)},
+            ),
+        )
+        stream = runtime.asset_storage.open_verified_download(
+            business_id=business_id,
+            asset_scope_id=declaration["asset_scope_id"],
+            asset_id=str(asset_id),
+            expected_sha256=declaration["checksum_sha256"],
+            expected_size=declaration["byte_size"],
+        )
+    except AssetStorageError as exc:
+        raise HTTPException(status_code=503, detail="Private asset bytes failed integrity verification or are unavailable.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+
+    def file_chunks():
+        while True:
+            block = stream.read(1024 * 1024)
+            if not block:
+                break
+            yield block
+
+    return StreamingResponse(
+        file_chunks(),
+        media_type=declaration["media_type"],
+        headers={
+            "Content-Disposition": f'attachment; filename="{declaration["filename"]}"',
+            "Content-Length": str(declaration["byte_size"]),
+            "Cache-Control": "private, no-store, max-age=0",
+            "Pragma": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+        background=BackgroundTask(stream.close),
+    )
 
 
 @app.get("/business-units/{business_id}/assets/{asset_id}/events", dependencies=[Depends(require_owner_key)])
