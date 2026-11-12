@@ -2475,8 +2475,15 @@ def create_ai_manager_proposal(
          if agent.role_key == manager_role and agent.department == item.department),
         None,
     )
-    if manager is None or manager.state != AgentState.ACTIVE:
-        raise HTTPException(status_code=409, detail="The department manager profile must be provisioned and explicitly ACTIVE.")
+    if (
+        manager is None or manager.state != AgentState.ACTIVE
+        or manager.role_key != manager_role or manager.team_key != "management"
+        or manager.department != item.department
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The department manager must be ACTIVE with the expected role, department, and management team.",
+        )
     try:
         recommendation = recommend_department_plan(
             item, runtime.gateway, max_specialists=payload.max_specialists
@@ -2504,8 +2511,16 @@ def create_ai_manager_proposal(
                  and agent.department == item.department),
                 None,
             )
-            if profile is None:
-                raise HTTPException(status_code=409, detail=f"Specialist profile is not provisioned: {specialist.role_key}")
+            if (
+                profile is None or profile.state != AgentState.ACTIVE
+                or profile.role_key != specialist.role_key
+                or profile.team_key != specialist.team_key
+                or profile.department != item.department
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Specialist must be provisioned, ACTIVE, and correctly assigned: {specialist.role_key}",
+                )
             children.append({
                 "assigned_agent_id": str(profile.id), "role_key": specialist.role_key,
                 "team_key": specialist.team_key, "title": f"{specialist.title}: {item.title}",
@@ -2568,8 +2583,16 @@ def create_work_item_delegation_proposal(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     profiles = store.list_agents(limit=1000)
     manager = next((agent for agent in profiles if agent.role_key == plan.manager_role_key and agent.department == item.department), None)
-    if manager is None:
-        raise HTTPException(status_code=409, detail="Provision department manager profiles before creating a delegation proposal.")
+    if (
+        manager is None or manager.state != AgentState.ACTIVE
+        or manager.role_key != plan.manager_role_key
+        or manager.team_key != "management"
+        or manager.department != item.department
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The department manager must be ACTIVE with the expected role, department, and management team.",
+        )
     children = []
     if plan.mode.value == "manager_direct":
         children.append({
