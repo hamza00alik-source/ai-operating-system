@@ -117,9 +117,10 @@ class OpenCompanyWorker:
                      "cost_usd": deliverable.cost_usd, "review_required": True,
                      "task_state": "review"},
                 ),
+                expected_agent_id=lease.agent_id,
             )
             if not saved:
-                raise WorkerConfigurationError("work item is no longer in progress")
+                raise WorkerConfigurationError("work item is no longer in progress or worker authorization changed")
             if lease_lost.is_set():
                 raise QueueError("worker lease was lost before queue acknowledgement")
             self.queue.complete(lease)
