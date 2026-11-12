@@ -83,6 +83,13 @@ class DurableWorkerQueue:
                 updated_at TEXT NOT NULL
             )
         """)
+        columns = {
+            row["name"] for row in self._db.execute("PRAGMA table_info(worker_queue)").fetchall()
+        }
+        if "cancel_requested" not in columns:
+            self._db.execute(
+                "ALTER TABLE worker_queue ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0"
+            )
         self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_worker_queue_ready "
             "ON worker_queue(state, created_at)"
@@ -233,6 +240,30 @@ class DurableWorkerQueue:
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
+                expired_cancelled = self._db.execute(
+                    "SELECT work_item_id,agent_id FROM worker_queue "
+                    "WHERE state='leased' AND cancel_requested=1 AND lease_expires_at<=?",
+                    (instant.isoformat(),),
+                ).fetchall()
+                for cancelled in expired_cancelled:
+                    self._db.execute(
+                        "UPDATE work_items SET state=? WHERE id=? AND state IN (?,?)",
+                        (TaskState.CANCELLED.value, cancelled["work_item_id"],
+                         TaskState.QUEUED.value, TaskState.IN_PROGRESS.value),
+                    )
+                    self._db.execute(
+                        """UPDATE worker_queue SET state='dead',lease_token=NULL,
+                           lease_expires_at=NULL,last_error='owner_cancelled',updated_at=?
+                           WHERE work_item_id=? AND state='leased' AND cancel_requested=1""",
+                        (instant.isoformat(), cancelled["work_item_id"]),
+                    )
+                    self._append_audit(AuditRecord(
+                        id=uuid4(), occurred_at=instant, actor_type="worker",
+                        actor_id=cancelled["agent_id"], action="worker.cancellation_recovered",
+                        subject_type="work_item", subject_id=cancelled["work_item_id"],
+                        outcome="recorded", correlation_id=str(uuid4()),
+                        details={"reason": "owner_cancelled_after_worker_interruption"},
+                    ), self._db)
                 expired_dead = self._db.execute(
                     "SELECT work_item_id,agent_id FROM worker_queue "
                     "WHERE state='leased' AND lease_expires_at<=? AND attempts>=?",
@@ -324,6 +355,104 @@ class DurableWorkerQueue:
                  str(lease.agent_id), str(lease.lease_token), instant.isoformat()),
             )
             return cursor.rowcount == 1
+
+
+    def request_cancel(self, work_item_id: UUID, record: AuditRecord) -> str:
+        """Record an owner cancellation; queued work is cancelled immediately, leased work cooperatively."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._db.execute(
+                    "SELECT state,cancel_requested FROM worker_queue WHERE work_item_id=?",
+                    (str(work_item_id),),
+                ).fetchone()
+                if row is None:
+                    raise QueueError("work item has no queue entry")
+                if row["state"] in {"done", "dead"}:
+                    if row["state"] == "dead" and row["cancel_requested"]:
+                        self._db.execute("COMMIT")
+                        return "cancelled"
+                    raise QueueError("terminal queue work cannot be cancelled")
+                if row["cancel_requested"]:
+                    self._db.execute("COMMIT")
+                    return "cancellation_requested" if row["state"] == "leased" else "cancelled"
+                if row["state"] == "queued":
+                    cursor = self._db.execute(
+                        "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                        (TaskState.CANCELLED.value, str(work_item_id), TaskState.QUEUED.value),
+                    )
+                    if cursor.rowcount != 1:
+                        raise QueueError("work item is no longer queued")
+                    self._db.execute(
+                        """UPDATE worker_queue SET state='dead',cancel_requested=1,
+                           last_error='owner_cancelled',updated_at=?
+                           WHERE work_item_id=? AND state='queued'""",
+                        (now, str(work_item_id)),
+                    )
+                    result = "cancelled"
+                else:
+                    self._db.execute(
+                        "UPDATE worker_queue SET cancel_requested=1,updated_at=? "
+                        "WHERE work_item_id=? AND state='leased'",
+                        (now, str(work_item_id)),
+                    )
+                    result = "cancellation_requested"
+                self._append_audit(record, self._db)
+                self._db.execute("COMMIT")
+                return result
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
+
+    def is_cancel_requested(self, lease: WorkerLease) -> bool:
+        with self._lock:
+            row = self._db.execute(
+                """SELECT 1 FROM worker_queue WHERE work_item_id=? AND agent_id=?
+                   AND state='leased' AND lease_token=? AND cancel_requested=1""",
+                (str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token)),
+            ).fetchone()
+        return row is not None
+
+    def finalize_cancel(self, lease: WorkerLease, record: AuditRecord) -> bool:
+        """Commit a requested cancellation only for the worker holding the live token."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._db.execute(
+                    """SELECT 1 FROM worker_queue WHERE work_item_id=? AND agent_id=?
+                       AND state='leased' AND lease_token=? AND cancel_requested=1
+                       AND lease_expires_at>?""",
+                    (str(lease.work_item_id), str(lease.agent_id),
+                     str(lease.lease_token), now),
+                ).fetchone()
+                if row is None:
+                    self._db.execute("ROLLBACK")
+                    return False
+                cursor = self._db.execute(
+                    "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                    (TaskState.CANCELLED.value, str(lease.work_item_id), TaskState.IN_PROGRESS.value),
+                )
+                if cursor.rowcount != 1:
+                    raise QueueError("work item is no longer in progress for cancellation")
+                cursor = self._db.execute(
+                    """UPDATE worker_queue SET state='dead',lease_token=NULL,
+                       lease_expires_at=NULL,last_error='owner_cancelled',updated_at=?
+                       WHERE work_item_id=? AND agent_id=? AND state='leased'
+                         AND lease_token=? AND cancel_requested=1""",
+                    (now, str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token)),
+                )
+                if cursor.rowcount != 1:
+                    raise QueueError("worker lease changed during cancellation")
+                self._append_audit(record, self._db)
+                self._db.execute("COMMIT")
+                return True
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
 
     def complete(self, lease: WorkerLease) -> None:
         self._finish(lease, "done", None)
