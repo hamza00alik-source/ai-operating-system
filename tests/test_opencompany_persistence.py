@@ -112,7 +112,11 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     assert {"role_key", "team_key"} <= columns
     work_item_columns = {row["name"] for row in store._connection.execute("PRAGMA table_info(work_items)").fetchall()}
     assert "business_id" in work_item_columns
-    assert version == 7
+    assert version == 8
+    checkpoint_columns = {row["name"] for row in store._connection.execute(
+        "PRAGMA table_info(worker_checkpoints)"
+    ).fetchall()}
+    assert {"work_item_id", "role_key", "stage_key", "payload_json"} <= checkpoint_columns
     store.close()
 
 
@@ -159,3 +163,23 @@ def test_work_item_business_unit_cannot_be_changed_after_creation(tmp_path):
         raise AssertionError("business scope must not be mutable after task creation")
     assert store.get_work_item(item_id).business_id == "physical-agency"
     store.close()
+
+
+
+def test_schema_v7_migrates_durable_worker_checkpoints(tmp_path):
+    path = tmp_path / "legacy-v7.sqlite3"
+    store = SQLiteStore(path)
+    store._connection.execute("DROP TABLE worker_checkpoints")
+    store._connection.execute("PRAGMA user_version = 7")
+    store.close()
+
+    migrated = SQLiteStore(path)
+    version = migrated._connection.execute("PRAGMA user_version").fetchone()[0]
+    tables = {
+        row["name"] for row in migrated._connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    assert version == 8
+    assert "worker_checkpoints" in tables
+    migrated.close()
