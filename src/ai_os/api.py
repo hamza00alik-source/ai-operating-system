@@ -1020,26 +1020,33 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    artifact = bytearray()
-    async for chunk in request.stream():
-        if len(artifact) + len(chunk) > 300 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
-        artifact.extend(chunk)
-        if len(artifact) > 300 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
-    if len(artifact) < 12 or bytes(artifact[4:8]) != b"ftyp":
-        raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
     directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
     directory.mkdir(parents=True, exist_ok=True)
-    destination = directory / f"{_uuid.UUID(job_id)}.mp4"
-    temporary = directory / f".{_uuid.UUID(job_id)}.{_uuid.uuid4().hex}.tmp"
-    temporary.write_bytes(artifact)
-    temporary.replace(destination)
+    job_uuid = _uuid.UUID(job_id)
+    destination = directory / f"{job_uuid}.mp4"
+    temporary = directory / f".{job_uuid}.{_uuid.uuid4().hex}.tmp"
+    size = 0
+    prefix = bytearray()
+    try:
+        with temporary.open("wb") as output:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > 300 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
+                if len(prefix) < 12:
+                    prefix.extend(chunk[:12 - len(prefix)])
+                output.write(chunk)
+        if size < 12 or bytes(prefix[4:8]) != b"ftyp":
+            raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
+        temporary.replace(destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
     uri = f"{public_base}/video/artifacts/{job_id}"
     try:
         completed = video_jobs.complete_job(
             job_id, x_job_lease, result_uri=uri,
-            metadata={"content_type":"video/mp4","size_bytes":len(artifact),"storage":"api-artifact-volume"},
+            metadata={"content_type":"video/mp4","size_bytes":size,"storage":"api-artifact-volume"},
         )
     except Exception:
         destination.unlink(missing_ok=True)
