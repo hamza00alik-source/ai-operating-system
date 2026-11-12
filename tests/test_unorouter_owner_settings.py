@@ -1,4 +1,6 @@
 import json
+
+import pytest
 import sqlite3
 from threading import RLock
 
