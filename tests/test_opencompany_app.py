@@ -1838,7 +1838,7 @@ def test_business_memory_api_requires_owner_confirmation_and_isolates_units(owne
 
 def test_business_asset_upload_is_owner_confirmed_private_and_unavailable(owner_client, tmp_path):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
-    runtime = get_runtime()
+    runtime = app.dependency_overrides[get_runtime]()
     payload_bytes = b"glTF" + b"\x02\x00\x00\x00" + b"\x18\x00\x00\x00" + b"test"
     digest = hashlib.sha256(payload_bytes).hexdigest()
     declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
