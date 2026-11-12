@@ -370,3 +370,19 @@ After extracting the owner dashboard, the composition root was reviewed and narr
 Static re-fetch verification confirms `api.py` has zero direct HTTP route decorators, 26 router include calls, retains the app factory and both lifecycle hooks, and no longer imports the extracted request schemas, route-level persistence/domain types, owner-auth dependency or dashboard markup. This was a source-level import cleanup only: no imports or application startup were run, so import-time correctness is not yet established. The route registration count remains 95 by the prior full inventory plus the one-for-one dashboard move; no fresh all-router duplicate scan was completed in this step.
 
 The startup hook remains intentionally in the composition root because it coordinates application lifecycle: opt-in workforce bootstrap/activation and explicitly configured worker autostart under the existing zero-dollar provider eligibility check. Shutdown still closes and clears the shared cached runtime. Moving these hooks would require a separate lifecycle design and is not part of this mechanical cleanup. Tests/CI remain deferred until 2026-12-01; no merge, deployment or production change occurred.
+
+
+## Commercial persistence module extraction (2026-11-12)
+
+The 1,401-line `src/opencompany_core/persistence.py` was split along the commercial-domain boundary without changing the public `SQLiteStore` surface:
+
+- Added `src/opencompany_core/persistence_utils.py` for the single canonical JSON serializer, audit payload builder, SHA-256 digest and zero-hash constant shared by persistence operations.
+- Added `src/opencompany_core/commercial_persistence.py` with a `CommercialPersistenceMixin` containing all 15 commercial opportunity, product, quote, order and supplier repository methods.
+- Changed `SQLiteStore` to inherit `CommercialPersistenceMixin`; its connection and re-entrant lock remain the transaction boundary shared by core and commercial operations.
+- Removed the commercial method implementations and duplicated audit/serialization helper definitions from `persistence.py`. The main persistence module is now 872 lines.
+
+Static re-fetch checks confirm all 15 commercial methods are present in the mixin, none remain defined directly on `SQLiteStore`, the store inherits the mixin, and shared audit/serialization helpers are centralized in `persistence_utils.py`. Commercial methods continue to use the same `self._connection`, `self._lock` and audit helpers; this preserves the intended single-connection transaction design by source inspection only. No runtime equivalence claim is made.
+
+The API dependency module was also reviewed (190 lines): it currently centralizes the process-local runtime singleton, owner authentication/session validation and throttling, plus shared audit/auto-queue policy helpers. These concerns have clear seams, but splitting them now would require coordinated changes across many routers. Defer that follow-up until imports can be validated; do not create a risky speculative refactor before the scheduled test window.
+
+No imports, app startup, OpenAPI generation, tests, CI, migrations or database operations were performed. Existing database schema version remains 7; no migration was added. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production changes occurred.
