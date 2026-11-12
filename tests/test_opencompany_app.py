@@ -1731,3 +1731,57 @@ def test_business_credentials_are_owner_scoped_encrypted_and_never_returned(owne
     assert deleted.status_code == 200
 
 
+
+
+def test_business_integration_registry_requires_owner_and_never_connects(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    credential = owner_client.post(
+        "/business-units/physical-agency/credentials", headers=headers,
+        json={"credential_key": "marketplace-api", "secret": {"api_key": "integration-secret"},
+              "confirm_owner_storage": True},
+    )
+    assert credential.status_code == 200
+    payload = {
+        "provider_key": "marketplace-x", "display_name": "Marketplace X",
+        "credential_key": "marketplace-api", "permissions": ["catalog:read", "orders:read"],
+        "rationale": "Read-only marketplace discovery",
+        "confirm_owner_registration": True,
+    }
+    unauthorized = owner_client.post(
+        "/business-units/physical-agency/integrations", json=payload
+    )
+    assert unauthorized.status_code == 401
+    unconfirmed = owner_client.post(
+        "/business-units/physical-agency/integrations", headers=headers,
+        json={**payload, "confirm_owner_registration": False},
+    )
+    assert unconfirmed.status_code == 422
+    registered = owner_client.post(
+        "/business-units/physical-agency/integrations", headers=headers, json=payload
+    )
+    assert registered.status_code == 200
+    body = registered.json()
+    assert body["integration"]["status"] == "pending_review"
+    assert body["external_connection_attempted"] is False
+    assert "integration-secret" not in registered.text
+    listed = owner_client.get(
+        "/business-units/physical-agency/integrations", headers=headers
+    )
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["external_connections_enabled"] is False
+    isolated = owner_client.get(
+        "/business-units/physical-brand/integrations", headers=headers
+    )
+    assert isolated.status_code == 200
+    assert isolated.json()["count"] == 0
+    integration_id = body["integration"]["integration_id"]
+    history = owner_client.get(
+        f"/business-units/physical-agency/integrations/{integration_id}/events",
+        headers=headers,
+    )
+    assert history.status_code == 200
+    assert history.json()["events"][0]["action"] == "registered"
+
+
