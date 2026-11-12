@@ -97,7 +97,49 @@ class OpenCompanyWorker:
                         raise QueueError("worker lease was lost before queue acknowledgement")
                     self.queue.complete(lease)
                     return "completed_review_required"
-            deliverable = self._execute_lease(lease, role_key)
+            validated_item = self._validate_lease(lease, role_key)
+            checkpoint = self.store.get_execution_checkpoint(
+                lease.work_item_id, role_key, "specialist_output"
+            )
+            if checkpoint is not None and checkpoint["status"] == "completed":
+                saved_output = checkpoint["payload"]
+                deliverable = AgentDeliverable(
+                    id=UUID(saved_output["id"]),
+                    work_item_id=UUID(saved_output["work_item_id"]),
+                    role_key=saved_output["role_key"],
+                    content=saved_output["content"],
+                    provider=saved_output["provider"],
+                    model=saved_output["model"],
+                    cost_usd=float(saved_output["cost_usd"]),
+                    created_at=datetime.fromisoformat(saved_output["created_at"]),
+                    review_required=bool(saved_output["review_required"]),
+                )
+                if deliverable.work_item_id != lease.work_item_id or deliverable.role_key != role_key:
+                    raise WorkerConfigurationError("stored checkpoint does not match the current work assignment")
+            else:
+                deliverable = self._execute_lease(lease, role_key, item=validated_item)
+                # Stable artifact identity makes a resumed checkpoint and any
+                # idempotent sink retry address the same draft record.
+                stable_id = uuid5(
+                    NAMESPACE_URL,
+                    f"opencompany:deliverable:{lease.work_item_id}:{role_key}",
+                )
+                deliverable = replace(deliverable, id=stable_id)
+                checkpoint_payload = {
+                    "id": str(deliverable.id),
+                    "work_item_id": str(deliverable.work_item_id),
+                    "role_key": deliverable.role_key,
+                    "content": deliverable.content,
+                    "provider": deliverable.provider,
+                    "model": deliverable.model,
+                    "cost_usd": deliverable.cost_usd,
+                    "created_at": deliverable.created_at.isoformat(),
+                    "review_required": deliverable.review_required,
+                }
+                if not self.store.save_execution_checkpoint(
+                    lease, role_key, "specialist_output", checkpoint_payload
+                ):
+                    raise QueueError("worker lease was lost before checkpoint could be committed")
             if cancellation_requested.is_set() or self.queue.is_cancel_requested(lease):
                 if self.queue.finalize_cancel(
                     lease, self._audit(lease, "worker.execution_cancelled", {"role_key": role_key})
@@ -105,15 +147,7 @@ class OpenCompanyWorker:
                     return "cancelled"
                 raise QueueError("worker lease was lost before cancellation could be committed")
             if lease_lost.is_set():
-                raise QueueError("worker lease was lost during execution; result was not persisted")
-            # A retry of the same work/role must address the same artifact key.
-            # This lets a durable sink safely deduplicate after a crash between
-            # saving the artifact and acknowledging the queue lease.
-            stable_id = uuid5(
-                NAMESPACE_URL,
-                f"opencompany:deliverable:{lease.work_item_id}:{role_key}",
-            )
-            deliverable = replace(deliverable, id=stable_id)
+                raise QueueError("worker lease was lost before checkpoint persistence")
             audit_record = self._audit(
                 lease, "worker.deliverable_saved",
                 {"role_key": role_key, "deliverable_id": str(deliverable.id),
@@ -183,7 +217,7 @@ class OpenCompanyWorker:
             heartbeat_stop.set()
             heartbeat.join(timeout=max(1.0, heartbeat_interval * 2))
 
-    def _execute_lease(self, lease: WorkerLease, role_key: str) -> AgentDeliverable:
+    def _validate_lease(self, lease: WorkerLease, role_key: str):
         item = self.store.get_work_item(lease.work_item_id)
         if item is None:
             raise WorkerConfigurationError("queued work item does not exist")
@@ -214,6 +248,10 @@ class OpenCompanyWorker:
             expected_team = "management"
         if agent.team_key != expected_team:
             raise WorkerConfigurationError("assigned agent team does not match its workforce role")
+        return item
+
+    def _execute_lease(self, lease: WorkerLease, role_key: str, *, item=None) -> AgentDeliverable:
+        item = item or self._validate_lease(lease, role_key)
         return self.executor.execute(
             role_key, item, request_budget_usd=self.request_budget_usd,
             preferred_provider=self.preferred_provider,
