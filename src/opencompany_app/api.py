@@ -140,6 +140,17 @@ class VentureOpportunityStatusInput(BaseModel):
     confirm_owner_approval: bool = False
 
 
+
+class BusinessCredentialInput(BaseModel):
+    credential_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    secret: dict[str, str] = Field(min_length=1, max_length=20)
+    confirm_owner_storage: bool = False
+
+
+class BusinessCredentialDeleteInput(BaseModel):
+    confirm_owner_deletion: bool = False
+
+
 class BusinessUnitProvisionInput(BaseModel):
     business_id: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
     name: str = Field(min_length=1, max_length=160)
@@ -3260,6 +3271,78 @@ def list_business_unit_events(
     if registry.get(business_id) is None:
         raise HTTPException(status_code=404, detail="Business unit not found.")
     return {"items": list(registry.events(business_id))}
+
+
+
+
+@app.get("/business-units/{business_id}/credentials", dependencies=[Depends(require_owner_key)])
+def list_business_credentials(
+    business_id: str, runtime: OpenCompanyRuntime = Depends(get_runtime)
+) -> dict:
+    try:
+        items = runtime.business_credentials.list_status(business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "business_id": business_id, "count": len(items),
+        "credentials": list(items), "secret_material_returned": False,
+    }
+
+
+@app.post("/business-units/{business_id}/credentials", dependencies=[Depends(require_owner_key)])
+def store_business_credential(
+    business_id: str, payload: BusinessCredentialInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if payload.confirm_owner_storage is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to store business credentials.")
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="business.credential_stored", subject_type="business_credential",
+        subject_id=f"{business_id}:{payload.credential_key}", outcome="stored",
+        correlation_id=str(uuid4()),
+        details={"business_id": business_id, "credential_key": payload.credential_key,
+                 "secret_material_returned": False},
+    )
+    try:
+        revision = runtime.business_credentials.put(
+            business_id, payload.credential_key, payload.secret, event
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "business_id": business_id, "credential_key": payload.credential_key,
+        "revision": revision, "stored": True, "secret_material_returned": False,
+        "external_connection_attempted": False,
+    }
+
+
+@app.delete("/business-units/{business_id}/credentials/{credential_key}", dependencies=[Depends(require_owner_key)])
+def delete_business_credential(
+    business_id: str, credential_key: str, payload: BusinessCredentialDeleteInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if payload.confirm_owner_deletion is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to remove business credentials.")
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="business.credential_deleted", subject_type="business_credential",
+        subject_id=f"{business_id}:{credential_key}", outcome="deleted",
+        correlation_id=str(uuid4()),
+        details={"business_id": business_id, "credential_key": credential_key},
+    )
+    try:
+        removed = runtime.business_credentials.delete(business_id, credential_key, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not removed:
+        raise HTTPException(status_code=404, detail="Business credential not found.")
+    return {"business_id": business_id, "credential_key": credential_key,
+            "deleted": True, "secret_material_returned": False}
 
 
 @app.get("/business-units/{business_id}/activation-readiness", dependencies=[Depends(require_owner_key)])
