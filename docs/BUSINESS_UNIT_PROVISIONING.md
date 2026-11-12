@@ -99,3 +99,12 @@ Only the owner-authenticated API can register a declaration, and the request req
 Integration declarations are immutable at the database layer. Both declarations and their history are protected from update/delete; integration scope identifiers are immutable in the business-unit registry. If a linked credential is later removed, the declaration remains visible with `credential_available=false` and cannot be used for execution. Registration events are also written to the hash-linked audit chain. Schema v12 creates the registry, indexes, composite foreign keys, and immutable-history triggers transactionally.
 
 **Important boundary:** this increment implements storage isolation and registration intent only. It does not implement OAuth, token refresh, webhook handling, permission enforcement at execution time, connection testing, or external action execution. Activation readiness therefore clears the integration-storage isolation check but deliberately retains `integration_execution_adapter` as a blocker, in addition to owner activation approval and the remaining memory/asset isolation work.
+
+
+## Business-specific persistent memory (SQLite schema version 13)
+
+OpenCompany now has owner-managed, versioned memory for each business unit. Every record is bound to the unit's immutable `memory_scope_id` by a composite foreign key. Reads require one business ID and never perform cross-business search. Owner-authenticated API routes support scoped listing, revision history, owner-confirmed writes, and owner-confirmed forgetting. Forgetting appends a tombstone revision so the item disappears from current memory while its historical versions remain append-only.
+
+Memory content is limited to 20,000 characters and provenance to 500 characters. Basic secret-marker checks reject common credential-like strings; credentials belong in the encrypted business credential vault instead. This is a defensive filter, not a guarantee that arbitrary text contains no secrets. Agent-originated writes remain disabled until provenance, role permissions, and owner review are enforced.
+
+Schema v13 creates versioned memory records, a latest-revision index, composite business/memory-scope foreign keys, append-only update/delete triggers, and an immutable registry memory-scope trigger. Activation readiness verifies these constraints, clears the storage-isolation blocker when proven, and retains a separate `memory_ingestion_adapter` blocker. This does not activate any business unit.
