@@ -93,11 +93,89 @@ class BusinessAssetRegistry:
         if not 1<=limit<=500: raise ValueError("limit must be between 1 and 500")
         scope=self._scope(business_id)
         with self._lock:
-            rows=self._db.execute("""SELECT asset_id,business_id,asset_key,title,asset_type,filename,media_type,
-                checksum_sha256,byte_size,source,storage_state,status,created_at
-                FROM opencompany_business_assets WHERE business_id=? AND asset_scope_id=?
-                ORDER BY created_at DESC,asset_key LIMIT ?""",(business_id,scope,limit)).fetchall()
+            rows=self._db.execute("""SELECT a.asset_id,a.business_id,a.asset_key,a.title,a.asset_type,a.filename,a.media_type,
+                a.checksum_sha256,a.byte_size,a.source,
+                CASE WHEN EXISTS(SELECT 1 FROM opencompany_business_asset_storage_events s
+                    WHERE s.business_id=a.business_id AND s.asset_scope_id=a.asset_scope_id AND s.asset_id=a.asset_id)
+                    THEN 'private_stored_unscanned' ELSE a.storage_state END AS storage_state,
+                CASE WHEN EXISTS(SELECT 1 FROM opencompany_business_asset_storage_events s
+                    WHERE s.business_id=a.business_id AND s.asset_scope_id=a.asset_scope_id AND s.asset_id=a.asset_id)
+                    THEN 'pending_scan' ELSE a.status END AS status,
+                a.created_at
+                FROM opencompany_business_assets a WHERE a.business_id=? AND a.asset_scope_id=?
+                ORDER BY a.created_at DESC,a.asset_key LIMIT ?""",(business_id,scope,limit)).fetchall()
         return tuple(dict(row) for row in rows)
+
+    def storage_declaration(self,business_id: str,asset_id: str) -> dict[str,Any]:
+        """Resolve upload expectations and immutable scope from trusted registry rows."""
+        scope=self._scope(business_id)
+        with self._lock:
+            row=self._db.execute("""SELECT asset_id,business_id,asset_scope_id,checksum_sha256,byte_size,media_type
+                FROM opencompany_business_assets
+                WHERE business_id=? AND asset_scope_id=? AND asset_id=?""",
+                (business_id,scope,asset_id)).fetchone()
+            if row is None:
+                raise ValueError("asset not found in this business scope")
+            stored=self._db.execute("""SELECT 1 FROM opencompany_business_asset_storage_events
+                WHERE business_id=? AND asset_scope_id=? AND asset_id=?""",
+                (business_id,scope,asset_id)).fetchone()
+        if stored is not None:
+            raise ValueError("asset bytes have already been stored; overwriting is prohibited")
+        return dict(row)
+
+    def record_storage(self,business_id: str,asset_id: str,*,storage_key: str,
+                       checksum_sha256: str,byte_size: int,audit) -> dict[str,Any]:
+        """Append a verified storage event; this does not mark an asset scan-clean."""
+        if audit.actor_type!="owner":
+            raise PermissionError("only owner-confirmed asset uploads are enabled")
+        if not isinstance(storage_key,str) or not re.fullmatch(
+            r"[a-f0-9]{64}/[0-9a-f-]{36}\\.blob",storage_key
+        ):
+            raise ValueError("invalid private storage key")
+        if not isinstance(checksum_sha256,str) or not _SHA256.fullmatch(checksum_sha256):
+            raise ValueError("invalid verified checksum")
+        if not isinstance(byte_size,int) or isinstance(byte_size,bool) or not 0<=byte_size<=104857600:
+            raise ValueError("invalid verified byte size")
+        scope=self._scope(business_id)
+        event_id=str(uuid4())
+        now=datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                asset=self._db.execute("""SELECT checksum_sha256,byte_size FROM opencompany_business_assets
+                    WHERE business_id=? AND asset_scope_id=? AND asset_id=?""",
+                    (business_id,scope,asset_id)).fetchone()
+                if asset is None:
+                    raise ValueError("asset not found in this business scope")
+                if asset["checksum_sha256"]!=checksum_sha256 or asset["byte_size"]!=byte_size:
+                    raise ValueError("verified file integrity does not match the asset declaration")
+                self._db.execute("""INSERT INTO opencompany_business_asset_storage_events
+                    (event_id,asset_id,business_id,asset_scope_id,action,storage_key,
+                     checksum_sha256,byte_size,actor_type,actor_id,occurred_at)
+                    VALUES(?,?,?,?,'stored_unscanned',?,?,?,'owner',?,?)""",
+                    (event_id,asset_id,business_id,scope,storage_key,checksum_sha256,
+                     byte_size,audit.actor_id,now))
+                previous=self._db.execute("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+                previous_hash=previous["event_hash"] if previous else _ZERO_HASH
+                from .domain import AuditRecord
+                audited=AuditRecord(id=audit.id,occurred_at=audit.occurred_at,actor_type="owner",
+                    actor_id=audit.actor_id,action=audit.action,subject_type="business_asset",
+                    subject_id=f"{business_id}:{asset_id}",outcome="stored_unscanned",
+                    correlation_id=audit.correlation_id,
+                    details={"business_id":business_id,"asset_id":asset_id,
+                             "checksum_sha256":checksum_sha256,"byte_size":byte_size,
+                             "storage_key_recorded":True,"scan_completed":False})
+                payload=_audit_payload(audited,previous_hash)
+                self._db.execute("INSERT INTO audit_events(event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audited.id),audited.occurred_at.isoformat(),_json(payload),previous_hash,_digest(payload)))
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction: self._db.execute("ROLLBACK")
+                raise
+        return {"asset_id":asset_id,"business_id":business_id,
+                "storage_state":"private_stored_unscanned","status":"pending_scan",
+                "checksum_sha256":checksum_sha256,"byte_size":byte_size,
+                "scan_completed":False,"download_enabled":False}
 
     def events(self,business_id: str,asset_id: str) -> tuple[dict[str,Any],...]:
         scope=self._scope(business_id)
