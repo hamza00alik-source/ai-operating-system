@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
+from opencompany_core.platform import PLATFORM_NAME, PLATFORM_VERSION
 from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.lifecycle import StateTransitionError, transition_work_item
 from opencompany_core.persistence import SQLiteStore
@@ -56,9 +57,9 @@ from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
 app = FastAPI(
-    title="OpenCompany Core",
-    version="0.2.0",
-    description="Owner-authenticated API for OpenCompany's independently authored operating core.",
+    title=PLATFORM_NAME,
+    version=PLATFORM_VERSION,
+    description="Unified OpenCompany AIOS platform: one independently authored engine, company runtime, and owner console.",
 )
 
 # Per-process login throttling. The API key is a bootstrap credential; this
