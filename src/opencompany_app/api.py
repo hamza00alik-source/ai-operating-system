@@ -169,6 +169,19 @@ class BusinessMemoryForgetInput(BaseModel):
     confirm_owner_forget: bool = False
 
 
+
+class BusinessAssetInput(BaseModel):
+    asset_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    title: str = Field(min_length=1, max_length=200)
+    asset_type: str = Field(min_length=2, max_length=40, pattern=r"^[a-z][a-z0-9_-]{1,39}$")
+    filename: str = Field(min_length=1, max_length=255)
+    media_type: str = Field(min_length=3, max_length=120, pattern=r"^[a-z0-9.+-]+/[a-z0-9.+-]+$")
+    checksum_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
+    byte_size: int = Field(ge=0, le=104857600)
+    source: str = Field(min_length=1, max_length=500)
+    confirm_owner_declaration: bool = False
+
+
 class BusinessCredentialDeleteInput(BaseModel):
     confirm_owner_deletion: bool = False
 
@@ -3487,6 +3500,54 @@ def forget_business_memory(business_id: str, memory_key: str, payload: BusinessM
     if item is None:
         raise HTTPException(status_code=404, detail="Active business memory not found.")
     return {"memory": item, "historical_versions_retained": True}
+
+
+
+@app.get("/business-units/{business_id}/assets", dependencies=[Depends(require_owner_key)])
+def list_business_assets(business_id: str, limit: int = 100,
+                         runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_assets.list(business_id, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "unknown" in str(exc) else 422, detail=str(exc)) from exc
+    return {"business_id": business_id, "count": len(items), "assets": list(items),
+            "file_storage_enabled": False}
+
+
+@app.post("/business-units/{business_id}/assets", dependencies=[Depends(require_owner_key)])
+def declare_business_asset(business_id: str, payload: BusinessAssetInput,
+                           runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if payload.confirm_owner_declaration is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to declare a business asset.")
+    audit = AuditRecord(id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="business.asset_declared", subject_type="business_asset",
+        subject_id=f"{business_id}:{payload.asset_key}", outcome="pending_storage",
+        correlation_id=str(uuid4()), details={"business_id": business_id, "file_bytes_received": False})
+    try:
+        item = runtime.business_assets.declare(
+            business_id, asset_key=payload.asset_key, title=payload.title,
+            asset_type=payload.asset_type, filename=payload.filename, media_type=payload.media_type,
+            checksum_sha256=payload.checksum_sha256, byte_size=payload.byte_size,
+            source=payload.source, audit=audit,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"asset": item, "file_bytes_received": False,
+            "message": "Asset metadata declared only. No file was uploaded, scanned, stored, or delivered."}
+
+
+@app.get("/business-units/{business_id}/assets/{asset_id}/events", dependencies=[Depends(require_owner_key)])
+def list_business_asset_events(business_id: str, asset_id: str,
+                               runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_assets.events(business_id, asset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not items:
+        raise HTTPException(status_code=404, detail="Asset history not found.")
+    return {"business_id": business_id, "asset_id": asset_id, "events": list(items)}
 
 
 @app.get("/business-units/{business_id}/activation-readiness", dependencies=[Depends(require_owner_key)])
