@@ -70,7 +70,7 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
     catalog_models = pricing.get("models")
     key_models = available.get("data")
     if not isinstance(catalog_models, list) or not isinstance(key_models, list):
-        raise ProviderUnavailable("UnoRouter did not return the expected model catalogue format.")
+        raise ProviderUnavailable("UnoRouter did not return the expected pricing catalogue or key-access model-list format.")
     key_ids = {
         item["id"].strip() for item in key_models
         if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip()
@@ -88,15 +88,20 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
         input_price = item.get("input_price")
         output_price = item.get("output_price")
         fixed_price = item.get("fixed_price")
-        zero_priced = all(
-            isinstance(value, (int, float)) and math.isfinite(float(value)) and float(value) == 0.0
-            for value in (input_price, output_price, fixed_price)
+        zero_priced = (
+            all(isinstance(value, (int, float)) and math.isfinite(float(value)) and float(value) == 0.0 for value in (input_price, output_price))
+            and (fixed_price is None or isinstance(fixed_price, (int, float)) and math.isfinite(float(fixed_price)) and float(fixed_price) == 0.0)
         )
-        account_access = model_id in key_ids
+        is_free = item.get("is_free") is True
+        route_model_id = model_id if model_id.endswith(":free") or not is_free else model_id + ":free"
+        account_access = route_model_id in key_ids or (not is_free and model_id in key_ids)
+        type_supported = item.get("type") in (None, "text")
+        chat_supported = item.get("chat") is not False
+        endpoint_supported = not endpoints or "openai" in endpoints
         strict_free = (
-            item.get("is_free") is True and zero_priced and model_id.endswith(":free")
-            and item.get("online") is True and item.get("type") == "text"
-            and item.get("chat") is True and "openai" in endpoints and account_access
+            is_free and zero_priced and route_model_id.endswith(":free")
+            and item.get("online") is True and type_supported
+            and chat_supported and endpoint_supported and route_model_id in key_ids
         )
         if strict_free:
             reason = "eligible_free"
@@ -104,7 +109,7 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
             reason = "not_available_to_api_key"
         elif item.get("online") is not True:
             reason = "offline"
-        elif item.get("type") != "text" or item.get("chat") is not True or "openai" not in endpoints:
+        elif not type_supported or not chat_supported or not endpoint_supported:
             reason = "unsupported_for_chat_inference"
         elif not (item.get("is_free") is True and zero_priced and model_id.endswith(":free")):
             reason = "paid_or_unverified_pricing"
@@ -112,7 +117,7 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
             reason = "blocked_by_free_only_policy"
         # Keep a safe, useful subset; do not persist credentials or arbitrary upstream fields.
         imported.append({
-            "model_id": model_id,
+            "model_id": route_model_id,
             "vendor": str(item.get("vendor") or "Unknown"),
             "vendor_id": item.get("vendor_id") if isinstance(item.get("vendor_id"), int) else None,
             "icon": str(item.get("icon") or ""),
