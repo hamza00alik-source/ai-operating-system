@@ -50,3 +50,10 @@ This is a safety gate, not a claim that scope identifiers alone isolate data. Ex
 ## Dynamic work-item identity (latest increment)
 
 The work-item domain now accepts a syntactically valid business-unit slug rather than hard-coding only the initial four identifiers. This is identity extensibility, not permission to operate: every SQLite work-item persistence path (single save, audited save, batch plan save, and delegation approval) resolves the unit against the registry and rejects unknown or `provisioning` units. `core` remains the internal platform scope; the three foundational units remain operational. API and worker-queue checks remain in place as independent enforcement layers. No commercial schema or existing customer/order data was changed by this increment.
+
+
+## Commercial persistence enforcement (latest increment)
+
+Commercial write operations now resolve the owning business through the business-unit registry at the SQLite persistence boundary. Creating opportunities/products, creating quotes from an opportunity, changing quote/order/product/supplier states, and supplier registration require an operational unit; provisioning and unknown units fail closed even if a caller bypasses the API. Quote creation also verifies the opportunity's registered unit before accepting product lines, and supplier registration retains physical-goods and relationship-type constraints.
+
+This enforcement does not yet make arbitrary new business IDs writable: the existing commercial tables still have fixed SQLite CHECK(business_id IN (...)) constraints. Those constraints are intentionally preserved until a versioned table migration can rebuild the related opportunity/product/quote/order/supplier tables, their foreign keys and indexes, while proving existing records remain intact. The readiness endpoint continues to report that schema blocker. Dynamic activation is therefore still disabled.
