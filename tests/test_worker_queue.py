@@ -332,7 +332,7 @@ def test_shared_queue_does_not_lease_work_for_deactivated_agent(tmp_path):
     queue.enqueue(item.id, agent_id, {"role_key": agent.role_key})
     with store._lock:
         store._connection.execute(
-            "UPDATE agent_profiles SET state='inactive' WHERE id=?", (str(agent_id),)
+            "UPDATE agent_profiles SET state='paused' WHERE id=?", (str(agent_id),)
         )
     assert queue.claim(agent_id) is None
     assert queue.counts() == {"queued": 1}
