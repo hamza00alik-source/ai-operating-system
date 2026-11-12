@@ -41,7 +41,8 @@ A feature is complete only when tested and its operating limits are documented.
 ## Phase 4 — Integrations
 - [ ] Provider-neutral LLM adapter
 - [ ] WooCommerce
-- [x] Social/video department registry and persistent content/brief workspace\n- [x] Draft-to-owner-approval lifecycle with explicit no-publish boundary\n- [ ] Metricool publishing/analytics adapter with mandatory approval\n- [ ] Canva media creation/export adapter\n- [ ] Provider-neutral video-generation adapter and durable job queue (LongCat integration design documented; worker not yet implemented)
+- [x] Social/video department registry and persistent content/brief workspace\n- [x] Draft-to-owner-approval lifecycle with explicit no-publish boundary\n- [ ] Metricool publishing/analytics adapter with mandatory approval\n- [ ] Canva media creation/export adapter\n- [x] Provider-neutral SQLite video-job queue, owner approval, budget gate, idempotency, and status API
+- [ ] LongCat provider adapter, authenticated worker claim/lease protocol, GPU worker, result storage/validation, and execution retries
 - [ ] Email and support adapters
 - [ ] Payment-status verification only
 
