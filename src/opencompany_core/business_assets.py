@@ -129,7 +129,7 @@ class BusinessAssetRegistry:
         if audit.actor_type!="owner":
             raise PermissionError("only owner-confirmed asset uploads are enabled")
         if not isinstance(storage_key,str) or not re.fullmatch(
-            r"[a-f0-9]{64}/[0-9a-f-]{36}\\.blob",storage_key
+            r"[a-f0-9]{64}/[0-9a-f-]{36}\.blob",storage_key
         ):
             raise ValueError("invalid private storage key")
         if not isinstance(checksum_sha256,str) or not _SHA256.fullmatch(checksum_sha256):
