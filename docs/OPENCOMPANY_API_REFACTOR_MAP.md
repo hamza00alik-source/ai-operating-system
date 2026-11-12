@@ -1,15 +1,15 @@
 # OpenCompany API Refactor Map
 
-Status: inspection-only planning document. No routes, runtime behavior, authentication rules, or production configuration were changed by this map.
+Status: active refactor record. The request-schema extraction and duplicate workflow-route consolidation are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
 Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification` at blob SHA `f282b0ba05e7e703219f504eb85a2e5386255999`.
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
-- The module declares 36 Pydantic request models and 113 top-level functions (including route handlers and helpers).
+- `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical. The API module retains 113 top-level functions (including route handlers and helpers), subject to later inventory updates.
 - The application currently has only five files under `src/opencompany_app/`: `__init__.py`, `api.py`, `dashboard.py`, `provider_settings_ui.py`, and `runtime.py`.
-- The module combines application construction, request schemas, runtime lifecycle, authentication dependencies, response helpers, and route handlers.
+- The module still combines application construction, runtime lifecycle, authentication dependencies, response helpers, and route handlers. Request schemas are now isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
 ## Schema inventory for the next extraction
@@ -68,12 +68,13 @@ Static verification after the write fetched the file back from GitHub, confirmed
 
 1. Inventory all route decorators, schema classes, module globals, and helper references; record import dependencies.
 2. Resolve the duplicate workflow route's intended contract before moving either handler.
-3. Extract schemas and dependency/auth helpers without changing route paths or behavior.
-4. Extract one cohesive router group at a time; preserve endpoint names, methods, response shapes, dependency declarations, and registration order.
-5. Keep app startup/shutdown hooks and runtime ownership in the composition layer unless a dedicated lifecycle module can be introduced without changing startup semantics.
-6. Update the app composition to include routers in a documented deterministic order.
-7. After the test deferral ends on 2026-12-01, run focused route/auth tests, inspect generated OpenAPI for duplicate operations, then run the OpenCompany test suite. Do not claim the refactor is verified before those checks.
-8. Only after review and explicit owner approval consider merge, deployment, or production routing changes.
+3. [x] Extract all 36 request schemas into `api_schemas.py` without changing their definitions or validation rules.
+4. Extract dependency/auth helpers without changing route paths or behavior.
+5. Extract one cohesive router group at a time; preserve endpoint names, methods, response shapes, dependency declarations, and registration order.
+6. Keep app startup/shutdown hooks and runtime ownership in the composition layer unless a dedicated lifecycle module can be introduced without changing startup semantics.
+7. Update the app composition to include routers in a documented deterministic order.
+8. After the test deferral ends on 2026-12-01, run focused route/auth tests, inspect generated OpenAPI for duplicate operations, then run the OpenCompany test suite. Do not claim the refactor is verified before those checks.
+9. Only after review and explicit owner approval consider merge, deployment, or production routing changes.
 
 ## Non-goals and safety boundaries
 
