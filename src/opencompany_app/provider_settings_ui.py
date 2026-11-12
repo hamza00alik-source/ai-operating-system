@@ -1,0 +1,203 @@
+"""Owner-console controls for managing UnoRouter credentials safely."""
+
+OWNER_PROVIDER_SETTINGS_HTML = r"""
+<section class="panel" id="unorouter-settings">
+  <div class="row"><h2 class="section-title compact">UnoRouter free AI provider</h2><span id="unorouter-state" class="pill">Not configured</span></div>
+  <p class="muted">Save your inference API key once. It is encrypted on this server and never displayed again. OpenCompany automatically discovers and rotates across online models accessible to your key with a :free suffix. Paid models and paid fallback are blocked. Encryption requires the stable server-side OPENCOMPANY_SECRET_ENCRYPTION_KEY.</p>
+  <label for="unorouter-api-key">UnoRouter inference API key</label>
+  <input id="unorouter-api-key" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste inference API key (sk-…)">
+  <p class="muted">Use the inference API key from UnoRouter's Tokens page, not the separate account API-access token.</p>
+  <label for="unorouter-model">Model routing</label>
+  <input id="unorouter-model" maxlength="200" autocomplete="off" readonly value="unorouter/free-catalog:free">
+  <label class="confirmation-label"><input id="unorouter-confirm-free" type="checkbox"> I confirm OpenCompany may use only models confirmed online, accessible to my key, and marked :free. Stop if any request reports a charge.</label>
+  <div class="auth">
+    <button id="unorouter-save" type="button">Save encrypted credentials</button>
+    <button id="unorouter-test" type="button" disabled>Test free connection</button>
+    <button id="unorouter-remove" type="button" disabled>Remove credentials</button>
+    <button id="unorouter-refresh" type="button">Refresh status</button>
+    <button id="unorouter-discover" type="button" disabled>Discover all free models and import full catalogue</button>
+  </div>
+  <p id="unorouter-model-catalogue" class="muted" aria-live="polite">Full UnoRouter catalogue has not been imported. Paid and unsupported models will be shown as blocked.</p>
+  <details id="unorouter-catalog-details"><summary>View imported catalogue</summary><div id="unorouter-catalog-rows"></div></details>
+  <p id="unorouter-detail" class="muted" aria-live="polite">Credentials are not configured.</p>
+  <p class="muted">Connection testing sends one short prompt. The worker fleet starts automatically only when owner-configured autostart is enabled and a live zero-cost provider test succeeded in this process. Worker fleet started automatically. Paid fallback is never used.</p>
+</section>
+<section class="panel" id="github-evolution-settings">
+  <div class="row"><h2 class="section-title compact">GitHub code evolution</h2><span id="github-evolution-state" class="pill">Not connected</span></div>
+  <p class="muted">Save a fine-grained GitHub token here, encrypted on the server. Grant repository access with Contents: Read and write, Pull requests: Read and write, and Metadata: Read. This integration creates isolated draft pull requests only; it cannot merge or deploy.</p>
+  <label for="github-evolution-token">GitHub fine-grained token</label>
+  <input id="github-evolution-token" type="password" autocomplete="new-password" maxlength="512" placeholder="Paste private GitHub token">
+  <label class="confirmation-label"><input id="github-evolution-confirm" type="checkbox"> I authorize draft pull request creation only. I retain merge and deployment approval.</label>
+  <div class="auth">
+    <button id="github-evolution-save" type="button">Save encrypted token</button>
+    <button id="github-evolution-test" type="button" disabled>Test repository access</button>
+    <button id="github-evolution-remove" type="button" disabled>Remove token</button>
+    <button id="github-evolution-refresh" type="button">Refresh status</button>
+  </div>
+  <p id="github-evolution-detail" class="muted" aria-live="polite">Code evolution is not connected.</p>
+</section>
+<section class="panel" id="model-usage">
+  <div class="row"><h2 class="section-title compact">AI usage & cost ledger</h2><button id="usage-refresh" type="button">Refresh usage</button></div>
+  <div class="row">
+    <div><strong id="usage-requests">0</strong><p class="muted">Successful requests</p></div>
+    <div><strong id="usage-cost">0.000000</strong><p class="muted">Reported USD cost</p></div>
+    <div><strong id="usage-tokens">0 / 0</strong><p class="muted">Input / output tokens</p></div>
+  </div>
+  <p id="usage-detail" class="muted" aria-live="polite">Usage events are recorded after successful specialist inference.</p>
+  <div id="usage-events"></div>
+  <p class="muted">Provider-reported usage is operational accounting, not an independent invoice. API keys, prompts and completion text are not stored here.</p>
+</section>
+"""
+
+OWNER_PROVIDER_SETTINGS_JS = r"""
+  async function loadUnoRouterSettings(){
+    try{
+      const status=await request("/settings/providers/unorouter");
+      byId("unorouter-state").textContent=status.configuration_error?"Recovery needed":(status.configured?"Credentials saved · all free models":"Not configured");
+      byId("unorouter-detail").textContent=status.configuration_error
+        ?status.configuration_error
+        :(status.configured
+          ?"Encrypted credentials are saved. API key: hidden. Routing: automatic rotation across confirmed-free models. Live inference: "+(status.real_inference_verified?"verified":"not yet tested")+"."
+          :"No saved UnoRouter credentials. The provider gateway remains disabled.");
+      byId("unorouter-test").disabled=!status.configured;
+      byId("unorouter-discover").disabled=!status.configured;
+      byId("unorouter-remove").disabled=!status.api_key_present;
+      byId("unorouter-model").value="unorouter/free-catalog:free";
+    }catch(error){byId("unorouter-detail").textContent=error.message;}
+  }
+  byId("unorouter-refresh").addEventListener("click",loadUnoRouterSettings);
+  byId("unorouter-discover").addEventListener("click",async()=>{
+    byId("unorouter-discover").disabled=true;
+    byId("unorouter-model-catalogue").textContent="Importing the complete live UnoRouter catalogue and checking every entry against strict free-only rules…";
+    try{
+      const result=await request("/settings/providers/unorouter/catalog");
+      byId("unorouter-model-catalogue").textContent="Imported "+result.total_models+" catalogue entries: "+result.eligible_free_chat_models+" eligible free chat models; "+result.blocked_models+" blocked. Paid models are research-only and cannot be selected or called. Global paid inference is disabled.";
+      const rows=byId("unorouter-catalog-rows");rows.replaceChildren();
+      for(const model of result.models){
+        const row=document.createElement("div");row.className="row";
+        const info=document.createElement("span");
+        info.textContent=model.vendor+" · "+model.model_id+" · "+model.type+" · input "+String(model.input_price??"unknown")+" / output "+String(model.output_price??"unknown")+" / fixed "+String(model.fixed_price??"unknown");
+        const state=document.createElement("strong");
+        state.textContent=model.allowed_for_inference?"FREE · ELIGIBLE":"BLOCKED · "+model.policy_status.replaceAll("_"," ");
+        row.append(info,state);rows.append(row);
+      }
+    }catch(error){byId("unorouter-model-catalogue").textContent="Catalogue import failed: "+error.message;}
+    finally{byId("unorouter-discover").disabled=false;}
+  });
+  byId("unorouter-save").addEventListener("click",async()=>{
+    const apiKey=byId("unorouter-api-key").value.trim();
+    const model="unorouter/free-catalog:free";
+    const confirmed=byId("unorouter-confirm-free").checked;
+    if(!apiKey||!confirmed){setMessage("Enter the inference API key and confirm the free-only routing policy.","error");return;}
+    byId("unorouter-save").disabled=true;
+    try{
+      await request("/settings/providers/unorouter",{method:"PUT",body:JSON.stringify({api_key:apiKey,model,confirm_free:confirmed})});
+      byId("unorouter-api-key").value="";
+      byId("unorouter-confirm-free").checked=false;
+      setMessage("UnoRouter key saved once. OpenCompany will discover and rotate across confirmed-free models; paid fallback remains disabled.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("unorouter-save").disabled=false;}
+  });
+  byId("unorouter-test").addEventListener("click",async()=>{
+    byId("unorouter-test").disabled=true;
+    setMessage("Starting the zero-cost UnoRouter test across available free models…");
+    try{
+      const started=await request("/settings/providers/unorouter/test",{method:"POST",body:"{}"});
+      if(!started.job_id) throw new Error("The server did not return a test job ID.");
+      let result=started;
+      const deadline=Date.now()+150000;
+      while(result.status==="queued"||result.status==="running"){
+        if(Date.now()>=deadline) throw new Error("The test is still running on the server. Refresh status before starting another test.");
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        result=await request("/settings/providers/unorouter/test/"+encodeURIComponent(started.job_id));
+      }
+      if(result.status!=="succeeded"||result.success!==true) throw new Error(result.error||"UnoRouter test did not complete successfully.");
+      const workerMessage=result.worker_started?"Worker fleet started automatically.":(result.worker_autostart_enabled?"Worker autostart is enabled but the fleet did not start.":"Worker autostart is disabled.");
+      setMessage("UnoRouter test succeeded: "+result.model+" · "+result.cost_usd+" USD · "+result.input_tokens+"/"+result.output_tokens+" tokens. "+workerMessage,"success");
+      await load();
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("unorouter-test").disabled=false;}
+  });
+  byId("unorouter-remove").addEventListener("click",async()=>{
+    if(!window.confirm("Remove the saved UnoRouter API key and disable this provider?")) return;
+    byId("unorouter-remove").disabled=true;
+    try{
+      await request("/settings/providers/unorouter",{method:"DELETE"});
+      byId("unorouter-api-key").value="";byId("unorouter-model").value="unorouter/free-catalog:free";byId("unorouter-confirm-free").checked=false;byId("unorouter-model-catalogue").textContent="Full UnoRouter catalogue has not been imported.";byId("unorouter-catalog-rows").replaceChildren();
+      setMessage("UnoRouter credentials removed. No paid fallback was enabled.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");byId("unorouter-remove").disabled=false;}
+  });
+  byId("connect").addEventListener("click",()=>{setTimeout(loadUnoRouterSettings,0);});
+
+
+  async function loadGitHubEvolutionSettings(){
+    try{
+      const status=await request("/settings/integrations/github-evolution");
+      byId("github-evolution-state").textContent=status.configuration_error?"Recovery needed":(status.configured?"Connected · "+(status.repository||"repository"):"Not connected");
+      byId("github-evolution-detail").textContent=status.configuration_error
+        ?status.configuration_error
+        :(status.configured
+          ?"Encrypted token saved. Repository: "+status.repository+" · Base: "+status.base_branch+". Access: "+(status.access_verified?"verified":"not yet verified")+". Draft PR creation only; auto-merge and auto-deploy are disabled."
+          :(status.token_present?"A saved token exists but is not active; replace it or remove it.":"No owner-managed GitHub token is saved. The code-evolution PR integration remains disabled."));
+      byId("github-evolution-test").disabled=!status.configured;
+      byId("github-evolution-remove").disabled=!status.token_present;
+    }catch(error){byId("github-evolution-detail").textContent=error.message;}
+  }
+  byId("github-evolution-refresh").addEventListener("click",loadGitHubEvolutionSettings);
+  byId("github-evolution-save").addEventListener("click",async()=>{
+    const token=byId("github-evolution-token").value.trim();
+    const confirmed=byId("github-evolution-confirm").checked;
+    if(!token||!confirmed){setMessage("Enter the GitHub token and confirm draft-PR-only authority.","error");return;}
+    byId("github-evolution-save").disabled=true;
+    try{
+      await request("/settings/integrations/github-evolution",{method:"PUT",body:JSON.stringify({token,confirm_draft_pr_only:confirmed})});
+      byId("github-evolution-token").value="";byId("github-evolution-confirm").checked=false;
+      setMessage("GitHub token encrypted and saved. Test repository access before using code evolution.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("github-evolution-save").disabled=false;}
+  });
+  byId("github-evolution-test").addEventListener("click",async()=>{
+    byId("github-evolution-test").disabled=true;
+    try{
+      const result=await request("/settings/integrations/github-evolution/test",{method:"POST",body:"{}"});
+      setMessage("GitHub access verified for "+result.username+" on "+result.repository+". Push permission reported: "+String(result.push_permission_reported)+". Draft PR only.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");}
+    finally{byId("github-evolution-test").disabled=false;}
+  });
+  byId("github-evolution-remove").addEventListener("click",async()=>{
+    if(!window.confirm("Remove the encrypted GitHub token and disable owner-managed code evolution?")) return;
+    byId("github-evolution-remove").disabled=true;
+    try{
+      await request("/settings/integrations/github-evolution",{method:"DELETE"});
+      byId("github-evolution-token").value="";byId("github-evolution-confirm").checked=false;
+      setMessage("GitHub token removed. Draft PR creation is disabled.","success");
+      await load();
+    }catch(error){setMessage(error.message,"error");byId("github-evolution-remove").disabled=false;}
+  });
+  async function loadModelUsage(){
+    try{
+      const businessFilter=byId("business-filter")?.value||"";
+      const usageUrl=businessFilter?"/usage/model?business_id="+encodeURIComponent(businessFilter):"/usage/model";
+      const usage=await request(usageUrl);
+      byId("usage-requests").textContent=String(usage.request_count);
+      byId("usage-cost").textContent=Number(usage.total_cost_usd).toFixed(6);
+      byId("usage-tokens").textContent=String(usage.total_input_tokens)+" / "+String(usage.total_output_tokens);
+      const target=byId("usage-events");
+      target.replaceChildren();
+      for(const event of usage.events.slice(0,8)){
+        const row=document.createElement("div");row.className="row";
+        const label=document.createElement("span");
+        label.textContent=(event.business_id||"core")+" · "+event.role_key+" · "+event.provider+"/"+event.model;
+        const amount=document.createElement("span");
+        amount.textContent=Number(event.cost_usd).toFixed(6)+" USD · "+String(event.input_tokens??"—")+"/"+String(event.output_tokens??"—")+" tokens";
+        row.append(label,amount);target.append(row);
+      }
+      byId("usage-detail").textContent=usage.events.length?"Latest "+usage.events.length+" successful inference events shown.":"No successful inference events recorded yet.";
+    }catch(error){byId("usage-detail").textContent="Usage ledger unavailable: "+error.message;}
+  }
+  byId("usage-refresh").addEventListener("click",loadModelUsage);
+"""

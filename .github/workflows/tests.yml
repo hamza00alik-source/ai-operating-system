@@ -1,11 +1,13 @@
 name: tests
 
 on:
-  workflow_dispatch:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, "feat/**", "feature/**", "clean-room-rebuild", "fix/**"]
   pull_request:
-    branches: [main, "feat/**"]
+    branches: [main, "feat/**", "feature/**", "clean-room-rebuild"]
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -17,4 +19,5 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
+      - run: python -m compileall -q src worker_main.py main.py
       - run: pytest

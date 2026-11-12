@@ -4,13 +4,9 @@ import logging
 import threading
 import unicodedata
 import json
-import hmac
-import os
-import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, Query
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
 from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import (require_api_key, require_owner_key, create_owner_session, revoke_owner_session, SESSION_COOKIE, SESSION_TTL_DAYS)
@@ -30,8 +26,6 @@ from ai_os.workflows import list_templates, create_workflow, get_workflow, list_
 from ai_os.research_sources import capture_source, list_sources
 from ai_os import website_api
 from ai_os import business_ops
-from ai_os import social_media
-from ai_os import video_jobs
 from pydantic import BaseModel, Field
 
 
@@ -151,7 +145,6 @@ def session_status(request: Request):
 class ModelRunRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=8000)
-    approve_paid_request: bool = False
 
 
 class ResearchSourceRequest(BaseModel):
@@ -235,7 +228,7 @@ def get_unorouter_catalog():
 def post_unorouter_personal_test(payload: ModelRunRequest):
     """Owner-only consumer-account experiment; deliberately outside company routing."""
     try:
-        return test_unorouter_personal(payload.prompt, payload.approve_paid_request)
+        return test_unorouter_personal(payload.prompt)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -291,7 +284,7 @@ def get_company_departments():
             "specialist_count": specialist_count,
             "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
             "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
-            "workflow_status": item.get("workflow_state", "catalogue-only"),
+            "workflow_status": "catalogue-only",
         })
     return {
         "department_count": len(departments),
@@ -768,312 +761,3 @@ def call_api_anything_read(site: str, operation: str, payload: WebsiteApiCallReq
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except website_api.WebsiteApiUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-# Social media and creative production: drafts/briefs only; no external side effects.
-class SocialContentCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=180)
-    body: str = Field(default="", max_length=10000)
-    channels: list[str] = Field(default_factory=list, max_length=8)
-    content_type: str = Field(default="post", max_length=30)
-    brief: dict = Field(default_factory=dict)
-
-
-class SocialDecisionRequest(BaseModel):
-    decision: str = Field(pattern="^(approved|rejected)$")
-
-
-@app.get("/social/status", dependencies=[Depends(require_api_key)])
-def get_social_status():
-    social_media.initialize()
-    return {
-        "department": "social-media-video",
-        "integrations": social_media.integration_status(),
-        "publishing_enabled": False,
-        "paid_generation_enabled": False,
-        "approval_required": True,
-    }
-
-
-@app.get("/social/content", dependencies=[Depends(require_api_key)])
-def get_social_content(kind: str | None = Query(default=None, pattern="^(social_post|video_brief)$")):
-    return social_media.list_content(kind)
-
-
-@app.post("/social/content", status_code=201, dependencies=[Depends(require_owner_key)])
-def post_social_content(payload: SocialContentCreate, kind: str = Query(default="social_post", pattern="^(social_post|video_brief)$")):
-    try:
-        return social_media.create_content(
-            kind=kind, title=payload.title, body=payload.body,
-            channels=payload.channels, content_type=payload.content_type,
-            brief=payload.brief,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.post("/social/content/{content_id}/request-approval", dependencies=[Depends(require_owner_key)])
-def request_social_content_approval(content_id: str):
-    item = social_media.get_content(content_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Content draft not found.")
-    if item["status"] != "draft":
-        raise HTTPException(status_code=409, detail="Only draft content can be submitted for approval.")
-    approval = create_approval(ApprovalCreate(
-        action="Review social/video content",
-        details=json.dumps({"content_id": content_id, "kind": item["kind"], "title": item["title"]}),
-    ))
-    updated = social_media.attach_approval(content_id, approval["id"])
-    return {"content": updated, "approval": approval, "external_action": "none"}
-
-
-@app.post("/social/content/{content_id}/decision", dependencies=[Depends(require_owner_key)])
-def decide_social_content(content_id: str, payload: SocialDecisionRequest):
-    item = social_media.get_content(content_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Content draft not found.")
-    if item["status"] != "awaiting_approval" or not item["approval_id"]:
-        raise HTTPException(status_code=409, detail="Content is not awaiting approval.")
-    try:
-        approval = decide_approval(item["approval_id"], ApprovalDecision(decision=payload.decision))
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if approval is None:
-        raise HTTPException(status_code=404, detail="Linked approval request not found.")
-    updated = social_media.set_decision(content_id, payload.decision)
-    return {"content": updated, "approval": approval, "publishing_performed": False}
-
-
-# Provider-neutral video queue. Approval only queues work; it never starts a
-# provider, allocates compute, incurs cost, or publishes generated media.
-class VideoJobCreate(BaseModel):
-    prompt: str = Field(min_length=1, max_length=8000)
-    provider: str = Field(default="longcat-video", pattern="^longcat-video$")
-    idempotency_key: str = Field(min_length=1, max_length=128)
-    parameters: dict = Field(default_factory=dict)
-    estimated_cost_minor: int = Field(ge=0)
-    approved_budget_minor: int = Field(ge=0)
-    currency: str = Field(default="USD", min_length=3, max_length=3)
-    cost_basis: str = Field(min_length=1, max_length=300)
-    max_attempts: int = Field(default=3, ge=1, le=5)
-
-
-class VideoJobDecision(BaseModel):
-    decision: str = Field(pattern="^(approved|rejected)$")
-    approval_note: str = Field(default="", max_length=1000)
-
-
-@app.get("/video/status", dependencies=[Depends(require_api_key)])
-def get_video_status():
-    video_jobs.initialize()
-    return {
-        "queue": "sqlite-durable",
-        **video_jobs.worker_status(),
-        "publishing_enabled": False,
-    }
-
-
-@app.post("/video/jobs", status_code=201, dependencies=[Depends(require_owner_key)])
-def post_video_job(payload: VideoJobCreate):
-    try:
-        return video_jobs.create_job(
-            prompt=payload.prompt, provider=payload.provider,
-            idempotency_key=payload.idempotency_key, parameters=payload.parameters,
-            estimated_cost_minor=payload.estimated_cost_minor,
-            approved_budget_minor=payload.approved_budget_minor,
-            currency=payload.currency, cost_basis=payload.cost_basis,
-            max_attempts=payload.max_attempts,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.get("/video/jobs", dependencies=[Depends(require_api_key)])
-def get_video_jobs(status: str | None = Query(default=None, pattern="^(awaiting_approval|queued|running|succeeded|failed|rejected|cancelled)$")):
-    return video_jobs.list_jobs(status)
-
-
-@app.get("/video/jobs/{job_id}", dependencies=[Depends(require_api_key)])
-def get_video_job(job_id: str):
-    item = video_jobs.get_job(job_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Video job not found.")
-    return item
-
-
-@app.post("/video/jobs/{job_id}/decision", dependencies=[Depends(require_owner_key)])
-def decide_video_job(job_id: str, payload: VideoJobDecision):
-    try:
-        item = video_jobs.decide_job(
-            job_id, payload.decision, approval_note=payload.approval_note
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if item is None:
-        raise HTTPException(status_code=404, detail="Video job not found.")
-    return {"job": item, "generation_started": False, "publishing_performed": False}
-
-
-
-class VideoWorkerClaim(BaseModel):
-    worker_id: str = Field(min_length=1, max_length=100)
-    lease_seconds: int = Field(default=120, ge=30, le=900)
-
-
-class VideoWorkerHeartbeat(BaseModel):
-    progress: float | None = Field(default=None, ge=0, le=100)
-    message: str = Field(default="", max_length=240)
-
-
-class VideoWorkerComplete(BaseModel):
-    result_uri: str = Field(min_length=9, max_length=2048)
-    metadata: dict = Field(default_factory=dict)
-
-
-class VideoWorkerFailure(BaseModel):
-    error: str = Field(min_length=1, max_length=2000)
-    retryable: bool = True
-
-
-def require_video_worker(x_video_worker_token: str | None = Header(default=None, alias="X-Video-Worker-Token")):
-    expected = os.getenv("VIDEO_WORKER_TOKEN", "").strip()
-    if not expected or not x_video_worker_token or not hmac.compare_digest(expected, x_video_worker_token.strip()):
-        raise HTTPException(status_code=401, detail="Valid video worker credential required.")
-
-
-@app.get("/video/jobs/{job_id}/events", dependencies=[Depends(require_api_key)])
-def get_video_job_events(job_id: str):
-    if video_jobs.get_job(job_id) is None:
-        raise HTTPException(status_code=404, detail="Video job not found.")
-    return video_jobs.list_events(job_id)
-
-
-@app.post("/video/jobs/{job_id}/cancel", dependencies=[Depends(require_owner_key)])
-def post_video_job_cancel(job_id: str):
-    try:
-        item = video_jobs.cancel_job(job_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if item is None:
-        raise HTTPException(status_code=404, detail="Video job not found.")
-    return {"job": item, "cancellation": "requested" if item["status"] == "running" else item["status"]}
-
-
-@app.post("/video/worker/claim", dependencies=[Depends(require_video_worker)])
-def post_video_worker_claim(payload: VideoWorkerClaim):
-    try:
-        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.post("/video/worker/jobs/{job_id}/heartbeat", dependencies=[Depends(require_video_worker)])
-def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
-    try:
-        return video_jobs.heartbeat(job_id, x_job_lease, progress=payload.progress, message=payload.message)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.post("/video/worker/jobs/{job_id}/complete", dependencies=[Depends(require_video_worker)])
-def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
-    try:
-        return video_jobs.complete_job(job_id, x_job_lease, result_uri=payload.result_uri, metadata=payload.metadata)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.post("/video/worker/jobs/{job_id}/fail", dependencies=[Depends(require_video_worker)])
-def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
-    try:
-        return video_jobs.fail_job(job_id, x_job_lease, error=payload.error, retryable=payload.retryable)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-
-@app.put("/video/worker/jobs/{job_id}/artifact", dependencies=[Depends(require_video_worker)])
-async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
-    import uuid as _uuid
-    item = video_jobs.get_job(job_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Video job not found.")
-    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "video/mp4":
-        raise HTTPException(status_code=415, detail="Only video/mp4 artifacts are accepted.")
-    public_base = os.getenv("PUBLIC_API_BASE_URL", "").rstrip("/")
-    if not public_base.startswith("https://"):
-        raise HTTPException(status_code=503, detail="Set PUBLIC_API_BASE_URL to the public HTTPS API origin before accepting artifacts.")
-    try:
-        lease_state = video_jobs.heartbeat(job_id, x_job_lease, progress=95, message="Uploading generated MP4")
-        if lease_state.get("cancel_requested"):
-            raise HTTPException(status_code=409, detail="Cancellation was requested.")
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
-    directory.mkdir(parents=True, exist_ok=True)
-    job_uuid = _uuid.UUID(job_id)
-    destination = directory / f"{job_uuid}.mp4"
-    temporary = directory / f".{job_uuid}.{_uuid.uuid4().hex}.tmp"
-    size = 0
-    prefix = bytearray()
-    try:
-        with temporary.open("wb") as output:
-            last_lease_refresh = time.monotonic()
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > 300 * 1024 * 1024:
-                    raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
-                if len(prefix) < 12:
-                    prefix.extend(chunk[:12 - len(prefix)])
-                output.write(chunk)
-                # Keep the lease alive during slow uploads and observe owner cancellation.
-                if time.monotonic() - last_lease_refresh >= 10:
-                    try:
-                        lease_state = video_jobs.heartbeat(
-                            job_id, x_job_lease, progress=95, message="Uploading generated MP4"
-                        )
-                    except (LookupError, PermissionError) as exc:
-                        raise HTTPException(status_code=409, detail=str(exc)) from exc
-                    if lease_state.get("cancel_requested"):
-                        raise HTTPException(status_code=409, detail="Cancellation was requested.")
-                    last_lease_refresh = time.monotonic()
-        if size < 12 or bytes(prefix[4:8]) != b"ftyp":
-            raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
-        temporary.replace(destination)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-    uri = f"{public_base}/video/artifacts/{job_id}"
-    try:
-        completed = video_jobs.complete_job(
-            job_id, x_job_lease, result_uri=uri,
-            metadata={"content_type":"video/mp4","size_bytes":size,"storage":"api-artifact-volume"},
-        )
-    except Exception:
-        destination.unlink(missing_ok=True)
-        raise
-    return completed
-
-
-@app.get("/video/artifacts/{job_id}", dependencies=[Depends(require_owner_key)])
-def get_video_artifact(job_id: str):
-    item = video_jobs.get_job(job_id)
-    if item is None or item["status"] != "succeeded":
-        raise HTTPException(status_code=404, detail="Video artifact not found.")
-    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
-    path = directory / f"{job_id}.mp4"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Artifact storage is unavailable; verify the persistent volume.")
-    return FileResponse(path, media_type="video/mp4", filename=f"opencompany-{job_id}.mp4")
