@@ -336,6 +336,10 @@ class WorkItemPersistenceMixin:
                 )
                 if cursor.rowcount != 1:
                     raise RuntimeError("worker lease changed before atomic completion")
+                self._connection.execute(
+                    "DELETE FROM worker_checkpoints WHERE work_item_id=? AND role_key=?",
+                    (str(deliverable.work_item_id), deliverable.role_key),
+                )
                 self._connection.execute("COMMIT")
                 return True
             except Exception:
