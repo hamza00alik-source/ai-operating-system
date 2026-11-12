@@ -2429,6 +2429,7 @@ def get_executive_portfolio(
         manager_ready = (
             bool(item.depends_on) and manager is not None
             and manager.state == AgentState.ACTIVE
+            and item.assigned_agent_id == manager.id
             and all(value["completed_with_deliverable"] for value in dependencies)
         )
         deliverables = store.list_deliverables(item.id)
