@@ -188,6 +188,30 @@ class PrivateFilesystemAssetStorage:
             "byte_size": total,
         }
 
+    def discard_uncommitted(
+        self, *, business_id: str, asset_scope_id: str, asset_id: str, storage_key: str
+    ) -> None:
+        """Compensate a failed DB lifecycle commit; never expose this as a user action."""
+        try:
+            canonical_asset_id = str(UUID(asset_id))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise AssetStorageError("asset_id must be a UUID") from exc
+        scope_dir_name = self._scope_directory(business_id, asset_scope_id)
+        expected_key = scope_dir_name + "/" + canonical_asset_id + ".blob"
+        if storage_key != expected_key:
+            raise AssetStorageError("storage key does not match the declared business asset")
+        scope_dir = self.root / scope_dir_name
+        target = scope_dir / (canonical_asset_id + ".blob")
+        info = target.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            raise AssetStorageError("stored asset is not a regular private file")
+        target.unlink()
+        dir_fd = os.open(scope_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+
     async def store_stream(
         self,
         *,
