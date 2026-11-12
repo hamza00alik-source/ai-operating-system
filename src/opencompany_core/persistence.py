@@ -21,6 +21,7 @@ from .schema_persistence import SchemaInitializationMixin
 from .supplier_persistence import SupplierPersistenceMixin
 from .product_persistence import ProductPersistenceMixin
 from .opportunity_persistence import OpportunityPersistenceMixin
+from .quote_persistence import QuotePersistenceMixin
 
 
 class SQLiteStore(
@@ -34,6 +35,7 @@ class SQLiteStore(
     SupplierPersistenceMixin,
     ProductPersistenceMixin,
     OpportunityPersistenceMixin,
+    QuotePersistenceMixin,
 ):
     """Thread-safe repository for core records and append-only audit evidence."""
 
