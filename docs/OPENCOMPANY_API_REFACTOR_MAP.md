@@ -6,10 +6,26 @@ Status: inspection-only planning document. No routes, runtime behavior, authenti
 
 Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification` at blob SHA `f282b0ba05e7e703219f504eb85a2e5386255999`.
 
-- The module is approximately 3,360 lines and registers 96 route decorators.
+- Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
+- The module declares 36 Pydantic request models and 113 top-level functions (including route handlers and helpers).
 - The application currently has only five files under `src/opencompany_app/`: `__init__.py`, `api.py`, `dashboard.py`, `provider_settings_ui.py`, and `runtime.py`.
 - The module combines application construction, request schemas, runtime lifecycle, authentication dependencies, response helpers, and route handlers.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
+
+## Schema inventory for the next extraction
+
+The current API module contains 36 Pydantic request models. Move them as a single mechanical extraction to `api_schemas.py` only after preserving their validation constraints and importing the exact enum/domain types they use:
+
+- Authentication/provider settings: `OwnerLoginInput`, `UnoRouterSettingsInput`, `UnoRouterDiscoveryInput`, `GitHubEvolutionSettingsInput`
+- Venture portfolio: `VentureOpportunityInput`, `VentureOpportunityStatusInput`
+- Planning/workforce: `PlanItemInput`, `PlanPreviewInput`, `WorkforceRoutePreviewInput`
+- Agents/work: `AgentStateChangeInput`, `WorkItemCreateInput`, `WorkItemTransitionInput`, `WorkItemReviewInput`
+- Commercial: `CommercialOpportunityInput`, `CommercialProductStatusInput`, `CommercialProductInput`, `CommercialQuoteLineInput`, `CommercialQuoteInput`, `CommercialQuoteDecisionInput`, `CommercialOrderStatusInput`, `CommercialOrderInput`, `CommercialSupplierInput`, `CommercialSupplierStatusInput`
+- Delegation/integrations: `DelegationPreviewInput`, `ApiAnythingCallInput`, `ApiAnythingBatchInput`, `CodeEvolutionInput`
+- Learning/collaboration: `OutcomeEvaluationInput`, `LearningAIProposalInput`, `ImprovementProposalInput`, `LearningDecisionInput`, `LearningNoteInput`, `HandoffCreateInput`, `HandoffDeliverInput`
+- Executive/management: `ExecutivePlanInput`, `ManagerProposalInput`
+
+Before extraction, inspect all references and preserve default values, regex patterns, bounds, and list/tuple semantics exactly. Avoid importing the API module from the schema module.
 
 ## Proposed module boundaries
 
