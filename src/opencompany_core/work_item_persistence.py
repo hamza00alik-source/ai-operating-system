@@ -1,7 +1,7 @@
 """Work-item and deliverable persistence operations for SQLiteStore."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Any
 from uuid import UUID
@@ -192,7 +192,7 @@ class WorkItemPersistenceMixin:
         """Fence the lease and atomically persist the draft, task transition, audit and queue completion."""
         if not deliverable.review_required:
             raise ValueError("worker deliverables must require review")
-        now_iso = datetime.now().astimezone().isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
