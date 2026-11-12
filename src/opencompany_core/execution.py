@@ -126,14 +126,13 @@ class AgentExecutor:
         notes: tuple[str, ...] = ()
         if self._learning_context is not None:
             try:
-                try:
-                    rows = self._learning_context(role.key, item.business_id)
-                except TypeError:
-                    # Keep one-argument test/custom callbacks compatible; the
-                    # production LearningRepository always receives business_id.
-                    rows = self._learning_context(role.key)
+                # Business scope is mandatory. Never fall back to an unscoped
+                # callback: its default may expose core or another unit's notes.
+                rows = self._learning_context(role.key, item.business_id)
                 notes = tuple(str(row.get("note", ""))[:1200] for row in rows[:5] if row.get("note"))
             except Exception:
+                # Learning is optional context; failures must not broaden scope
+                # or prevent otherwise valid, independently scoped execution.
                 notes = ()
         research_context = ""
         if self._research_broker is not None:
