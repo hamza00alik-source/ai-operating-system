@@ -390,7 +390,7 @@ def test_worker_resumes_completed_specialist_output_checkpoint_without_reexecuti
         "created_at": datetime.now(timezone.utc).isoformat(),
         "review_required": True,
     }
-    assert store.save_execution_checkpoint(
+    assert queue.save_checkpoint(
         first_lease, "marketplace_operations_analyst",
         "specialist_output", checkpoint_payload,
     ) is True
@@ -419,7 +419,7 @@ def test_worker_resumes_completed_specialist_output_checkpoint_without_reexecuti
     artifact = next(iter(sink.items.values()))
     assert artifact.id == stable_id
     assert artifact.content == checkpoint_payload["content"]
-    assert store.get_execution_checkpoint(
+    assert queue.get_checkpoint(
         item.id, "marketplace_operations_analyst", "specialist_output"
     ) is None
     assert queue.counts() == {"done": 1}
@@ -444,6 +444,6 @@ def test_checkpoint_write_is_rejected_for_stale_or_cancelled_lease(tmp_path):
     assert store.save_execution_checkpoint(
         lease, "marketplace_operations_analyst", "specialist_output", {"content": "must not save"}
     ) is False
-    assert store.list_execution_checkpoints(item.id) == ()
+    assert queue.list_checkpoints(item.id) == ()
     queue.close()
     store.close()
