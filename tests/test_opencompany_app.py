@@ -1797,5 +1797,10 @@ def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
     assert payload["child_work_items"]
     assert all(child["materialized"] for child in payload["child_work_items"])
     assert all(child["state"] == "ready" for child in payload["child_work_items"])
+    assert payload["manager_synthesis"]["ready"] is False
+    assert payload["manager_synthesis"]["requires_completed_child_deliverables"] is True
+    assert payload["manager_synthesis"]["queue_admission_requires_owner_action"] is True
+    assert len(payload["manager_synthesis"]["blocked_by"]) == len(payload["child_work_items"])
+    assert all(value["state"] == "ready" for value in payload["dependencies"])
     assert payload["external_actions_performed"] is False
 
