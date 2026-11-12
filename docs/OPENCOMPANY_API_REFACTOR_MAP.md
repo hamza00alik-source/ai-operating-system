@@ -1,15 +1,15 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. Request-schema and runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue/system/provider/GitHub/API Anything/agent/worker/work-item/handoff/orchestration/lifecycle/learning/commercial/venture-portfolio router extractions are implemented on the development branch. Route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. Request-schema and runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue/system/provider/GitHub/API Anything/agent/worker/work-item/handoff/orchestration/lifecycle/learning/commercial/venture-portfolio and owner-session router extractions are implemented on the development branch. Route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
-Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after venture portfolio extraction: `b117d302400e8e673725a4f316e85e3ed7f0d50e`.
+Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after owner-session extraction: `1360369b26961b7cda7ab86b7956b8263a7d67c3`.
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 14 direct route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, four read-only catalogue routes in `routers/catalogue.py`, five handoff routes in `routers/handoffs.py`, five planning/delegation routes in `routers/orchestration.py`, four work-item lifecycle/review/deliverable routes in `routers/lifecycle.py`, nine outcome-evaluation/learning routes in `routers/learning.py`, twelve commercial opportunity/product/quote/order routes plus three supplier routes in `routers/commercial.py`, and four company-wide venture portfolio routes in `routers/portfolio.py` (95 total registrations by static composition count). The routers are included at their original route-group positions.
-- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py`, `work_items.py`, `handoffs.py`, `orchestration.py`, `lifecycle.py`, `learning.py`, `commercial.py` and `portfolio.py`, in addition to the composition, dashboard and runtime modules.
+- The API now has 11 direct HTTP route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, four read-only catalogue routes in `routers/catalogue.py`, five handoff routes in `routers/handoffs.py`, five planning/delegation routes in `routers/orchestration.py`, four work-item lifecycle/review/deliverable routes in `routers/lifecycle.py`, nine outcome-evaluation/learning routes in `routers/learning.py`, twelve commercial opportunity/product/quote/order routes plus three supplier routes in `routers/commercial.py`, four company-wide venture portfolio routes in `routers/portfolio.py`, and three owner browser-session routes in `routers/auth.py` (95 total HTTP route registrations by static composition count). The routers are included at their original route-group positions.
+- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py`, `work_items.py`, `handoffs.py`, `orchestration.py`, `lifecycle.py`, `learning.py`, `commercial.py`, `portfolio.py` and `auth.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
@@ -36,7 +36,7 @@ Keep `api.py` as a thin composition root that creates the FastAPI app and includ
 |---|---|
 | `api_dependencies.py` | Runtime/store/delegation dependencies, owner authentication, login throttling, shared response helpers |
 | `api_schemas.py` | Pydantic request models currently declared in the API module |
-| `routers/auth.py` | Session creation/status/logout and owner dashboard/backup endpoints |
+| `routers/auth.py` | Owner browser-session creation/status/logout endpoints (extracted); dashboard and backup remain in the API composition root |
 | `routers/system.py` | Health/readiness probes |
 | `routers/catalogue.py` | Workforce roles/route preview, departments and media capabilities (extracted) |
 | `routers/providers.py` | All UnoRouter settings, discovery, free-model catalogue, save/remove, and asynchronous zero-dollar inference-test routes |
@@ -287,3 +287,20 @@ The portfolio remains company-wide and distinct from operating business units. R
 Static re-fetch found 14 direct API route decorators plus 81 router decorators (95 total), with zero duplicate HTTP-method/path pairs. All four portfolio routes retain explicit owner authentication. No opportunity was created or modified during extraction.
 
 Static source checks only. No imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
+
+
+## Owner browser-session router extraction (2026-11-12)
+
+Three owner-authentication session endpoints now live in `src/opencompany_app/routers/auth.py`:
+
+- `POST /auth/session` — exchange the owner API key for a revocable browser session
+- `GET /auth/session` — restore session status and rotate a missing/invalid CSRF token
+- `POST /auth/logout` — revoke the current session and clear session cookies
+
+The route handlers were statically compared against the immediately preceding API source after normalizing only the decorator target; all three matched exactly. The router is included at the original position after application startup/shutdown hooks and before the owner dashboard route. The API no longer imports the login throttling helpers or login request schema directly; the router reuses the existing shared dependency implementation in `api_dependencies.py`.
+
+Security behavior remains unchanged: API-key comparison uses constant-time comparison; login throttling remains bounded to five failures in a 15-minute window; session cookies remain HttpOnly and SameSite=Strict; session status continues to require owner authentication; logout remains owner-authenticated; mutating browser-session requests continue to require session-bound CSRF validation and same-origin Origin/Host matching in `require_owner_key`. No credential, session, cookie or authentication setting was changed during extraction.
+
+The API composition currently has 11 direct HTTP route decorators and 84 router HTTP route decorators (95 total). The three moved route paths were preserved; no new route behavior was introduced. The three extracted handlers all retain the existing owner-authentication dependencies where previously present. This extraction's direct checks confirmed the three source comparisons, imports and router registration; a full all-router duplicate scan was not rerun in this step, so the previous zero-duplicate inventory is not newly re-certified here.
+
+Static source checks only. No imports, app startup, OpenAPI generation, tests, CI or runtime authentication checks were performed. Test/CI deferral until 2026-12-01 remains active. No credential, session, production configuration, merge or deployment was changed.
