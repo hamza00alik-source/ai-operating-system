@@ -1688,3 +1688,46 @@ def test_finance_review_rejects_missing_owner_confirmation(owner_client):
     )
     assert response.status_code == 422
 
+
+
+def test_business_credentials_are_owner_scoped_encrypted_and_never_returned(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "credential_key": "marketplace-api",
+        "secret": {"api_key": "do-not-return-this-secret"},
+        "confirm_owner_storage": True,
+    }
+    unauthorized = owner_client.post(
+        "/business-units/physical-agency/credentials", json=payload
+    )
+    assert unauthorized.status_code == 401
+    missing_confirmation = owner_client.post(
+        "/business-units/physical-agency/credentials", headers=headers,
+        json={**payload, "confirm_owner_storage": False},
+    )
+    assert missing_confirmation.status_code == 422
+    stored = owner_client.post(
+        "/business-units/physical-agency/credentials", headers=headers, json=payload
+    )
+    assert stored.status_code == 200
+    assert stored.json()["external_connection_attempted"] is False
+    assert "do-not-return-this-secret" not in stored.text
+    status = owner_client.get(
+        "/business-units/physical-agency/credentials", headers=headers
+    )
+    assert status.status_code == 200
+    assert status.json()["credentials"][0]["credential_key"] == "marketplace-api"
+    assert "do-not-return-this-secret" not in status.text
+    isolated = owner_client.get(
+        "/business-units/physical-brand/credentials", headers=headers
+    )
+    assert isolated.status_code == 200
+    assert isolated.json()["count"] == 0
+    deleted = owner_client.delete(
+        "/business-units/physical-agency/credentials/marketplace-api",
+        headers=headers, json={"confirm_owner_deletion": True},
+    )
+    assert deleted.status_code == 200
+
+
