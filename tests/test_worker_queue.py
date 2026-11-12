@@ -371,7 +371,7 @@ def test_owner_reassignment_updates_task_queue_and_audit_atomically(tmp_path):
         actor_id="owner", action="work_item.reassigned", subject_type="work_item",
         subject_id=str(item.id), outcome="recorded", correlation_id="reassign",
         details={"from": str(old_id), "to": str(new_id)},
-    ))
+    ), expected_current_agent_id=old_id)
     assert result["previous_agent_id"] == str(old_id)
     assert result["assigned_agent_id"] == str(new_id)
     assert store.get_work_item(item.id).assigned_agent_id == new_id
@@ -410,7 +410,7 @@ def test_reassignment_rejects_leased_and_delegated_work(tmp_path):
         "team_key": "intelligence-research__team_1"}, record("work_item.queued", leased.id))
     assert queue.claim(old_id) is not None
     with pytest.raises(QueueError, match="only queued work"):
-        queue.reassign_queued_work_item(leased.id, new_id, record("work_item.reassigned", leased.id))
+        queue.reassign_queued_work_item(leased.id, new_id, record("work_item.reassigned", leased.id), expected_current_agent_id=old_id)
     assert store.get_work_item(leased.id).assigned_agent_id == old_id
 
     delegated_id = uuid4()
@@ -431,7 +431,7 @@ def test_reassignment_rejects_leased_and_delegated_work(tmp_path):
     queue.enqueue_authorized(delegated, old_id, {"role_key": "market_intelligence_analyst",
         "team_key": "intelligence-research__team_1"}, record("work_item.queued", delegated.id))
     with pytest.raises(QueueError, match="new approved delegation"):
-        queue.reassign_queued_work_item(delegated.id, new_id, record("work_item.reassigned", delegated.id))
+        queue.reassign_queued_work_item(delegated.id, new_id, record("work_item.reassigned", delegated.id), expected_current_agent_id=old_id)
     assert store.get_work_item(delegated.id).assigned_agent_id == old_id
     assert queue.get_entry(delegated.id)["agent_id"] == str(old_id)
     assert store.verify_audit_chain()
@@ -470,7 +470,7 @@ def test_reassignment_rolls_back_both_records_when_audit_append_fails(tmp_path):
             actor_type="owner", actor_id="owner", action="work_item.reassigned",
             subject_type="work_item", subject_id=str(item.id), outcome="recorded",
             correlation_id="duplicate-audit",
-        ))
+        ), expected_current_agent_id=old_id)
     assert store.get_work_item(item.id).assigned_agent_id == old_id
     entry = queue.get_entry(item.id)
     assert entry["agent_id"] == str(old_id) and entry["state"] == "queued"
@@ -515,9 +515,9 @@ def test_reassignment_rejects_inactive_or_cross_department_target(tmp_path):
             subject_id=str(item.id), outcome="recorded", correlation_id=str(uuid4()),
         )
     with pytest.raises(QueueError, match="active, role-assigned"):
-        queue.reassign_queued_work_item(item.id, paused_id, reassignment_record())
+        queue.reassign_queued_work_item(item.id, paused_id, reassignment_record(), expected_current_agent_id=old_id)
     with pytest.raises(QueueError, match="active, role-assigned"):
-        queue.reassign_queued_work_item(item.id, wrong_department_id, reassignment_record())
+        queue.reassign_queued_work_item(item.id, wrong_department_id, reassignment_record(), expected_current_agent_id=old_id)
     assert store.get_work_item(item.id).assigned_agent_id == old_id
     assert queue.get_entry(item.id)["agent_id"] == str(old_id)
     assert store.verify_audit_chain()
