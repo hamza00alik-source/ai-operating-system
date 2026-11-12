@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 
 from ai_os import video_jobs
 
@@ -101,3 +102,23 @@ def test_worker_http_routes_require_shared_secret(monkeypatch, tmp_path):
         )
         assert accepted.status_code == 200
         assert accepted.json() is None
+
+
+
+def test_expired_lease_is_reclaimed_and_retry_limit_is_enforced(tmp_path, monkeypatch):
+    job = _approved(tmp_path, monkeypatch, "lease-expiry-test")
+    base = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(video_jobs, "_now", lambda: base)
+    first = video_jobs.claim_job("gpu-worker-a", 30)
+    monkeypatch.setattr(video_jobs, "_now", lambda: base + timedelta(seconds=31))
+    with pytest.raises(PermissionError):
+        video_jobs.heartbeat(job["id"], first["lease_token"], progress=50)
+
+    second = video_jobs.claim_job("gpu-worker-b", 30)
+    assert second["id"] == job["id"]
+    assert second["attempts"] == 2
+    monkeypatch.setattr(video_jobs, "_now", lambda: base + timedelta(seconds=62))
+    assert video_jobs.claim_job("gpu-worker-c", 30) is None
+    final = video_jobs.get_job(job["id"])
+    assert final["status"] == "failed"
+    assert final["attempts"] == 2
