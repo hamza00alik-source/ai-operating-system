@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 10
+_SCHEMA_VERSION = 11
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -476,6 +476,83 @@ def _migrate_v9_finance_ledger(connection: sqlite3.Connection) -> None:
         raise RuntimeError("foreign-key enforcement is disabled after finance-ledger migration")
 
 
+
+def _migrate_v10_business_credentials(connection: sqlite3.Connection) -> None:
+    """Create encrypted, business-scoped credential storage and immutable history."""
+    if connection.in_transaction:
+        raise RuntimeError("business-credential migration cannot run inside an existing transaction")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_credential_scope "
+        "ON opencompany_business_units(business_id,credential_scope_id)"
+    )
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute("""
+            CREATE TABLE opencompany_business_credentials (
+                business_id TEXT NOT NULL,
+                credential_scope_id TEXT NOT NULL,
+                credential_key TEXT NOT NULL,
+                nonce BLOB NOT NULL,
+                ciphertext BLOB NOT NULL,
+                revision INTEGER NOT NULL CHECK(revision > 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(business_id,credential_key),
+                UNIQUE(business_id,credential_scope_id,credential_key),
+                FOREIGN KEY(business_id,credential_scope_id)
+                    REFERENCES opencompany_business_units(business_id,credential_scope_id)
+            )
+        """)
+        connection.execute("""
+            CREATE INDEX idx_opencompany_business_credentials_scope
+            ON opencompany_business_credentials(business_id,credential_scope_id,credential_key)
+        """)
+        connection.execute("""
+            CREATE TABLE opencompany_business_credential_events (
+                event_id TEXT PRIMARY KEY,
+                business_id TEXT NOT NULL,
+                credential_scope_id TEXT NOT NULL,
+                credential_key TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('stored','rotated','deleted')),
+                revision INTEGER NOT NULL CHECK(revision > 0),
+                actor_type TEXT NOT NULL CHECK(actor_type='owner'),
+                actor_id TEXT,
+                occurred_at TEXT NOT NULL,
+                FOREIGN KEY(business_id,credential_scope_id)
+                    REFERENCES opencompany_business_units(business_id,credential_scope_id)
+            )
+        """)
+        connection.execute("""
+            CREATE INDEX idx_opencompany_business_credential_events_scope
+            ON opencompany_business_credential_events(business_id,credential_key,occurred_at,event_id)
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_credential_events_no_update
+            BEFORE UPDATE ON opencompany_business_credential_events
+            BEGIN SELECT RAISE(ABORT, 'credential history is append-only'); END
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_credential_events_no_delete
+            BEFORE DELETE ON opencompany_business_credential_events
+            BEGIN SELECT RAISE(ABORT, 'credential history is append-only'); END
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_units_credential_scope_no_update
+            BEFORE UPDATE OF credential_scope_id ON opencompany_business_units
+            BEGIN SELECT RAISE(ABORT, 'business-unit credential scope is immutable'); END
+        """)
+        if connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("business-credential migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version = 11")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
+        raise RuntimeError("foreign-key enforcement is disabled after business-credential migration")
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -740,6 +817,9 @@ class SQLiteStore:
                 version = 9
             if version == 9:
                 _migrate_v9_finance_ledger(self._connection)
+                version = 10
+            if version == 10:
+                _migrate_v10_business_credentials(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
