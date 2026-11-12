@@ -172,22 +172,21 @@ def main():
             if cancellation.is_set():
                 request_json(f"/video/worker/jobs/{job_id}/fail",
                              {"error":"Cancellation requested or worker heartbeat lost during inference","retryable":False},lease)
-                continue
-            # Keep renewing the lease while the MP4 is uploaded; the API also
-            # refreshes it while streaming and checks for owner cancellation.
-            result = upload_artifact(job_id,lease,output)
-            print(f"Completed {job_id}: {result.get('result_uri')}",flush=True)
-        finally:
-            stop.set()
-            hb.join(timeout=2)
+            else:
+                # Keep renewing the lease while the MP4 is uploaded; the API also
+                # refreshes it while streaming and checks for owner cancellation.
+                result = upload_artifact(job_id,lease,output)
+                print(f"Completed {job_id}: {result.get('result_uri')}",flush=True)
         except Exception as exc:
-            stop.set(); hb.join(timeout=2)
             try:
                 request_json(f"/video/worker/jobs/{job_id}/fail",
                              {"error":f"{type(exc).__name__}: {exc}","retryable":True},lease)
             except Exception as report_exc:
                 print(f"Could not report worker failure: {report_exc}",flush=True)
             print(f"Job {job_id} failed: {exc}",flush=True)
+        finally:
+            stop.set()
+            hb.join(timeout=2)
 
 
 if __name__ == "__main__":
