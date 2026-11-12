@@ -167,7 +167,49 @@ def test_authorized_re_admission_reuses_done_and_dead_queue_rows(tmp_path):
     assert retried is not None and retried.work_item_id == failed_item.id
     assert retried.attempt == 1
     queue.complete(retried)
-    assert queue.counts() == {"done": 2}
+
+    cancelled_item = make_item("Re-admit after cancellation")
+    admit(cancelled_item)
+    cancelled_lease = queue.claim(agent_id)
+    assert cancelled_lease is not None
+    assert queue.request_cancel(
+        cancelled_item.id,
+        AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="owner", actor_id="owner",
+            action="work_item.cancellation_requested",
+            subject_type="work_item", subject_id=str(cancelled_item.id),
+            outcome="recorded", correlation_id=str(uuid4()),
+        ),
+    ) == "cancellation_requested"
+    assert queue.finalize_cancel(
+        cancelled_lease,
+        AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+            actor_type="worker", actor_id=str(agent_id),
+            action="worker.execution_cancelled",
+            subject_type="work_item", subject_id=str(cancelled_item.id),
+            outcome="recorded", correlation_id=str(cancelled_lease.lease_token),
+        ),
+    )
+    with store._lock:
+        store._connection.execute(
+            "UPDATE work_items SET state=? WHERE id=?",
+            (TaskState.READY.value, str(cancelled_item.id)),
+        )
+    admit(store.get_work_item(cancelled_item.id))
+    assert queue.get_entry(cancelled_item.id)["state"] == "queued"
+    with store._lock:
+        cancel_flag = store._connection.execute(
+            "SELECT cancel_requested FROM worker_queue WHERE work_item_id=?",
+            (str(cancelled_item.id),),
+        ).fetchone()["cancel_requested"]
+    assert cancel_flag == 0
+    re_admitted = queue.claim(agent_id)
+    assert re_admitted is not None and re_admitted.work_item_id == cancelled_item.id
+    queue.complete(re_admitted)
+
+    assert queue.counts() == {"done": 3}
     assert store.verify_audit_chain()
     store.close()
 
