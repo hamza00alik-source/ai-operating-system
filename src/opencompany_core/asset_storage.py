@@ -25,6 +25,35 @@ class AssetStorageError(ValueError):
     """A private asset could not be safely stored."""
 
 
+_MEDIA_SIGNATURES = {
+    "model/gltf-binary": lambda data: len(data) >= 12 and data[:4] == b"glTF" and data[4:8] == b"\\x02\\x00\\x00\\x00",
+    "image/png": lambda data: data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"),
+    "image/jpeg": lambda data: data.startswith(b"\\xff\\xd8\\xff"),
+    "image/gif": lambda data: data.startswith((b"GIF87a", b"GIF89a")),
+    "image/webp": lambda data: len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
+    "application/pdf": lambda data: data.startswith(b"%PDF-"),
+    "application/zip": lambda data: data.startswith((b"PK\\x03\\x04", b"PK\\x05\\x06", b"PK\\x07\\x08")),
+    "text/plain": lambda data: b"\\x00" not in data and _is_utf8_text(data),
+}
+
+
+def _is_utf8_text(data: bytes) -> bool:
+    try:
+        data.decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def validate_asset_media_type(media_type: str, prefix: bytes) -> None:
+    """Sniff supported file signatures instead of trusting Content-Type headers."""
+    checker = _MEDIA_SIGNATURES.get(media_type)
+    if checker is None:
+        raise AssetStorageError("unsupported media type for private asset upload")
+    if not checker(prefix):
+        raise AssetStorageError("uploaded bytes do not match the declared media type")
+
+
 class PrivateFilesystemAssetStorage:
     """Write-once private filesystem storage with byte-level integrity checks.
 
@@ -110,6 +139,7 @@ class PrivateFilesystemAssetStorage:
         temp_path = Path(temp_name)
         digest = hashlib.sha256()
         total = 0
+        prefix = bytearray()
         try:
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "wb") as stream:
@@ -121,7 +151,10 @@ class PrivateFilesystemAssetStorage:
                     if total > MAX_ASSET_BYTES or total > expected_size:
                         raise AssetStorageError("received asset exceeds its declared size or the 100 MiB limit")
                     digest.update(data)
+                    if len(prefix) < 4096:
+                        prefix.extend(data[:4096 - len(prefix)])
                     stream.write(data)
+                validate_asset_media_type(expected_media_type, bytes(prefix))
                 stream.flush()
                 os.fsync(stream.fileno())
             actual_hash = digest.hexdigest()
@@ -163,6 +196,7 @@ class PrivateFilesystemAssetStorage:
         asset_id: str,
         expected_sha256: str,
         expected_size: int,
+        expected_media_type: str,
         chunks,
     ) -> dict[str, str | int]:
         """Bounded async request streaming without buffering the whole upload in RAM."""
