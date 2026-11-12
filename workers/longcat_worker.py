@@ -76,7 +76,9 @@ def load_pipeline():
         dist.init_process_group(backend="nccl")
     rank = dist.get_rank()
     world = dist.get_world_size()
-    init_context_parallel(context_parallel_size=world, global_rank=rank, world_size=world)
+    if world != 1:
+        raise RuntimeError("This worker release supports one GPU process per worker. Multi-GPU distributed execution is not enabled.")
+    init_context_parallel(context_parallel_size=1, global_rank=rank, world_size=1)
     split = context_parallel_util.get_optimal_split(context_parallel_util.get_cp_size())
     dtype = torch.bfloat16
     tokenizer = AutoTokenizer.from_pretrained(str(CHECKPOINT), subfolder="tokenizer", torch_dtype=dtype)
@@ -142,10 +144,6 @@ def generate_one(pipe, torch, job):
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     pipe, torch, rank = load_pipeline()
-    if rank != 0:
-        # Context-parallel ranks participate in inference; only rank 0 polls the queue.
-        while True:
-            time.sleep(3600)
     print(f"LongCat worker {WORKER_ID} ready; API={API}", flush=True)
     while True:
         try:
