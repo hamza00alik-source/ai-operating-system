@@ -338,3 +338,101 @@ def test_shared_queue_does_not_lease_work_for_deactivated_agent(tmp_path):
     assert queue.counts() == {"queued": 1}
     assert store.get_work_item(item.id).state == TaskState.QUEUED
     store.close()
+
+
+def test_owner_reassignment_updates_task_queue_and_audit_atomically(tmp_path):
+    store = SQLiteStore(tmp_path / "reassign.sqlite3")
+    old_id, new_id = uuid4(), uuid4()
+    for agent_id, name in ((old_id, "Old Researcher"), (new_id, "New Researcher")):
+        store.save_agent(AgentProfile(
+            id=agent_id, name=name, department="intelligence-research",
+            purpose="Prepare evidence", capabilities=("research",),
+            state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
+            team_key="intelligence-research__team_1",
+        ))
+    item = WorkItem(
+        id=uuid4(), title="Queued research", objective="Prepare a sourced internal report",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=old_id, business_id="physical-agency",
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue_authorized(item, old_id, {
+        "role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1",
+        "kind": "internal_draft",
+    }, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.queued", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="queue",
+    ))
+    result = queue.reassign_queued_work_item(item.id, new_id, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.reassigned", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id="reassign",
+        details={"from": str(old_id), "to": str(new_id)},
+    ))
+    assert result["previous_agent_id"] == str(old_id)
+    assert result["assigned_agent_id"] == str(new_id)
+    assert store.get_work_item(item.id).assigned_agent_id == new_id
+    entry = queue.get_entry(item.id)
+    assert entry["agent_id"] == str(new_id) and entry["state"] == "queued"
+    lease = queue.claim(new_id)
+    assert lease is not None and lease.work_item_id == item.id
+    assert lease.payload["role_key"] == "market_intelligence_analyst"
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_reassignment_rejects_leased_and_delegated_work(tmp_path):
+    store = SQLiteStore(tmp_path / "reassign-gates.sqlite3")
+    old_id, new_id = uuid4(), uuid4()
+    for agent_id, name in ((old_id, "Old Researcher"), (new_id, "New Researcher")):
+        store.save_agent(AgentProfile(
+            id=agent_id, name=name, department="intelligence-research",
+            purpose="Prepare evidence", capabilities=("research",),
+            state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
+            team_key="intelligence-research__team_1",
+        ))
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    def record(action, subject):
+        return AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+            actor_id="owner", action=action, subject_type="work_item",
+            subject_id=str(subject), outcome="recorded", correlation_id=str(uuid4()),
+        )
+    leased = WorkItem(
+        id=uuid4(), title="Leased research", objective="Prepare report",
+        department="intelligence-research", state=TaskState.READY, assigned_agent_id=old_id,
+    )
+    store.save_work_item(leased)
+    queue.enqueue_authorized(leased, old_id, {"role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1"}, record("work_item.queued", leased.id))
+    assert queue.claim(old_id) is not None
+    with pytest.raises(QueueError, match="only queued work"):
+        queue.reassign_queued_work_item(leased.id, new_id, record("work_item.reassigned", leased.id))
+    assert store.get_work_item(leased.id).assigned_agent_id == old_id
+
+    delegated_id = uuid4()
+    with store._lock:
+        store._connection.execute(
+            """INSERT INTO delegation_child_tasks
+               (id,proposal_id,parent_work_item_id,assigned_agent_id,role_key,team_key,title,objective,state,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            (str(delegated_id), str(uuid4()), str(uuid4()), str(old_id),
+             "market_intelligence_analyst", "intelligence-research__team_1",
+             "Delegated child", "Approved objective", "queued", datetime.now(timezone.utc).isoformat()),
+        )
+    delegated = WorkItem(
+        id=delegated_id, title="Delegated child", objective="Approved objective",
+        department="intelligence-research", state=TaskState.READY, assigned_agent_id=old_id,
+    )
+    store.save_work_item(delegated)
+    queue.enqueue_authorized(delegated, old_id, {"role_key": "market_intelligence_analyst",
+        "team_key": "intelligence-research__team_1"}, record("work_item.queued", delegated.id))
+    with pytest.raises(QueueError, match="new approved delegation"):
+        queue.reassign_queued_work_item(delegated.id, new_id, record("work_item.reassigned", delegated.id))
+    assert store.get_work_item(delegated.id).assigned_agent_id == old_id
+    assert queue.get_entry(delegated.id)["agent_id"] == str(old_id)
+    assert store.verify_audit_chain()
+    store.close()
