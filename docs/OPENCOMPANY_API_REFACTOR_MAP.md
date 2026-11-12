@@ -1,15 +1,15 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue and system router extractions, complete UnoRouter provider-router extraction, GitHub integration/code-evolution router extraction, read-only API Anything integration-router extraction, and owner-authenticated agent/workforce router extraction, and owner-controlled worker lifecycle router extraction, and work-item creation/listing router extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. Request-schema and runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue/system/provider/GitHub/API Anything/agent/worker/work-item/handoff/orchestration/lifecycle router extractions are implemented on the development branch. Route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
-Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after work-item extraction: `d86eab12eefc247a435a152534ade6d2e77bef44`.
+Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after lifecycle extraction: `22c233b146229681b8f8b0a5a10d0f30b8b48ee8`.
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 56 direct route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). The routers are included at their original route-group positions.
-- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py` and `work_items.py`, in addition to the composition, dashboard and runtime modules.
+- The API now has 42 direct route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, four read-only catalogue routes in `routers/catalogue.py`, five handoff routes in `routers/handoffs.py`, five planning/delegation routes in `routers/orchestration.py`, and four work-item lifecycle/review/deliverable routes in `routers/lifecycle.py` (95 total registrations by static composition count). The routers are included at their original route-group positions.
+- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py`, `work_items.py`, `handoffs.py`, `orchestration.py` and `lifecycle.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
@@ -224,3 +224,17 @@ The router preserves explicit owner authentication on all five endpoints. Execut
 The three shared auto-queue helpers were moved from `api.py` to `api_dependencies.py`, so the new router and remaining enqueue/workflow code use one implementation rather than duplicating safety logic. The orchestration router is included immediately before the workflow route group, preserving registration order.
 
 Static re-fetch verification found 95 route decorators across `api.py` and router modules, with zero duplicate HTTP-method/path pairs. The orchestration router contains five endpoints and all five retain explicit owner authentication. The three shared helper definitions now exist only in `api_dependencies.py`; the main API imports and reuses them. These are source-level checks only—not import, startup, OpenAPI, test, CI or runtime verification. Test/CI deferral until 2026-12-01 remains active. No plan or delegation proposal was created or approved; no work was queued or executed; no merge, deployment or production change occurred.
+
+
+## Owner work-item lifecycle and review router extraction (2026-11-12)
+
+Four owner-authenticated routes now live in `src/opencompany_app/routers/lifecycle.py`:
+
+- `GET /work-items/{item_id}/workflow` — complete owner-facing lifecycle, prerequisites, business-scoped dependents, manager synthesis readiness, handoffs and deliverables
+- `POST /work-items/{item_id}/review` — owner approval/rejection, atomic work-item review audit, outcome evaluation recording and the existing optional auto-queue policy
+- `POST /work-items/{item_id}/transition` — guarded non-execution state transitions
+- `GET /work-items/{item_id}/deliverables` — owner-authenticated deliverable listing
+
+The four handler blocks were compared against the immediately preceding API source after normalizing only the decorator target; all four comparisons matched exactly. The workflow view still rejects cross-business delegated work/dependencies and filters dependent work to the parent business unit. Review retains its audit record, outcome evaluation, disabled-by-default auto-queue and strict free-provider/role checks. State-only transitions still cannot complete review-required work, cancel queued/running work, or enter queued/in-progress states; those remain behind the review or queue/worker pipeline. All four routes retain explicit owner authentication.
+
+The lifecycle router is included immediately after the orchestration router, at the former workflow-route registration position. Static re-fetch found 42 direct API route decorators plus 53 router decorators (95 total), with zero duplicate HTTP-method/path pairs across the composition root and router modules. No imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed. Test/CI deferral until 2026-12-01 remains active. No work item was reviewed or transitioned; no queue action, merge, deployment or production change occurred.
