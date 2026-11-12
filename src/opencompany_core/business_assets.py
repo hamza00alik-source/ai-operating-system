@@ -116,8 +116,7 @@ class BusinessAssetRegistry:
             item=self._get(business_id,asset_id)
             if item["storage_key"] is not None: raise ValueError("asset has already been stored")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("stored asset checksum or size does not match declaration")
-            expected_prefix=hashlib.sha256((business_id+"\0"+item["asset_id"]).encode()).hexdigest()+"/"
-            if not isinstance(storage_key,str) or storage_key != expected_prefix+item["asset_id"]+".blob": raise ValueError("invalid business-scoped storage key")
+            if not isinstance(storage_key,str) or not re.fullmatch(r"[a-f0-9]{64}/"+re.escape(item["asset_id"])+r"\.blob",storage_key): raise ValueError("invalid business-scoped storage key")
             self._audit_dict(audit)
             self.connection.execute("UPDATE opencompany_business_assets SET storage_key=?,storage_state='private_stored_unscanned',status='pending_scan' WHERE business_id=? AND asset_id=?",(storage_key,business_id,item["asset_id"]))
             self._event(business_id,item["asset_id"],"stored_unscanned",audit); self.connection.commit()
