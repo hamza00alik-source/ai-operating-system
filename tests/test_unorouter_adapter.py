@@ -206,10 +206,10 @@ def test_unorouter_discovers_only_key_accessible_free_online_zero_price_models(m
     eligible = next(model for model in catalogue if model["allowed_for_inference"])
     assert eligible["model_id"] == "glm-5.3:free"
     assert eligible["vendor"] == "Zhipu"
-    assert calls[0][0] == "https://api.unorouter.com/v1/models"
-    assert calls[0][1].get("Authorization") == "Bearer secret-api-key"
-    assert calls[1][0] == "https://api.unorouter.com/api/pricing/catalog"
-    assert "Authorization" not in calls[1][1]
+    assert calls[0][0] == "https://api.unorouter.com/api/pricing/catalog"
+    assert "Authorization" not in calls[0][1]
+    assert calls[1][0] == "https://api.unorouter.com/v1/models"
+    assert calls[1][1].get("Authorization") == "Bearer secret-api-key"
 
 
 def test_unorouter_discovery_rejects_invalid_key_and_malformed_catalogue(monkeypatch):
@@ -225,5 +225,6 @@ def test_unorouter_discovery_rejects_invalid_key_and_malformed_catalogue(monkeyp
             return b'{"data": []}'
 
     monkeypatch.setattr(unorouter_adapter, "urlopen", lambda *a, **k: FakeResponse())
+    monkeypatch.setattr(unorouter_adapter, "_catalog_cache", {})
     with pytest.raises(ProviderUnavailable, match="pricing catalogue"):
-        unorouter_adapter.discover_free_models("secret-api-key")
+        unorouter_adapter.discover_free_models("secret-api-key", force_refresh=True)
