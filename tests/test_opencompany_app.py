@@ -1870,3 +1870,50 @@ def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
     assert all(value["state"] == "ready" for value in payload["dependencies"])
     assert payload["external_actions_performed"] is False
 
+def test_workflow_view_exposes_secret_free_execution_attempt_history(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post(
+        "/work-items", headers=headers,
+        json={
+            "title": "Inspect execution history",
+            "objective": "Verify durable attempts are visible to the owner.",
+            "department": "intelligence-research",
+            "business_id": "physical-agency",
+        },
+    )
+    assert created.status_code == 200
+    item_id = created.json()["item_id"]
+    runtime = app.dependency_overrides[get_runtime]()
+
+    empty = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+    assert empty.status_code == 200
+    assert empty.json()["execution_attempts"] == []
+
+    with runtime.queue._lock:
+        runtime.queue._db.execute(
+            """INSERT INTO worker_attempts
+               (work_item_id,agent_id,attempt,lease_token,status,started_at,finished_at,error_code)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                item_id, str(uuid4()), 1, str(uuid4()), "retryable_failed",
+                "2026-11-12T00:00:00+00:00", "2026-11-12T00:00:02+00:00",
+                "ProviderTimeout",
+            ),
+        )
+
+    response = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+    assert response.status_code == 200
+    attempts = response.json()["execution_attempts"]
+    assert len(attempts) == 1
+    assert attempts[0] == {
+        "attempt": 1,
+        "status": "retryable_failed",
+        "started_at": "2026-11-12T00:00:00+00:00",
+        "finished_at": "2026-11-12T00:00:02+00:00",
+        "error_code": "ProviderTimeout",
+    }
+    assert "lease_token" not in response.text
+    assert "payload_json" not in response.text
+
+    unauthorized = owner_client.get(f"/work-items/{item_id}/workflow")
+    assert unauthorized.status_code == 401
