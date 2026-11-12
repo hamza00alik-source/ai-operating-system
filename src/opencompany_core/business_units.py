@@ -122,24 +122,35 @@ class BusinessUnitRegistry:
             raise BusinessUnitProvisioningError("explicit owner approval is required to provision a business unit")
         if not _SLUG.fullmatch(business_id):
             raise BusinessUnitProvisioningError("business_id must be a 2-63 character lowercase slug")
+        if business_id == "core":
+            raise BusinessUnitProvisioningError("core is reserved for internal OpenCompany operations")
         if unit_type not in _UNIT_TYPES:
             raise BusinessUnitProvisioningError("unsupported business unit type")
         if delivery_class not in _DELIVERY_CLASSES:
             raise BusinessUnitProvisioningError("unsupported primary delivery class")
+        required_delivery = {
+            "physical-agency": "physical-goods",
+            "physical-brand": "physical-goods",
+            "digital-products": "digital-files",
+        }.get(unit_type)
+        if required_delivery is not None and delivery_class != required_delivery:
+            raise BusinessUnitProvisioningError(
+                f"{unit_type} must use {required_delivery} delivery; cross-type fulfilment is prohibited"
+            )
         for value, label, maximum in (
             (name, "name", 160), (description, "description", 5000),
             (target_market, "target market", 300),
         ):
             if not isinstance(value, str) or not value.strip() or len(value) > maximum:
                 raise BusinessUnitProvisioningError(f"{label} is empty or too long")
-        opportunity = portfolio.get(opportunity_id)
-        if opportunity is None:
-            raise BusinessUnitProvisioningError("source opportunity was not found")
-        if opportunity["status"] != "approved_to_launch":
-            raise BusinessUnitProvisioningError("only opportunities approved for launch planning can be provisioned")
         now = datetime.now(timezone.utc).isoformat()
         scopes = [str(uuid4()) for _ in range(7)]
         with self._lock:
+            opportunity = portfolio.get(opportunity_id)
+            if opportunity is None:
+                raise BusinessUnitProvisioningError("source opportunity was not found")
+            if opportunity["status"] != "approved_to_launch":
+                raise BusinessUnitProvisioningError("only opportunities approved for launch planning can be provisioned")
             try:
                 self._db.execute("BEGIN IMMEDIATE")
                 self._db.execute(
