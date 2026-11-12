@@ -20,7 +20,7 @@ OWNER_PROVIDER_SETTINGS_HTML = r"""
   <p id="unorouter-model-catalogue" class="muted" aria-live="polite">Full UnoRouter catalogue has not been imported. Paid and unsupported models will be shown as blocked.</p>
   <details id="unorouter-catalog-details"><summary>View imported catalogue</summary><div id="unorouter-catalog-rows"></div></details>
   <p id="unorouter-detail" class="muted" aria-live="polite">Credentials are not configured.</p>
-  <p class="muted">Connection testing sends one short prompt. After a successful zero-cost test, workers start only if owner-configured autostart is enabled. Paid fallback is never used.</p>
+  <p class="muted">Connection testing sends one short prompt. The worker fleet starts automatically only when owner-configured autostart is enabled and a live zero-cost provider test succeeded in this process. Worker fleet started automatically. Paid fallback is never used.</p>
 </section>
 <section class="panel" id="github-evolution-settings">
   <div class="row"><h2 class="section-title compact">GitHub code evolution</h2><span id="github-evolution-state" class="pill">Not connected</span></div>
