@@ -6,9 +6,9 @@ OpenCompany AIOS unifies the company application and its intelligence engine: or
 
 ## Current product and branch policy
 
-The current product is **OpenCompany AIOS**, implemented as one application across `src/opencompany_app` (API, runtime composition, owner console) and `src/opencompany_core` (the AIOS engine and shared domain services). The production OpenCompany service is sourced from `fix/release-hardening`. The active implementation branch for the current workflow upgrades is `feature/opencompany-full-workflow-upgrade`.
+The current product is **OpenCompany AIOS**, implemented as one application across `src/opencompany_app` (API, runtime composition, owner console) and `src/opencompany_core` (the AIOS engine and shared domain services). The unified development line is `feature/opencompany-aios-unification`, built on the owner-governed venture portfolio and full-workflow upgrade branches. The production service remains separate until staging, persistence, security, rollback, and owner-approved cutover checks are complete.
 
-The legacy `src/ai_os` package and older dashboard are quarantined reference-only material. They are not a second product, are not imported by the new runtime, and must not be merged over the independently authored OpenCompany AIOS implementation. The new app must be developed and verified through its own API, runtime, persistence, worker, integration, and owner-console workflows.
+The legacy `src/ai_os` package and older dashboard are quarantined reference-only material. They are not a second product, are not imported by the new runtime, and are excluded from the distributable Python packages. They remain in the repository only for historical inspection; do not merge their implementation over OpenCompany AIOS. The new app must be developed and verified through its own API, runtime, persistence, worker, integration, and owner-console workflows.
 
 The original OpenCompany organization contains ten departments, 500 specialist role contracts (50 per department across 100 capability teams), ten department-manager roles, and one owner-subordinate executive orchestrator: 511 role contracts in total. These are role definitions, not 511 continuously running agents. Work executes only after the owner-approved planning, delegation, assignment, queue-admission, and provider-cost gates.
 
