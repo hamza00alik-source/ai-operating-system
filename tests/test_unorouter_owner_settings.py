@@ -137,6 +137,9 @@ def test_provider_credentials_are_not_changed_if_running_workers_cannot_stop(mon
         assert runtime.secret_vault.get("unorouter") is None
     finally:
         api.app.dependency_overrides.clear()
+        # The test simulates a stuck fleet by overriding status; restore the
+        # real stopped state before exercising ordinary runtime cleanup.
+        runtime.fleet.status = lambda: type("Stopped", (), {"running": False})()
         runtime.close()
 
 
