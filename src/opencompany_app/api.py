@@ -23,7 +23,6 @@ from urllib.parse import urlsplit
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
-from pydantic import BaseModel, Field
 
 from opencompany_core.platform import PLATFORM_ID, PLATFORM_NAME, PLATFORM_VERSION
 from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
