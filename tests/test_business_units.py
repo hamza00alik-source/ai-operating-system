@@ -168,7 +168,12 @@ def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blocke
         report = registry.activation_readiness(unit["business_id"])
         assert report["status"] == "provisioning"
         assert report["activation_allowed"] is False
-        assert "commercial_persistence_dynamic_business_ids" in report["blockers"]
+        assert "commercial_persistence_dynamic_business_ids" not in report["blockers"]
+        dynamic_check = next(
+            check for check in report["checks"]
+            if check["key"] == "commercial_persistence_dynamic_business_ids"
+        )
+        assert dynamic_check["ready"] is True
         assert "customer_scope_enforcement" in report["blockers"]
         assert "finance_ledger_scope" in report["blockers"]
         assert "owner_activation_approval" in report["blockers"]
