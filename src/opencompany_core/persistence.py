@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -22,6 +23,22 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 _ZERO_HASH = "0" * 64
 _SCHEMA_VERSION = 7
+
+_WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
+
+
+def _assert_operational_work_item_scope(connection: sqlite3.Connection, lock: RLock, business_id: str) -> None:
+    """Validate work-item business identity at the persistence boundary, not only the API."""
+    if not isinstance(business_id, str) or not _WORK_ITEM_BUSINESS_ID.fullmatch(business_id):
+        raise ValueError("business_id must be a 2-63 character lowercase slug")
+    if business_id == "core":
+        return
+    from .business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
+    try:
+        BusinessUnitRegistry(connection, lock).require_operational(business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise ValueError(str(exc)) from exc
+
 
 
 def _json(value: Any) -> str:
@@ -873,6 +890,7 @@ class SQLiteStore:
         )
 
     def save_work_item(self, item: WorkItem) -> None:
+        _assert_operational_work_item_scope(self._connection, self._lock, item.business_id)
         with self._lock:
             existing = self._connection.execute(
                 "SELECT business_id FROM work_items WHERE id=?", (str(item.id),)
@@ -895,6 +913,7 @@ class SQLiteStore:
             )
 
     def save_work_item_with_audit(self, item: WorkItem, record: AuditRecord) -> str:
+        _assert_operational_work_item_scope(self._connection, self._lock, item.business_id)
         """Persist a work item change and its audit evidence in one transaction."""
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
@@ -943,6 +962,8 @@ class SQLiteStore:
         """Persist a complete draft plan and all audit events atomically."""
         if not items or len(items) != len(records):
             raise ValueError("each planned work item requires one audit record")
+        for item in items:
+            _assert_operational_work_item_scope(self._connection, self._lock, item.business_id)
         if len({item.id for item in items}) != len(items):
             raise ValueError("planned work item identifiers must be unique")
         with self._lock:
@@ -983,6 +1004,10 @@ class SQLiteStore:
         """Atomically approve a draft proposal, materialize child tasks, and audit."""
         if not items or not records:
             raise ValueError("approved delegation requires child tasks and audit records")
+        for item in items:
+            _assert_operational_work_item_scope(self._connection, self._lock, item.business_id)
+        if parent_update is not None:
+            _assert_operational_work_item_scope(self._connection, self._lock, parent_update.business_id)
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
