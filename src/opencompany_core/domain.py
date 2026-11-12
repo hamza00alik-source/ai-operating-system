@@ -8,8 +8,13 @@ from uuid import UUID
 
 class TaskState(str, Enum):
     PENDING = "pending"
+    READY = "ready"
+    QUEUED = "queued"
     RUNNING = "running"
+    IN_PROGRESS = "in_progress"
+    REVIEW = "review"
     SUCCEEDED = "succeeded"
+    COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
