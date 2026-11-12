@@ -169,3 +169,7 @@ The Owner Console includes a supervised Social Media & Video department and pers
 - `POST /social/content/{id}/decision` — records the owner decision and marks approval for scheduling only.
 
 This release does not publish, schedule, upload media, invoke Canva, or generate video. Metricool, Canva and video provider readiness is reported without exposing secrets; credentials must be configured privately on the server. Presence of a key does not prove a free quota or production integration. External execution remains disabled until a provider adapter, tests, cost controls and owner approval are implemented.
+
+### LongCat-Video engine evaluation
+
+The LongCat-Video fork is tracked as an optional upstream video engine, not as OpenCompany's core system. Its `main` branch currently matches `meituan-longcat/LongCat-Video` exactly (0 commits ahead/behind). The model supports text-to-video, image-to-video, video continuation and avatar workflows, but requires a separate GPU-capable worker; open-source weights do not make GPU compute free. OpenCompany remains functional without LongCat installed. Generation must have its own owner approval and cost ceiling, and publishing requires a separate approval. See [docs/LONGCAT_VIDEO_INTEGRATION.md](docs/LONGCAT_VIDEO_INTEGRATION.md).
