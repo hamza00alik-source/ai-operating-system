@@ -97,4 +97,11 @@ The fork's checked-in LICENSE is MIT and retains Meituan copyright attribution. 
 
 ## Current status
 
-This document records the architecture decision and repository audit. It does not claim that a LongCat adapter, GPU worker, job queue, or video generation is implemented or operational yet.
+A durable SQLite video-job queue and owner-facing API are now implemented:
+- `POST /video/jobs` creates an idempotent job in `awaiting_approval`.
+- `POST /video/jobs/{id}/decision` requires owner approval and checks the explicit estimate against the approved budget before moving the job to `queued`.
+- `GET /video/jobs`, `GET /video/jobs/{id}`, and `GET /video/status` expose queue state.
+- Reusing an idempotency key with different request data is rejected.
+- Approval only queues the request. It does not start generation, allocate compute, contact LongCat, spend money, or publish output.
+
+Still not implemented: provider adapter, authenticated worker claim/lease protocol, GPU worker, result storage/validation, cancellation/retry execution, and actual video generation. The status endpoint deliberately reports the worker and provider as disconnected and generation as disabled. The queue is a persistence and approval foundation, not a functioning video-generation service.
