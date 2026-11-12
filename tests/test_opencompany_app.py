@@ -81,7 +81,13 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
 def test_health_reports_owner_authenticated_mode():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["mode"] == "owner-authenticated"
+    assert response.json() == {
+        "status": "ok",
+        "service": "opencompany-aios",
+        "product": "OpenCompany AIOS",
+        "version": "0.3.0",
+        "mode": "owner-authenticated",
+    }
 
 
 def test_provider_status_exposes_unorouter_as_company_provider_without_secret(monkeypatch):
@@ -1285,7 +1291,9 @@ def test_readiness_checks_persistent_storage_without_requiring_provider(owner_cl
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
-        "service": "opencompany-core",
+        "service": "opencompany-aios",
+        "product": "OpenCompany AIOS",
+        "version": "0.3.0",
         "storage": "ok",
         "worker_fleet_running": False,
         "provider_required_for_readiness": False,
