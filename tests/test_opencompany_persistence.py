@@ -286,8 +286,20 @@ def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_key
 
     store = SQLiteStore(path)
     db = store._connection
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 9
     assert db.execute("SELECT business_id FROM commercial_opportunities WHERE id='opp-1'").fetchone()[0] == "physical-agency"
+    customer_scope = db.execute(
+        "SELECT customer_scope_id FROM commercial_opportunities WHERE id='opp-1'"
+    ).fetchone()[0]
+    assert customer_scope == db.execute(
+        "SELECT customer_scope_id FROM opencompany_business_units WHERE business_id='physical-agency'"
+    ).fetchone()[0]
+    assert db.execute(
+        "SELECT customer_scope_id FROM commercial_quotes WHERE id='quote-1'"
+    ).fetchone()[0] == customer_scope
+    assert db.execute(
+        "SELECT customer_scope_id FROM commercial_orders WHERE id='order-1'"
+    ).fetchone()[0] == customer_scope
     assert db.execute("SELECT id FROM commercial_quote_items WHERE id='line-1'").fetchone()[0] == "line-1"
     assert db.execute("SELECT id FROM commercial_orders WHERE id='order-1'").fetchone()[0] == "order-1"
     assert db.execute("SELECT id FROM commercial_suppliers WHERE id='supplier-1'").fetchone()[0] == "supplier-1"
@@ -301,10 +313,21 @@ def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_key
     }
     # The schema accepts a new unit identity; application writes still require
     # an operational registry record at the persistence boundary.
+    scope_ids = [str(uuid4()) for _ in range(7)]
+    db.execute(
+        """INSERT INTO opencompany_business_units
+           (business_id,name,unit_type,delivery_class,description,target_market,status,
+            namespace_id,customer_scope_id,finance_scope_id,credential_scope_id,
+            integration_scope_id,memory_scope_id,asset_scope_id,created_at,updated_at)
+           VALUES('new-software-unit','New software','software','software-access','Test','Global',
+                  'active',?,?,?,?,?,?,?,?,?)""",
+        (*scope_ids, '2026-01-03', '2026-01-03'),
+    )
     db.execute(
         """INSERT INTO commercial_opportunities
-           (id,business_id,customer_name,customer_need,stage,created_at,updated_at)
-           VALUES('opp-2','new-software-unit','Buyer B','Software access','new','2026-01-03','2026-01-03')"""
+           (id,business_id,customer_scope_id,customer_name,customer_need,stage,created_at,updated_at)
+           VALUES('opp-2','new-software-unit',?,'Buyer B','Software access','new','2026-01-03','2026-01-03')""",
+        (scope_ids[1],),
     )
     db.execute(
         """INSERT INTO commercial_suppliers
@@ -313,6 +336,17 @@ def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_key
     )
     assert db.execute("SELECT COUNT(*) FROM commercial_opportunities").fetchone()[0] == 2
     assert db.execute("SELECT COUNT(*) FROM commercial_suppliers").fetchone()[0] == 2
+    try:
+        db.execute(
+            """INSERT INTO commercial_opportunities
+               (id,business_id,customer_scope_id,customer_name,customer_need,stage,created_at,updated_at)
+               VALUES('bad-scope','new-software-unit',?,'Buyer C','Wrong scope','new','2026-01-04','2026-01-04')""",
+            (scope_ids[2],),
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("database must reject mismatched business/customer scope")
     try:
         db.execute(
             """INSERT INTO commercial_suppliers
