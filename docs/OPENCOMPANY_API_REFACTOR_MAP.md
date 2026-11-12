@@ -1,15 +1,15 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. Request-schema and runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue/system/provider/GitHub/API Anything/agent/worker/work-item/handoff/orchestration/lifecycle/learning/commercial router extractions are implemented on the development branch. Route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. Request-schema and runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue/system/provider/GitHub/API Anything/agent/worker/work-item/handoff/orchestration/lifecycle/learning/commercial/venture-portfolio router extractions are implemented on the development branch. Route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
-Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after commercial extraction: `8af597752ceabfc3bc50bcb32446937958597029`.
+Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after venture portfolio extraction: `b117d302400e8e673725a4f316e85e3ed7f0d50e`.
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 18 direct route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, four read-only catalogue routes in `routers/catalogue.py`, five handoff routes in `routers/handoffs.py`, five planning/delegation routes in `routers/orchestration.py`, four work-item lifecycle/review/deliverable routes in `routers/lifecycle.py`, nine outcome-evaluation/learning routes in `routers/learning.py`, twelve commercial opportunity/product/quote/order routes plus three supplier routes in `routers/commercial.py` (95 total registrations by static composition count). The routers are included at their original route-group positions.
-- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py`, `work_items.py`, `handoffs.py`, `orchestration.py`, `lifecycle.py`, `learning.py` and `commercial.py`, in addition to the composition, dashboard and runtime modules.
+- The API now has 14 direct route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, four read-only catalogue routes in `routers/catalogue.py`, five handoff routes in `routers/handoffs.py`, five planning/delegation routes in `routers/orchestration.py`, four work-item lifecycle/review/deliverable routes in `routers/lifecycle.py`, nine outcome-evaluation/learning routes in `routers/learning.py`, twelve commercial opportunity/product/quote/order routes plus three supplier routes in `routers/commercial.py`, and four company-wide venture portfolio routes in `routers/portfolio.py` (95 total registrations by static composition count). The routers are included at their original route-group positions.
+- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py`, `work_items.py`, `handoffs.py`, `orchestration.py`, `lifecycle.py`, `learning.py`, `commercial.py` and `portfolio.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
@@ -267,5 +267,23 @@ Fifteen owner-authenticated commercial endpoints now live in `src/opencompany_ap
 The fifteen handlers were moved without changes to their function bodies or route metadata; static comparison after normalizing the decorator target confirmed all fifteen match the previous API source. All fifteen explicitly retain owner authentication. The existing business rules remain: customer opportunities and catalogue records belong to one allowed commercial business unit; catalogue lookup derives scope from the opportunity's immutable business ID; quote creation derives business scope from the opportunity; quote acceptance requires an evidence reference; owner confirmations remain required for quote decisions, order creation/status and supplier verification; supplier records are restricted to the two physical-product business units; no supplier outreach, quote sending, purchase, payment or external fulfilment is triggered.
 
 The two router instances preserve registration order rather than moving the supplier endpoints earlier with the rest of the commercial routes. Static re-fetch found 18 direct API routes plus 77 router routes (95 total), with zero duplicate HTTP-method/path pairs. All fifteen commercial routes retain explicit owner authentication. No commercial record was created or modified during extraction.
+
+Static source checks only. No imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
+
+
+## Company-wide venture portfolio router extraction (2026-11-12)
+
+Four owner-authenticated endpoints now live in `src/opencompany_app/routers/portfolio.py`:
+
+- `GET /venture-opportunities` — list the company-wide opportunity register
+- `POST /venture-opportunities` — save a researched opportunity without creating a business unit
+- `POST /venture-opportunities/{opportunity_id}/status` — record an owner-confirmed lifecycle decision
+- `GET /venture-opportunities/{opportunity_id}/events` — read the opportunity's event history
+
+The shared `_venture_portfolio` adapter moved with the routes. All four handler blocks were statically compared against the immediately preceding API source after normalizing only the decorator target; all four matched exactly. The router is included at the original route-group position after the supplier router, preserving registration order. The API no longer imports venture portfolio schemas or implementation types directly.
+
+The portfolio remains company-wide and distinct from operating business units. Registering or changing an opportunity does not itself create a business unit, provision accounts, spend money, publish, contact customers or launch a venture. Owner confirmation remains required for lifecycle transitions, and a launch decision is not an execution authorization.
+
+Static re-fetch found 14 direct API route decorators plus 81 router decorators (95 total), with zero duplicate HTTP-method/path pairs. All four portfolio routes retain explicit owner authentication. No opportunity was created or modified during extraction.
 
 Static source checks only. No imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production change occurred.
