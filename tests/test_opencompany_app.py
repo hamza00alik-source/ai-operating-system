@@ -1659,6 +1659,12 @@ def test_finance_ledger_routes_require_owner_and_never_initiate_payments(owner_c
     assert review.status_code == 200
     assert review.json()["external_payment_initiated"] is False
     assert review.json()["spending_authorized"] is False
+    duplicate_review = owner_client.post(
+        f"/finance/entries/{entry_id}/review", headers=headers,
+        json={"action": "owner_rejected", "rationale": "Conflicting second decision",
+              "confirm_owner_decision": True},
+    )
+    assert duplicate_review.status_code == 422
 
     listed = owner_client.get("/finance/entries?business_id=physical-agency", headers=headers)
     assert listed.status_code == 200
