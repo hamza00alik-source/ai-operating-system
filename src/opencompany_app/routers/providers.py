@@ -1,8 +1,15 @@
-"""Owner-authenticated UnoRouter discovery and read-only settings endpoints."""
+"""Owner-authenticated UnoRouter configuration, discovery and inference-test endpoints."""
 
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
+from threading import Lock
+from uuid import UUID, uuid4
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 
 from opencompany_core.unorouter_adapter import (
     discover_free_models,
@@ -10,13 +17,24 @@ from opencompany_core.unorouter_adapter import (
     unorouter_configuration_status,
 )
 from opencompany_core.secret_vault import SecretVaultError
-from opencompany_core.model_gateway import ProviderUnavailable
-from opencompany_app.api_schemas import UnoRouterDiscoveryInput
+from opencompany_core.model_gateway import CostPolicyViolation, ModelRequest, NoEligibleProvider, ProviderUnavailable
+from opencompany_app.api_schemas import UnoRouterDiscoveryInput, UnoRouterSettingsInput
 from opencompany_app.api_dependencies import get_runtime, require_owner_key
 from opencompany_app.runtime import OpenCompanyRuntime
 
 
 router = APIRouter()
+
+# In-memory owner-authenticated provider-test jobs; clients poll bounded jobs
+# because an inference request can outlive browser/proxy request timeouts.
+_UNOROUTER_TESTS: dict[str, dict] = {}
+_UNOROUTER_TESTS_LOCK = Lock()
+_UNOROUTER_TESTS_MAX = 50
+
+
+def _worker_autostart_enabled() -> bool:
+    return os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
+
 
 
 @router.post("/settings/providers/unorouter/discover", dependencies=[Depends(require_owner_key)])
