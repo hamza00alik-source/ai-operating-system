@@ -18,6 +18,7 @@ from .agent_persistence import AgentPersistenceMixin
 from .work_item_persistence import WorkItemPersistenceMixin
 from .backup_persistence import BackupPersistenceMixin
 from .schema_persistence import SchemaInitializationMixin
+from .supplier_persistence import SupplierPersistenceMixin
 
 
 class SQLiteStore(
@@ -28,6 +29,7 @@ class SQLiteStore(
     AuditPersistenceMixin,
     SchemaInitializationMixin,
     BackupPersistenceMixin,
+    SupplierPersistenceMixin,
 ):
     """Thread-safe repository for core records and append-only audit evidence."""
 
