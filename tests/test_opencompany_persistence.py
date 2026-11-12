@@ -568,6 +568,16 @@ def test_business_integration_registry_isolated_and_never_connects(tmp_path, mon
                 "UPDATE opencompany_business_integrations SET integration_scope_id='changed' "
                 "WHERE integration_id=?", (result["integration_id"],),
             )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_integrations SET status='paused' "
+                "WHERE integration_id=?", (result["integration_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "DELETE FROM opencompany_business_integrations WHERE integration_id=?",
+                (result["integration_id"],),
+            )
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
             store._connection.execute(
                 "DELETE FROM opencompany_business_integration_events WHERE integration_id=?",
