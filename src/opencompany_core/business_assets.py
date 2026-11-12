@@ -95,12 +95,28 @@ class BusinessAssetRegistry:
         with self._lock:
             rows=self._db.execute("""SELECT a.asset_id,a.business_id,a.asset_key,a.title,a.asset_type,a.filename,a.media_type,
                 a.checksum_sha256,a.byte_size,a.source,
-                CASE WHEN EXISTS(SELECT 1 FROM opencompany_business_asset_storage_events s
-                    WHERE s.business_id=a.business_id AND s.asset_scope_id=a.asset_scope_id AND s.asset_id=a.asset_id)
-                    THEN 'private_stored_unscanned' ELSE a.storage_state END AS storage_state,
-                CASE WHEN EXISTS(SELECT 1 FROM opencompany_business_asset_storage_events s
-                    WHERE s.business_id=a.business_id AND s.asset_scope_id=a.asset_scope_id AND s.asset_id=a.asset_id)
-                    THEN 'pending_scan' ELSE a.status END AS status,
+                CASE
+                    WHEN (SELECT x.action FROM opencompany_business_asset_scan_events x
+                        WHERE x.business_id=a.business_id AND x.asset_scope_id=a.asset_scope_id AND x.asset_id=a.asset_id
+                        ORDER BY x.occurred_at DESC,x.event_id DESC LIMIT 1)='scan_clean' THEN 'private_scanned_clean'
+                    WHEN (SELECT x.action FROM opencompany_business_asset_scan_events x
+                        WHERE x.business_id=a.business_id AND x.asset_scope_id=a.asset_scope_id AND x.asset_id=a.asset_id
+                        ORDER BY x.occurred_at DESC,x.event_id DESC LIMIT 1)='scan_infected' THEN 'quarantined'
+                    WHEN EXISTS(SELECT 1 FROM opencompany_business_asset_storage_events s
+                        WHERE s.business_id=a.business_id AND s.asset_scope_id=a.asset_scope_id AND s.asset_id=a.asset_id)
+                        THEN 'private_stored_unscanned'
+                    ELSE a.storage_state END AS storage_state,
+                CASE
+                    WHEN (SELECT x.action FROM opencompany_business_asset_scan_events x
+                        WHERE x.business_id=a.business_id AND x.asset_scope_id=a.asset_scope_id AND x.asset_id=a.asset_id
+                        ORDER BY x.occurred_at DESC,x.event_id DESC LIMIT 1)='scan_clean' THEN 'pending_delivery_approval'
+                    WHEN (SELECT x.action FROM opencompany_business_asset_scan_events x
+                        WHERE x.business_id=a.business_id AND x.asset_scope_id=a.asset_scope_id AND x.asset_id=a.asset_id
+                        ORDER BY x.occurred_at DESC,x.event_id DESC LIMIT 1)='scan_infected' THEN 'quarantined'
+                    WHEN EXISTS(SELECT 1 FROM opencompany_business_asset_storage_events s
+                        WHERE s.business_id=a.business_id AND s.asset_scope_id=a.asset_scope_id AND s.asset_id=a.asset_id)
+                        THEN 'pending_scan'
+                    ELSE a.status END AS status,
                 a.created_at
                 FROM opencompany_business_assets a WHERE a.business_id=? AND a.asset_scope_id=?
                 ORDER BY a.created_at DESC,a.asset_key LIMIT ?""",(business_id,scope,limit)).fetchall()
@@ -177,6 +193,76 @@ class BusinessAssetRegistry:
                 "checksum_sha256":checksum_sha256,"byte_size":byte_size,
                 "scan_completed":False,"download_enabled":False}
 
+    def scan_declaration(self,business_id: str,asset_id: str) -> dict[str,Any]:
+        """Resolve stored object and immutable scope from trusted registry records."""
+        scope=self._scope(business_id)
+        with self._lock:
+            row=self._db.execute("""SELECT s.asset_id,s.business_id,s.asset_scope_id,s.storage_key,
+                s.checksum_sha256,s.byte_size FROM opencompany_business_asset_storage_events s
+                WHERE s.business_id=? AND s.asset_scope_id=? AND s.asset_id=?""",
+                (business_id,scope,asset_id)).fetchone()
+        if row is None:
+            raise ValueError("stored asset not found in this business scope")
+        return dict(row)
+
+    def record_scan_result(self,business_id: str,asset_id: str,*,scanner_key: str,
+                           status: str,checksum_sha256: str,byte_size: int,
+                           verdict: str,audit) -> dict[str,Any]:
+        """Append a definitive scanner verdict only when the stored bytes still match."""
+        if audit.actor_type!="system":
+            raise PermissionError("asset scan results must originate from the server-side scanner")
+        if scanner_key!="clamav-unix-socket":
+            raise ValueError("unsupported asset scanner")
+        if status not in {"clean","infected"}:
+            raise ValueError("scanner status must be clean or infected")
+        if not isinstance(checksum_sha256,str) or not _SHA256.fullmatch(checksum_sha256):
+            raise ValueError("invalid scanned checksum")
+        if not isinstance(byte_size,int) or isinstance(byte_size,bool) or not 0<=byte_size<=104857600:
+            raise ValueError("invalid scanned byte size")
+        if not isinstance(verdict,str) or not verdict.strip() or len(verdict)>500:
+            raise ValueError("invalid scanner verdict")
+        scope=self._scope(business_id)
+        event_id=str(uuid4())
+        now=datetime.now(timezone.utc).isoformat()
+        action="scan_clean" if status=="clean" else "scan_infected"
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                stored=self._db.execute("""SELECT checksum_sha256,byte_size FROM opencompany_business_asset_storage_events
+                    WHERE business_id=? AND asset_scope_id=? AND asset_id=?""",
+                    (business_id,scope,asset_id)).fetchone()
+                if stored is None:
+                    raise ValueError("stored asset not found in this business scope")
+                if stored["checksum_sha256"]!=checksum_sha256 or stored["byte_size"]!=byte_size:
+                    raise ValueError("scanned bytes do not match the stored asset integrity record")
+                self._db.execute("""INSERT INTO opencompany_business_asset_scan_events
+                    (event_id,asset_id,business_id,asset_scope_id,action,scanner_key,
+                     checksum_sha256,byte_size,verdict,actor_type,actor_id,occurred_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,'scanner',?,?)""",
+                    (event_id,asset_id,business_id,scope,action,scanner_key,checksum_sha256,
+                     byte_size,verdict.strip(),scanner_key,now))
+                previous=self._db.execute("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+                previous_hash=previous["event_hash"] if previous else _ZERO_HASH
+                from .domain import AuditRecord
+                audited=AuditRecord(id=audit.id,occurred_at=audit.occurred_at,actor_type="system",
+                    actor_id=audit.actor_id,action=audit.action,subject_type="business_asset",
+                    subject_id=f"{business_id}:{asset_id}",outcome=action,
+                    correlation_id=audit.correlation_id,
+                    details={"business_id":business_id,"asset_id":asset_id,
+                             "scanner_key":scanner_key,"scan_status":status,
+                             "checksum_verified":True,"verdict":verdict.strip()[:500]})
+                payload=_audit_payload(audited,previous_hash)
+                self._db.execute("INSERT INTO audit_events(event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audited.id),audited.occurred_at.isoformat(),_json(payload),previous_hash,_digest(payload)))
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction: self._db.execute("ROLLBACK")
+                raise
+        return {"asset_id":asset_id,"business_id":business_id,
+                "scan_status":status,"storage_state":"private_scanned_clean" if status=="clean" else "quarantined",
+                "status":"pending_delivery_approval" if status=="clean" else "quarantined",
+                "scanner_key":scanner_key,"download_enabled":False,"delivery_approved":False}
+
     def events(self,business_id: str,asset_id: str) -> tuple[dict[str,Any],...]:
         scope=self._scope(business_id)
         with self._lock:
@@ -193,5 +279,14 @@ class BusinessAssetRegistry:
         result.extend({**dict(row),"details":{"checksum_sha256":row["checksum_sha256"],
             "byte_size":row["byte_size"],"scan_completed":False,"download_enabled":False}}
             for row in stored)
+        with self._lock:
+            scans=self._db.execute("""SELECT event_id,asset_id,business_id,action,scanner_key,
+                checksum_sha256,byte_size,verdict,actor_type,actor_id,occurred_at
+                FROM opencompany_business_asset_scan_events
+                WHERE business_id=? AND asset_scope_id=? AND asset_id=?
+                ORDER BY occurred_at,event_id""",(business_id,scope,asset_id)).fetchall()
+        result.extend({**dict(row),"details":{"checksum_sha256":row["checksum_sha256"],
+            "byte_size":row["byte_size"],"verdict":row["verdict"],"download_enabled":False}}
+            for row in scans)
         result.sort(key=lambda item:(item["occurred_at"],item["event_id"]))
         return tuple(result)
