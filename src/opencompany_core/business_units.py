@@ -591,10 +591,59 @@ class BusinessUnitRegistry:
             "key": "memory_ingestion_adapter", "ready": False,
             "evidence": "Agent-originated memory ingestion remains disabled until provenance, role permissions, and owner review are enforced.",
         })
-        blockers.append("asset_scope_adapter")
+        asset_tables = {"opencompany_business_assets", "opencompany_business_asset_events"}
+        asset_table_columns = {
+            name: {row["name"] for row in self._db.execute(f"PRAGMA table_info('{name}')").fetchall()}
+            for name in asset_tables
+        }
+        asset_fks = {
+            name: self._db.execute(f"PRAGMA foreign_key_list('{name}')").fetchall()
+            for name in asset_tables
+        }
+        def has_asset_scope_fk(fks, target_table, pairs):
+            grouped = {}
+            for fk in fks:
+                grouped.setdefault(fk["id"], []).append((fk["from"], fk["to"]))
+            return any(
+                fk["table"] == target_table and set(grouped.get(fk["id"], [])) == pairs
+                for fk in fks
+            )
+        asset_registry_fk = has_asset_scope_fk(
+            asset_fks.get("opencompany_business_assets", []), "opencompany_business_units",
+            {("business_id", "business_id"), ("asset_scope_id", "asset_scope_id")},
+        )
+        asset_event_fk = has_asset_scope_fk(
+            asset_fks.get("opencompany_business_asset_events", []), "opencompany_business_assets",
+            {("asset_id", "asset_id"), ("business_id", "business_id"), ("asset_scope_id", "asset_scope_id")},
+        )
+        asset_triggers = {row["name"] for row in self._db.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN "
+            "('opencompany_business_assets_no_update','opencompany_business_assets_no_delete',"
+            "'opencompany_business_asset_events_no_update','opencompany_business_asset_events_no_delete',"
+            "'opencompany_business_units_asset_scope_no_update')"
+        ).fetchall()}
+        asset_ready = (
+            all(asset_table_columns.get(name) for name in asset_tables)
+            and {"asset_id", "business_id", "asset_scope_id", "asset_key", "checksum_sha256",
+                 "storage_state", "status"}.issubset(asset_table_columns.get("opencompany_business_assets", set()))
+            and {"event_id", "asset_id", "business_id", "asset_scope_id"}.issubset(
+                asset_table_columns.get("opencompany_business_asset_events", set()))
+            and asset_registry_fk and asset_event_fk
+            and {"opencompany_business_assets_no_update","opencompany_business_assets_no_delete",
+                 "opencompany_business_asset_events_no_update","opencompany_business_asset_events_no_delete",
+                 "opencompany_business_units_asset_scope_no_update"}.issubset(asset_triggers)
+        )
         checks.append({
-            "key": "asset_scope_adapter", "ready": False,
-            "evidence": "Asset storage isolation is not implemented yet.",
+            "key": "asset_scope_adapter", "ready": bool(asset_ready),
+            "evidence": ("Asset metadata and event history are bound to the immutable business asset scope."
+                         if asset_ready else "Business-scoped asset metadata, composite scope constraints, or immutable history is missing."),
+        })
+        if not asset_ready:
+            blockers.append("asset_scope_adapter")
+        blockers.append("asset_storage_adapter")
+        checks.append({
+            "key": "asset_storage_adapter", "ready": False,
+            "evidence": "File upload, private object storage, malware scanning, signed retrieval, and controlled delivery are not implemented; declarations remain metadata-only.",
         })
 
         blockers.append("owner_activation_approval")
