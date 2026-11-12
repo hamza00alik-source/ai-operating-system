@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 14
+_SCHEMA_VERSION = 15
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -754,6 +754,47 @@ def _migrate_v13_business_assets(connection: sqlite3.Connection) -> None:
         raise
 
 
+
+def _migrate_v14_business_asset_storage(connection: sqlite3.Connection) -> None:
+    """Record verified private storage as append-only business-scoped lifecycle events."""
+    if connection.in_transaction:
+        raise RuntimeError("business-asset storage migration cannot run inside an existing transaction")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute("""CREATE TABLE opencompany_business_asset_storage_events (
+            event_id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            business_id TEXT NOT NULL,
+            asset_scope_id TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action='stored_unscanned'),
+            storage_key TEXT NOT NULL UNIQUE CHECK(length(storage_key) BETWEEN 1 AND 160),
+            checksum_sha256 TEXT NOT NULL CHECK(length(checksum_sha256)=64),
+            byte_size INTEGER NOT NULL CHECK(byte_size BETWEEN 0 AND 104857600),
+            actor_type TEXT NOT NULL CHECK(actor_type='owner'),
+            actor_id TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            UNIQUE(business_id,asset_scope_id,asset_id),
+            FOREIGN KEY(asset_id,business_id,asset_scope_id)
+                REFERENCES opencompany_business_assets(asset_id,business_id,asset_scope_id)
+        )""")
+        connection.execute("""CREATE INDEX idx_opencompany_asset_storage_scope
+            ON opencompany_business_asset_storage_events(business_id,asset_scope_id,occurred_at)""")
+        connection.execute("""CREATE TRIGGER opencompany_business_asset_storage_events_no_update
+            BEFORE UPDATE ON opencompany_business_asset_storage_events
+            BEGIN SELECT RAISE(ABORT,'asset storage lifecycle history is append-only'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_asset_storage_events_no_delete
+            BEFORE DELETE ON opencompany_business_asset_storage_events
+            BEGIN SELECT RAISE(ABORT,'asset storage lifecycle history is append-only'); END""")
+        if connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("business-asset storage migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version=15")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -1030,6 +1071,9 @@ class SQLiteStore:
                 version = 13
             if version == 13:
                 _migrate_v13_business_assets(self._connection)
+                version = 14
+            if version == 14:
+                _migrate_v14_business_asset_storage(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
