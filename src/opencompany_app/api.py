@@ -8,6 +8,10 @@ from __future__ import annotations
 import logging
 import os
 
+from fastapi import FastAPI
+
+from opencompany_core.platform import PLATFORM_NAME, PLATFORM_VERSION
+
 
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
 from opencompany_app.api_dependencies import _default_runtime
