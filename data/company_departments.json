@@ -206,6 +206,29 @@
         "Workforce Registry"
       ],
       "workflow_state": "catalogue-only"
+    },
+    {
+      "id": "social-media-video",
+      "name": "Social Media & Video Production",
+      "owner_role": "Social & Creative Lead",
+      "responsibilities": [
+        "Research platform trends and audience demand",
+        "Prepare platform-specific content calendars, captions and scripts",
+        "Create video briefs, storyboards, thumbnails and creative specifications",
+        "Review performance and propose content experiments"
+      ],
+      "source_departments": [
+        "marketing",
+        "design",
+        "specialized"
+      ],
+      "built_in_roles": [
+        "Social Media Strategist",
+        "Content Producer",
+        "Video Producer",
+        "Channel Analyst"
+      ],
+      "workflow_state": "supervised-draft-workspace"
     }
   ]
 }
