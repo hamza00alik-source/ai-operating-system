@@ -847,7 +847,7 @@ def decide_social_content(content_id: str, payload: SocialDecisionRequest):
 # provider, allocates compute, incurs cost, or publishes generated media.
 class VideoJobCreate(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
-    provider: str = Field(default="longcat-video", min_length=1, max_length=80)
+    provider: str = Field(default="longcat-video", pattern="^longcat-video$")
     idempotency_key: str = Field(min_length=1, max_length=128)
     parameters: dict = Field(default_factory=dict)
     estimated_cost_minor: int = Field(ge=0)
@@ -1022,6 +1022,8 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     artifact = bytearray()
     async for chunk in request.stream():
+        if len(artifact) + len(chunk) > 300 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
         artifact.extend(chunk)
         if len(artifact) > 300 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
