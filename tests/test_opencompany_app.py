@@ -1754,6 +1754,52 @@ def test_delegation_rejects_paused_department_manager(owner_client):
     assert rejected.status_code == 409
     assert "must be ACTIVE" in rejected.json()["detail"]
 
+def test_executive_portfolio_groups_work_and_filters_business_units(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    first = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research global buyer demand",
+        "objective": "Prepare evidence for international buyer demand",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    })
+    second = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare digital product opportunity",
+        "objective": "Assess a downloadable product opportunity",
+        "department": "product-development",
+        "business_id": "digital-products",
+    })
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    portfolio = owner_client.get("/executive/portfolio", headers=headers)
+    assert portfolio.status_code == 200
+    payload = portfolio.json()
+    assert payload["platform"] == "opencompany-aios"
+    assert payload["business_filter"] == "all"
+    assert payload["summary"]["work_item_count"] == 2
+    assert payload["summary"]["department_count"] == 2
+    assert {item["business_id"] for item in payload["work_items"]} == {
+        "physical-agency", "digital-products",
+    }
+    assert all(item["deliverable_count"] == 0 for item in payload["work_items"])
+    assert payload["execution_or_external_actions_performed"] is False
+
+    filtered = owner_client.get(
+        "/executive/portfolio?business_id=physical-agency", headers=headers,
+    )
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["business_filter"] == "physical-agency"
+    assert filtered_payload["summary"]["work_item_count"] == 1
+    assert all(item["business_id"] == "physical-agency"
+               for item in filtered_payload["work_items"])
+
+    invalid = owner_client.get(
+        "/executive/portfolio?business_id=not-a-business", headers=headers,
+    )
+    assert invalid.status_code == 422
+
+
 def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
