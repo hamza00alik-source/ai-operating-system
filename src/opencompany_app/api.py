@@ -14,7 +14,9 @@ from opencompany_core.platform import PLATFORM_NAME, PLATFORM_VERSION
 
 
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
-from opencompany_app.api_dependencies import _default_runtime
+from opencompany_app.api_dependencies import (
+    _default_runtime, get_runtime, get_store, get_delegation_store, require_owner_key,
+)
 from opencompany_app.routers.catalogue import router as catalogue_router
 from opencompany_app.routers.system import router as system_router
 from opencompany_app.routers.dashboard import router as dashboard_router
