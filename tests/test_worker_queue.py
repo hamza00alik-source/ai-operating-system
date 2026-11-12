@@ -29,8 +29,9 @@ def test_stale_lease_cannot_complete(tmp_path):
     queue.enqueue(work, agent, {})
     first = queue.claim(agent)
     assert first is not None
-    future = datetime.now(timezone.utc) + timedelta(seconds=20)
-    second = queue.claim(agent, now=future)
+    expired_at = datetime.now(timezone.utc) + timedelta(seconds=20)
+    assert queue.claim(agent, now=expired_at) is None
+    second = queue.claim(agent, now=expired_at + timedelta(seconds=5))
     assert second is not None and second.attempt == 2
     with pytest.raises(QueueError):
         queue.complete(first)
@@ -44,8 +45,10 @@ def test_retry_limit_moves_item_to_dead_letter_state(tmp_path):
     queue.enqueue(work, agent, {})
     first = queue.claim(agent)
     assert first is not None
-    assert queue.fail(first, "provider_timeout") == "queued"
-    second = queue.claim(agent)
+    failed_at = datetime.now(timezone.utc)
+    assert queue.fail(first, "provider_timeout", now=failed_at) == "queued"
+    assert queue.claim(agent, now=failed_at + timedelta(seconds=4)) is None
+    second = queue.claim(agent, now=failed_at + timedelta(seconds=5))
     assert second is not None and second.attempt == 2
     assert queue.fail(second, "provider_timeout") == "dead"
     assert queue.claim(agent) is None
@@ -330,8 +333,9 @@ def test_execution_attempt_history_records_retry_and_success(tmp_path):
     first = queue.claim(agent)
     assert first is not None
     assert queue.list_attempts(work)[0]["status"] == "running"
-    assert queue.fail(first, "TemporaryError") == "queued"
-    second = queue.claim(agent)
+    failed_at = datetime.now(timezone.utc)
+    assert queue.fail(first, "TemporaryError", now=failed_at) == "queued"
+    second = queue.claim(agent, now=failed_at + timedelta(seconds=5))
     assert second is not None and second.attempt == 2
     queue.complete(second)
     history = queue.list_attempts(work)
@@ -354,4 +358,66 @@ def test_expired_lease_is_recorded_as_interrupted_before_reclaim(tmp_path):
     history = queue.list_attempts(work)
     assert [row["status"] for row in history] == ["interrupted", "running"]
     assert history[0]["finished_at"] is not None
+    queue.close()
+
+
+def test_retry_backoff_grows_exponentially_and_is_capped(tmp_path):
+    queue = DurableWorkerQueue(
+        tmp_path / "retry-backoff.sqlite3", max_attempts=5,
+        retry_base_seconds=3, retry_max_seconds=10,
+    )
+    work, agent = uuid4(), uuid4()
+    start = datetime(2026, 11, 12, 8, 0, tzinfo=timezone.utc)
+    queue.enqueue(work, agent, {})
+    first = queue.claim(agent, now=start)
+    assert first is not None
+    assert queue.fail(first, "temporary", now=start) == "queued"
+    assert queue.claim(agent, now=start + timedelta(seconds=2)) is None
+    second = queue.claim(agent, now=start + timedelta(seconds=3))
+    assert second is not None and second.attempt == 2
+    second_failed_at = start + timedelta(seconds=3)
+    assert queue.fail(second, "temporary", now=second_failed_at) == "queued"
+    assert queue.claim(agent, now=second_failed_at + timedelta(seconds=5)) is None
+    third = queue.claim(agent, now=second_failed_at + timedelta(seconds=6))
+    assert third is not None and third.attempt == 3
+    third_failed_at = second_failed_at + timedelta(seconds=6)
+    assert queue.fail(third, "temporary", now=third_failed_at) == "queued"
+    # The nominal 12-second delay is capped at 10 seconds.
+    assert queue.claim(agent, now=third_failed_at + timedelta(seconds=9)) is None
+    fourth = queue.claim(agent, now=third_failed_at + timedelta(seconds=10))
+    assert fourth is not None and fourth.attempt == 4
+    queue.close()
+
+
+def test_legacy_queue_database_adds_retry_column_without_losing_rows(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "legacy-queue.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.execute("""
+        CREATE TABLE worker_queue (
+            work_item_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('queued','leased','done','dead')),
+            attempts INTEGER NOT NULL DEFAULT 0, lease_token TEXT,
+            lease_expires_at TEXT, last_error TEXT,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )
+    """)
+    work, agent = uuid4(), uuid4()
+    stamp = datetime.now(timezone.utc).isoformat()
+    connection.execute(
+        "INSERT INTO worker_queue (work_item_id,agent_id,payload_json,state,created_at,updated_at) "
+        "VALUES(?,?,?,'queued',?,?)",
+        (str(work), str(agent), "{}", stamp, stamp),
+    )
+    connection.commit()
+    connection.close()
+
+    queue = DurableWorkerQueue(database)
+    entry = queue.get_entry(work)
+    assert entry is not None and entry["state"] == "queued"
+    assert entry["next_attempt_at"] is None
+    lease = queue.claim(agent)
+    assert lease is not None and lease.work_item_id == work
     queue.close()
