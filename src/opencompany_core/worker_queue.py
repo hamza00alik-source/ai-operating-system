@@ -206,6 +206,90 @@ class DurableWorkerQueue:
                     self._db.execute("ROLLBACK")
                 raise
 
+
+    def reassign_queued_work_item(
+        self, work_item_id: UUID, target_agent_id: UUID, record: AuditRecord
+    ) -> dict:
+        """Atomically reassign an unleased, non-delegated queued task and audit it."""
+        if self._owns_connection:
+            raise QueueError("owner reassignment requires the shared core-store database")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                task = self._db.execute(
+                    """SELECT state,assigned_agent_id,department,business_id
+                       FROM work_items WHERE id=?""",
+                    (str(work_item_id),),
+                ).fetchone()
+                queue = self._db.execute(
+                    """SELECT agent_id,payload_json,state FROM worker_queue
+                       WHERE work_item_id=?""",
+                    (str(work_item_id),),
+                ).fetchone()
+                if task is None or queue is None:
+                    raise QueueError("queued work item or queue entry was not found")
+                if task["state"] != TaskState.QUEUED.value or queue["state"] != "queued":
+                    raise QueueError("only queued work with no active lease can be reassigned")
+                if not task["assigned_agent_id"] or queue["agent_id"] != task["assigned_agent_id"]:
+                    raise QueueError("work item and queue assignee are inconsistent")
+                if str(target_agent_id) == task["assigned_agent_id"]:
+                    raise QueueError("target agent is already assigned")
+                child = self._db.execute(
+                    "SELECT id FROM delegation_child_tasks WHERE id=?",
+                    (str(work_item_id),),
+                ).fetchone()
+                if child is not None:
+                    raise QueueError("delegated work requires a new approved delegation; direct reassignment is blocked")
+                target = self._db.execute(
+                    """SELECT state,department,role_key,team_key FROM agent_profiles
+                       WHERE id=?""",
+                    (str(target_agent_id),),
+                ).fetchone()
+                if (
+                    target is None or target["state"] != AgentState.ACTIVE.value
+                    or target["department"] != task["department"]
+                    or not target["role_key"] or not target["team_key"]
+                ):
+                    raise QueueError("target must be an active, role-assigned agent in the same department")
+                payload = json.loads(queue["payload_json"])
+                if not isinstance(payload, dict):
+                    raise QueueError("queued worker payload is invalid")
+                payload["role_key"] = target["role_key"]
+                payload["team_key"] = target["team_key"]
+                encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+                if len(encoded) > 24000:
+                    raise QueueError("updated worker payload exceeds 24000 characters")
+                cursor = self._db.execute(
+                    """UPDATE work_items SET assigned_agent_id=?
+                       WHERE id=? AND state=? AND assigned_agent_id=?""",
+                    (str(target_agent_id), str(work_item_id), TaskState.QUEUED.value,
+                     task["assigned_agent_id"]),
+                )
+                if cursor.rowcount != 1:
+                    raise QueueError("work item changed during reassignment")
+                cursor = self._db.execute(
+                    """UPDATE worker_queue SET agent_id=?,payload_json=?,updated_at=?
+                       WHERE work_item_id=? AND state='queued' AND agent_id=?""",
+                    (str(target_agent_id), encoded, now, str(work_item_id), queue["agent_id"]),
+                )
+                if cursor.rowcount != 1:
+                    raise QueueError("queue entry changed during reassignment")
+                self._append_audit(record, self._db)
+                self._db.execute("COMMIT")
+                return {
+                    "work_item_id": str(work_item_id),
+                    "previous_agent_id": task["assigned_agent_id"],
+                    "assigned_agent_id": str(target_agent_id),
+                    "business_id": task["business_id"],
+                    "role_key": target["role_key"],
+                    "team_key": target["team_key"],
+                }
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
+
     def enqueue(self, work_item_id: UUID, agent_id: UUID, payload: dict) -> None:
         """Low-level queue insert retained for isolated queue tests and maintenance."""
         if not isinstance(payload, dict):
