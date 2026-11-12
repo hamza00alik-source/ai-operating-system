@@ -16,7 +16,7 @@ def audit(actor_type="owner"):
 
 
 def expected_storage_key(business_id, declared):
-    prefix=hashlib.sha256((business_id+"\\0"+declared["asset_scope_id"]).encode("utf-8")).hexdigest()
+    prefix=hashlib.sha256((business_id+"\0"+declared["asset_scope_id"]).encode("utf-8")).hexdigest()
     return prefix+"/"+declared["asset_id"]+".blob"
 
 
@@ -125,7 +125,7 @@ def _store_declared_asset(assets):
     declared = declare(assets)
     assets.record_storage(
         "physical-agency", declared["asset_id"],
-        storage_key="a"*64+"/"+declared["asset_id"]+".blob",
+        storage_key=expected_storage_key("physical-agency",declared),
         checksum_sha256=declared["checksum_sha256"], byte_size=declared["byte_size"],
         audit=audit(),
     )
