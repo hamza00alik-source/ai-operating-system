@@ -13,86 +13,6 @@ from .persistence_utils import _ZERO_HASH, _audit_payload, _digest, _json
 class WorkItemPersistenceMixin:
     """Atomic task, deliverable and owner-review repository operations."""
 
-    def save_execution_checkpoint(
-        self, lease: Any, role_key: str, stage_key: str, payload: dict
-    ) -> bool:
-        """Persist a completed resumable stage only while its exact queue lease is live."""
-        if not role_key or len(role_key) > 120 or not stage_key or len(stage_key) > 80:
-            raise ValueError("checkpoint role and stage keys must be 1-120 and 1-80 characters")
-        if not isinstance(payload, dict):
-            raise ValueError("checkpoint payload must be a JSON object")
-        encoded = _json(payload)
-        if len(encoded) > 64000:
-            raise ValueError("checkpoint payload exceeds 64000 characters")
-        now = datetime.now(timezone.utc).isoformat()
-        with self._lock:
-            self._connection.execute("BEGIN IMMEDIATE")
-            try:
-                owned = self._connection.execute(
-                    """SELECT attempts FROM worker_queue
-                       WHERE work_item_id=? AND agent_id=? AND state='leased'
-                         AND lease_token=? AND lease_expires_at>? AND cancel_requested=0""",
-                    (str(lease.work_item_id), str(lease.agent_id),
-                     str(lease.lease_token), now),
-                ).fetchone()
-                if owned is None:
-                    self._connection.execute("ROLLBACK")
-                    return False
-                self._connection.execute(
-                    """INSERT INTO worker_checkpoints
-                       (work_item_id,role_key,stage_key,status,payload_json,attempt,created_at,updated_at)
-                       VALUES(?,?,?,'completed',?,?,?,?)
-                       ON CONFLICT(work_item_id,role_key,stage_key) DO UPDATE SET
-                         status='completed',payload_json=excluded.payload_json,
-                         attempt=excluded.attempt,updated_at=excluded.updated_at""",
-                    (str(lease.work_item_id), role_key, stage_key, encoded,
-                     int(owned["attempts"]), now, now),
-                )
-                self._connection.execute("COMMIT")
-                return True
-            except Exception:
-                if self._connection.in_transaction:
-                    self._connection.execute("ROLLBACK")
-                raise
-
-    def get_execution_checkpoint(
-        self, work_item_id: UUID, role_key: str, stage_key: str
-    ) -> dict[str, Any] | None:
-        """Read an internal checkpoint payload; callers must not expose it to owner APIs."""
-        with self._lock:
-            row = self._connection.execute(
-                """SELECT status,payload_json,attempt,created_at,updated_at
-                   FROM worker_checkpoints
-                   WHERE work_item_id=? AND role_key=? AND stage_key=?""",
-                (str(work_item_id), role_key, stage_key),
-            ).fetchone()
-        if row is None:
-            return None
-        return {
-            "status": row["status"], "payload": json.loads(row["payload_json"]),
-            "attempt": int(row["attempt"]), "created_at": row["created_at"],
-            "updated_at": row["updated_at"],
-        }
-
-    def list_execution_checkpoints(self, work_item_id: UUID) -> tuple[dict[str, Any], ...]:
-        """Return checkpoint metadata only; never return stored draft payloads."""
-        with self._lock:
-            rows = self._connection.execute(
-                """SELECT role_key,stage_key,status,attempt,created_at,updated_at
-                   FROM worker_checkpoints WHERE work_item_id=?
-                   ORDER BY created_at,role_key,stage_key""",
-                (str(work_item_id),),
-            ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def clear_execution_checkpoint(self, work_item_id: UUID, role_key: str, stage_key: str) -> None:
-        with self._lock:
-            self._connection.execute(
-                "DELETE FROM worker_checkpoints WHERE work_item_id=? AND role_key=? AND stage_key=?",
-                (str(work_item_id), role_key, stage_key),
-            )
-
-
     def save_work_item(self, item: WorkItem) -> None:
         with self._lock:
             existing = self._connection.execute(
@@ -336,10 +256,6 @@ class WorkItemPersistenceMixin:
                 )
                 if cursor.rowcount != 1:
                     raise RuntimeError("worker lease changed before atomic completion")
-                self._connection.execute(
-                    "DELETE FROM worker_checkpoints WHERE work_item_id=? AND role_key=?",
-                    (str(deliverable.work_item_id), deliverable.role_key),
-                )
                 self._connection.execute("COMMIT")
                 return True
             except Exception:
