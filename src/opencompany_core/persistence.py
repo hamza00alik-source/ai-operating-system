@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 11
+_SCHEMA_VERSION = 12
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -553,6 +553,97 @@ def _migrate_v10_business_credentials(connection: sqlite3.Connection) -> None:
         raise RuntimeError("foreign-key enforcement is disabled after business-credential migration")
 
 
+
+def _migrate_v11_business_integrations(connection: sqlite3.Connection) -> None:
+    """Create an isolated integration registry without enabling external execution."""
+    if connection.in_transaction:
+        raise RuntimeError("business-integration migration cannot run inside an existing transaction")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_integration_scope "
+        "ON opencompany_business_units(business_id,integration_scope_id)"
+    )
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute("""
+            CREATE TABLE opencompany_business_integrations (
+                integration_id TEXT PRIMARY KEY,
+                business_id TEXT NOT NULL,
+                integration_scope_id TEXT NOT NULL,
+                provider_key TEXT NOT NULL CHECK(length(provider_key) BETWEEN 2 AND 80),
+                display_name TEXT NOT NULL CHECK(length(trim(display_name)) BETWEEN 1 AND 160),
+                credential_scope_id TEXT NOT NULL,
+                credential_key TEXT NOT NULL,
+                permissions_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending_review'
+                    CHECK(status IN ('pending_review','paused','revoked')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(integration_id,business_id,integration_scope_id),
+                UNIQUE(business_id,provider_key),
+                FOREIGN KEY(business_id,integration_scope_id)
+                    REFERENCES opencompany_business_units(business_id,integration_scope_id),
+                FOREIGN KEY(business_id,credential_scope_id,credential_key)
+                    REFERENCES opencompany_business_credentials(business_id,credential_scope_id,credential_key)
+            )
+        """)
+        connection.execute("""
+            CREATE INDEX idx_opencompany_business_integrations_scope
+            ON opencompany_business_integrations(business_id,integration_scope_id,status,created_at)
+        """)
+        connection.execute("""
+            CREATE TABLE opencompany_business_integration_events (
+                event_id TEXT PRIMARY KEY,
+                integration_id TEXT NOT NULL,
+                business_id TEXT NOT NULL,
+                integration_scope_id TEXT NOT NULL,
+                action TEXT NOT NULL CHECK(action IN ('registered','paused','revoked')),
+                actor_type TEXT NOT NULL CHECK(actor_type='owner'),
+                actor_id TEXT,
+                rationale TEXT NOT NULL DEFAULT '',
+                occurred_at TEXT NOT NULL,
+                FOREIGN KEY(business_id,integration_scope_id)
+                    REFERENCES opencompany_business_units(business_id,integration_scope_id),
+                FOREIGN KEY(integration_id,business_id,integration_scope_id)
+                    REFERENCES opencompany_business_integrations(integration_id,business_id,integration_scope_id)
+            )
+        """)
+        connection.execute("""
+            CREATE INDEX idx_opencompany_business_integration_events_scope
+            ON opencompany_business_integration_events(business_id,integration_id,occurred_at,event_id)
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_integration_events_no_update
+            BEFORE UPDATE ON opencompany_business_integration_events
+            BEGIN SELECT RAISE(ABORT, 'integration history is append-only'); END
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_integration_events_no_delete
+            BEFORE DELETE ON opencompany_business_integration_events
+            BEGIN SELECT RAISE(ABORT, 'integration history is append-only'); END
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_integrations_no_scope_change
+            BEFORE UPDATE OF business_id,integration_scope_id,provider_key,credential_key
+            ON opencompany_business_integrations
+            BEGIN SELECT RAISE(ABORT, 'integration identity and scope are immutable'); END
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_units_integration_scope_no_update
+            BEFORE UPDATE OF integration_scope_id ON opencompany_business_units
+            BEGIN SELECT RAISE(ABORT, 'business-unit integration scope is immutable'); END
+        """)
+        if connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("business-integration migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version = 12")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
+        raise RuntimeError("foreign-key enforcement is disabled after business-integration migration")
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -820,6 +911,9 @@ class SQLiteStore:
                 version = 10
             if version == 10:
                 _migrate_v10_business_credentials(self._connection)
+                version = 11
+            if version == 11:
+                _migrate_v11_business_integrations(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
