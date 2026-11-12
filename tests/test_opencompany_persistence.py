@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
-from uuid import uuid4\n\nimport pytest
+from uuid import uuid4
+
+import pytest
 
 from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.persistence import SQLiteStore
