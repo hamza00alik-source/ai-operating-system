@@ -118,7 +118,6 @@ class DurableWorkerQueue:
         if len(encoded) > 24000:
             raise ValueError("payload exceeds 24000 characters")
         now = datetime.now(timezone.utc).isoformat()
-        self._assert_operational_scope(item.business_id)
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -130,8 +129,13 @@ class DurableWorkerQueue:
                     "SELECT state,department,role_key,team_key FROM agent_profiles WHERE id=?",
                     (str(agent_id),),
                 ).fetchone()
+                if task is None:
+                    raise QueueError("work item does not exist")
+                if task["business_id"] != item.business_id:
+                    raise QueueError("work item business-unit identity changed")
+                self._assert_operational_scope(task["business_id"])
                 if (
-                    task is None or task["state"] != TaskState.READY.value
+                    task["state"] != TaskState.READY.value
                     or task["assigned_agent_id"] != str(agent_id)
                 ):
                     raise QueueError("work item changed or is not READY for this assignee")
