@@ -15,6 +15,7 @@ from threading import RLock
 from uuid import UUID, uuid4
 
 from .domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
+from .business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,15 @@ class DurableWorkerQueue:
             "CREATE INDEX IF NOT EXISTS idx_worker_queue_ready "
             "ON worker_queue(state, created_at)"
         )
+        self._business_units = BusinessUnitRegistry(self._db, self._lock)
+
+    def _assert_operational_scope(self, business_id: str) -> None:
+        if business_id == "core":
+            return
+        try:
+            self._business_units.require_operational(business_id)
+        except BusinessUnitProvisioningError as exc:
+            raise QueueError(str(exc)) from exc
 
     def close(self) -> None:
         if self._owns_connection:
@@ -108,6 +118,7 @@ class DurableWorkerQueue:
         if len(encoded) > 24000:
             raise ValueError("payload exceeds 24000 characters")
         now = datetime.now(timezone.utc).isoformat()
+        self._assert_operational_scope(item.business_id)
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -201,6 +212,10 @@ class DurableWorkerQueue:
             raise ValueError("payload exceeds 24000 characters")
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
+            task = self._db.execute("SELECT business_id FROM work_items WHERE id=?", (str(work_item_id),)).fetchone()
+            if task is None:
+                raise QueueError("work item does not exist")
+            self._assert_operational_scope(task["business_id"])
             try:
                 self._db.execute(
                     """INSERT INTO worker_queue
