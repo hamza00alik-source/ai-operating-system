@@ -159,3 +159,44 @@ def test_work_item_business_unit_cannot_be_changed_after_creation(tmp_path):
         raise AssertionError("business scope must not be mutable after task creation")
     assert store.get_work_item(item_id).business_id == "physical-agency"
     store.close()
+
+
+
+def test_commercial_persistence_rejects_provisioning_business_unit(tmp_path):
+    from opencompany_core.business_units import BusinessUnitRegistry
+    from opencompany_core.venture_portfolio import VenturePortfolio
+
+    store = SQLiteStore(tmp_path / "commercial-business-scope.sqlite3")
+    portfolio = VenturePortfolio(store._connection, store._lock)
+    registry = BusinessUnitRegistry(store._connection, store._lock)
+    opportunity = portfolio.create(
+        title="New software venture", slug="new-software-venture",
+        business_model="software", description="A scoped software service",
+        target_market="International businesses",
+    )
+    portfolio.transition(opportunity["id"], status="researching", rationale="Research started")
+    portfolio.transition(opportunity["id"], status="validated", rationale="Evidence reviewed")
+    approved = portfolio.transition(
+        opportunity["id"], status="approved_to_launch",
+        rationale="Owner approved launch planning", confirm_owner_approval=True,
+    )
+    unit = registry.provision_from_opportunity(
+        portfolio, approved["id"], business_id="new-software-unit",
+        name="New Software Unit", unit_type="software", delivery_class="software-access",
+        description="Software access only", target_market="International businesses",
+        confirm_owner_approval=True,
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    record = {
+        "id": "commercial-opportunity-1", "business_id": unit["business_id"],
+        "customer_name": "Example Customer", "customer_need": "Software access",
+        "created_at": now, "updated_at": now,
+    }
+    try:
+        store.create_commercial_opportunity(record, audit_record("commercial.opportunity.created"))
+    except ValueError as exc:
+        assert "not operational" in str(exc)
+    else:
+        raise AssertionError("provisioning business unit must not create commercial records")
+    assert store.get_commercial_opportunity(record["id"]) is None
+    store.close()
