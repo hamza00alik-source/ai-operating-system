@@ -1247,9 +1247,9 @@ class SQLiteStore:
     def append_finance_review_event(
         self, entry_id: str, action: str, rationale: str, audit: AuditRecord
     ) -> bool:
-        """Append an owner decision; approval is a record only and never executes payment."""
+        """Append a decision from the owner-authenticated service boundary; never executes payment."""
         if audit.actor_type != "owner":
-            raise PermissionError("finance review decisions require an authenticated owner actor")
+            raise PermissionError("finance review decisions require the owner actor marker from the authenticated API boundary")
         if action not in {"owner_verified", "owner_rejected", "owner_approved"}:
             raise ValueError("unsupported owner finance review action")
         if not isinstance(rationale, str) or len(rationale) > 2000:
