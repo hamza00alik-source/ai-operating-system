@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
 
 from opencompany_core.unorouter_adapter import (
+    UNOROUTER_AUTO_FREE_MODEL,
     discover_free_models,
     discover_model_catalog,
     unorouter_configuration_status,
