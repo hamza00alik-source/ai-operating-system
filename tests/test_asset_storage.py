@@ -113,3 +113,30 @@ def test_private_storage_rejects_mismatched_detected_media_type(tmp_path):
             expected_size=len(payload), expected_media_type="image/png", chunks=chunks(),
         ))
     assert not list((tmp_path / "private-assets").rglob("*.blob"))
+
+
+
+def test_private_download_verifies_hash_before_returning_file(tmp_path):
+    storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    payload = b"verified private download"
+    asset_id = str(uuid4())
+    stored = storage.store(
+        business_id="digital-products", asset_scope_id="digital-scope", asset_id=asset_id,
+        expected_sha256=hashlib.sha256(payload).hexdigest(), expected_size=len(payload),
+        chunks=[payload],
+    )
+    stream = storage.open_verified_download(
+        business_id="digital-products", asset_scope_id="digital-scope", asset_id=asset_id,
+        expected_sha256=stored["checksum_sha256"], expected_size=stored["byte_size"],
+    )
+    try:
+        assert stream.read() == payload
+    finally:
+        stream.close()
+
+    (storage.root / stored["storage_key"]).write_bytes(b"tampered")
+    with pytest.raises(AssetStorageError, match="checksum"):
+        storage.open_verified_download(
+            business_id="digital-products", asset_scope_id="digital-scope", asset_id=asset_id,
+            expected_sha256=stored["checksum_sha256"], expected_size=stored["byte_size"],
+        )
