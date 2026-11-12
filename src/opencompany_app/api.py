@@ -1573,6 +1573,21 @@ def create_work_item(
         department=payload.department, state=TaskState.DRAFT,
         depends_on=payload.depends_on, business_id=payload.business_id,
     )
+    # Resolve every dependency against the full company store before building
+    # a business-scoped plan. Filtering first would make a cross-business
+    # dependency look merely missing and hide the isolation violation.
+    for dependency_id in payload.depends_on:
+        prerequisite = store.get_work_item(dependency_id)
+        if prerequisite is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Dependency {dependency_id} does not exist.",
+            )
+        if prerequisite.business_id != payload.business_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Work dependencies must belong to the same business unit.",
+            )
     existing = store.list_work_items(business_id=payload.business_id, limit=1000)
     try:
         WorkPlan(tuple(existing) + (item,))
