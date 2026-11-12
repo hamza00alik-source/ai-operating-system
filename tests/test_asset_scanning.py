@@ -32,15 +32,15 @@ def _fake_clamd(socket_path, verdict):
             conn, _ = server.accept()
             with conn:
                 command = bytearray()
-                while not command.endswith(b"\\0"):
+                while not command.endswith(b"\0"):
                     command.extend(conn.recv(1))
-                assert bytes(command) == b"zINSTREAM\\0"
+                assert bytes(command) == b"zINSTREAM\0"
                 while True:
                     size = struct.unpack("!I", read_exact(conn, 4))[0]
                     if size == 0:
                         break
                     received.extend(read_exact(conn, size))
-                conn.sendall(verdict + b"\\0")
+                conn.sendall(verdict + b"\0")
         finally:
             server.close()
 
