@@ -139,7 +139,6 @@ class PrivateFilesystemAssetStorage:
         temp_path = Path(temp_name)
         digest = hashlib.sha256()
         total = 0
-        prefix = bytearray()
         try:
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "wb") as stream:
@@ -151,10 +150,7 @@ class PrivateFilesystemAssetStorage:
                     if total > MAX_ASSET_BYTES or total > expected_size:
                         raise AssetStorageError("received asset exceeds its declared size or the 100 MiB limit")
                     digest.update(data)
-                    if len(prefix) < 4096:
-                        prefix.extend(data[:4096 - len(prefix)])
                     stream.write(data)
-                validate_asset_media_type(expected_media_type, bytes(prefix))
                 stream.flush()
                 os.fsync(stream.fileno())
             actual_hash = digest.hexdigest()
