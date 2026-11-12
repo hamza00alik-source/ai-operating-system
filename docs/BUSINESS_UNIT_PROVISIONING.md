@@ -45,3 +45,8 @@ The owner-authenticated endpoint `GET /business-units/{business_id}/activation-r
 For a newly provisioned unit, the report is expected to remain blocked today. In particular, the commercial tables still constrain business IDs to the original three units, and their customer records do not yet persist the new customer scope. The readiness report does not change registry status. There is deliberately no activation endpoint until these storage and service boundaries are implemented and reviewed. Foundational units are reported as already operational; they are not re-activated.
 
 This is a safety gate, not a claim that scope identifiers alone isolate data. Existing commercial records and schema constraints are preserved; no migration or customer/order data rewrite is performed by this increment.
+
+
+## Dynamic work-item identity (latest increment)
+
+The work-item domain now accepts a syntactically valid business-unit slug rather than hard-coding only the initial four identifiers. This is identity extensibility, not permission to operate: every SQLite work-item persistence path (single save, audited save, batch plan save, and delegation approval) resolves the unit against the registry and rejects unknown or `provisioning` units. `core` remains the internal platform scope; the three foundational units remain operational. API and worker-queue checks remain in place as independent enforcement layers. No commercial schema or existing customer/order data was changed by this increment.
