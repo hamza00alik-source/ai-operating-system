@@ -147,6 +147,16 @@ class BusinessCredentialInput(BaseModel):
     confirm_owner_storage: bool = False
 
 
+
+class BusinessIntegrationInput(BaseModel):
+    provider_key: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{1,79}$")
+    display_name: str = Field(min_length=1, max_length=160)
+    credential_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    permissions: list[str] = Field(min_length=1, max_length=20)
+    rationale: str = Field(default="", max_length=1000)
+    confirm_owner_registration: bool = False
+
+
 class BusinessCredentialDeleteInput(BaseModel):
     confirm_owner_deletion: bool = False
 
@@ -3343,6 +3353,69 @@ def delete_business_credential(
         raise HTTPException(status_code=404, detail="Business credential not found.")
     return {"business_id": business_id, "credential_key": credential_key,
             "deleted": True, "secret_material_returned": False}
+
+
+
+
+@app.get("/business-units/{business_id}/integrations", dependencies=[Depends(require_owner_key)])
+def list_business_integrations(
+    business_id: str, runtime: OpenCompanyRuntime = Depends(get_runtime)
+) -> dict:
+    try:
+        items = runtime.integrations.list(business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "business_id": business_id, "count": len(items), "integrations": list(items),
+        "external_connections_enabled": False,
+    }
+
+
+@app.post("/business-units/{business_id}/integrations", dependencies=[Depends(require_owner_key)])
+def register_business_integration(
+    business_id: str, payload: BusinessIntegrationInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if payload.confirm_owner_registration is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to register an integration.")
+    now = datetime.now(timezone.utc)
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="business.integration_registered", subject_type="business_integration",
+        subject_id=f"{business_id}:{payload.provider_key}", outcome="pending_review",
+        correlation_id=str(uuid4()),
+        details={"business_id": business_id, "provider_key": payload.provider_key,
+                 "permissions": payload.permissions, "external_connection_attempted": False},
+    )
+    try:
+        result = runtime.integrations.register(
+            business_id, provider_key=payload.provider_key,
+            display_name=payload.display_name, credential_key=payload.credential_key,
+            permissions=payload.permissions, audit=audit, rationale=payload.rationale,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "integration": result,
+        "message": "Integration declaration recorded as pending review. No external connection or provider action was attempted.",
+        "external_connection_attempted": False,
+    }
+
+
+@app.get("/business-units/{business_id}/integrations/{integration_id}/events", dependencies=[Depends(require_owner_key)])
+def list_business_integration_events(
+    business_id: str, integration_id: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        items = runtime.integrations.events(business_id, integration_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not items:
+        raise HTTPException(status_code=404, detail="Integration history not found.")
+    return {"business_id": business_id, "integration_id": integration_id, "events": list(items)}
 
 
 @app.get("/business-units/{business_id}/activation-readiness", dependencies=[Depends(require_owner_key)])
