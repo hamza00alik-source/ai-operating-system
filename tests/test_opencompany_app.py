@@ -1630,3 +1630,40 @@ def test_unknown_business_unit_is_rejected(owner_client):
         },
     )
     assert response.status_code == 422
+
+def test_work_item_creation_rejects_cross_business_dependencies(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    prerequisite = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare agency supplier research",
+        "objective": "Research supplier options for the physical agency",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    })
+    assert prerequisite.status_code == 200
+
+    rejected = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare own-brand supplier research",
+        "objective": "Research suppliers for the separately operated own brand",
+        "department": "intelligence-research",
+        "business_id": "physical-brand",
+        "depends_on": [prerequisite.json()["item_id"]],
+    })
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == (
+        "Work dependencies must belong to the same business unit."
+    )
+
+
+def test_work_item_creation_rejects_missing_dependencies(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    missing_id = str(uuid4())
+    rejected = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare dependent work",
+        "objective": "This work references a prerequisite that does not exist",
+        "department": "intelligence-research",
+        "business_id": "digital-products",
+        "depends_on": [missing_id],
+    })
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == f"Dependency {missing_id} does not exist."
+
