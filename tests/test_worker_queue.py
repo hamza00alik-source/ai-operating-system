@@ -260,3 +260,23 @@ def test_queue_counts_are_filtered_by_business_unit(tmp_path):
     with pytest.raises(ValueError, match="unknown business unit"):
         queue.counts("not-a-business")
     store.close()
+
+
+def test_live_lease_can_be_renewed_but_expired_or_replaced_lease_cannot(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "renew.sqlite3", lease_seconds=10)
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {})
+    start = datetime.now(timezone.utc)
+    first = queue.claim(agent, now=start)
+    assert first is not None
+
+    assert queue.renew(first, now=start + timedelta(seconds=9)) is True
+    # The renewed lease now expires at t+19, so it cannot be reclaimed at t+11.
+    assert queue.claim(agent, now=start + timedelta(seconds=11)) is None
+    assert queue.renew(first, now=start + timedelta(seconds=20)) is False
+
+    replacement = queue.claim(agent, now=start + timedelta(seconds=20))
+    assert replacement is not None and replacement.attempt == 2
+    assert queue.renew(first, now=start + timedelta(seconds=21)) is False
+    assert queue.renew(replacement, now=start + timedelta(seconds=21)) is True
+    queue.close()
