@@ -313,4 +313,14 @@ def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_key
     )
     assert db.execute("SELECT COUNT(*) FROM commercial_opportunities").fetchone()[0] == 2
     assert db.execute("SELECT COUNT(*) FROM commercial_suppliers").fetchone()[0] == 2
+    try:
+        db.execute(
+            """INSERT INTO commercial_suppliers
+               (id,business_id,relationship_type,name,product_categories_json,created_at,updated_at)
+               VALUES('invalid-supplier','physical-agency','supplier','Invalid','[]','2026-01-04','2026-01-04')"""
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("legacy agency supplier relationship constraint must remain enforced")
     store.close()
