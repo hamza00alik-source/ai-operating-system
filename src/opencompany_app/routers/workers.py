@@ -57,7 +57,7 @@ def start_worker_fleet(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> di
     if runtime.unorouter_tested_at is None:
         raise HTTPException(status_code=409, detail="Run the owner-triggered zero-cost UnoRouter test in this process before starting workers.")
     started = runtime.fleet.start()
-    return {"running": runtime.fleet.status().running, "started_now": started}
+    return {"running": bool(started) or runtime.fleet.status().running, "started_now": bool(started)}
 
 
 @router.post("/workers/stop", dependencies=[Depends(require_owner_key)])
