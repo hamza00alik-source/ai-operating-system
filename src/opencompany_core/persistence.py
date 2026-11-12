@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 12
+_SCHEMA_VERSION = 13
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -654,6 +654,42 @@ def _migrate_v11_business_integrations(connection: sqlite3.Connection) -> None:
         raise RuntimeError("foreign-key enforcement is disabled after business-integration migration")
 
 
+def _migrate_v12_business_memory(connection: sqlite3.Connection) -> None:
+    """Create append-only business memory versions under immutable memory scopes."""
+    if connection.in_transaction:
+        raise RuntimeError("business-memory migration cannot run inside an existing transaction")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_memory_scope ON opencompany_business_units(business_id,memory_scope_id)")
+        connection.execute("""CREATE TABLE opencompany_business_memory_versions (
+            memory_id TEXT NOT NULL,business_id TEXT NOT NULL,memory_scope_id TEXT NOT NULL,
+            memory_key TEXT NOT NULL CHECK(length(memory_key) BETWEEN 1 AND 80),
+            category TEXT NOT NULL CHECK(length(category) BETWEEN 2 AND 40),
+            content TEXT NOT NULL CHECK(length(content)<=20000),
+            source TEXT NOT NULL CHECK(length(source) BETWEEN 1 AND 500),
+            revision INTEGER NOT NULL CHECK(revision>=1),
+            operation TEXT NOT NULL CHECK(operation IN ('upsert','tombstone')),
+            actor_type TEXT NOT NULL CHECK(actor_type='owner'),actor_id TEXT NOT NULL,created_at TEXT NOT NULL,
+            PRIMARY KEY(business_id,memory_scope_id,memory_key,revision),
+            UNIQUE(memory_id,business_id,memory_scope_id,revision),
+            FOREIGN KEY(business_id,memory_scope_id) REFERENCES opencompany_business_units(business_id,memory_scope_id)
+        )""")
+        connection.execute("CREATE INDEX idx_opencompany_business_memory_latest ON opencompany_business_memory_versions(business_id,memory_scope_id,memory_key,revision DESC)")
+        connection.execute("""CREATE TRIGGER opencompany_business_memory_no_update BEFORE UPDATE ON opencompany_business_memory_versions
+            BEGIN SELECT RAISE(ABORT,'business memory history is append-only'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_memory_no_delete BEFORE DELETE ON opencompany_business_memory_versions
+            BEGIN SELECT RAISE(ABORT,'business memory history is append-only'); END""")
+        connection.execute("""CREATE TRIGGER opencompany_business_units_memory_scope_no_update BEFORE UPDATE OF memory_scope_id ON opencompany_business_units
+            BEGIN SELECT RAISE(ABORT,'business-unit memory scope is immutable'); END""")
+        if connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("business-memory migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version=13")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction: connection.execute("ROLLBACK")
+        raise
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -924,6 +960,9 @@ class SQLiteStore:
                 version = 11
             if version == 11:
                 _migrate_v11_business_integrations(self._connection)
+                version = 12
+            if version == 12:
+                _migrate_v12_business_memory(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
