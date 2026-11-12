@@ -28,8 +28,9 @@ reference and controlled maintenance. They are not part of default discovery.
 Do not treat their presence as evidence that the legacy runtime is part of
 OpenCompany's supported runtime.
 
-Legacy tests may be invoked individually by explicitly passing their file
-paths to pytest when a maintainer is working on the legacy code. Do not combine
+Legacy tests may be invoked individually by overriding the default ignore list,
+for example: `pytest -o addopts='' tests/test_api.py`. Use this only when a
+maintainer is deliberately working on the legacy runtime. Do not combine
 them with the OpenCompany suite or use them as acceptance evidence for
 OpenCompany.
 
