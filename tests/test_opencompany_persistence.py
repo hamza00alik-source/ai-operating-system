@@ -417,6 +417,10 @@ def test_finance_ledger_derives_scope_and_is_append_only(tmp_path):
                 "UPDATE opencompany_finance_entries SET amount_minor=1 WHERE id=?",
                 ("agency-revenue-001",),
             )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_units SET finance_scope_id='changed-scope' WHERE business_id='physical-agency'"
+            )
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
             store._connection.execute(
                 "DELETE FROM opencompany_finance_entry_events WHERE entry_id=?",
