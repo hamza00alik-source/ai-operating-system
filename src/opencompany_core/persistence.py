@@ -582,8 +582,8 @@ def _migrate_v11_business_integrations(connection: sqlite3.Connection) -> None:
                 UNIQUE(business_id,provider_key),
                 FOREIGN KEY(business_id,integration_scope_id)
                     REFERENCES opencompany_business_units(business_id,integration_scope_id),
-                FOREIGN KEY(business_id,credential_scope_id,credential_key)
-                    REFERENCES opencompany_business_credentials(business_id,credential_scope_id,credential_key)
+                FOREIGN KEY(business_id,credential_scope_id)
+                    REFERENCES opencompany_business_units(business_id,credential_scope_id)
             )
         """)
         connection.execute("""
