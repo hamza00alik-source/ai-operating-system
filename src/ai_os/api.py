@@ -1001,7 +1001,7 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
 
 
 @app.put("/video/worker/jobs/{job_id}/artifact", dependencies=[Depends(require_video_worker)])
-def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
     import uuid as _uuid
     item = video_jobs.get_job(job_id)
     if item is None:
@@ -1019,18 +1019,11 @@ def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | 
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    body = request.stream()
     artifact = bytearray()
-    async def _collect():
-        async for chunk in body:
-            artifact.extend(chunk)
-            if len(artifact) > 300 * 1024 * 1024:
-                raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
-    try:
-        import asyncio
-        asyncio.run(_collect())
-    except RuntimeError:
-        raise HTTPException(status_code=413, detail="Artifact upload failed or exceeded size limit.")
+    async for chunk in request.stream():
+        artifact.extend(chunk)
+        if len(artifact) > 300 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
     if len(artifact) < 12 or bytes(artifact[4:8]) != b"ftyp":
         raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
     directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
