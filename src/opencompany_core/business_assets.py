@@ -92,12 +92,14 @@ class BusinessAssetRegistry:
               VALUES(?,?,?,?,?,?,?,?,?,?, 'metadata_only','declared',NULL,?,0,?)""",
               (asset_id,business_id,asset_key,title.strip(),asset_type,filename,media_type,checksum_sha256,byte_size,source,scope,payload["occurred_at"]))
             self._event(business_id,asset_id,"declared",audit); self.connection.commit()
-            return self._get(business_id,asset_id)
+            result=self._get(business_id,asset_id)
+            result["file_bytes_received"] = bool(result["file_bytes_received"])
+            return result
 
     def list(self,business_id):
         with self.lock:
             rows=self.connection.execute("SELECT * FROM opencompany_business_assets WHERE business_id=? ORDER BY created_at,asset_id",(business_id,)).fetchall()
-        return tuple(dict(r) for r in rows)
+        return tuple({**dict(r),"file_bytes_received":bool(r["file_bytes_received"])} for r in rows)
 
     def events(self,business_id,asset_id):
         with self.lock:
