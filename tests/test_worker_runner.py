@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from threading import Event, Thread
+from time import sleep
 from uuid import uuid4
 
 import pytest
@@ -213,5 +215,42 @@ def test_deliverable_write_and_review_transition_roll_back_together(tmp_path):
     assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
     assert store.list_deliverables(item.id) == ()
     assert store.verify_audit_chain()
+    queue.close()
+    store.close()
+
+
+def test_worker_heartbeats_long_running_execution_before_lease_expiry(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    queue.lease_seconds = 0.3  # Short test lease; production values remain validated.
+    started = Event()
+
+    class SlowExecutor(FakeExecutor):
+        def execute(self, role_key, work_item, **kwargs):
+            started.set()
+            sleep(0.55)
+            return super().execute(role_key, work_item, **kwargs)
+
+    worker = OpenCompanyWorker(queue, store, SlowExecutor(), MemorySink())
+    results = []
+    errors = []
+
+    def run():
+        try:
+            results.append(worker.run_once(agent, "marketplace_operations_analyst"))
+        except Exception as exc:
+            errors.append(exc)
+
+    began = datetime.now(timezone.utc)
+    thread = Thread(target=run)
+    thread.start()
+    assert started.wait(1)
+    sleep(0.38)
+    # Without heartbeats, the original 0.3s lease would have expired here.
+    assert queue.claim(agent, now=began + timedelta(seconds=0.4)) is None
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert errors == []
+    assert results == ["completed_review_required"]
+    assert queue.counts() == {"done": 1}
     queue.close()
     store.close()
