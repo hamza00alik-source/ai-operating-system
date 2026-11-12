@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, "feat/**", "clean-room-rebuild", "fix/**"]
   pull_request:
-    branches: [main, "feat/**", "clean-room-rebuild"]
+    branches: [main, "feat/**", "clean-room-rebuild", "fix/**"]
 
 permissions:
   contents: read
