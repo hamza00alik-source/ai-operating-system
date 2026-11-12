@@ -13,7 +13,9 @@ from opencompany_core.workforce import default_workforce
 from opencompany_core.organization import default_organization
 from opencompany_core.worker_queue import QueueError
 from opencompany_app.api_schemas import PlanPreviewInput, DelegationPreviewInput
-from opencompany_app.api_dependencies import get_runtime, get_store, require_owner_key
+from opencompany_app.api_dependencies import (
+    _auto_queue_task, get_runtime, get_store, require_owner_key,
+)
 from opencompany_app.runtime import OpenCompanyRuntime
 from opencompany_core.manager_orchestration import plan_department_work
 
@@ -197,7 +199,6 @@ def reconcile_interrupted_workflows(
     This only admits work to the durable queue. It never starts workers or invokes
     a model provider. Existing queue entries are left untouched.
     """
-    candidates = []
     queued_ids = []
     skipped = []
     errors = []
@@ -251,7 +252,7 @@ def reconcile_interrupted_workflows(
                 action="work_item.manager_synthesis_reconciled",
             )
             queued_ids.append(str(task.id))
-        except (QueueError, ValueError) as exc:
+        except (QueueError, ValueError, LookupError) as exc:
             errors.append({
                 "work_item_id": str(task.id),
                 "error_type": type(exc).__name__,
