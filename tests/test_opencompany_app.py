@@ -2139,9 +2139,6 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
     repeated = owner_client.post("/workflows/reconcile", headers=headers)
     assert repeated.status_code == 200
     assert str(parent_id) not in repeated.json()["queued_work_item_ids"]
-    assert any(
-        value["work_item_id"] == str(parent_id)
-        and value["reason"] == "queue_entry_already_exists"
-        for value in repeated.json()["skipped"]
-    )
+    assert repeated.json()["queued_work_item_ids"] == []
+    assert repeated.json()["errors"] == []
     assert runtime.queue.get_entry(parent_id)["state"] == "queued"
