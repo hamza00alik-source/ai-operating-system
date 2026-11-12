@@ -3122,6 +3122,8 @@ def _business_unit_registry(runtime: OpenCompanyRuntime) -> BusinessUnitRegistry
 
 def _assert_operational_business_unit(runtime: OpenCompanyRuntime, business_id: str) -> dict:
     """Fail closed before creating work for a unit without an operational scope."""
+    if business_id == "core":
+        return {"business_id": "core", "status": "foundational"}
     return _business_unit_registry(runtime).require_operational(business_id)
 
 
