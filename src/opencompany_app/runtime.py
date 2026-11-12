@@ -28,6 +28,7 @@ from opencompany_core.secret_vault import BusinessCredentialVault, ProviderSecre
 from opencompany_core.integration_registry import BusinessIntegrationRegistry
 from opencompany_core.business_memory import BusinessMemoryStore
 from opencompany_core.business_assets import BusinessAssetRegistry
+from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
 from opencompany_core.model_usage import ModelUsageRepository
 
 
@@ -49,6 +50,7 @@ class OpenCompanyRuntime:
     integrations: BusinessIntegrationRegistry
     business_memory: BusinessMemoryStore
     business_assets: BusinessAssetRegistry
+    asset_storage: PrivateFilesystemAssetStorage | None
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
@@ -162,6 +164,8 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     integrations = BusinessIntegrationRegistry(store._connection, store._lock)
     business_memory = BusinessMemoryStore(store._connection, store._lock)
     business_assets = BusinessAssetRegistry(store._connection, store._lock)
+    asset_storage_path = os.environ.get("OPENCOMPANY_ASSET_STORAGE_PATH", "").strip()
+    asset_storage = PrivateFilesystemAssetStorage(asset_storage_path) if asset_storage_path else None
     usage = ModelUsageRepository(store._connection, store._lock)
     secret_vault_errors: dict[str, str] = {}
     try:
@@ -244,6 +248,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         integrations=integrations,
         business_memory=business_memory,
         business_assets=business_assets,
+        asset_storage=asset_storage,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
     )
