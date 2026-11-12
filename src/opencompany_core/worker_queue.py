@@ -309,6 +309,22 @@ class DurableWorkerQueue:
                     self._db.execute("ROLLBACK")
                 raise
 
+    def renew(self, lease: WorkerLease, *, now: datetime | None = None) -> bool:
+        """Extend a live lease only while its exact token still owns the task."""
+        instant = now or datetime.now(timezone.utc)
+        if instant.tzinfo is None or instant.utcoffset() != timedelta(0):
+            raise ValueError("now must be timezone-aware UTC")
+        expires = instant + timedelta(seconds=self.lease_seconds)
+        with self._lock:
+            cursor = self._db.execute(
+                """UPDATE worker_queue SET lease_expires_at=?,updated_at=?
+                   WHERE work_item_id=? AND agent_id=? AND state='leased'
+                     AND lease_token=? AND lease_expires_at>?""",
+                (expires.isoformat(), instant.isoformat(), str(lease.work_item_id),
+                 str(lease.agent_id), str(lease.lease_token), instant.isoformat()),
+            )
+            return cursor.rowcount == 1
+
     def complete(self, lease: WorkerLease) -> None:
         self._finish(lease, "done", None)
 
