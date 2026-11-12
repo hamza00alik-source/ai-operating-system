@@ -221,16 +221,11 @@ class UnoRouterAdapter:
             input_tokens = usage.get("prompt_tokens")
             output_tokens = usage.get("completion_tokens")
             reported_cost = usage.get("cost", decoded.get("cost"))
-            # UnoRouter documents every :free model ID as zero-cost. Its
-            # OpenAI-compatible chat response may omit a cost field, so the
-            # explicit :free route is the billing guarantee in that case.
-            # If a cost is supplied, ModelGateway still enforces the 0 USD cap.
+            # A :free suffix is not a per-request billing receipt. Require
+            # explicit upstream cost evidence; absence is unknown, not zero.
             if reported_cost is None:
-                if not model.endswith(":free"):
-                    raise ValueError("provider omitted cost for a non-free model")
-                cost = 0.0
-            else:
-                cost = float(reported_cost)
+                raise ValueError("provider omitted explicit cost for a zero-cost route")
+            cost = float(reported_cost)
             if not math.isfinite(cost) or cost < 0:
                 raise ValueError("provider cost must be finite and non-negative")
             input_tokens = int(input_tokens) if input_tokens is not None else None
