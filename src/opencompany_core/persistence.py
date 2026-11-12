@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -67,6 +67,165 @@ def _assert_operational_commercial_scope(
 ) -> dict[str, Any]:
     """Require an existing, operational registry unit at every commercial write boundary."""
     return _registered_operational_unit(connection, lock, business_id)
+
+
+def _migrate_v7_commercial_business_ids(connection: sqlite3.Connection) -> None:
+    """Rebuild commercial tables without fixed business-ID allowlists.
+
+    Foreign keys are disabled only around this atomic table-rebuild migration.
+    Child table definitions, existing rows, indexes, and user triggers are retained.
+    """
+    tables = {
+        "commercial_opportunities": (
+            """CREATE TABLE commercial_opportunities_v8 (
+                id TEXT PRIMARY KEY,
+                business_id TEXT NOT NULL,
+                customer_name TEXT NOT NULL,
+                customer_contact TEXT,
+                customer_need TEXT NOT NULL,
+                stage TEXT NOT NULL DEFAULT 'new' CHECK(stage IN ('new','qualified','proposal','won','lost','on_hold')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "id,business_id,customer_name,customer_contact,customer_need,stage,created_at,updated_at",
+            "idx_commercial_opportunities_unit",
+            "business_id, created_at",
+        ),
+        "commercial_products": (
+            """CREATE TABLE commercial_products_v8 (
+                id TEXT PRIMARY KEY,
+                business_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                category TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','active','archived')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "id,business_id,name,description,category,status,created_at,updated_at",
+            "idx_commercial_products_unit",
+            "business_id, status, created_at",
+        ),
+        "commercial_quotes": (
+            """CREATE TABLE commercial_quotes_v8 (
+                id TEXT PRIMARY KEY,
+                opportunity_id TEXT NOT NULL REFERENCES commercial_opportunities(id),
+                business_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                currency TEXT NOT NULL CHECK(length(currency)=3),
+                currency_exponent INTEGER NOT NULL CHECK(currency_exponent BETWEEN 0 AND 3),
+                subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor > 0),
+                terms TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved_for_delivery','accepted','rejected','void')),
+                acceptance_reference TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "id,opportunity_id,business_id,title,currency,currency_exponent,subtotal_minor,terms,status,acceptance_reference,created_at,updated_at",
+            "idx_commercial_quotes_scope",
+            "business_id, opportunity_id, created_at",
+        ),
+        "commercial_orders": (
+            """CREATE TABLE commercial_orders_v8 (
+                id TEXT PRIMARY KEY,
+                quote_id TEXT NOT NULL UNIQUE REFERENCES commercial_quotes(id),
+                opportunity_id TEXT NOT NULL REFERENCES commercial_opportunities(id),
+                business_id TEXT NOT NULL,
+                customer_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'awaiting_owner_fulfilment' CHECK(status IN ('awaiting_owner_fulfilment','in_progress','fulfilled','cancelled')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "id,quote_id,opportunity_id,business_id,customer_name,status,created_at,updated_at",
+            "idx_commercial_orders_scope",
+            "business_id, status, created_at",
+        ),
+        "commercial_suppliers": (
+            """CREATE TABLE commercial_suppliers_v8 (
+                id TEXT PRIMARY KEY,
+                business_id TEXT NOT NULL,
+                relationship_type TEXT NOT NULL CHECK(relationship_type IN ('agency_supplier','own_brand_supplier','supplier')),
+                name TEXT NOT NULL,
+                contact_name TEXT,
+                email TEXT,
+                phone TEXT,
+                country TEXT,
+                product_categories_json TEXT NOT NULL,
+                verification_status TEXT NOT NULL DEFAULT 'draft' CHECK(verification_status IN ('draft','verified','blocked')),
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "id,business_id,relationship_type,name,contact_name,email,phone,country,product_categories_json,verification_status,notes,created_at,updated_at",
+            "idx_commercial_suppliers_scope",
+            "business_id, verification_status, created_at",
+        ),
+    }
+    expected = set(tables)
+    present = {
+        row["name"] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'commercial_%'"
+        ).fetchall()
+    }
+    if not expected.issubset(present):
+        raise RuntimeError("schema v7 migration requires all commercial tables; no changes were made")
+    trigger_sql = [
+        row["sql"] for row in connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' "
+            "AND tbl_name IN ('commercial_opportunities','commercial_products',"
+            "'commercial_quotes','commercial_orders','commercial_suppliers') "
+            "AND sql IS NOT NULL"
+        ).fetchall()
+    ]
+    for name in expected:
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (f"{name}_v8",),
+        ).fetchone():
+            raise RuntimeError(f"schema v7 migration found an unexpected staging table: {name}_v8")
+
+    if connection.in_transaction:
+        raise RuntimeError("schema migration cannot run inside an existing transaction")
+    connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        before = {
+            name: int(connection.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0])
+            for name in expected
+        }
+        for name, (ddl, columns, _, _) in tables.items():
+            connection.execute(ddl)
+            connection.execute(
+                f"INSERT INTO {name}_v8 ({columns}) SELECT {columns} FROM {name}"
+            )
+            copied = int(connection.execute(f"SELECT COUNT(*) FROM {name}_v8").fetchone()[0])
+            if copied != before[name]:
+                raise RuntimeError(f"schema migration row-count mismatch for {name}")
+        for name in tables:
+            connection.execute(f"DROP TABLE {name}")
+        for name in tables:
+            connection.execute(f"ALTER TABLE {name}_v8 RENAME TO {name}")
+        for name, (_, _, index_name, index_columns) in tables.items():
+            connection.execute(
+                f"CREATE INDEX {index_name} ON {name}({index_columns})"
+            )
+        for statement in trigger_sql:
+            connection.execute(statement)
+        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError("schema migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version = 8")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
+    if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
+        raise RuntimeError("foreign-key enforcement could not be restored after schema migration")
+    if connection.execute("PRAGMA foreign_key_check").fetchall():
+        raise RuntimeError("schema migration failed post-commit foreign-key validation")
 
 
 def _json(value: Any) -> str:
@@ -324,6 +483,9 @@ class SQLiteStore:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")
                     raise
+                version = 7
+            if version == 7:
+                _migrate_v7_commercial_business_ids(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
@@ -459,10 +621,8 @@ class SQLiteStore:
     ) -> tuple[dict[str, Any], ...]:
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
-        if business_id is not None and business_id not in {
-            "physical-agency", "physical-brand", "digital-products"
-        }:
-            raise ValueError("unknown commercial business unit")
+        if business_id is not None:
+            _assert_operational_commercial_scope(self._connection, self._lock, business_id)
         if status is not None and status not in {"draft", "active", "archived"}:
             raise ValueError("unknown catalogue status")
         clauses, values = [], []
@@ -1370,10 +1530,14 @@ class SQLiteStore:
         unit = _assert_operational_commercial_scope(self._connection, self._lock, record.get("business_id"))
         if unit.get("delivery_class") != "physical-goods":
             raise ValueError("supplier records are available only to physical-goods business units")
-        if record.get("business_id") == "physical-agency" and record.get("relationship_type") != "agency_supplier":
-            raise ValueError("agency suppliers must remain in the physical-agency unit")
-        if record.get("business_id") == "physical-brand" and record.get("relationship_type") != "own_brand_supplier":
-            raise ValueError("own-brand suppliers must remain in the physical-brand unit")
+        if record.get("business_id") == "physical-agency":
+            if record.get("relationship_type") != "agency_supplier":
+                raise ValueError("agency suppliers must remain in the physical-agency unit")
+        elif record.get("business_id") == "physical-brand":
+            if record.get("relationship_type") != "own_brand_supplier":
+                raise ValueError("own-brand suppliers must remain in the physical-brand unit")
+        elif record.get("relationship_type") != "supplier":
+            raise ValueError("new physical business units must use the generic supplier relationship type")
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
