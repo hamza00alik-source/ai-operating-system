@@ -119,10 +119,107 @@ class DurableWorkerQueue:
             "CREATE INDEX IF NOT EXISTS idx_worker_attempts_item "
             "ON worker_attempts(work_item_id, attempt)"
         )
+        self._db.execute("""
+            CREATE TABLE IF NOT EXISTS worker_checkpoints (
+                work_item_id TEXT NOT NULL,
+                role_key TEXT NOT NULL,
+                stage_key TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status='completed'),
+                payload_json TEXT NOT NULL,
+                attempt INTEGER NOT NULL CHECK(attempt > 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(work_item_id, role_key, stage_key)
+            )
+        """)
+        self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_worker_checkpoints_item "
+            "ON worker_checkpoints(work_item_id, updated_at)"
+        )
         self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_worker_queue_ready "
             "ON worker_queue(state, created_at)"
         )
+
+
+
+    def save_checkpoint(
+        self, lease: WorkerLease, role_key: str, stage_key: str, payload: dict
+    ) -> bool:
+        """Persist a completed stage only while the exact queue lease is live."""
+        if not role_key or len(role_key) > 120 or not stage_key or len(stage_key) > 80:
+            raise ValueError("checkpoint role and stage keys must be 1-120 and 1-80 characters")
+        if not isinstance(payload, dict):
+            raise ValueError("checkpoint payload must be a JSON object")
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        if len(encoded) > 64000:
+            raise ValueError("checkpoint payload exceeds 64000 characters")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                owned = self._db.execute(
+                    """SELECT attempts FROM worker_queue
+                       WHERE work_item_id=? AND agent_id=? AND state='leased'
+                         AND lease_token=? AND lease_expires_at>? AND cancel_requested=0""",
+                    (str(lease.work_item_id), str(lease.agent_id),
+                     str(lease.lease_token), now),
+                ).fetchone()
+                if owned is None:
+                    self._db.execute("ROLLBACK")
+                    return False
+                self._db.execute(
+                    """INSERT INTO worker_checkpoints
+                       (work_item_id,role_key,stage_key,status,payload_json,attempt,created_at,updated_at)
+                       VALUES(?,?,?,'completed',?,?,?,?)
+                       ON CONFLICT(work_item_id,role_key,stage_key) DO UPDATE SET
+                         status='completed',payload_json=excluded.payload_json,
+                         attempt=excluded.attempt,updated_at=excluded.updated_at""",
+                    (str(lease.work_item_id), role_key, stage_key, encoded,
+                     int(owned["attempts"]), now, now),
+                )
+                self._db.execute("COMMIT")
+                return True
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
+
+    def get_checkpoint(
+        self, work_item_id: UUID, role_key: str, stage_key: str
+    ) -> dict | None:
+        with self._lock:
+            row = self._db.execute(
+                """SELECT status,payload_json,attempt,created_at,updated_at
+                   FROM worker_checkpoints
+                   WHERE work_item_id=? AND role_key=? AND stage_key=?""",
+                (str(work_item_id), role_key, stage_key),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "status": row["status"], "payload": json.loads(row["payload_json"]),
+            "attempt": int(row["attempt"]), "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def list_checkpoints(self, work_item_id: UUID) -> tuple[dict, ...]:
+        """Expose metadata only; never return checkpoint draft payloads."""
+        with self._lock:
+            rows = self._db.execute(
+                """SELECT role_key,stage_key,status,attempt,created_at,updated_at
+                   FROM worker_checkpoints WHERE work_item_id=?
+                   ORDER BY created_at,role_key,stage_key""",
+                (str(work_item_id),),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def clear_checkpoint(self, work_item_id: UUID, role_key: str, stage_key: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "DELETE FROM worker_checkpoints WHERE work_item_id=? AND role_key=? AND stage_key=?",
+                (str(work_item_id), role_key, stage_key),
+            )
 
     def close(self) -> None:
         if self._owns_connection:
