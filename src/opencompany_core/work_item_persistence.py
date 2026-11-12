@@ -199,7 +199,7 @@ class WorkItemPersistenceMixin:
                 owned = self._connection.execute(
                     """SELECT 1 FROM worker_queue
                        WHERE work_item_id=? AND agent_id=? AND state='leased'
-                         AND lease_token=? AND lease_expires_at>?""",
+                         AND lease_token=? AND lease_expires_at>? AND cancel_requested=0""",
                     (str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token), now_iso),
                 ).fetchone()
                 if owned is None:
