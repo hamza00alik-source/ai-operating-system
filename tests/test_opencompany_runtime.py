@@ -28,6 +28,7 @@ def test_api_startup_bootstraps_and_activates_all_roles_when_owner_configured(tm
         agents = runtime.store.list_agents(limit=1000)
         assert len(agents) == 511
         assert all(agent.state.value == "active" for agent in agents)
-        assert runtime.fleet.status().running is True
+        # Saved credentials and legacy autostart flags do not replace a live owner-triggered test.
+        assert runtime.fleet.status().running is False
         assert runtime.store.verify_audit_chain()
     assert _default_runtime.cache_info().currsize == 0
