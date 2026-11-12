@@ -369,7 +369,10 @@ def test_worker_does_not_persist_result_after_owner_cancellation(tmp_path):
 
 
 def test_worker_resumes_completed_specialist_output_checkpoint_without_reexecution(tmp_path):
-    agent, item, store, queue = setup(tmp_path)
+    agent, item, store, separate_queue = setup(tmp_path)
+    separate_queue.close()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue(item.id, agent, {"source": "checkpoint-resume"})
     first_lease = queue.claim(agent)
     assert first_lease is not None
     stable_id = uuid5(
@@ -426,7 +429,10 @@ def test_worker_resumes_completed_specialist_output_checkpoint_without_reexecuti
 
 
 def test_checkpoint_write_is_rejected_for_stale_or_cancelled_lease(tmp_path):
-    agent, item, store, queue = setup(tmp_path)
+    agent, item, store, separate_queue = setup(tmp_path)
+    separate_queue.close()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue(item.id, agent, {"source": "checkpoint-cancel"})
     lease = queue.claim(agent)
     assert lease is not None
     assert queue.request_cancel(item.id, AuditRecord(
