@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
+from fastapi.responses import FileResponse
 from ai_os.owner_dashboard import owner_dashboard
 
 from ai_os.auth import (require_api_key, require_owner_key, create_owner_session, revoke_owner_session, SESSION_COOKIE, SESSION_TTL_DAYS)
@@ -866,11 +867,8 @@ def get_video_status():
     video_jobs.initialize()
     return {
         "queue": "sqlite-durable",
-        "provider_adapter_configured": False,
-        "worker_connected": False,
-        "generation_enabled": False,
+        **video_jobs.worker_status(),
         "publishing_enabled": False,
-        "note": "Approved jobs can be queued, but no worker/provider is connected in this release.",
     }
 
 
@@ -999,3 +997,67 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+
+@app.put("/video/worker/jobs/{job_id}/artifact", dependencies=[Depends(require_video_worker)])
+def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+    import uuid as _uuid
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "video/mp4":
+        raise HTTPException(status_code=415, detail="Only video/mp4 artifacts are accepted.")
+    public_base = os.getenv("PUBLIC_API_BASE_URL", "").rstrip("/")
+    if not public_base.startswith("https://"):
+        raise HTTPException(status_code=503, detail="Set PUBLIC_API_BASE_URL to the public HTTPS API origin before accepting artifacts.")
+    try:
+        lease_state = video_jobs.heartbeat(job_id, x_job_lease, progress=95, message="Uploading generated MP4")
+        if lease_state.get("cancel_requested"):
+            raise HTTPException(status_code=409, detail="Cancellation was requested.")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    body = request.stream()
+    artifact = bytearray()
+    async def _collect():
+        async for chunk in body:
+            artifact.extend(chunk)
+            if len(artifact) > 300 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
+    try:
+        import asyncio
+        asyncio.run(_collect())
+    except RuntimeError:
+        raise HTTPException(status_code=413, detail="Artifact upload failed or exceeded size limit.")
+    if len(artifact) < 12 or bytes(artifact[4:8]) != b"ftyp":
+        raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
+    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / f"{_uuid.UUID(job_id)}.mp4"
+    temporary = directory / f".{_uuid.UUID(job_id)}.{_uuid.uuid4().hex}.tmp"
+    temporary.write_bytes(artifact)
+    temporary.replace(destination)
+    uri = f"{public_base}/video/artifacts/{job_id}"
+    try:
+        completed = video_jobs.complete_job(
+            job_id, x_job_lease, result_uri=uri,
+            metadata={"content_type":"video/mp4","size_bytes":len(artifact),"storage":"api-artifact-volume"},
+        )
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    return completed
+
+
+@app.get("/video/artifacts/{job_id}", dependencies=[Depends(require_owner_key)])
+def get_video_artifact(job_id: str):
+    item = video_jobs.get_job(job_id)
+    if item is None or item["status"] != "succeeded":
+        raise HTTPException(status_code=404, detail="Video artifact not found.")
+    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
+    path = directory / f"{job_id}.mp4"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Artifact storage is unavailable; verify the persistent volume.")
+    return FileResponse(path, media_type="video/mp4", filename=f"opencompany-{job_id}.mp4")
