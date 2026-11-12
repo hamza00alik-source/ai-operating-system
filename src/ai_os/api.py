@@ -881,6 +881,7 @@ def post_video_job(payload: VideoJobCreate):
             estimated_cost_minor=payload.estimated_cost_minor,
             approved_budget_minor=payload.approved_budget_minor,
             currency=payload.currency, cost_basis=payload.cost_basis,
+            max_attempts=payload.max_attempts,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
