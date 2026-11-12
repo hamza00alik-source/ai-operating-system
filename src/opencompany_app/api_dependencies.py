@@ -14,6 +14,10 @@ from urllib.parse import urlsplit
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request
 
+from uuid import uuid4
+from datetime import datetime, timezone
+
+from opencompany_core.domain import AuditRecord, WorkItem
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
@@ -131,3 +135,19 @@ def require_owner_key(
                 headers={"Retry-After": str(retry_after)},
             )
     raise HTTPException(status_code=401, detail="Owner authentication failed.")
+
+
+def work_item_audit_record(item: WorkItem, action: str) -> AuditRecord:
+    from datetime import datetime, timezone
+
+    return AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner", action=action,
+        subject_type="work_item", subject_id=str(item.id),
+        outcome="recorded", correlation_id=str(uuid4()),
+        details={
+            "state": item.state.value, "department": item.department,
+            "business_id": item.business_id,
+        },
+    )
+
