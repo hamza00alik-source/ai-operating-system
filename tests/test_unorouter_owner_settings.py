@@ -9,6 +9,13 @@ from opencompany_app.runtime import create_runtime
 from opencompany_core import unorouter_adapter
 
 
+@pytest.fixture(autouse=True)
+def mock_free_unorouter_discovery(monkeypatch):
+    # Keep owner-settings tests deterministic and offline while preserving the
+    # production endpoint's live catalogue verification behavior.
+    monkeypatch.setattr(api, "discover_free_models", lambda api_key: ("qwen/model:free",))
+
+
 def test_owner_can_manage_encrypted_unorouter_credentials_without_key_echo(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "owner-api-key-for-tests-long-enough-123456")
     monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-encryption-key-at-least-32-characters")
@@ -142,7 +149,7 @@ def test_provider_credentials_are_not_changed_if_running_workers_cannot_stop(mon
 def test_provider_dashboard_explains_verified_worker_autostart():
     response = TestClient(api.app).get("/owner")
     assert response.status_code == 200
-    assert "worker fleet starts automatically only when owner-configured autostart is enabled" in response.text
+    assert "workers start only if owner-configured autostart is enabled" in response.text
     assert "Worker fleet started automatically." in response.text
 
 
