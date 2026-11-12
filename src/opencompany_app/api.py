@@ -2978,6 +2978,23 @@ def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
     }
 
 
+
+class FinanceEntryInput(BaseModel):
+    business_id: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    entry_type: str = Field(pattern=r"^(revenue|expense|refund|adjustment)$")
+    amount_minor: int = Field(gt=0, le=9_000_000_000_000_000)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    description: str = Field(min_length=1, max_length=2000)
+    source_reference: str | None = Field(default=None, max_length=300)
+    confirm_owner_record: bool = False
+
+
+class FinanceReviewInput(BaseModel):
+    action: str = Field(pattern=r"^(owner_verified|owner_rejected|owner_approved)$")
+    rationale: str = Field(default="", max_length=2000)
+    confirm_owner_decision: bool = False
+
+
 class CommercialSupplierInput(BaseModel):
     business_id: str
     name: str = Field(min_length=1, max_length=200)
@@ -3049,6 +3066,76 @@ def update_commercial_supplier_status(
         raise HTTPException(status_code=404, detail="Supplier not found or already blocked.")
     return {"supplier_id": str(supplier_id), "status": payload.status,
             "external_contact_made": False, "purchase_or_commitment_created": False}
+
+
+
+@app.post("/finance/entries", dependencies=[Depends(require_owner_key)])
+def create_finance_entry(payload: FinanceEntryInput, store: SQLiteStore = Depends(get_store)) -> dict:
+    if payload.confirm_owner_record is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to record this finance entry.")
+    now = datetime.now(timezone.utc)
+    entry_id = str(uuid4())
+    record = {
+        "id": entry_id, "business_id": payload.business_id,
+        "entry_type": payload.entry_type, "amount_minor": payload.amount_minor,
+        "currency": payload.currency, "description": payload.description.strip(),
+        "source_reference": payload.source_reference, "created_at": now.isoformat(),
+    }
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="finance.entry_recorded", subject_type="finance_entry",
+        subject_id=entry_id, outcome="recorded", correlation_id=str(uuid4()),
+        details={"business_id": payload.business_id, "external_payment_initiated": False},
+    )
+    try:
+        store.create_finance_entry(record, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "entry_id": entry_id, "business_id": payload.business_id,
+        "entry_type": payload.entry_type, "recorded": True,
+        "latest_review_action": "recorded", "external_payment_initiated": False,
+        "spending_authorized": False,
+    }
+
+
+@app.get("/finance/entries", dependencies=[Depends(require_owner_key)])
+def list_finance_entries(
+    business_id: str | None = None, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        items = store.list_finance_entries(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(items), "entries": list(items)}
+
+
+@app.post("/finance/entries/{entry_id}/review", dependencies=[Depends(require_owner_key)])
+def review_finance_entry(
+    entry_id: UUID, payload: FinanceReviewInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if payload.confirm_owner_decision is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required for a finance review decision.")
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="finance.entry_reviewed", subject_type="finance_entry",
+        subject_id=str(entry_id), outcome=payload.action, correlation_id=str(uuid4()),
+        details={"finance_decision": payload.action, "external_payment_initiated": False},
+    )
+    try:
+        recorded = store.append_finance_review_event(
+            str(entry_id), payload.action, payload.rationale, event
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not recorded:
+        raise HTTPException(status_code=404, detail="Finance entry not found.")
+    return {
+        "entry_id": str(entry_id), "review_action": payload.action,
+        "recorded": True, "external_payment_initiated": False,
+        "spending_authorized": False,
+    }
 
 
 # Company-wide venture portfolio. This is intentionally distinct from operating
