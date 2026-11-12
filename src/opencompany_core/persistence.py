@@ -154,7 +154,10 @@ def _migrate_v7_commercial_business_ids(connection: sqlite3.Connection) -> None:
                 verification_status TEXT NOT NULL DEFAULT 'draft' CHECK(verification_status IN ('draft','verified','blocked')),
                 notes TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                CHECK((business_id='physical-agency' AND relationship_type='agency_supplier')
+                   OR (business_id='physical-brand' AND relationship_type='own_brand_supplier')
+                   OR (business_id NOT IN ('physical-agency','physical-brand') AND relationship_type='supplier'))
             )""",
             "id,business_id,relationship_type,name,contact_name,email,phone,country,product_categories_json,verification_status,notes,created_at,updated_at",
             "idx_commercial_suppliers_scope",
