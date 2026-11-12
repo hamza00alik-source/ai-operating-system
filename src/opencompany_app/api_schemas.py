@@ -176,6 +176,11 @@ class ExecutivePlanInput(BaseModel):
 class ManagerProposalInput(BaseModel):
     max_specialists: int = Field(default=15, ge=1, le=50)
 
+
+class WorkItemReassignInput(BaseModel):
+    target_agent_id: UUID
+    rationale: str = Field(min_length=1, max_length=2000)
+
 class WorkItemTransitionInput(BaseModel):
     target_state: TaskState
 
