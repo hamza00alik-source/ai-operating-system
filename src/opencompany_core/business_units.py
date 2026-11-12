@@ -557,16 +557,45 @@ class BusinessUnitRegistry:
             "evidence": "External integration execution, permission enforcement, connection testing, and per-action owner approval are deliberately not enabled by the registry-only increment.",
         })
 
-        for key, label in (
-            ("memory_scope_id", "memory_scope_adapter"),
-            ("asset_scope_id", "asset_scope_adapter"),
-        ):
-            blockers.append(key.replace("_scope_id", "_scope_adapter"))
-            checks.append({
-                "key": key.replace("_scope_id", "_scope_adapter"),
-                "ready": False,
-                "evidence": f"{label} is recorded as an identifier only; an enforcing adapter is not registered by this readiness gate.",
-            })
+        memory_fks = self._db.execute("PRAGMA foreign_key_list('opencompany_business_memory_versions')").fetchall()
+        memory_pair = any(
+            fk["table"] == "opencompany_business_units"
+            and {(x["from"], x["to"]) for x in memory_fks if x["id"] == fk["id"]} == {
+                ("business_id", "business_id"), ("memory_scope_id", "memory_scope_id")
+            } for fk in memory_fks
+        )
+        memory_columns = {row["name"] for row in self._db.execute(
+            "PRAGMA table_info('opencompany_business_memory_versions')"
+        ).fetchall()}
+        memory_triggers = {row["name"] for row in self._db.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' AND name IN "
+            "('opencompany_business_memory_no_update','opencompany_business_memory_no_delete',"
+            "'opencompany_business_units_memory_scope_no_update')"
+        ).fetchall()}
+        memory_ready = (
+            {"memory_id", "business_id", "memory_scope_id", "memory_key", "category", "content",
+             "source", "revision", "operation", "actor_type"}.issubset(memory_columns)
+            and memory_pair
+            and {"opencompany_business_memory_no_update", "opencompany_business_memory_no_delete",
+                 "opencompany_business_units_memory_scope_no_update"}.issubset(memory_triggers)
+        )
+        checks.append({
+            "key": "memory_scope_adapter", "ready": memory_ready,
+            "evidence": ("Versioned business memory is bound to immutable business/memory scopes; history is append-only."
+                         if memory_ready else "Versioned scoped storage, append-only history, or immutable scope enforcement is missing."),
+        })
+        if not memory_ready:
+            blockers.append("memory_scope_adapter")
+        blockers.append("memory_ingestion_adapter")
+        checks.append({
+            "key": "memory_ingestion_adapter", "ready": False,
+            "evidence": "Agent-originated memory ingestion remains disabled until provenance, role permissions, and owner review are enforced.",
+        })
+        blockers.append("asset_scope_adapter")
+        checks.append({
+            "key": "asset_scope_adapter", "ready": False,
+            "evidence": "Asset storage isolation is not implemented yet.",
+        })
 
         blockers.append("owner_activation_approval")
         checks.append({
