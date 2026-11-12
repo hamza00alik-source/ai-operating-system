@@ -17,6 +17,9 @@ from opencompany_core.provisioning import bootstrap_department_managers, bootstr
 from opencompany_app.api_dependencies import (
     _default_runtime, get_runtime, get_store, get_delegation_store, require_owner_key,
 )
+from opencompany_app.auth_dependencies import _clear_login_failures
+from opencompany_app.api_schemas import ManagerProposalInput
+from opencompany_core.unorouter_adapter import discover_free_models
 from opencompany_app.routers.catalogue import router as catalogue_router
 from opencompany_app.routers.system import router as system_router
 from opencompany_app.routers.dashboard import router as dashboard_router
