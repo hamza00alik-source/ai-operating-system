@@ -10,7 +10,7 @@ OpenCompany and AIOS are one system, not two products:
 - **AIOS** is the intelligence and execution engine inside OpenCompany.
 - **OpenCompany AIOS** is the single product name used by the package, API, owner console, and documentation.
 
-There is one application, one deployment unit, one owner identity and approval boundary, one shared persistence/runtime composition, and one release lifecycle. Do not create a second AIOS server, dashboard, database, or agent registry.
+There is one canonical application, owner identity and approval boundary, shared persistence/runtime composition, and release lifecycle. The target deployment is a single OpenCompany AIOS service; do not create a second AIOS server, dashboard, database, or agent registry. The existing production Vercel rewrite still targets the legacy Railway API and is intentionally unchanged until the new service has a verified staging endpoint and the owner approves a cutover.
 
 ## Code ownership
 
@@ -52,6 +52,7 @@ Additional ventures may be added as separately isolated business units after own
 ## Definition of done for unification
 
 - The distribution name, API title and owner console identify one product: OpenCompany AIOS.
+- The production routing cutover is a separate release step and must not happen until the replacement service is staged, persistent storage is verified, rollback is rehearsed, and the owner approves.
 - `main.py` and the Vercel entrypoint start the same API application.
 - The application composes the AIOS engine from `opencompany_core`.
 - The legacy `ai_os` package is not imported by the active runtime.
@@ -61,4 +62,4 @@ Additional ventures may be added as separately isolated business units after own
 
 ## Current implementation status
 
-This change establishes the canonical identity and architecture boundary. It does not claim that every future AIOS capability, marketplace connector, external workflow or production-readiness check is complete. CI/tests are intentionally not run under the repository's current testing deferral; verify them when that instruction expires or is changed. No production deployment or merge is performed by this change.
+This change establishes the canonical identity and architecture boundary in the development branch. The production Vercel rewrite and legacy Railway service remain untouched; the new application is not yet the live production backend. It does not claim that every future AIOS capability, marketplace connector, external workflow or production-readiness check is complete. CI/tests are intentionally not run under the repository's current testing deferral; verify them when that instruction expires or is changed. No production deployment or merge is performed by this change.
