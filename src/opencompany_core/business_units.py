@@ -458,7 +458,7 @@ class BusinessUnitRegistry:
             "ready": credential_ready,
             "evidence": (
                 "Encrypted business-specific credentials are stored under composite business/credential scopes; "
-                "change history is append-only and the registry credential scope is immutable."
+                "change history is append-only, the registry credential scope is immutable, and the dedicated encryption key is configured."
                 if credential_ready else
                 "Credential isolation requires encrypted credential storage, scoped foreign keys, "
                 "append-only change history, and an immutable registry scope."
