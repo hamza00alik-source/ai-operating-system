@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
+from opencompany_core.platform import PLATFORM_ID, PLATFORM_NAME, PLATFORM_VERSION
 from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.lifecycle import StateTransitionError, transition_work_item
 from opencompany_core.persistence import SQLiteStore
@@ -56,9 +57,9 @@ from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
 app = FastAPI(
-    title="OpenCompany Core",
-    version="0.2.0",
-    description="Owner-authenticated API for OpenCompany's independently authored operating core.",
+    title=PLATFORM_NAME,
+    version=PLATFORM_VERSION,
+    description="Unified OpenCompany AIOS platform: one independently authored engine, company runtime, and owner console.",
 )
 
 # Per-process login throttling. The API key is a bootstrap credential; this
@@ -570,7 +571,7 @@ def owner_dashboard() -> HTMLResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     """Liveness probe: the ASGI process is responsive."""
-    return {"status": "ok", "service": "opencompany-core", "mode": "owner-authenticated"}
+    return {"status": "ok", "service": PLATFORM_ID, "product": PLATFORM_NAME, "version": PLATFORM_VERSION, "mode": "owner-authenticated"}
 
 
 @app.get("/ready")
@@ -600,7 +601,9 @@ def readiness(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
         raise HTTPException(status_code=503, detail="OpenCompany storage is not ready.") from exc
     return {
         "status": "ready",
-        "service": "opencompany-core",
+        "service": PLATFORM_ID,
+        "product": PLATFORM_NAME,
+        "version": PLATFORM_VERSION,
         "storage": "ok",
         "worker_fleet_running": fleet.running,
         "provider_required_for_readiness": False,
@@ -1570,6 +1573,21 @@ def create_work_item(
         department=payload.department, state=TaskState.DRAFT,
         depends_on=payload.depends_on, business_id=payload.business_id,
     )
+    # Resolve every dependency against the full company store before building
+    # a business-scoped plan. Filtering first would make a cross-business
+    # dependency look merely missing and hide the isolation violation.
+    for dependency_id in payload.depends_on:
+        prerequisite = store.get_work_item(dependency_id)
+        if prerequisite is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Dependency {dependency_id} does not exist.",
+            )
+        if prerequisite.business_id != payload.business_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Work dependencies must belong to the same business unit.",
+            )
     existing = store.list_work_items(business_id=payload.business_id, limit=1000)
     try:
         WorkPlan(tuple(existing) + (item,))
@@ -2366,6 +2384,117 @@ def deliver_agent_handoff(
     return {"handoff": _handoff_payload(updated)}
 
 
+@app.get("/executive/portfolio", dependencies=[Depends(require_owner_key)])
+def get_executive_portfolio(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Give the owner a company-wide view of CEO and department execution."""
+    if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+        raise HTTPException(status_code=422, detail="Unknown business unit.")
+
+    profiles = store.list_agents(limit=1000)
+    ceo = next((agent for agent in profiles
+                if agent.role_key == "chief_executive_orchestrator"), None)
+    work_items = store.list_work_items(business_id=business_id, limit=1000)
+    department_rows: dict[str, dict] = {}
+    items_payload = []
+    for item in work_items:
+        department = default_organization().get(item.department)
+        manager = next((agent for agent in profiles
+                        if agent.role_key == department.manager_role_key
+                        and agent.department == item.department
+                        and agent.team_key == "management"), None)
+        dependencies = []
+        for dependency_id in item.depends_on:
+            dependency = store.get_work_item(dependency_id)
+            if dependency is None:
+                dependencies.append({
+                    "work_item_id": str(dependency_id), "state": "missing",
+                    "completed_with_deliverable": False,
+                })
+                continue
+            if dependency.business_id != item.business_id:
+                raise HTTPException(status_code=409, detail="Work dependency crossed a business boundary.")
+            dependency_deliverables = store.list_deliverables(dependency_id)
+            dependencies.append({
+                "work_item_id": str(dependency_id), "state": dependency.state.value,
+                "deliverable_count": len(dependency_deliverables),
+                "completed_with_deliverable": (
+                    dependency.state == TaskState.COMPLETED and bool(dependency_deliverables)
+                ),
+            })
+        manager_ready = (
+            item.state == TaskState.READY
+            and bool(item.depends_on)
+            and manager is not None
+            and manager.state == AgentState.ACTIVE
+            and item.assigned_agent_id == manager.id
+            and all(value["completed_with_deliverable"] for value in dependencies)
+        )
+        deliverables = store.list_deliverables(item.id)
+        row = {
+            "id": str(item.id), "title": item.title, "objective": item.objective,
+            "business_id": item.business_id, "department": item.department,
+            "state": item.state.value,
+            "assigned_agent_id": str(item.assigned_agent_id) if item.assigned_agent_id else None,
+            "manager": ({
+                "agent_id": str(manager.id), "role_key": manager.role_key,
+                "state": manager.state.value,
+            } if manager else None),
+            "dependency_count": len(dependencies),
+            "blocked_dependencies": [
+                value["work_item_id"] for value in dependencies
+                if not value["completed_with_deliverable"]
+            ],
+            "deliverable_count": len(deliverables),
+            "manager_synthesis_ready": manager_ready,
+        }
+        items_payload.append(row)
+        key = f"{item.business_id}:{item.department}"
+        aggregate = department_rows.setdefault(key, {
+            "business_id": item.business_id, "department": item.department,
+            "work_item_count": 0, "states": {}, "blocked_count": 0,
+            "review_count": 0, "completed_count": 0,
+            "manager_synthesis_ready_count": 0,
+        })
+        aggregate["work_item_count"] += 1
+        aggregate["states"][item.state.value] = aggregate["states"].get(item.state.value, 0) + 1
+        aggregate["blocked_count"] += bool(row["blocked_dependencies"])
+        aggregate["review_count"] += item.state == TaskState.REVIEW
+        aggregate["completed_count"] += item.state == TaskState.COMPLETED
+        aggregate["manager_synthesis_ready_count"] += manager_ready
+
+    return {
+        "platform": "opencompany-aios",
+        "business_filter": business_id or "all",
+        "ceo": ({
+            "agent_id": str(ceo.id), "state": ceo.state.value,
+            "active": ceo.state == AgentState.ACTIVE,
+        } if ceo else None),
+        "departments": list(department_rows.values()),
+        "work_items": items_payload,
+        "summary": {
+            "work_item_count": len(items_payload),
+            "department_count": len(department_rows),
+            "blocked_work_item_count": sum(
+                1 for item in items_payload if item["blocked_dependencies"]
+            ),
+            "awaiting_owner_review_count": sum(
+                1 for item in items_payload if item["state"] == TaskState.REVIEW.value
+            ),
+            "completed_work_item_count": sum(
+                1 for item in items_payload if item["state"] == TaskState.COMPLETED.value
+            ),
+            "manager_synthesis_ready_count": sum(
+                1 for item in items_payload if item["manager_synthesis_ready"]
+            ),
+        },
+        "execution_or_external_actions_performed": False,
+    }
+
+
 @app.post("/executive/plan", dependencies=[Depends(require_owner_key)])
 def create_executive_work_plan(
     payload: ExecutivePlanInput,
@@ -2449,14 +2578,23 @@ def create_ai_manager_proposal(
     item = store.get_work_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state != TaskState.DRAFT or item.assigned_agent_id is not None:
+        raise HTTPException(status_code=409, detail="Manager planning is allowed only for unassigned draft work items.")
     manager_role = default_organization().get(item.department).manager_role_key
     manager = next(
         (agent for agent in store.list_agents(limit=1000)
          if agent.role_key == manager_role and agent.department == item.department),
         None,
     )
-    if manager is None or manager.state != AgentState.ACTIVE:
-        raise HTTPException(status_code=409, detail="The department manager profile must be provisioned and explicitly ACTIVE.")
+    if (
+        manager is None or manager.state != AgentState.ACTIVE
+        or manager.role_key != manager_role or manager.team_key != "management"
+        or manager.department != item.department
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The department manager must be ACTIVE with the expected role, department, and management team.",
+        )
     try:
         recommendation = recommend_department_plan(
             item, runtime.gateway, max_specialists=payload.max_specialists
@@ -2484,8 +2622,16 @@ def create_ai_manager_proposal(
                  and agent.department == item.department),
                 None,
             )
-            if profile is None:
-                raise HTTPException(status_code=409, detail=f"Specialist profile is not provisioned: {specialist.role_key}")
+            if (
+                profile is None or profile.state != AgentState.ACTIVE
+                or profile.role_key != specialist.role_key
+                or profile.team_key != specialist.team_key
+                or profile.department != item.department
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Specialist must be provisioned, ACTIVE, and correctly assigned: {specialist.role_key}",
+                )
             children.append({
                 "assigned_agent_id": str(profile.id), "role_key": specialist.role_key,
                 "team_key": specialist.team_key, "title": f"{specialist.title}: {item.title}",
@@ -2540,14 +2686,24 @@ def create_work_item_delegation_proposal(
     item = store.get_work_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state != TaskState.DRAFT or item.assigned_agent_id is not None:
+        raise HTTPException(status_code=409, detail="Delegation planning is allowed only for unassigned draft work items.")
     try:
         plan = plan_department_work(item, payload.required_capabilities, max_specialists=payload.max_specialists)
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     profiles = store.list_agents(limit=1000)
     manager = next((agent for agent in profiles if agent.role_key == plan.manager_role_key and agent.department == item.department), None)
-    if manager is None:
-        raise HTTPException(status_code=409, detail="Provision department manager profiles before creating a delegation proposal.")
+    if (
+        manager is None or manager.state != AgentState.ACTIVE
+        or manager.role_key != plan.manager_role_key
+        or manager.team_key != "management"
+        or manager.department != item.department
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The department manager must be ACTIVE with the expected role, department, and management team.",
+        )
     children = []
     if plan.mode.value == "manager_direct":
         children.append({
@@ -2558,8 +2714,16 @@ def create_work_item_delegation_proposal(
     elif plan.mode.value == "specialist_team":
         for specialist in plan.specialists:
             profile = next((agent for agent in profiles if agent.role_key == specialist.role_key and agent.team_key == specialist.team_key and agent.department == item.department), None)
-            if profile is None:
-                raise HTTPException(status_code=409, detail=f"Specialist profile is not provisioned: {specialist.role_key}")
+            if (
+                profile is None or profile.state != AgentState.ACTIVE
+                or profile.role_key != specialist.role_key
+                or profile.team_key != specialist.team_key
+                or profile.department != item.department
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Specialist must be provisioned, ACTIVE, and correctly assigned: {specialist.role_key}",
+                )
             children.append({
                 "assigned_agent_id": str(profile.id), "role_key": specialist.role_key,
                 "team_key": specialist.team_key, "title": f"{specialist.title}: {item.title}",
@@ -2592,6 +2756,8 @@ def approve_work_item_delegation_proposal(
     parent = store.get_work_item(item_id)
     if parent is None:
         raise HTTPException(status_code=404, detail="Parent work item not found.")
+    if parent.state != TaskState.DRAFT or parent.assigned_agent_id is not None:
+        raise HTTPException(status_code=409, detail="The parent work item changed after planning; create a fresh draft proposal.")
     proposal = delegations.get_proposal(proposal_id)
     if proposal is None or proposal["parent_work_item_id"] != str(item_id):
         raise HTTPException(status_code=404, detail="Delegation proposal not found for this parent.")
@@ -2721,6 +2887,104 @@ def list_work_item_delegation_proposals(
         raise HTTPException(status_code=404, detail="Work item not found.")
     proposals = delegations.list_for_parent(item_id)
     return {"count": len(proposals), "proposals": proposals}
+
+
+@app.get("/work-items/{item_id}/workflow", dependencies=[Depends(require_owner_key)])
+def get_work_item_workflow(
+    item_id: UUID,
+    store: SQLiteStore = Depends(get_store),
+    delegations: DelegationRepository = Depends(get_delegation_store),
+) -> dict:
+    """Return an owner-facing, business-scoped view of a work item and its delegation lifecycle."""
+    parent = store.get_work_item(item_id)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+
+    profiles = {str(agent.id): agent for agent in store.list_agents(limit=1000)}
+    manager = profiles.get(str(parent.assigned_agent_id)) if parent.assigned_agent_id else None
+    proposals = delegations.list_for_parent(item_id)
+    children_by_id = {}
+    for proposal in proposals:
+        for child in proposal["children"]:
+            child_id = str(child["id"])
+            task = store.get_work_item(UUID(child_id))
+            if task is None:
+                children_by_id[child_id] = {
+                    "id": child_id, "title": child["title"], "role_key": child["role_key"],
+                    "team_key": child["team_key"], "state": "draft",
+                    "assigned_agent_id": child["assigned_agent_id"], "materialized": False,
+                    "deliverables": [],
+                }
+                continue
+            if task.business_id != parent.business_id:
+                raise HTTPException(status_code=409, detail="Delegated work crossed a business boundary.")
+            agent = profiles.get(str(task.assigned_agent_id)) if task.assigned_agent_id else None
+            children_by_id[child_id] = {
+                "id": child_id, "title": task.title, "role_key": child["role_key"],
+                "team_key": child["team_key"], "state": task.state.value,
+                "assigned_agent_id": str(task.assigned_agent_id) if task.assigned_agent_id else None,
+                "assignee_state": agent.state.value if agent else "missing",
+                "materialized": True,
+                "deliverables": store.list_deliverables(task.id),
+            }
+
+    dependency_status = []
+    for dependency_id in parent.depends_on:
+        dependency = store.get_work_item(dependency_id)
+        if dependency is None:
+            dependency_status.append({
+                "work_item_id": str(dependency_id), "state": "missing",
+                "deliverable_count": 0, "completed_with_deliverable": False,
+            })
+            continue
+        if dependency.business_id != parent.business_id:
+            raise HTTPException(status_code=409, detail="Work dependency crossed a business boundary.")
+        dependency_deliverables = store.list_deliverables(dependency_id)
+        dependency_status.append({
+            "work_item_id": str(dependency_id), "state": dependency.state.value,
+            "deliverable_count": len(dependency_deliverables),
+            "completed_with_deliverable": (
+                dependency.state == TaskState.COMPLETED and bool(dependency_deliverables)
+            ),
+        })
+    synthesis_ready = (
+        bool(parent.depends_on)
+        and manager is not None
+        and manager.state == AgentState.ACTIVE
+        and manager.department == parent.department
+        and manager.team_key == "management"
+        and all(value["completed_with_deliverable"] for value in dependency_status)
+    )
+
+    return {
+        "work_item": {
+            "id": str(parent.id), "title": parent.title, "objective": parent.objective,
+            "department": parent.department, "business_id": parent.business_id,
+            "state": parent.state.value,
+            "assigned_agent_id": str(parent.assigned_agent_id) if parent.assigned_agent_id else None,
+            "depends_on": [str(value) for value in parent.depends_on],
+            "deliverables": store.list_deliverables(parent.id),
+        },
+        "manager": ({
+            "agent_id": str(manager.id), "role_key": manager.role_key,
+            "team_key": manager.team_key, "department": manager.department,
+            "state": manager.state.value,
+        } if manager else None),
+        "delegation_proposals": proposals,
+        "child_work_items": list(children_by_id.values()),
+        "dependencies": dependency_status,
+        "manager_synthesis": {
+            "ready": synthesis_ready,
+            "blocked_by": [
+                value["work_item_id"] for value in dependency_status
+                if not value["completed_with_deliverable"]
+            ],
+            "requires_completed_child_deliverables": True,
+            "queue_admission_requires_owner_action": True,
+        },
+        "owner_review_required": parent.state == TaskState.REVIEW,
+        "external_actions_performed": False,
+    }
 
 
 @app.post("/work-items/{item_id}/review", dependencies=[Depends(require_owner_key)])

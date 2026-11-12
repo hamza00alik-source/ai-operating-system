@@ -7,7 +7,7 @@ import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
 from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
-from opencompany_core.domain import AuditRecord, TaskState
+from opencompany_core.domain import AgentState, AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.model_gateway import BillingMode, ModelGateway, ModelResult, ProviderPolicy, ProviderUnavailable
@@ -81,7 +81,13 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
 def test_health_reports_owner_authenticated_mode():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["mode"] == "owner-authenticated"
+    assert response.json() == {
+        "status": "ok",
+        "service": "opencompany-aios",
+        "product": "OpenCompany AIOS",
+        "version": "0.3.0",
+        "mode": "owner-authenticated",
+    }
 
 
 def test_provider_status_exposes_unorouter_as_company_provider_without_secret(monkeypatch):
@@ -1285,7 +1291,9 @@ def test_readiness_checks_persistent_storage_without_requiring_provider(owner_cl
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
-        "service": "opencompany-core",
+        "service": "opencompany-aios",
+        "product": "OpenCompany AIOS",
+        "version": "0.3.0",
         "storage": "ok",
         "worker_fleet_running": False,
         "provider_required_for_readiness": False,
@@ -1622,3 +1630,223 @@ def test_unknown_business_unit_is_rejected(owner_client):
         },
     )
     assert response.status_code == 422
+
+def test_work_item_creation_rejects_cross_business_dependencies(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    prerequisite = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare agency supplier research",
+        "objective": "Research supplier options for the physical agency",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    })
+    assert prerequisite.status_code == 200
+
+    rejected = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare own-brand supplier research",
+        "objective": "Research suppliers for the separately operated own brand",
+        "department": "intelligence-research",
+        "business_id": "physical-brand",
+        "depends_on": [prerequisite.json()["item_id"]],
+    })
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == (
+        "Work dependencies must belong to the same business unit."
+    )
+
+
+def test_work_item_creation_rejects_missing_dependencies(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    missing_id = str(uuid4())
+    rejected = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare dependent work",
+        "objective": "This work references a prerequisite that does not exist",
+        "department": "intelligence-research",
+        "business_id": "digital-products",
+        "depends_on": [missing_id],
+    })
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == f"Dependency {missing_id} does not exist."
+
+def test_delegation_planning_rejects_non_draft_parent(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Already approved work",
+        "objective": "This task has already moved beyond draft planning",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    }).json()
+    store = app.dependency_overrides[get_store]()
+    from dataclasses import replace
+    current = store.get_work_item(UUID(created["item_id"]))
+    store.save_work_item_with_audit(replace(current, state=TaskState.READY), AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.mark_ready", subject_type="work_item",
+        subject_id=created["item_id"], outcome="recorded", correlation_id="stale-proposal-test",
+    ))
+
+    rejected = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert rejected.status_code == 409
+    assert "unassigned draft work items" in rejected.json()["detail"]
+
+
+def test_stale_delegation_proposal_cannot_reopen_parent_work(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare buyer research",
+        "objective": "Prepare a sourced buyer-demand assessment",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    }).json()
+    proposal_response = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert proposal_response.status_code == 200
+    proposal_id = proposal_response.json()["id"]
+
+    store = app.dependency_overrides[get_store]()
+    from dataclasses import replace
+    current = store.get_work_item(UUID(created["item_id"]))
+    store.save_work_item_with_audit(replace(current, state=TaskState.READY), AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.advance_parent", subject_type="work_item",
+        subject_id=created["item_id"], outcome="recorded", correlation_id="stale-proposal-test",
+    ))
+
+    rejected = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals/{proposal_id}/approve",
+        headers=headers,
+    )
+    assert rejected.status_code == 409
+    assert "changed after planning" in rejected.json()["detail"]
+    assert store.get_work_item(UUID(created["item_id"])).state == TaskState.READY
+    assert len(store.list_work_items(business_id="physical-agency", limit=1000)) == 1
+
+def test_delegation_rejects_paused_department_manager(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    store = app.dependency_overrides[get_store]()
+    manager = next(
+        agent for agent in store.list_agents(department="intelligence-research", limit=1000)
+        if agent.team_key == "management"
+    )
+    from dataclasses import replace
+    store.save_agent(replace(manager, state=AgentState.PAUSED, revision=manager.revision + 1))
+
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research buyer demand",
+        "objective": "Prepare a sourced buyer-demand assessment",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    }).json()
+    rejected = owner_client.post(
+        f"/work-items/{created['item_id']}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert rejected.status_code == 409
+    assert "must be ACTIVE" in rejected.json()["detail"]
+
+def test_executive_portfolio_groups_work_and_filters_business_units(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    first = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research global buyer demand",
+        "objective": "Prepare evidence for international buyer demand",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    })
+    second = owner_client.post("/work-items", headers=headers, json={
+        "title": "Prepare digital product opportunity",
+        "objective": "Assess a downloadable product opportunity",
+        "department": "product-innovation",
+        "business_id": "digital-products",
+    })
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    portfolio = owner_client.get("/executive/portfolio", headers=headers)
+    assert portfolio.status_code == 200
+    payload = portfolio.json()
+    assert payload["platform"] == "opencompany-aios"
+    assert payload["business_filter"] == "all"
+    assert payload["summary"]["work_item_count"] == 2
+    assert payload["summary"]["department_count"] == 2
+    assert {item["business_id"] for item in payload["work_items"]} == {
+        "physical-agency", "digital-products",
+    }
+    assert all(item["deliverable_count"] == 0 for item in payload["work_items"])
+    assert payload["execution_or_external_actions_performed"] is False
+
+    filtered = owner_client.get(
+        "/executive/portfolio?business_id=physical-agency", headers=headers,
+    )
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["business_filter"] == "physical-agency"
+    assert filtered_payload["summary"]["work_item_count"] == 1
+    assert all(item["business_id"] == "physical-agency"
+               for item in filtered_payload["work_items"])
+
+    invalid = owner_client.get(
+        "/executive/portfolio?business_id=not-a-business", headers=headers,
+    )
+    assert invalid.status_code == 422
+
+
+def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research international buyer demand",
+        "objective": "Prepare a sourced buyer-demand assessment for the physical agency",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    })
+    assert created.status_code == 200
+    item_id = created.json()["item_id"]
+    proposed = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert proposed.status_code == 200
+    proposal_id = proposed.json()["id"]
+
+    before = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+    assert before.status_code == 200
+    assert before.json()["work_item"]["business_id"] == "physical-agency"
+    assert before.json()["delegation_proposals"][0]["status"] == "draft"
+    assert before.json()["child_work_items"]
+    assert all(not child["materialized"] for child in before.json()["child_work_items"])
+
+    approved = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals/{proposal_id}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+
+    after = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+    assert after.status_code == 200
+    payload = after.json()
+    assert payload["work_item"]["state"] == "ready"
+    assert payload["manager"]["state"] == "active"
+    assert payload["manager"]["role_key"]
+    assert payload["delegation_proposals"][0]["status"] == "approved"
+    assert payload["child_work_items"]
+    assert all(child["materialized"] for child in payload["child_work_items"])
+    assert all(child["state"] == "ready" for child in payload["child_work_items"])
+    assert payload["manager_synthesis"]["ready"] is False
+    assert payload["manager_synthesis"]["requires_completed_child_deliverables"] is True
+    assert payload["manager_synthesis"]["queue_admission_requires_owner_action"] is True
+    assert len(payload["manager_synthesis"]["blocked_by"]) == len(payload["child_work_items"])
+    assert all(value["state"] == "ready" for value in payload["dependencies"])
+    assert payload["external_actions_performed"] is False
+
