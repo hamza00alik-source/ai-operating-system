@@ -2467,6 +2467,8 @@ def create_ai_manager_proposal(
     item = store.get_work_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state != TaskState.DRAFT or item.assigned_agent_id is not None:
+        raise HTTPException(status_code=409, detail="Manager planning is allowed only for unassigned draft work items.")
     manager_role = default_organization().get(item.department).manager_role_key
     manager = next(
         (agent for agent in store.list_agents(limit=1000)
@@ -2558,6 +2560,8 @@ def create_work_item_delegation_proposal(
     item = store.get_work_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state != TaskState.DRAFT or item.assigned_agent_id is not None:
+        raise HTTPException(status_code=409, detail="Delegation planning is allowed only for unassigned draft work items.")
     try:
         plan = plan_department_work(item, payload.required_capabilities, max_specialists=payload.max_specialists)
     except (LookupError, ValueError) as exc:
@@ -2610,6 +2614,8 @@ def approve_work_item_delegation_proposal(
     parent = store.get_work_item(item_id)
     if parent is None:
         raise HTTPException(status_code=404, detail="Parent work item not found.")
+    if parent.state != TaskState.DRAFT or parent.assigned_agent_id is not None:
+        raise HTTPException(status_code=409, detail="The parent work item changed after planning; create a fresh draft proposal.")
     proposal = delegations.get_proposal(proposal_id)
     if proposal is None or proposal["parent_work_item_id"] != str(item_id):
         raise HTTPException(status_code=404, detail="Delegation proposal not found for this parent.")
