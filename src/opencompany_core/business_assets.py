@@ -140,7 +140,7 @@ class BusinessAssetRegistry:
             item=self._get(business_id,asset_id)
             if item["storage_key"] is not None: raise ValueError("asset has already been stored")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("stored asset checksum or size does not match declaration")
-            expected_prefix = hashlib.sha256((business_id + "\\0" + item["asset_scope_id"]).encode("utf-8")).hexdigest()
+            expected_prefix = hashlib.sha256((business_id + "\0" + item["asset_scope_id"]).encode("utf-8")).hexdigest()
             expected_storage_key = expected_prefix + "/" + item["asset_id"] + ".blob"
             if not isinstance(storage_key, str) or storage_key != expected_storage_key:
                 raise ValueError("storage key does not match this business asset's private scope")
