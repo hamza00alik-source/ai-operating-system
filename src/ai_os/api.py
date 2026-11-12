@@ -243,7 +243,7 @@ def post_unorouter_personal_test(payload: ModelRunRequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/llm/test", dependencies=[Depends(require_api_key)])
+@app.post("/llm/test", dependencies=[Depends(require_owner_key)])
 def post_llm_test(payload: ModelRunRequest):
     try:
         if payload.provider == "auto":
@@ -259,7 +259,7 @@ def post_llm_test(payload: ModelRunRequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/llm/run", dependencies=[Depends(require_api_key)])
+@app.post("/llm/run", dependencies=[Depends(require_owner_key)])
 def post_llm_run(payload: ModelRunRequest):
     try:
         return generate_with_fallback(payload.prompt) if payload.provider == "auto" else generate(payload.provider, payload.prompt)
@@ -568,7 +568,7 @@ def get_tasks():
     return list_tasks()
 
 
-@app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
+@app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_owner_key)])
 def execute_task(task_id: str):
     try:
         if not task_is_runnable(task_id):
@@ -580,7 +580,7 @@ def execute_task(task_id: str):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.post("/agent-runs/{run_id}/retry", status_code=202, dependencies=[Depends(require_api_key)])
+@app.post("/agent-runs/{run_id}/retry", status_code=202, dependencies=[Depends(require_owner_key)])
 def retry_agent_run(run_id: str):
     try:
         return retry_run(run_id)
@@ -693,7 +693,7 @@ def post_free_api_catalog_sync():
         raise HTTPException(status_code=502, detail=f"Free API catalog sync failed: {exc}") from exc
 
 
-@app.post("/discovery/scans", status_code=202, dependencies=[Depends(require_api_key)])
+@app.post("/discovery/scans", status_code=202, dependencies=[Depends(require_owner_key)])
 def post_discovery_scan(payload: DiscoveryScanCreate):
     try:
         return create_scan(payload.categories)
