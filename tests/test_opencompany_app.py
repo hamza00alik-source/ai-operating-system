@@ -2038,6 +2038,7 @@ def test_workflow_reconciliation_is_owner_authenticated_and_does_not_start_worke
 
 
 def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempotently(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK", "false")
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
     assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
