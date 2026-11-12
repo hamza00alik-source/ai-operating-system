@@ -154,3 +154,58 @@ class PrivateFilesystemAssetStorage:
             "checksum_sha256": actual_hash,
             "byte_size": total,
         }
+
+    async def store_stream(
+        self,
+        *,
+        business_id: str,
+        asset_scope_id: str,
+        asset_id: str,
+        expected_sha256: str,
+        expected_size: int,
+        chunks,
+    ) -> dict[str, str | int]:
+        """Bounded async request streaming without buffering the whole upload in RAM."""
+        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or not 0 <= expected_size <= MAX_ASSET_BYTES:
+            raise AssetStorageError("expected_size is outside the supported limit")
+        fd, staging_name = tempfile.mkstemp(prefix=".incoming-", suffix=".part", dir=self.root)
+        staging_path = Path(staging_name)
+        total = 0
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                async for chunk in chunks:
+                    if not isinstance(chunk, (bytes, bytearray, memoryview)):
+                        raise AssetStorageError("asset stream must contain bytes")
+                    data = bytes(chunk)
+                    total += len(data)
+                    if total > MAX_ASSET_BYTES or total > expected_size:
+                        raise AssetStorageError("received asset exceeds its declared size or the 100 MiB limit")
+                    stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if total != expected_size:
+                raise AssetStorageError("received asset size does not match its declaration")
+
+            def staged_chunks():
+                with staging_path.open("rb") as source:
+                    while True:
+                        block = source.read(1024 * 1024)
+                        if not block:
+                            break
+                        yield block
+
+            return self.store(
+                business_id=business_id,
+                asset_scope_id=asset_scope_id,
+                asset_id=asset_id,
+                expected_sha256=expected_sha256,
+                expected_size=expected_size,
+                chunks=staged_chunks(),
+            )
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            staging_path.unlink(missing_ok=True)
