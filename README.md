@@ -156,3 +156,16 @@ The task router classifies a prompt as coding, reasoning, research, creative, or
 The selected model ID is used for that request and recorded in run metadata. The saved model remains a fallback preference in ranking, not a requirement to manually configure every model. If no eligible free chat model can be verified, the UnoRouter route fails closed and the normal free-confirmed provider failover may continue. Paid models are never candidates for automatic task routing.
 
 This is a metadata/name heuristic, not a benchmark or a guarantee that a model is best. It does not run background benchmark prompts or make extra inference calls. Provider rate limits, availability, and actual billing behavior remain controlled by UnoRouter. Only owner-authorized task execution sends the task prompt; catalogue discovery itself is read-only.
+
+
+## Social media and video production workspace
+
+The Owner Console includes a supervised Social Media & Video department and persistent draft workspace:
+- `GET /social/status` — integration readiness; returns credential-presence booleans only.
+- `GET /social/content` — list saved social drafts and video briefs.
+- `POST /social/content?kind=social_post` — owner-authenticated draft creation.
+- `POST /social/content?kind=video_brief` — owner-authenticated video brief creation.
+- `POST /social/content/{id}/request-approval` — creates a linked AIOS approval record.
+- `POST /social/content/{id}/decision` — records the owner decision and marks approval for scheduling only.
+
+This release does not publish, schedule, upload media, invoke Canva, or generate video. Metricool, Canva and video provider readiness is reported without exposing secrets; credentials must be configured privately on the server. Presence of a key does not prove a free quota or production integration. External execution remains disabled until a provider adapter, tests, cost controls and owner approval are implemented.
