@@ -3173,3 +3173,16 @@ def list_business_unit_events(
     if registry.get(business_id) is None:
         raise HTTPException(status_code=404, detail="Business unit not found.")
     return {"items": list(registry.events(business_id))}
+
+
+@app.get("/business-units/{business_id}/activation-readiness", dependencies=[Depends(require_owner_key)])
+def get_business_unit_activation_readiness(
+    business_id: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Inspect activation blockers without activating or mutating a business unit."""
+    try:
+        report = _business_unit_registry(runtime).activation_readiness(business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"readiness": report}
