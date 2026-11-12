@@ -2069,6 +2069,10 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
         assert active.status_code == 200
         agents[profile["id"]]["revision"] = active.json()["agent"]["revision"]
 
+    agents = {
+        agent["id"]: agent
+        for agent in owner_client.get("/agents", headers=headers).json()["agents"]
+    }
     manager = next(
         value for value in agents.values()
         if value["role_key"] == "market_intelligence_analyst"
