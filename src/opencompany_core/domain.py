@@ -53,6 +53,7 @@ class BusinessUnit(StrEnum):
 
 
 BUSINESS_UNIT_IDS = frozenset(item.value for item in BusinessUnit)
+_BUSINESS_ID_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
 
 class AttemptState(StrEnum):
@@ -115,8 +116,8 @@ class WorkItem:
         _require_text(self.objective, "objective", maximum=12000)
         _require_text(self.department, "department", maximum=80)
         _require_utc(self.created_at, "created_at")
-        if self.business_id not in BUSINESS_UNIT_IDS:
-            raise ValueError(f"unknown business unit: {self.business_id}")
+        if not isinstance(self.business_id, str) or not _BUSINESS_ID_SLUG.fullmatch(self.business_id):
+            raise ValueError("business_id must be a 2-63 character lowercase slug")
         if self.id in self.depends_on:
             raise ValueError("a work item cannot depend on itself")
         if len(set(self.depends_on)) != len(self.depends_on):

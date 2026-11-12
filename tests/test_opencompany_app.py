@@ -1,4 +1,5 @@
 import pytest
+import hashlib
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from uuid import UUID, uuid4
@@ -7,6 +8,7 @@ import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
 from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
@@ -1622,3 +1624,419 @@ def test_unknown_business_unit_is_rejected(owner_client):
         },
     )
     assert response.status_code == 422
+
+
+def test_finance_ledger_routes_require_owner_and_never_initiate_payments(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "business_id": "physical-agency",
+        "entry_type": "expense",
+        "amount_minor": 4999,
+        "currency": "USD",
+        "description": "Recorded expense request; no purchase made",
+        "confirm_owner_record": True,
+    }
+    unauthorized = owner_client.post("/finance/entries", json=payload)
+    assert unauthorized.status_code == 401
+
+    missing_confirmation = owner_client.post(
+        "/finance/entries", headers=headers,
+        json={**payload, "confirm_owner_record": False},
+    )
+    assert missing_confirmation.status_code == 422
+
+    created = owner_client.post("/finance/entries", headers=headers, json=payload)
+    assert created.status_code == 200
+    result = created.json()
+    assert result["recorded"] is True
+    assert result["external_payment_initiated"] is False
+    assert result["spending_authorized"] is False
+
+    entry_id = result["entry_id"]
+    review = owner_client.post(
+        f"/finance/entries/{entry_id}/review", headers=headers,
+        json={"action": "owner_approved", "rationale": "Approved as an internal record only.",
+              "confirm_owner_decision": True},
+    )
+    assert review.status_code == 200
+    assert review.json()["external_payment_initiated"] is False
+    assert review.json()["spending_authorized"] is False
+    duplicate_review = owner_client.post(
+        f"/finance/entries/{entry_id}/review", headers=headers,
+        json={"action": "owner_rejected", "rationale": "Conflicting second decision",
+              "confirm_owner_decision": True},
+    )
+    assert duplicate_review.status_code == 422
+
+    listed = owner_client.get("/finance/entries?business_id=physical-agency", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["entries"][0]["latest_review_action"] == "owner_approved"
+
+
+def test_finance_review_rejects_missing_owner_confirmation(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/finance/entries", headers=headers, json={
+        "business_id": "physical-brand", "entry_type": "revenue",
+        "amount_minor": 100, "currency": "PKR", "description": "Test revenue",
+        "confirm_owner_record": True,
+    })
+    assert created.status_code == 200
+    response = owner_client.post(
+        f"/finance/entries/{created.json()['entry_id']}/review",
+        headers=headers,
+        json={"action": "owner_verified", "rationale": "test",
+              "confirm_owner_decision": False},
+    )
+    assert response.status_code == 422
+
+
+
+def test_business_credentials_are_owner_scoped_encrypted_and_never_returned(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "credential_key": "marketplace-api",
+        "secret": {"api_key": "do-not-return-this-secret"},
+        "confirm_owner_storage": True,
+    }
+    unauthorized = owner_client.post(
+        "/business-units/physical-agency/credentials", json=payload
+    )
+    assert unauthorized.status_code == 401
+    missing_confirmation = owner_client.post(
+        "/business-units/physical-agency/credentials", headers=headers,
+        json={**payload, "confirm_owner_storage": False},
+    )
+    assert missing_confirmation.status_code == 422
+    stored = owner_client.post(
+        "/business-units/physical-agency/credentials", headers=headers, json=payload
+    )
+    assert stored.status_code == 200
+    assert stored.json()["external_connection_attempted"] is False
+    assert "do-not-return-this-secret" not in stored.text
+    status = owner_client.get(
+        "/business-units/physical-agency/credentials", headers=headers
+    )
+    assert status.status_code == 200
+    assert status.json()["credentials"][0]["credential_key"] == "marketplace-api"
+    assert "do-not-return-this-secret" not in status.text
+    isolated = owner_client.get(
+        "/business-units/physical-brand/credentials", headers=headers
+    )
+    assert isolated.status_code == 200
+    assert isolated.json()["count"] == 0
+    deleted = owner_client.request(
+        "DELETE", "/business-units/physical-agency/credentials/marketplace-api",
+        headers=headers, json={"confirm_owner_deletion": True},
+    )
+    assert deleted.status_code == 200
+
+
+
+
+def test_business_integration_registry_requires_owner_and_never_connects(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    credential = owner_client.post(
+        "/business-units/physical-agency/credentials", headers=headers,
+        json={"credential_key": "marketplace-api", "secret": {"api_key": "integration-secret"},
+              "confirm_owner_storage": True},
+    )
+    assert credential.status_code == 200
+    payload = {
+        "provider_key": "marketplace-x", "display_name": "Marketplace X",
+        "credential_key": "marketplace-api", "permissions": ["catalog:read", "orders:read"],
+        "rationale": "Read-only marketplace discovery",
+        "confirm_owner_registration": True,
+    }
+    unauthorized = owner_client.post(
+        "/business-units/physical-agency/integrations", json=payload
+    )
+    assert unauthorized.status_code == 401
+    unconfirmed = owner_client.post(
+        "/business-units/physical-agency/integrations", headers=headers,
+        json={**payload, "confirm_owner_registration": False},
+    )
+    assert unconfirmed.status_code == 422
+    registered = owner_client.post(
+        "/business-units/physical-agency/integrations", headers=headers, json=payload
+    )
+    assert registered.status_code == 200
+    body = registered.json()
+    assert body["integration"]["status"] == "pending_review"
+    assert body["external_connection_attempted"] is False
+    assert "integration-secret" not in registered.text
+    listed = owner_client.get(
+        "/business-units/physical-agency/integrations", headers=headers
+    )
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["external_connections_enabled"] is False
+    isolated = owner_client.get(
+        "/business-units/physical-brand/integrations", headers=headers
+    )
+    assert isolated.status_code == 200
+    assert isolated.json()["count"] == 0
+    integration_id = body["integration"]["integration_id"]
+    history = owner_client.get(
+        f"/business-units/physical-agency/integrations/{integration_id}/events",
+        headers=headers,
+    )
+    assert history.status_code == 200
+    assert history.json()["events"][0]["action"] == "registered"
+    removed = owner_client.request(
+        "DELETE", "/business-units/physical-agency/credentials/marketplace-api",
+        headers=headers, json={"confirm_owner_deletion": True},
+    )
+    assert removed.status_code == 200
+    after_removal = owner_client.get(
+        "/business-units/physical-agency/integrations", headers=headers
+    )
+    assert after_removal.status_code == 200
+    assert after_removal.json()["integrations"][0]["credential_available"] is False
+
+
+
+
+def test_business_memory_api_requires_owner_confirmation_and_isolates_units(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "memory_key": "buyer-profile", "category": "strategy",
+        "content": "International wholesale buyers", "source": "owner research note",
+        "confirm_owner_write": True,
+    }
+    unauthorized = owner_client.post("/business-units/physical-agency/memory", json=payload)
+    assert unauthorized.status_code == 401
+    unconfirmed = owner_client.post(
+        "/business-units/physical-agency/memory", headers=headers,
+        json={**payload, "confirm_owner_write": False},
+    )
+    assert unconfirmed.status_code == 422
+    saved = owner_client.post("/business-units/physical-agency/memory", headers=headers, json=payload)
+    assert saved.status_code == 200
+    assert saved.json()["memory"]["revision"] == 1
+    assert saved.json()["agent_writes_enabled"] is False
+    listed = owner_client.get("/business-units/physical-agency/memory", headers=headers)
+    assert listed.status_code == 200 and listed.json()["count"] == 1
+    isolated = owner_client.get("/business-units/physical-brand/memory", headers=headers)
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    history = owner_client.get(
+        "/business-units/physical-agency/memory/buyer-profile/history", headers=headers
+    )
+    assert history.status_code == 200 and len(history.json()["history"]) == 1
+    forgotten = owner_client.request(
+        "DELETE", "/business-units/physical-agency/memory/buyer-profile", headers=headers,
+        json={"confirm_owner_forget": True},
+    )
+    assert forgotten.status_code == 200
+    assert forgotten.json()["historical_versions_retained"] is True
+    after = owner_client.get("/business-units/physical-agency/memory", headers=headers)
+    assert after.status_code == 200 and after.json()["count"] == 0
+
+
+
+def test_business_asset_upload_is_owner_confirmed_private_and_unavailable(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    payload_bytes = b"glTF" + b"\x02\x00\x00\x00" + b"\x18\x00\x00\x00" + b"test"
+    digest = hashlib.sha256(payload_bytes).hexdigest()
+    declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
+        "asset_key": "demo-model", "title": "Demo model", "asset_type": "3d-model",
+        "filename": "demo.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": digest, "byte_size": len(payload_bytes),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    assert declared.status_code == 200
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+
+    no_confirmation = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary"},
+        content=payload_bytes,
+    )
+    assert no_confirmation.status_code == 422
+
+    uploaded = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload_bytes,
+    )
+    assert uploaded.status_code == 200
+    result = uploaded.json()
+    assert result["checksum_verified"] is True
+    assert result["malware_scan_completed"] is False
+    assert result["download_enabled"] is False
+    assert "storage_key" not in result["asset"]
+    listed = owner_client.get("/business-units/digital-products/assets", headers=headers).json()["assets"][0]
+    assert listed["storage_state"] == "private_stored_unscanned"
+    assert listed["status"] == "pending_scan"
+
+    duplicate = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload_bytes,
+    )
+    assert duplicate.status_code == 409
+    assert owner_client.get(
+        f"/business-units/physical-agency/assets/{asset_id}/events", headers=headers
+    ).status_code == 404
+
+
+def test_business_asset_upload_rejects_corrupt_bytes(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    expected = b"correct bytes"
+    declared = owner_client.post("/business-units/physical-agency/assets", headers=headers, json={
+        "asset_key": "checksum-test", "title": "Checksum test", "asset_type": "document",
+        "filename": "notes.txt", "media_type": "text/plain",
+        "checksum_sha256": hashlib.sha256(expected).hexdigest(), "byte_size": len(expected),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    response = owner_client.put(
+        f"/business-units/physical-agency/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "text/plain", "X-Confirm-Owner-Upload": "true"},
+        content=b"tampered bytes",
+    )
+    assert response.status_code == 422
+    assert "checksum" in response.json()["detail"].lower()
+    assert owner_client.get("/business-units/physical-agency/assets", headers=headers).json()["assets"][0]["status"] == "pending_storage"
+
+def test_business_asset_api_is_owner_confirmed_and_metadata_only(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "asset_key": "hero-model", "title": "Hero model", "asset_type": "3d-model",
+        "filename": "hero.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": "a" * 64, "byte_size": 1024,
+        "source": "owner asset manifest", "confirm_owner_declaration": True,
+    }
+    unauthenticated = owner_client.post("/business-units/physical-agency/assets", json=payload)
+    assert unauthenticated.status_code == 401
+    unconfirmed = owner_client.post(
+        "/business-units/physical-agency/assets", headers=headers,
+        json={**payload, "confirm_owner_declaration": False},
+    )
+    assert unconfirmed.status_code == 422
+    declared = owner_client.post("/business-units/physical-agency/assets", headers=headers, json=payload)
+    assert declared.status_code == 200
+    result = declared.json()
+    assert result["file_bytes_received"] is False
+    assert result["asset"]["storage_state"] == "metadata_only"
+    assert "No file was uploaded" in result["message"]
+    asset_id = result["asset"]["asset_id"]
+    listed = owner_client.get("/business-units/physical-agency/assets", headers=headers)
+    assert listed.status_code == 200 and listed.json()["count"] == 1
+    isolated = owner_client.get("/business-units/physical-brand/assets", headers=headers)
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    events = owner_client.get(
+        f"/business-units/physical-agency/assets/{asset_id}/events", headers=headers
+    )
+    assert events.status_code == 200 and len(events.json()["events"]) == 1
+
+
+def test_business_asset_scan_route_records_clean_verdict_but_keeps_download_disabled(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    payload = b"glTF" + b"\x02\x00\x00\x00" + b"\x18\x00\x00\x00" + b"test"
+    digest = hashlib.sha256(payload).hexdigest()
+    declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
+        "asset_key": "scan-demo", "title": "Scan demo", "asset_type": "3d-model",
+        "filename": "scan-demo.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": digest, "byte_size": len(payload),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    assert declared.status_code == 200
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    upload = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload,
+    )
+    assert upload.status_code == 200
+
+    class Scanner:
+        def scan(self, chunks):
+            content = b"".join(chunks)
+            return {
+                "status": "clean", "scanner_key": "clamav-unix-socket",
+                "checksum_sha256": hashlib.sha256(content).hexdigest(),
+                "byte_size": len(content), "verdict": "stream: OK",
+            }
+
+    runtime.asset_scanner = Scanner()
+    unconfirmed = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan", headers=headers
+    )
+    assert unconfirmed.status_code == 422
+    scanned = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers={**headers, "X-Confirm-Owner-Scan": "true"},
+    )
+    assert scanned.status_code == 200
+    assert scanned.json()["scan_status"] == "clean"
+    assert scanned.json()["download_enabled"] is False
+    assert scanned.json()["delivery_approved"] is False
+    listed = owner_client.get("/business-units/digital-products/assets", headers=headers).json()["assets"][0]
+    assert listed["storage_state"] == "private_scanned_clean"
+    assert listed["status"] == "pending_delivery_approval"
+    history = owner_client.get(
+        f"/business-units/digital-products/assets/{asset_id}/events", headers=headers
+    ).json()["events"]
+    assert [event["action"] for event in history][-1] == "scan_clean"
+
+
+def test_private_download_requires_clean_scan_and_owner_confirmation(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    payload = b"glTF" + b"\\x02\\x00\\x00\\x00" + b"\\x18\\x00\\x00\\x00" + b"test"
+    digest = hashlib.sha256(payload).hexdigest()
+    declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
+        "asset_key": "download-demo", "title": "Download demo", "asset_type": "3d-model",
+        "filename": "download-demo.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": digest, "byte_size": len(payload),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    assert declared.status_code == 200
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    uploaded = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload,
+    )
+    assert uploaded.status_code == 200
+    url = f"/business-units/digital-products/assets/{asset_id}/download"
+    blocked = owner_client.get(url, headers={**headers, "X-Confirm-Owner-Download": "true"})
+    assert blocked.status_code == 409
+    unconfirmed = owner_client.get(url, headers=headers)
+    assert unconfirmed.status_code == 422
+
+    class Scanner:
+        def scan(self, chunks):
+            content = b"".join(chunks)
+            return {"status": "clean", "scanner_key": "clamav-unix-socket",
+                    "checksum_sha256": hashlib.sha256(content).hexdigest(),
+                    "byte_size": len(content), "verdict": "stream: OK"}
+
+    runtime.asset_scanner = Scanner()
+    scanned = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers={**headers, "X-Confirm-Owner-Scan": "true"},
+    )
+    assert scanned.status_code == 200
+    downloaded = owner_client.get(url, headers={**headers, "X-Confirm-Owner-Download": "true"})
+    assert downloaded.status_code == 200
+    assert downloaded.content == payload
+    assert downloaded.headers["content-disposition"] == 'attachment; filename="download-demo.glb"'
+    assert downloaded.headers["cache-control"] == "private, no-store, max-age=0"
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+
+    declaration = runtime.business_assets.scan_declaration("digital-products", asset_id)
+    stored_path = runtime.asset_storage.root / declaration["storage_key"]
+    stored_path.write_bytes(b"tampered after scan")
+    tampered = owner_client.get(url, headers={**headers, "X-Confirm-Owner-Download": "true"})
+    assert tampered.status_code == 503

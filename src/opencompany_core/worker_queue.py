@@ -15,6 +15,7 @@ from threading import RLock
 from uuid import UUID, uuid4
 
 from .domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
+from .business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,15 @@ class DurableWorkerQueue:
             "CREATE INDEX IF NOT EXISTS idx_worker_queue_ready "
             "ON worker_queue(state, created_at)"
         )
+        self._business_units = BusinessUnitRegistry(self._db, self._lock)
+
+    def _assert_operational_scope(self, business_id: str) -> None:
+        if business_id == "core":
+            return
+        try:
+            self._business_units.require_operational(business_id)
+        except BusinessUnitProvisioningError as exc:
+            raise QueueError(str(exc)) from exc
 
     def close(self) -> None:
         if self._owns_connection:
@@ -119,8 +129,13 @@ class DurableWorkerQueue:
                     "SELECT state,department,role_key,team_key FROM agent_profiles WHERE id=?",
                     (str(agent_id),),
                 ).fetchone()
+                if task is None:
+                    raise QueueError("work item does not exist")
+                if task["business_id"] != item.business_id:
+                    raise QueueError("work item business-unit identity changed")
+                self._assert_operational_scope(task["business_id"])
                 if (
-                    task is None or task["state"] != TaskState.READY.value
+                    task["state"] != TaskState.READY.value
                     or task["assigned_agent_id"] != str(agent_id)
                 ):
                     raise QueueError("work item changed or is not READY for this assignee")
@@ -201,6 +216,10 @@ class DurableWorkerQueue:
             raise ValueError("payload exceeds 24000 characters")
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
+            task = self._db.execute("SELECT business_id FROM work_items WHERE id=?", (str(work_item_id),)).fetchone()
+            if task is None:
+                raise QueueError("work item does not exist")
+            self._assert_operational_scope(task["business_id"])
             try:
                 self._db.execute(
                     """INSERT INTO worker_queue

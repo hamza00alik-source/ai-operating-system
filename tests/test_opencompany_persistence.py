@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+import pytest
+
 from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.persistence import SQLiteStore
 
@@ -112,7 +114,7 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     assert {"role_key", "team_key"} <= columns
     work_item_columns = {row["name"] for row in store._connection.execute("PRAGMA table_info(work_items)").fetchall()}
     assert "business_id" in work_item_columns
-    assert version == 4
+    assert version == 12
     store.close()
 
 
@@ -159,3 +161,433 @@ def test_work_item_business_unit_cannot_be_changed_after_creation(tmp_path):
         raise AssertionError("business scope must not be mutable after task creation")
     assert store.get_work_item(item_id).business_id == "physical-agency"
     store.close()
+
+
+
+def test_commercial_persistence_rejects_provisioning_business_unit(tmp_path):
+    from opencompany_core.business_units import BusinessUnitRegistry
+    from opencompany_core.venture_portfolio import VenturePortfolio
+
+    store = SQLiteStore(tmp_path / "commercial-business-scope.sqlite3")
+    portfolio = VenturePortfolio(store._connection, store._lock)
+    registry = BusinessUnitRegistry(store._connection, store._lock)
+    opportunity = portfolio.create(
+        title="New software venture", slug="new-software-venture",
+        business_model="software", description="A scoped software service",
+        target_market="International businesses",
+    )
+    portfolio.transition(opportunity["id"], status="researching", rationale="Research started")
+    portfolio.transition(opportunity["id"], status="validated", rationale="Evidence reviewed")
+    approved = portfolio.transition(
+        opportunity["id"], status="approved_to_launch",
+        rationale="Owner approved launch planning", confirm_owner_approval=True,
+    )
+    unit = registry.provision_from_opportunity(
+        portfolio, approved["id"], business_id="new-software-unit",
+        name="New Software Unit", unit_type="software", delivery_class="software-access",
+        description="Software access only", target_market="International businesses",
+        confirm_owner_approval=True,
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    record = {
+        "id": "commercial-opportunity-1", "business_id": unit["business_id"],
+        "customer_name": "Example Customer", "customer_need": "Software access",
+        "created_at": now, "updated_at": now,
+    }
+    try:
+        store.create_commercial_opportunity(record, audit_record("commercial.opportunity.created"))
+    except ValueError as exc:
+        assert "not operational" in str(exc)
+    else:
+        raise AssertionError("provisioning business unit must not create commercial records")
+    assert store.get_commercial_opportunity(record["id"]) is None
+    store.close()
+
+
+
+def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_keys(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "legacy-v7.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript("""
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE commercial_opportunities (
+            id TEXT PRIMARY KEY,
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            customer_name TEXT NOT NULL, customer_contact TEXT, customer_need TEXT NOT NULL,
+            stage TEXT NOT NULL DEFAULT 'new' CHECK(stage IN ('new','qualified','proposal','won','lost','on_hold')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_opportunities_unit ON commercial_opportunities(business_id, created_at);
+        CREATE TABLE commercial_products (
+            id TEXT PRIMARY KEY,
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            name TEXT NOT NULL, description TEXT NOT NULL, category TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','active','archived')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_products_unit ON commercial_products(business_id, status, created_at);
+        CREATE TABLE commercial_quotes (
+            id TEXT PRIMARY KEY,
+            opportunity_id TEXT NOT NULL REFERENCES commercial_opportunities(id),
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            title TEXT NOT NULL, currency TEXT NOT NULL CHECK(length(currency)=3),
+            currency_exponent INTEGER NOT NULL CHECK(currency_exponent BETWEEN 0 AND 3),
+            subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor > 0), terms TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved_for_delivery','accepted','rejected','void')),
+            acceptance_reference TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_quotes_scope ON commercial_quotes(business_id, opportunity_id, created_at);
+        CREATE TABLE commercial_quote_items (
+            id TEXT PRIMARY KEY,
+            quote_id TEXT NOT NULL REFERENCES commercial_quotes(id) ON DELETE CASCADE,
+            product_id TEXT NOT NULL REFERENCES commercial_products(id),
+            description TEXT NOT NULL, quantity INTEGER NOT NULL CHECK(quantity > 0),
+            unit_price_minor INTEGER NOT NULL CHECK(unit_price_minor > 0),
+            line_total_minor INTEGER NOT NULL CHECK(line_total_minor > 0)
+        );
+        CREATE INDEX idx_commercial_quote_items_quote ON commercial_quote_items(quote_id);
+        CREATE TABLE commercial_orders (
+            id TEXT PRIMARY KEY, quote_id TEXT NOT NULL UNIQUE REFERENCES commercial_quotes(id),
+            opportunity_id TEXT NOT NULL REFERENCES commercial_opportunities(id),
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            customer_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'awaiting_owner_fulfilment' CHECK(status IN ('awaiting_owner_fulfilment','in_progress','fulfilled','cancelled')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_orders_scope ON commercial_orders(business_id, status, created_at);
+        CREATE TABLE commercial_suppliers (
+            id TEXT PRIMARY KEY,
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand')),
+            relationship_type TEXT NOT NULL CHECK(relationship_type IN ('agency_supplier','own_brand_supplier')),
+            name TEXT NOT NULL, contact_name TEXT, email TEXT, phone TEXT, country TEXT,
+            product_categories_json TEXT NOT NULL,
+            verification_status TEXT NOT NULL DEFAULT 'draft' CHECK(verification_status IN ('draft','verified','blocked')),
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            CHECK((business_id='physical-agency' AND relationship_type='agency_supplier')
+               OR (business_id='physical-brand' AND relationship_type='own_brand_supplier'))
+        );
+        CREATE INDEX idx_commercial_suppliers_scope ON commercial_suppliers(business_id, verification_status, created_at);
+
+        INSERT INTO commercial_opportunities VALUES
+            ('opp-1','physical-agency','Buyer A','buyer@example.test','Physical goods','qualified','2026-01-01','2026-01-02');
+        INSERT INTO commercial_products VALUES
+            ('prod-1','physical-agency','Salt','Product description','food','active','2026-01-01','2026-01-02');
+        INSERT INTO commercial_quotes VALUES
+            ('quote-1','opp-1','physical-agency','Quote A','USD',2,100,'Terms','draft',NULL,'2026-01-01','2026-01-02');
+        INSERT INTO commercial_quote_items VALUES
+            ('line-1','quote-1','prod-1','Salt',1,100,100);
+        INSERT INTO commercial_orders VALUES
+            ('order-1','quote-1','opp-1','physical-agency','Buyer A','awaiting_owner_fulfilment','2026-01-01','2026-01-02');
+        INSERT INTO commercial_suppliers VALUES
+            ('supplier-1','physical-agency','agency_supplier','Supplier A',NULL,NULL,NULL,'PK','[]','verified','','2026-01-01','2026-01-02');
+        PRAGMA user_version = 7;
+    """)
+    connection.close()
+
+    store = SQLiteStore(path)
+    db = store._connection
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 9
+    assert db.execute("SELECT business_id FROM commercial_opportunities WHERE id='opp-1'").fetchone()[0] == "physical-agency"
+    customer_scope = db.execute(
+        "SELECT customer_scope_id FROM commercial_opportunities WHERE id='opp-1'"
+    ).fetchone()[0]
+    assert customer_scope == db.execute(
+        "SELECT customer_scope_id FROM opencompany_business_units WHERE business_id='physical-agency'"
+    ).fetchone()[0]
+    assert db.execute(
+        "SELECT customer_scope_id FROM commercial_quotes WHERE id='quote-1'"
+    ).fetchone()[0] == customer_scope
+    assert db.execute(
+        "SELECT customer_scope_id FROM commercial_orders WHERE id='order-1'"
+    ).fetchone()[0] == customer_scope
+    assert db.execute("SELECT id FROM commercial_quote_items WHERE id='line-1'").fetchone()[0] == "line-1"
+    assert db.execute("SELECT id FROM commercial_orders WHERE id='order-1'").fetchone()[0] == "order-1"
+    assert db.execute("SELECT id FROM commercial_suppliers WHERE id='supplier-1'").fetchone()[0] == "supplier-1"
+    assert not db.execute("PRAGMA foreign_key_check").fetchall()
+    assert {"idx_commercial_opportunities_unit", "idx_commercial_products_unit",
+            "idx_commercial_quotes_scope", "idx_commercial_quote_items_quote",
+            "idx_commercial_orders_scope", "idx_commercial_suppliers_scope"} <= {
+        row["name"] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ).fetchall()
+    }
+    # The schema accepts a new unit identity; application writes still require
+    # an operational registry record at the persistence boundary.
+    scope_ids = [str(uuid4()) for _ in range(7)]
+    db.execute(
+        """INSERT INTO opencompany_business_units
+           (business_id,name,unit_type,delivery_class,description,target_market,status,
+            namespace_id,customer_scope_id,finance_scope_id,credential_scope_id,
+            integration_scope_id,memory_scope_id,asset_scope_id,created_at,updated_at)
+           VALUES('new-software-unit','New software','software','software-access','Test','Global',
+                  'active',?,?,?,?,?,?,?,?,?)""",
+        (*scope_ids, '2026-01-03', '2026-01-03'),
+    )
+    db.execute(
+        """INSERT INTO commercial_opportunities
+           (id,business_id,customer_scope_id,customer_name,customer_need,stage,created_at,updated_at)
+           VALUES('opp-2','new-software-unit',?,'Buyer B','Software access','new','2026-01-03','2026-01-03')""",
+        (scope_ids[1],),
+    )
+    db.execute(
+        """INSERT INTO commercial_suppliers
+           (id,business_id,relationship_type,name,product_categories_json,created_at,updated_at)
+           VALUES('supplier-2','new-physical-unit','supplier','Supplier B','[]','2026-01-03','2026-01-03')"""
+    )
+    assert db.execute("SELECT COUNT(*) FROM commercial_opportunities").fetchone()[0] == 2
+    assert db.execute("SELECT COUNT(*) FROM commercial_suppliers").fetchone()[0] == 2
+    try:
+        db.execute(
+            """INSERT INTO commercial_opportunities
+               (id,business_id,customer_scope_id,customer_name,customer_need,stage,created_at,updated_at)
+               VALUES('bad-scope','new-software-unit',?,'Buyer C','Wrong scope','new','2026-01-04','2026-01-04')""",
+            (scope_ids[2],),
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("database must reject mismatched business/customer scope")
+    agency_scope = customer_scope
+    try:
+        db.execute(
+            """INSERT INTO commercial_quotes
+               (id,opportunity_id,business_id,customer_scope_id,title,currency,currency_exponent,
+                subtotal_minor,terms,status,created_at,updated_at)
+               VALUES('cross-unit-quote','opp-2','physical-agency',?,'Cross-unit','USD',2,100,
+                      'Terms','draft','2026-01-04','2026-01-04')""",
+            (agency_scope,),
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("database must reject a quote linked across business/customer scopes")
+    try:
+        db.execute(
+            """INSERT INTO commercial_orders
+               (id,quote_id,opportunity_id,business_id,customer_scope_id,customer_name,status,created_at,updated_at)
+               VALUES('cross-unit-order','quote-1','opp-2','physical-agency',?,'Buyer B',
+                      'awaiting_owner_fulfilment','2026-01-04','2026-01-04')""",
+            (agency_scope,),
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("database must reject an order linked across business/customer scopes")
+    try:
+        db.execute(
+            """INSERT INTO commercial_suppliers
+               (id,business_id,relationship_type,name,product_categories_json,created_at,updated_at)
+               VALUES('invalid-supplier','physical-agency','supplier','Invalid','[]','2026-01-04','2026-01-04')"""
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("legacy agency supplier relationship constraint must remain enforced")
+    store.close()
+
+
+def test_finance_ledger_derives_scope_and_is_append_only(tmp_path):
+    import sqlite3
+
+    store = SQLiteStore(tmp_path / "finance-ledger.sqlite3")
+    unit = store._connection.execute(
+        "SELECT finance_scope_id FROM opencompany_business_units WHERE business_id='physical-agency'"
+    ).fetchone()
+    entry = {
+        "id": "agency-revenue-001",
+        "business_id": "physical-agency",
+        # An untrusted caller value is deliberately ignored.
+        "finance_scope_id": "forged-scope",
+        "entry_type": "revenue",
+        "amount_minor": 12500,
+        "currency": "USD",
+        "description": "Owner-confirmed marketplace revenue record",
+        "source_reference": "marketplace-order-001",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    store.create_finance_entry(entry, audit_record("finance.entry.recorded"))
+    rows = store.list_finance_entries(business_id="physical-agency")
+    assert len(rows) == 1
+    assert rows[0]["finance_scope_id"] == unit["finance_scope_id"]
+    assert rows[0]["latest_review_action"] == "recorded"
+    assert store.list_finance_entries(business_id="physical-brand") == ()
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "UPDATE opencompany_finance_entries SET amount_minor=1 WHERE id=?",
+                ("agency-revenue-001",),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_units SET finance_scope_id='changed-scope' WHERE business_id='physical-agency'"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "DELETE FROM opencompany_finance_entry_events WHERE entry_id=?",
+                ("agency-revenue-001",),
+            )
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_finance_ledger_rejects_invalid_money_and_cross_scope_records(tmp_path):
+    import sqlite3
+    import pytest
+
+    store = SQLiteStore(tmp_path / "finance-ledger-constraints.sqlite3")
+    base = {
+        "id": "finance-invalid-001",
+        "business_id": "physical-agency",
+        "entry_type": "expense",
+        "amount_minor": 100,
+        "currency": "USD",
+        "description": "Test entry",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    invalid = dict(base, amount_minor=True)
+    with pytest.raises(ValueError, match="positive integer"):
+        store.create_finance_entry(invalid, audit_record("finance.invalid"))
+    invalid_currency = dict(base, id="finance-invalid-002", currency="usd")
+    with pytest.raises(ValueError, match="uppercase"):
+        store.create_finance_entry(invalid_currency, audit_record("finance.invalid"))
+    store.create_finance_entry(dict(base, id="finance-valid-003"), audit_record("finance.recorded"))
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError):
+            store._connection.execute(
+                """INSERT INTO opencompany_finance_entry_events
+                   (event_id,entry_id,business_id,finance_scope_id,action,actor_type,occurred_at)
+                   VALUES('forged-event','finance-valid-003','physical-brand',
+                          (SELECT finance_scope_id FROM opencompany_business_units WHERE business_id='physical-brand'),
+                          'owner_approved','owner','2026-11-12T00:00:00+00:00')"""
+            )
+    store.close()
+
+
+def test_business_credential_vault_encrypts_and_isolates_business_scopes(tmp_path, monkeypatch):
+    import sqlite3
+    from opencompany_core.secret_vault import BusinessCredentialVault
+
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    store = SQLiteStore(tmp_path / "business-credentials.sqlite3")
+    vault = BusinessCredentialVault(store._connection, store._lock)
+    event = audit_record("business.credential.stored")
+    revision = vault.put(
+        "physical-agency", "marketplace-api",
+        {"api_key": "agency-secret-value", "endpoint": "https://example.invalid"},
+        event,
+    )
+    assert revision == 1
+    assert vault.get("physical-agency", "marketplace-api")["api_key"] == "agency-secret-value"
+    assert vault.get("physical-brand", "marketplace-api") is None
+    assert vault.list_status("physical-agency")[0]["credential_key"] == "marketplace-api"
+    with store._lock:
+        row = store._connection.execute(
+            "SELECT ciphertext FROM opencompany_business_credentials WHERE business_id='physical-agency'"
+        ).fetchone()
+        assert b"agency-secret-value" not in bytes(row["ciphertext"])
+    rotated = vault.put(
+        "physical-agency", "marketplace-api",
+        {"api_key": "agency-secret-rotated"}, audit_record("business.credential.rotated"),
+    )
+    assert rotated == 2
+    assert vault.get("physical-agency", "marketplace-api")["api_key"] == "agency-secret-rotated"
+    assert vault.delete(
+        "physical-agency", "marketplace-api", audit_record("business.credential.deleted")
+    ) is True
+    assert vault.get("physical-agency", "marketplace-api") is None
+    events = store._connection.execute(
+        "SELECT action FROM opencompany_business_credential_events WHERE business_id='physical-agency' ORDER BY occurred_at,event_id"
+    ).fetchall()
+    assert {row["action"] for row in events} == {"stored", "rotated", "deleted"}
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_units SET credential_scope_id='changed-credential-scope' WHERE business_id='physical-agency'"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "DELETE FROM opencompany_business_credential_events WHERE business_id='physical-agency'"
+            )
+    store.close()
+
+
+def test_business_credential_vault_rejects_non_owner_and_unknown_units(tmp_path, monkeypatch):
+    from opencompany_core.secret_vault import BusinessCredentialVault
+
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    store = SQLiteStore(tmp_path / "business-credentials-gates.sqlite3")
+    vault = BusinessCredentialVault(store._connection, store._lock)
+    system_event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="system",
+        actor_id="worker", action="credential.write", subject_type="credential",
+        subject_id="x", outcome="blocked", correlation_id="corr", details={},
+    )
+    with pytest.raises(PermissionError):
+        vault.put("physical-agency", "marketplace-api", {"api_key": "secret"}, system_event)
+    with pytest.raises(ValueError, match="unknown business"):
+        vault.put("unknown-unit", "marketplace-api", {"api_key": "secret"}, audit_record("credential.write"))
+    store.close()
+
+
+def test_business_integration_registry_isolated_and_never_connects(tmp_path, monkeypatch):
+    import sqlite3
+    from opencompany_core.integration_registry import BusinessIntegrationRegistry
+    from opencompany_core.secret_vault import BusinessCredentialVault
+
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    store = SQLiteStore(tmp_path / "business-integrations.sqlite3")
+    credentials = BusinessCredentialVault(store._connection, store._lock)
+    integrations = BusinessIntegrationRegistry(store._connection, store._lock)
+    credentials.put(
+        "physical-agency", "marketplace-api", {"api_key": "agency-only-secret"},
+        audit_record("business.credential.stored"),
+    )
+    result = integrations.register(
+        "physical-agency", provider_key="marketplace-x",
+        display_name="Marketplace X", credential_key="marketplace-api",
+        permissions=["catalog:read", "orders:read"],
+        audit=audit_record("business.integration.registered"),
+        rationale="Read-only discovery integration",
+    )
+    assert result["status"] == "pending_review"
+    assert result["network_connection_attempted"] is False
+    assert integrations.list("physical-agency")[0]["permissions"] == ["catalog:read", "orders:read"]
+    assert integrations.list("physical-agency")[0]["credential_available"] is True
+    assert integrations.list("physical-brand") == ()
+    assert credentials.delete(
+        "physical-agency", "marketplace-api", audit_record("business.credential.deleted")
+    ) is True
+    assert integrations.list("physical-agency")[0]["credential_available"] is False
+    assert integrations.events("physical-agency", result["integration_id"])[0]["action"] == "registered"
+    with pytest.raises(ValueError, match="stored credential"):
+        integrations.register(
+            "physical-brand", provider_key="marketplace-x",
+            display_name="Marketplace X", credential_key="marketplace-api",
+            permissions=["catalog:read"], audit=audit_record("business.integration.registered"),
+        )
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_integrations SET integration_scope_id='changed' "
+                "WHERE integration_id=?", (result["integration_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_integrations SET status='paused' "
+                "WHERE integration_id=?", (result["integration_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "DELETE FROM opencompany_business_integrations WHERE integration_id=?",
+                (result["integration_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "DELETE FROM opencompany_business_integration_events WHERE integration_id=?",
+                (result["integration_id"],),
+            )
+    store.close()
+
+

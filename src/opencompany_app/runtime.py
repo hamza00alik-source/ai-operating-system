@@ -24,7 +24,12 @@ from opencompany_core.learning_store import LearningRepository
 from opencompany_core.github_evolution import GitHubEvolutionClient
 from opencompany_core.api_anything import ApiAnythingClient
 from opencompany_core.research_broker import ResearchBroker
-from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
+from opencompany_core.secret_vault import BusinessCredentialVault, ProviderSecretVault, SecretVaultError
+from opencompany_core.integration_registry import BusinessIntegrationRegistry
+from opencompany_core.business_memory import BusinessMemoryStore
+from opencompany_core.business_assets import BusinessAssetRegistry
+from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
+from opencompany_core.asset_scanning import ClamAVUnixSocketScanner
 from opencompany_core.model_usage import ModelUsageRepository
 
 
@@ -42,6 +47,12 @@ class OpenCompanyRuntime:
     github_evolution: GitHubEvolutionClient | None
     api_anything: ApiAnythingClient | None
     secret_vault: ProviderSecretVault
+    business_credentials: BusinessCredentialVault
+    integrations: BusinessIntegrationRegistry
+    business_memory: BusinessMemoryStore
+    business_assets: BusinessAssetRegistry
+    asset_storage: PrivateFilesystemAssetStorage | None
+    asset_scanner: ClamAVUnixSocketScanner | None
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
@@ -151,6 +162,29 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     handoffs = HandoffRepository(store._connection, store._lock)
     learning = LearningRepository(store._connection, store._lock)
     secret_vault = ProviderSecretVault(store._connection, store._lock)
+    business_credentials = BusinessCredentialVault(store._connection, store._lock)
+    integrations = BusinessIntegrationRegistry(store._connection, store._lock)
+    business_memory = BusinessMemoryStore(store._connection, store._lock)
+    business_assets = BusinessAssetRegistry(store._connection, store._lock)
+    asset_storage_path = os.environ.get("OPENCOMPANY_ASSET_STORAGE_PATH", "").strip()
+    asset_storage = None
+    if asset_storage_path:
+        durable_confirmed = os.environ.get("OPENCOMPANY_ASSET_STORAGE_DURABLE", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        storage_path = Path(asset_storage_path).expanduser()
+        data_mount = Path("/data")
+        if not durable_confirmed or not storage_path.is_absolute() or ".." in storage_path.parts or storage_path == data_mount or not storage_path.is_relative_to(data_mount):
+            raise RuntimeError("asset storage requires an absolute path under /data and OPENCOMPANY_ASSET_STORAGE_DURABLE=true")
+        if not data_mount.is_mount():
+            raise RuntimeError("asset storage is disabled because /data is not verified as a mounted persistent volume")
+        asset_storage = PrivateFilesystemAssetStorage(storage_path)
+    clamd_socket_path = os.environ.get("OPENCOMPANY_CLAMD_SOCKET_PATH", "").strip()
+    asset_scanner = (
+        ClamAVUnixSocketScanner(
+            clamd_socket_path,
+            timeout_seconds=float(os.environ.get("OPENCOMPANY_CLAMD_TIMEOUT_SECONDS", "120")),
+        )
+        if clamd_socket_path else None
+    )
     usage = ModelUsageRepository(store._connection, store._lock)
     secret_vault_errors: dict[str, str] = {}
     try:
@@ -229,6 +263,12 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         sessions=sessions, fleet=fleet, gateway=gateway, handoffs=handoffs,
         learning=learning, github_evolution=github_evolution, api_anything=api_anything,
         secret_vault=secret_vault,
+        business_credentials=business_credentials,
+        integrations=integrations,
+        business_memory=business_memory,
+        business_assets=business_assets,
+        asset_storage=asset_storage,
+        asset_scanner=asset_scanner,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
     )

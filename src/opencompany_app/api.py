@@ -21,7 +21,7 @@ from uuid import UUID, uuid4
 from urllib.parse import urlsplit
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
@@ -50,6 +50,10 @@ from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, Ou
 from opencompany_core.github_evolution import GitHubEvolutionError
 from opencompany_core.code_evolution import CodeEvolutionError, generate_code_evolution_pr
 from opencompany_core.api_anything import ApiAnythingError
+from opencompany_core.venture_portfolio import VenturePortfolio, VenturePortfolioError
+from opencompany_core.business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
+from opencompany_core.asset_storage import AssetStorageError
+from opencompany_core.asset_scanning import AssetScanError
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -121,6 +125,77 @@ class GitHubEvolutionSettingsInput(BaseModel):
     token: str = Field(min_length=20, max_length=512)
     confirm_draft_pr_only: bool
 
+
+
+class VentureOpportunityInput(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    slug: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    business_model: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=5000)
+    target_market: str = Field(min_length=1, max_length=300)
+    evidence: list[dict] = Field(default_factory=list, max_length=20)
+
+
+class VentureOpportunityStatusInput(BaseModel):
+    status: str = Field(min_length=1, max_length=40)
+    rationale: str = Field(default="", max_length=2000)
+    confirm_owner_approval: bool = False
+
+
+
+class BusinessCredentialInput(BaseModel):
+    credential_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    secret: dict[str, str] = Field(min_length=1, max_length=20)
+    confirm_owner_storage: bool = False
+
+
+
+class BusinessIntegrationInput(BaseModel):
+    provider_key: str = Field(min_length=2, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{1,79}$")
+    display_name: str = Field(min_length=1, max_length=160)
+    credential_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    permissions: list[str] = Field(min_length=1, max_length=20)
+    rationale: str = Field(default="", max_length=1000)
+    confirm_owner_registration: bool = False
+
+
+class BusinessMemoryInput(BaseModel):
+    memory_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    category: str = Field(min_length=2, max_length=40, pattern=r"^[a-z][a-z0-9_-]{1,39}$")
+    content: str = Field(min_length=1, max_length=20000)
+    source: str = Field(min_length=1, max_length=500)
+    confirm_owner_write: bool = False
+
+
+class BusinessMemoryForgetInput(BaseModel):
+    confirm_owner_forget: bool = False
+
+
+
+class BusinessAssetInput(BaseModel):
+    asset_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    title: str = Field(min_length=1, max_length=200)
+    asset_type: str = Field(min_length=2, max_length=40, pattern=r"^[a-z][a-z0-9_-]{1,39}$")
+    filename: str = Field(min_length=1, max_length=255)
+    media_type: str = Field(min_length=3, max_length=120, pattern=r"^[a-z0-9.+-]+/[a-z0-9.+-]+$")
+    checksum_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
+    byte_size: int = Field(ge=0, le=104857600)
+    source: str = Field(min_length=1, max_length=500)
+    confirm_owner_declaration: bool = False
+
+
+class BusinessCredentialDeleteInput(BaseModel):
+    confirm_owner_deletion: bool = False
+
+
+class BusinessUnitProvisionInput(BaseModel):
+    business_id: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    name: str = Field(min_length=1, max_length=160)
+    unit_type: str = Field(min_length=1, max_length=40)
+    delivery_class: str = Field(min_length=1, max_length=40)
+    description: str = Field(min_length=1, max_length=5000)
+    target_market: str = Field(min_length=1, max_length=300)
+    confirm_owner_approval: bool = False
 
 
 class PlanItemInput(BaseModel):
@@ -1541,12 +1616,18 @@ def list_work_items(
 
 @app.post("/work-items", dependencies=[Depends(require_owner_key)])
 def create_work_item(
-    payload: WorkItemCreateInput, store: SQLiteStore = Depends(get_store)
+    payload: WorkItemCreateInput,
+    store: SQLiteStore = Depends(get_store),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
 ) -> dict:
     try:
         default_organization().get(payload.department)
     except LookupError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        _assert_operational_business_unit(runtime, payload.business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload.business_id not in BUSINESS_UNIT_IDS:
         raise HTTPException(status_code=422, detail="Unknown business unit.")
     item = WorkItem(
@@ -2357,6 +2438,10 @@ def create_executive_work_plan(
     store: SQLiteStore = Depends(get_store),
 ) -> dict:
     """Ask the active CEO orchestrator to decompose an owner objective into draft tasks."""
+    try:
+        _assert_operational_business_unit(runtime, payload.business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if payload.business_id not in BUSINESS_UNIT_IDS:
         raise HTTPException(status_code=422, detail="Unknown business unit.")
     ceo = next(
@@ -2941,6 +3026,23 @@ def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
     }
 
 
+
+class FinanceEntryInput(BaseModel):
+    business_id: str = Field(min_length=2, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    entry_type: str = Field(pattern=r"^(revenue|expense|refund|adjustment)$")
+    amount_minor: int = Field(gt=0, le=9_000_000_000_000_000)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    description: str = Field(min_length=1, max_length=2000)
+    source_reference: str | None = Field(default=None, max_length=300)
+    confirm_owner_record: bool = False
+
+
+class FinanceReviewInput(BaseModel):
+    action: str = Field(pattern=r"^(owner_verified|owner_rejected|owner_approved)$")
+    rationale: str = Field(default="", max_length=2000)
+    confirm_owner_decision: bool = False
+
+
 class CommercialSupplierInput(BaseModel):
     business_id: str
     name: str = Field(min_length=1, max_length=200)
@@ -3012,3 +3114,645 @@ def update_commercial_supplier_status(
         raise HTTPException(status_code=404, detail="Supplier not found or already blocked.")
     return {"supplier_id": str(supplier_id), "status": payload.status,
             "external_contact_made": False, "purchase_or_commitment_created": False}
+
+
+
+@app.post("/finance/entries", dependencies=[Depends(require_owner_key)])
+def create_finance_entry(payload: FinanceEntryInput, store: SQLiteStore = Depends(get_store)) -> dict:
+    if payload.confirm_owner_record is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to record this finance entry.")
+    now = datetime.now(timezone.utc)
+    entry_id = str(uuid4())
+    record = {
+        "id": entry_id, "business_id": payload.business_id,
+        "entry_type": payload.entry_type, "amount_minor": payload.amount_minor,
+        "currency": payload.currency, "description": payload.description.strip(),
+        "source_reference": payload.source_reference, "created_at": now.isoformat(),
+    }
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="finance.entry_recorded", subject_type="finance_entry",
+        subject_id=entry_id, outcome="recorded", correlation_id=str(uuid4()),
+        details={"business_id": payload.business_id, "external_payment_initiated": False},
+    )
+    try:
+        store.create_finance_entry(record, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "entry_id": entry_id, "business_id": payload.business_id,
+        "entry_type": payload.entry_type, "recorded": True,
+        "latest_review_action": "recorded", "external_payment_initiated": False,
+        "spending_authorized": False,
+    }
+
+
+@app.get("/finance/entries", dependencies=[Depends(require_owner_key)])
+def list_finance_entries(
+    business_id: str | None = None, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        items = store.list_finance_entries(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(items), "entries": list(items)}
+
+
+@app.post("/finance/entries/{entry_id}/review", dependencies=[Depends(require_owner_key)])
+def review_finance_entry(
+    entry_id: UUID, payload: FinanceReviewInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if payload.confirm_owner_decision is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required for a finance review decision.")
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="finance.entry_reviewed", subject_type="finance_entry",
+        subject_id=str(entry_id), outcome=payload.action, correlation_id=str(uuid4()),
+        details={"finance_decision": payload.action, "external_payment_initiated": False},
+    )
+    try:
+        recorded = store.append_finance_review_event(
+            str(entry_id), payload.action, payload.rationale, event
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not recorded:
+        raise HTTPException(status_code=404, detail="Finance entry not found.")
+    return {
+        "entry_id": str(entry_id), "review_action": payload.action,
+        "recorded": True, "external_payment_initiated": False,
+        "spending_authorized": False,
+    }
+
+
+# Company-wide venture portfolio. This is intentionally distinct from operating
+# business units: discovering an opportunity never creates a business or
+# authorizes spending, publishing, customer contact, or a launch.
+def _venture_portfolio(runtime: OpenCompanyRuntime) -> VenturePortfolio:
+    return VenturePortfolio(runtime.store._connection, runtime.store._lock)
+
+
+@app.get("/venture-opportunities", dependencies=[Depends(require_owner_key)])
+def list_venture_opportunities(
+    status: str | None = None,
+    limit: int = 100,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        items = _venture_portfolio(runtime).list(status=status, limit=limit)
+        return {"items": list(items), "count": len(items)}
+    except VenturePortfolioError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities", dependencies=[Depends(require_owner_key)])
+def create_venture_opportunity(
+    payload: VentureOpportunityInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        item = _venture_portfolio(runtime).create(
+            title=payload.title, slug=payload.slug, business_model=payload.business_model,
+            description=payload.description, target_market=payload.target_market,
+            evidence=payload.evidence,
+        )
+        return {"item": item, "message": "Opportunity saved in the company-wide portfolio; no business unit was created."}
+    except VenturePortfolioError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/status", dependencies=[Depends(require_owner_key)])
+def transition_venture_opportunity(
+    opportunity_id: str,
+    payload: VentureOpportunityStatusInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        item = _venture_portfolio(runtime).transition(
+            opportunity_id, status=payload.status, rationale=payload.rationale,
+            confirm_owner_approval=payload.confirm_owner_approval,
+        )
+    except VenturePortfolioError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    return {"item": item, "message": "Status recorded. Launch approval does not provision accounts, spend money, or publish anything."}
+
+
+@app.get("/venture-opportunities/{opportunity_id}/events", dependencies=[Depends(require_owner_key)])
+def list_venture_opportunity_events(
+    opportunity_id: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    portfolio = _venture_portfolio(runtime)
+    if portfolio.get(opportunity_id) is None:
+        raise HTTPException(status_code=404, detail="Venture opportunity not found.")
+    return {"items": list(portfolio.events(opportunity_id))}
+
+
+# Provisioning creates internal business identity and isolated scope identifiers.
+# It does not activate operations or connect external services.
+def _business_unit_registry(runtime: OpenCompanyRuntime) -> BusinessUnitRegistry:
+    return BusinessUnitRegistry(runtime.store._connection, runtime.store._lock)
+
+
+def _assert_operational_business_unit(runtime: OpenCompanyRuntime, business_id: str) -> dict:
+    """Fail closed before creating work for a unit without an operational scope."""
+    if business_id == "core":
+        return {"business_id": "core", "status": "foundational"}
+    return _business_unit_registry(runtime).require_operational(business_id)
+
+
+@app.get("/business-units", dependencies=[Depends(require_owner_key)])
+def list_business_units(
+    limit: int = 100,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        items = _business_unit_registry(runtime).list(limit=limit)
+        return {"items": list(items), "count": len(items)}
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/venture-opportunities/{opportunity_id}/provision-business-unit", dependencies=[Depends(require_owner_key)])
+def provision_business_unit(
+    opportunity_id: str,
+    payload: BusinessUnitProvisionInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    registry = _business_unit_registry(runtime)
+    try:
+        unit = registry.provision_from_opportunity(
+            _venture_portfolio(runtime), opportunity_id,
+            business_id=payload.business_id, name=payload.name,
+            unit_type=payload.unit_type, delivery_class=payload.delivery_class,
+            description=payload.description, target_market=payload.target_market,
+            confirm_owner_approval=payload.confirm_owner_approval,
+        )
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "business_unit": unit,
+        "message": "An isolated internal business unit has been provisioned. It is not active; external accounts, integrations, spending, publishing, customer contact, and order fulfilment remain disabled.",
+    }
+
+
+@app.get("/business-units/{business_id}/events", dependencies=[Depends(require_owner_key)])
+def list_business_unit_events(
+    business_id: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    registry = _business_unit_registry(runtime)
+    if registry.get(business_id) is None:
+        raise HTTPException(status_code=404, detail="Business unit not found.")
+    return {"items": list(registry.events(business_id))}
+
+
+
+
+@app.get("/business-units/{business_id}/credentials", dependencies=[Depends(require_owner_key)])
+def list_business_credentials(
+    business_id: str, runtime: OpenCompanyRuntime = Depends(get_runtime)
+) -> dict:
+    try:
+        items = runtime.business_credentials.list_status(business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "business_id": business_id, "count": len(items),
+        "credentials": list(items), "secret_material_returned": False,
+    }
+
+
+@app.post("/business-units/{business_id}/credentials", dependencies=[Depends(require_owner_key)])
+def store_business_credential(
+    business_id: str, payload: BusinessCredentialInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if payload.confirm_owner_storage is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to store business credentials.")
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="business.credential_stored", subject_type="business_credential",
+        subject_id=f"{business_id}:{payload.credential_key}", outcome="stored",
+        correlation_id=str(uuid4()),
+        details={"business_id": business_id, "credential_key": payload.credential_key,
+                 "secret_material_returned": False},
+    )
+    try:
+        revision = runtime.business_credentials.put(
+            business_id, payload.credential_key, payload.secret, event
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SecretVaultError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "business_id": business_id, "credential_key": payload.credential_key,
+        "revision": revision, "stored": True, "secret_material_returned": False,
+        "external_connection_attempted": False,
+    }
+
+
+@app.delete("/business-units/{business_id}/credentials/{credential_key}", dependencies=[Depends(require_owner_key)])
+def delete_business_credential(
+    business_id: str, credential_key: str, payload: BusinessCredentialDeleteInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if payload.confirm_owner_deletion is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to remove business credentials.")
+    now = datetime.now(timezone.utc)
+    event = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="business.credential_deleted", subject_type="business_credential",
+        subject_id=f"{business_id}:{credential_key}", outcome="deleted",
+        correlation_id=str(uuid4()),
+        details={"business_id": business_id, "credential_key": credential_key},
+    )
+    try:
+        removed = runtime.business_credentials.delete(business_id, credential_key, event)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not removed:
+        raise HTTPException(status_code=404, detail="Business credential not found.")
+    return {"business_id": business_id, "credential_key": credential_key,
+            "deleted": True, "secret_material_returned": False}
+
+
+
+
+@app.get("/business-units/{business_id}/integrations", dependencies=[Depends(require_owner_key)])
+def list_business_integrations(
+    business_id: str, runtime: OpenCompanyRuntime = Depends(get_runtime)
+) -> dict:
+    try:
+        items = runtime.integrations.list(business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "business_id": business_id, "count": len(items), "integrations": list(items),
+        "external_connections_enabled": False,
+    }
+
+
+@app.post("/business-units/{business_id}/integrations", dependencies=[Depends(require_owner_key)])
+def register_business_integration(
+    business_id: str, payload: BusinessIntegrationInput,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    if payload.confirm_owner_registration is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to register an integration.")
+    now = datetime.now(timezone.utc)
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="business.integration_registered", subject_type="business_integration",
+        subject_id=f"{business_id}:{payload.provider_key}", outcome="pending_review",
+        correlation_id=str(uuid4()),
+        details={"business_id": business_id, "provider_key": payload.provider_key,
+                 "permissions": payload.permissions, "external_connection_attempted": False},
+    )
+    try:
+        result = runtime.integrations.register(
+            business_id, provider_key=payload.provider_key,
+            display_name=payload.display_name, credential_key=payload.credential_key,
+            permissions=payload.permissions, audit=audit, rationale=payload.rationale,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "integration": result,
+        "message": "Integration declaration recorded as pending review. No external connection or provider action was attempted.",
+        "external_connection_attempted": False,
+    }
+
+
+@app.get("/business-units/{business_id}/integrations/{integration_id}/events", dependencies=[Depends(require_owner_key)])
+def list_business_integration_events(
+    business_id: str, integration_id: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    try:
+        items = runtime.integrations.events(business_id, integration_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not items:
+        raise HTTPException(status_code=404, detail="Integration history not found.")
+    return {"business_id": business_id, "integration_id": integration_id, "events": list(items)}
+
+
+
+@app.get("/business-units/{business_id}/memory", dependencies=[Depends(require_owner_key)])
+def list_business_memory(business_id: str, category: str | None = None, limit: int = 100,
+                         runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_memory.list(business_id, category=category, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "unknown" in str(exc) else 422, detail=str(exc)) from exc
+    return {"business_id": business_id, "count": len(items), "memories": list(items),
+            "agent_writes_enabled": False}
+
+
+@app.get("/business-units/{business_id}/memory/{memory_key}/history", dependencies=[Depends(require_owner_key)])
+def get_business_memory_history(business_id: str, memory_key: str,
+                                runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_memory.history(business_id, memory_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"business_id": business_id, "memory_key": memory_key, "history": list(items)}
+
+
+@app.post("/business-units/{business_id}/memory", dependencies=[Depends(require_owner_key)])
+def save_business_memory(business_id: str, payload: BusinessMemoryInput,
+                         runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if payload.confirm_owner_write is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to save business memory.")
+    audit = AuditRecord(id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="business.memory_saved", subject_type="business_memory",
+        subject_id=f"{business_id}:{payload.memory_key}", outcome="stored",
+        correlation_id=str(uuid4()), details={"business_id": business_id})
+    try:
+        item = runtime.business_memory.put(business_id, payload.memory_key, payload.category,
+                                           payload.content, payload.source, audit)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"memory": item, "agent_writes_enabled": False}
+
+
+@app.delete("/business-units/{business_id}/memory/{memory_key}", dependencies=[Depends(require_owner_key)])
+def forget_business_memory(business_id: str, memory_key: str, payload: BusinessMemoryForgetInput,
+                           runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if payload.confirm_owner_forget is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to forget business memory.")
+    audit = AuditRecord(id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="business.memory_forgotten", subject_type="business_memory",
+        subject_id=f"{business_id}:{memory_key}", outcome="forgotten",
+        correlation_id=str(uuid4()), details={"business_id": business_id})
+    try:
+        item = runtime.business_memory.forget(business_id, memory_key, audit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Active business memory not found.")
+    return {"memory": item, "historical_versions_retained": True}
+
+
+
+@app.get("/business-units/{business_id}/assets", dependencies=[Depends(require_owner_key)])
+def list_business_assets(business_id: str, limit: int = 100,
+                         runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_assets.list(business_id, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "unknown" in str(exc) else 422, detail=str(exc)) from exc
+    return {"business_id": business_id, "count": len(items), "assets": list(items),
+            "file_storage_enabled": runtime.asset_storage is not None,
+            "download_enabled": False}
+
+
+@app.post("/business-units/{business_id}/assets", dependencies=[Depends(require_owner_key)])
+def declare_business_asset(business_id: str, payload: BusinessAssetInput,
+                           runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if payload.confirm_owner_declaration is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to declare a business asset.")
+    audit = AuditRecord(id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="business.asset_declared", subject_type="business_asset",
+        subject_id=f"{business_id}:{payload.asset_key}", outcome="pending_storage",
+        correlation_id=str(uuid4()), details={"business_id": business_id, "file_bytes_received": False})
+    try:
+        item = runtime.business_assets.declare(
+            business_id, asset_key=payload.asset_key, title=payload.title,
+            asset_type=payload.asset_type, filename=payload.filename, media_type=payload.media_type,
+            checksum_sha256=payload.checksum_sha256, byte_size=payload.byte_size,
+            source=payload.source, audit=audit,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"asset": item, "file_bytes_received": False,
+            "message": "Asset metadata declared only. No file was uploaded, scanned, stored, or delivered."}
+
+
+@app.put("/business-units/{business_id}/assets/{asset_id}/content", dependencies=[Depends(require_owner_key)])
+async def upload_business_asset_content(
+    business_id: str,
+    asset_id: UUID,
+    request: Request,
+    x_confirm_owner_upload: bool = Header(default=False, alias="X-Confirm-Owner-Upload"),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Store owner-uploaded bytes privately; the result remains unscanned and unavailable."""
+    if x_confirm_owner_upload is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to upload asset bytes.")
+    if runtime.asset_storage is None:
+        raise HTTPException(status_code=503, detail="Private asset storage is not configured; no bytes were accepted.")
+    try:
+        declaration = runtime.business_assets.storage_declaration(business_id, str(asset_id))
+    except ValueError as exc:
+        status_code = 409 if "already been stored" in str(exc) else 404
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+    supplied_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if supplied_type != declaration["media_type"]:
+        raise HTTPException(status_code=415, detail="Content-Type must match the asset declaration.")
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_length = int(content_length)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header.") from exc
+        if declared_length < 0 or declared_length > declaration["byte_size"]:
+            raise HTTPException(status_code=413, detail="Upload exceeds the declared asset size.")
+
+    try:
+        stored = await runtime.asset_storage.store_stream(
+            business_id=business_id,
+            asset_scope_id=declaration["asset_scope_id"],
+            asset_id=str(asset_id),
+            expected_sha256=declaration["checksum_sha256"],
+            expected_size=declaration["byte_size"],
+            expected_media_type=declaration["media_type"],
+            chunks=request.stream(),
+        )
+        try:
+            result = runtime.business_assets.record_storage(
+                business_id, str(asset_id),
+                storage_key=stored["storage_key"],
+                checksum_sha256=stored["checksum_sha256"],
+                byte_size=stored["byte_size"],
+                audit=AuditRecord(
+                    id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                    actor_type="owner", actor_id="owner", action="business.asset_bytes_stored",
+                    subject_type="business_asset", subject_id=f"{business_id}:{asset_id}",
+                    outcome="stored_unscanned", correlation_id=str(uuid4()),
+                    details={"business_id": business_id, "asset_id": str(asset_id),
+                             "checksum_verified": True, "malware_scan_completed": False},
+                ),
+            )
+        except Exception:
+            runtime.asset_storage.discard_uncommitted(
+                business_id=business_id,
+                asset_scope_id=declaration["asset_scope_id"],
+                asset_id=str(asset_id),
+                storage_key=stored["storage_key"],
+            )
+            raise
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except AssetStorageError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail="Private asset storage failed; no download was enabled.") from exc
+    return {
+        "asset": result,
+        "file_bytes_received": True,
+        "checksum_verified": True,
+        "malware_scan_completed": False,
+        "download_enabled": False,
+        "message": "Bytes are stored privately and remain unavailable until scanning and retrieval authorization are implemented.",
+    }
+
+
+@app.post("/business-units/{business_id}/assets/{asset_id}/scan", dependencies=[Depends(require_owner_key)])
+def scan_business_asset(
+    business_id: str,
+    asset_id: UUID,
+    x_confirm_owner_scan: bool = Header(default=False, alias="X-Confirm-Owner-Scan"),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Run the configured local malware scanner; a clean result still cannot be downloaded."""
+    if x_confirm_owner_scan is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to scan this asset.")
+    if runtime.asset_storage is None or runtime.asset_scanner is None:
+        raise HTTPException(status_code=503, detail="Private storage and a local ClamAV scanner must both be configured.")
+    try:
+        declaration = runtime.business_assets.scan_declaration(business_id, str(asset_id))
+        scanned = runtime.asset_scanner.scan(runtime.asset_storage.read_chunks(
+            business_id=business_id,
+            asset_scope_id=declaration["asset_scope_id"],
+            asset_id=str(asset_id),
+        ))
+        result = runtime.business_assets.record_scan_result(
+            business_id, str(asset_id),
+            scanner_key=scanned["scanner_key"],
+            status=scanned["status"],
+            checksum_sha256=scanned["checksum_sha256"],
+            byte_size=scanned["byte_size"],
+            verdict=scanned["verdict"],
+            audit=AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="system", actor_id="clamav-unix-socket",
+                action="business.asset_scanned", subject_type="business_asset",
+                subject_id=f"{business_id}:{asset_id}", outcome=f"scan_{scanned['status']}",
+                correlation_id=str(uuid4()),
+                details={"business_id": business_id, "asset_id": str(asset_id),
+                         "scanner_key": scanned["scanner_key"]},
+            ),
+        )
+    except AssetScanError as exc:
+        raise HTTPException(status_code=503, detail=f"Malware scan did not complete safely ({exc.code}).") from exc
+    except AssetStorageError as exc:
+        raise HTTPException(status_code=503, detail="Private asset bytes could not be read safely for scanning.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+    return {
+        "asset": result,
+        "malware_scan_completed": True,
+        "scan_status": scanned["status"],
+        "download_enabled": False,
+        "delivery_approved": False,
+        "message": "A clean scan does not authorize retrieval, publishing, or delivery.",
+    }
+
+
+@app.get("/business-units/{business_id}/assets/{asset_id}/download", dependencies=[Depends(require_owner_key)])
+def download_business_asset(
+    business_id: str,
+    asset_id: UUID,
+    x_confirm_owner_download: bool = Header(default=False, alias="X-Confirm-Owner-Download"),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+):
+    """Owner-only download after a current clean scan; never creates a public URL."""
+    if x_confirm_owner_download is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to download this asset.")
+    if runtime.asset_storage is None:
+        raise HTTPException(status_code=503, detail="Private asset storage is not configured.")
+    try:
+        declaration = runtime.business_assets.authorize_download(
+            business_id, str(asset_id),
+            audit=AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner",
+                action="business.asset_download_authorized",
+                subject_type="business_asset", subject_id=f"{business_id}:{asset_id}",
+                outcome="owner_only_authorized", correlation_id=str(uuid4()),
+                details={"business_id": business_id, "asset_id": str(asset_id)},
+            ),
+        )
+        stream = runtime.asset_storage.open_verified_download(
+            business_id=business_id,
+            asset_scope_id=declaration["asset_scope_id"],
+            asset_id=str(asset_id),
+            expected_sha256=declaration["checksum_sha256"],
+            expected_size=declaration["byte_size"],
+        )
+    except AssetStorageError as exc:
+        raise HTTPException(status_code=503, detail="Private asset bytes failed integrity verification or are unavailable.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+
+    def file_chunks():
+        while True:
+            block = stream.read(1024 * 1024)
+            if not block:
+                break
+            yield block
+
+    return StreamingResponse(
+        file_chunks(),
+        media_type=declaration["media_type"],
+        headers={
+            "Content-Disposition": f'attachment; filename="{declaration["filename"]}"',
+            "Content-Length": str(declaration["byte_size"]),
+            "Cache-Control": "private, no-store, max-age=0",
+            "Pragma": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+        background=BackgroundTask(stream.close),
+    )
+
+
+@app.get("/business-units/{business_id}/assets/{asset_id}/events", dependencies=[Depends(require_owner_key)])
+def list_business_asset_events(business_id: str, asset_id: str,
+                               runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_assets.events(business_id, asset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not items:
+        raise HTTPException(status_code=404, detail="Asset history not found.")
+    return {"business_id": business_id, "asset_id": asset_id, "events": list(items)}
+
+
+@app.get("/business-units/{business_id}/activation-readiness", dependencies=[Depends(require_owner_key)])
+def get_business_unit_activation_readiness(
+    business_id: str,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Inspect activation blockers without activating or mutating a business unit."""
+    try:
+        report = _business_unit_registry(runtime).activation_readiness(business_id)
+    except BusinessUnitProvisioningError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"readiness": report}

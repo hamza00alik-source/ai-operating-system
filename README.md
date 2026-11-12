@@ -179,3 +179,13 @@ The current `vercel.json` still points at the legacy Railway service. Do not pro
 - Owner review automatically records an outcome evaluation against the reviewed deliverable. The free model can turn selected evaluations into a proposed role-learning note; an owner must approve it and explicitly apply it before the note is injected into future prompts.
 - AI code evolution can generate complete file replacements for up to three allowlisted source/test/documentation files and open a DRAFT pull request on a new feature branch. The branch is tested by GitHub Actions. It cannot modify secrets, deployment workflows or production configuration, and it cannot merge or deploy.
 - Code evolution requires server-side `OPENCOMPANY_GITHUB_TOKEN` and `OPENCOMPANY_GITHUB_REPOSITORY`. The token is never returned by the API. The initial PR is draft and owner review is mandatory.
+
+
+## Company-wide venture discovery
+
+The independent OpenCompany core includes an owner-governed opportunity portfolio that can represent any legitimate business model, rather than limiting future company growth to the three initial operating businesses. Opportunities move through evidence gathering and validation; explicit owner approval is required before launch planning and again before recording a launch. The portfolio is separate from business-unit operations and cannot create accounts, spend money, publish listings, contact customers, or fulfil orders. See [the venture portfolio lifecycle](docs/VENTURE_PORTFOLIO.md).
+
+
+## Owner-approved business-unit provisioning
+
+A validated opportunity may be approved for launch planning and provisioned as a separate internal business unit. Each unit receives independent customer, finance, credential, integration, memory, and asset scope identifiers and a strict primary delivery class. Provisioning leaves the unit inactive and does not create external accounts or make commitments. See [the provisioning boundaries](docs/BUSINESS_UNIT_PROVISIONING.md).
