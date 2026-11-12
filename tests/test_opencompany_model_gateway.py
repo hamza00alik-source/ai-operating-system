@@ -49,20 +49,15 @@ def test_confirmed_free_provider_can_be_selected_at_zero_budget():
     assert adapter.calls == 1
 
 
-def test_paid_provider_requires_owner_approval_and_sufficient_budget():
+def test_paid_provider_remains_blocked_even_with_owner_approval_and_budget():
     adapter = FakeAdapter(ModelResult("answer", "paid", "large-model", 0.02))
-    unapproved = ModelGateway.configure((
-        (ProviderPolicy("paid", "large-model", BillingMode.DISABLED, 0.05), adapter),
-    ))
-    with pytest.raises(NoEligibleProvider):
-        unapproved.complete(request(), request_budget_usd=1.0)
     approved = ModelGateway.configure((
         (ProviderPolicy("paid", "large-model", BillingMode.PAID_OWNER_APPROVED, 0.05), adapter),
     ))
     with pytest.raises(NoEligibleProvider):
-        approved.complete(request(), request_budget_usd=0.01)
+        approved.complete(request(), request_budget_usd=100.0)
+    assert approved.eligible_providers(request_budget_usd=100.0) == ()
     assert adapter.calls == 0
-    assert approved.complete(request(), request_budget_usd=0.05).text == "answer"
 
 
 def test_free_provider_charge_is_rejected():
