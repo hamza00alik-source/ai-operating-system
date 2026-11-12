@@ -98,7 +98,7 @@ class OpenCompanyWorker:
                     self.queue.complete(lease)
                     return "completed_review_required"
             validated_item = self._validate_lease(lease, role_key)
-            checkpoint = self.store.get_execution_checkpoint(
+            checkpoint = self.queue.get_checkpoint(
                 lease.work_item_id, role_key, "specialist_output"
             )
             if checkpoint is not None and checkpoint["status"] == "completed":
@@ -136,7 +136,7 @@ class OpenCompanyWorker:
                     "created_at": deliverable.created_at.isoformat(),
                     "review_required": deliverable.review_required,
                 }
-                if not self.store.save_execution_checkpoint(
+                if not self.queue.save_checkpoint(
                     lease, role_key, "specialist_output", checkpoint_payload
                 ):
                     raise QueueError("worker lease was lost before checkpoint could be committed")
@@ -187,7 +187,7 @@ class OpenCompanyWorker:
                 if lease_lost.is_set():
                     raise QueueError("worker lease was lost before queue acknowledgement")
                 self.queue.complete(lease)
-                self.store.clear_execution_checkpoint(
+                self.queue.clear_checkpoint(
                     lease.work_item_id, role_key, "specialist_output"
                 )
             return "completed_review_required"
