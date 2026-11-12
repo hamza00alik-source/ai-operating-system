@@ -465,13 +465,13 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       const details=document.createElement("p");details.textContent=item.business_model+" · "+item.target_market;card.append(details);
       const description=document.createElement("p");description.textContent=item.description;card.append(description);
       const evidence=document.createElement("p");evidence.textContent="Evidence references: "+item.evidence.length;card.append(evidence);
-      const next={discovered:"researching",researching:"validated",validated:"approved_to_launch",rejected:"researching",approved_to_launch:"launched"}[item.status];
+      const next={discovered:"researching",researching:"validated",validated:"approved_to_launch",rejected:"researching"}[item.status];
       if(next){
         const action=document.createElement("button");
         action.textContent=({researching:"Start research",validated:"Mark validated",approved_to_launch:"Approve launch planning",launched:"Confirm launched"}[next]||"Continue");
         action.addEventListener("click",async()=>{
           const protectedStep=next==="approved_to_launch"||next==="launched";
-          if(protectedStep&&!window.confirm(next==="approved_to_launch"?"Approve this opportunity for launch planning? This does not create accounts or spend money.":"Confirm that this venture has actually launched?"))return;
+          if(protectedStep&&!window.confirm("Approve this opportunity for launch planning? This does not activate the business or spend money."))return;
           action.disabled=true;
           try{
             await request("/venture-opportunities/"+item.id+"/status",{method:"POST",body:JSON.stringify({status:next,rationale:"Owner decision recorded in OpenCompany.",confirm_owner_approval:protectedStep})});
