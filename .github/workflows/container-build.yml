@@ -5,11 +5,13 @@ on:
     branches:
       - clean-room-rebuild
       - "feat/**"
+      - "feature/**"
       - "fix/**"
   pull_request:
     branches:
       - main
       - "feat/**"
+      - "feature/**"
       - "clean-room-rebuild"
 
 permissions:
