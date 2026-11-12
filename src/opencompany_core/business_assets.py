@@ -1,6 +1,7 @@
 """Append-only, business-scoped asset declarations and safety lifecycle."""
 from __future__ import annotations
 import hashlib, json, re, sqlite3
+from contextlib import contextmanager
 from datetime import timezone
 from pathlib import PurePosixPath
 from uuid import uuid4
@@ -51,6 +52,18 @@ class BusinessAssetRegistry:
             """)
             connection.commit()
 
+    @contextmanager
+    def _transaction(self):
+        """Keep asset state and its audit event in one durable commit."""
+        self.connection.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+            self.connection.commit()
+        except Exception:
+            if self.connection.in_transaction:
+                self.connection.rollback()
+            raise
+
     @staticmethod
     def _audit_dict(audit):
         if not isinstance(audit, AuditRecord):
@@ -92,13 +105,13 @@ class BusinessAssetRegistry:
         payload=self._audit_dict(audit)
         if audit.actor_type!="owner": raise PermissionError("only the owner may declare business assets")
         asset_id=str(uuid4()); scope=hashlib.sha256((business_id+"\0"+asset_id).encode()).hexdigest()
-        with self.lock:
+        with self.lock, self._transaction():
             self.connection.execute("""INSERT INTO opencompany_business_assets
               (asset_id,business_id,asset_key,title,asset_type,filename,media_type,checksum_sha256,byte_size,source,
                storage_state,status,storage_key,asset_scope_id,file_bytes_received,created_at)
               VALUES(?,?,?,?,?,?,?,?,?,?, 'metadata_only','declared',NULL,?,0,?)""",
               (asset_id,business_id,asset_key,title.strip(),asset_type,filename,media_type,checksum_sha256,byte_size,source,scope,payload["occurred_at"]))
-            self._event(business_id,asset_id,"declared",audit); self.connection.commit()
+            self._event(business_id,asset_id,"declared",audit)
             result=self._get(business_id,asset_id)
             result["file_bytes_received"] = bool(result["file_bytes_received"])
             return result
@@ -123,7 +136,7 @@ class BusinessAssetRegistry:
           "checksum_sha256":item["checksum_sha256"],"byte_size":item["byte_size"],"media_type":item["media_type"]}
 
     def record_storage(self,business_id,asset_id,*,storage_key,checksum_sha256,byte_size,audit):
-        with self.lock:
+        with self.lock, self._transaction():
             item=self._get(business_id,asset_id)
             if item["storage_key"] is not None: raise ValueError("asset has already been stored")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("stored asset checksum or size does not match declaration")
@@ -131,7 +144,7 @@ class BusinessAssetRegistry:
             if audit.actor_type != "owner": raise PermissionError("only the owner may record asset storage")
             self._audit_dict(audit)
             self.connection.execute("UPDATE opencompany_business_assets SET storage_key=?,storage_state='private_stored_unscanned',status='pending_scan' WHERE business_id=? AND asset_id=?",(storage_key,business_id,item["asset_id"]))
-            self._event(business_id,item["asset_id"],"stored_unscanned",audit); self.connection.commit()
+            self._event(business_id,item["asset_id"],"stored_unscanned",audit)
             return {**self._get(business_id,item["asset_id"]),"download_enabled":False}
 
     def scan_declaration(self,business_id,asset_id):
@@ -146,7 +159,7 @@ class BusinessAssetRegistry:
         if not isinstance(scanner_key,str) or not scanner_key.strip(): raise ValueError("scanner identity is required")
         if not isinstance(verdict,str) or (status=="clean" and not verdict.endswith(": OK")) or (status=="infected" and not verdict.endswith(" FOUND")):
             raise ValueError("scanner verdict does not match the recorded status")
-        with self.lock:
+        with self.lock, self._transaction():
             item=self._get(business_id,asset_id)
             if item["storage_state"]!="private_stored_unscanned": raise ValueError("asset is not awaiting scan")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("scan checksum and size do not match stored asset")
@@ -159,5 +172,4 @@ class BusinessAssetRegistry:
             self.connection.execute("UPDATE opencompany_business_assets SET storage_state=?,status=? WHERE business_id=? AND asset_id=?",(state,task,business_id,item["asset_id"]))
             self._event(business_id,item["asset_id"],action,audit)
             self._event(business_id,item["asset_id"],action,audit,scan=True,scanner_key=scanner_key,status=status,checksum_sha256=checksum_sha256,byte_size=byte_size,verdict=verdict)
-            self.connection.commit()
             return {**self._get(business_id,item["asset_id"]),"download_enabled":False}
