@@ -1,6 +1,6 @@
-# Standalone OpenCompany application
+# OpenCompany AIOS application
 
-The new product implementation lives in `src/opencompany_app` and `src/opencompany_core`. It is the only implementation target for the rebuild. The legacy `src/ai_os` application is retained as reference material and must not be modified by this workstream.
+OpenCompany AIOS is one product and one deployable application. `src/opencompany_core` is its AIOS engine (domain, workforce, planning, execution, memory/learning, model routing, durable queue, and governance); `src/opencompany_app` is the API, composition root, and owner console. They are layers of the same runtime, not separate products or deployments. The legacy `src/ai_os` package is quarantined historical reference code and is not imported by the OpenCompany AIOS application.
 
 ## Local development
 
