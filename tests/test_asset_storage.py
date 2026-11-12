@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from uuid import uuid4
 
@@ -77,3 +78,19 @@ def test_private_storage_rejects_symlinked_root(tmp_path):
     link.symlink_to(real, target_is_directory=True)
     with pytest.raises(AssetStorageError, match="symlink"):
         PrivateFilesystemAssetStorage(link)
+
+
+def test_private_storage_accepts_async_bounded_stream(tmp_path):
+    storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    payload = b"streamed private asset"
+    async def chunks():
+        yield payload[:7]
+        yield payload[7:]
+    result = asyncio.run(storage.store_stream(
+        business_id="digital-products", asset_scope_id="digital-scope",
+        asset_id=str(uuid4()), expected_sha256=hashlib.sha256(payload).hexdigest(),
+        expected_size=len(payload), chunks=chunks(),
+    ))
+    assert result["checksum_sha256"] == hashlib.sha256(payload).hexdigest()
+    assert result["byte_size"] == len(payload)
+    assert not list((tmp_path / "private-assets").glob(".incoming-*.part"))
