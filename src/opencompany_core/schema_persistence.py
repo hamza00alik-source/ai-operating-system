@@ -1,7 +1,7 @@
 """SQLite schema creation and sequential migrations for OpenCompany."""
 from __future__ import annotations
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 
 class SchemaInitializationMixin:
@@ -216,6 +216,32 @@ class SchemaInitializationMixin:
                         COMMIT;
                     """)
                     version = 7
+                except Exception:
+                    if self._connection.in_transaction:
+                        self._connection.execute("ROLLBACK")
+                    raise
+                return
+            if version == 7:
+                try:
+                    self._connection.executescript("""
+                        BEGIN IMMEDIATE;
+                        CREATE TABLE IF NOT EXISTS worker_checkpoints (
+                            work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+                            role_key TEXT NOT NULL,
+                            stage_key TEXT NOT NULL,
+                            status TEXT NOT NULL CHECK(status='completed'),
+                            payload_json TEXT NOT NULL,
+                            attempt INTEGER NOT NULL CHECK(attempt > 0),
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL,
+                            PRIMARY KEY(work_item_id, role_key, stage_key)
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_worker_checkpoints_item
+                            ON worker_checkpoints(work_item_id, updated_at);
+                        PRAGMA user_version = 8;
+                        COMMIT;
+                    """)
+                    version = 8
                 except Exception:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")
