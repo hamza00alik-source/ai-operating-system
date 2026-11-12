@@ -37,12 +37,12 @@ def test_company_department_registry_exposes_twelve_departments():
         response = client.get("/company/departments")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["department_count"] == 12
+    assert payload["department_count"] == 13
     assert payload["catalogued_agent_count"] == 283
     assert payload["runtime_model"].startswith("one shared worker")
     ids = {item["id"] for item in payload["departments"]}
     assert {"executive", "research", "design", "customer-support", "legal-compliance",
-            "quality-assurance", "people-workforce"} <= ids
+            "quality-assurance", "people-workforce", "social-media-video"} <= ids
     assert all(item["workflow_status"] == "catalogue-only" for item in payload["departments"])
 
 
