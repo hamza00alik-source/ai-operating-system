@@ -1899,6 +1899,16 @@ def test_workflow_view_exposes_secret_free_execution_attempt_history(owner_clien
                WHERE work_item_id=?""",
             (retry_at, item_id),
         )
+        runtime.store._connection.execute(
+            """INSERT INTO worker_checkpoints
+               (work_item_id,role_key,stage_key,status,payload_json,attempt,created_at,updated_at)
+               VALUES(?,?,?,'completed',?,?,?,?)""",
+            (
+                item_id, "marketplace_operations_analyst", "specialist_output",
+                '{"content":"private draft checkpoint body"}', 1,
+                "2026-11-12T00:00:00+00:00", "2026-11-12T00:00:02+00:00",
+            ),
+        )
         runtime.queue._db.execute(
             """INSERT INTO worker_attempts
                (work_item_id,agent_id,attempt,lease_token,status,started_at,finished_at,error_code)
@@ -1930,8 +1940,17 @@ def test_workflow_view_exposes_secret_free_execution_attempt_history(owner_clien
         "finished_at": "2026-11-12T00:00:02+00:00",
         "error_code": "ProviderTimeout",
     }
+    assert response.json()["execution_checkpoints"] == [{
+        "role_key": "marketplace_operations_analyst",
+        "stage_key": "specialist_output",
+        "status": "completed",
+        "attempt": 1,
+        "created_at": "2026-11-12T00:00:00+00:00",
+        "updated_at": "2026-11-12T00:00:02+00:00",
+    }]
     assert "lease_token" not in response.text
     assert "payload_json" not in response.text
+    assert "private draft checkpoint body" not in response.text
 
     unauthorized = owner_client.get(f"/work-items/{item_id}/workflow")
     assert unauthorized.status_code == 401
