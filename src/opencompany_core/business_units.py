@@ -643,7 +643,7 @@ class BusinessUnitRegistry:
         blockers.append("asset_storage_adapter")
         checks.append({
             "key": "asset_storage_adapter", "ready": False,
-            "evidence": "A private write-once filesystem storage primitive now verifies actual bytes and SHA-256, but no authenticated upload route or append-only lifecycle transition uses it yet. Persistent-volume durability is not verified at runtime; malware scanning, retrieval authorization, and controlled delivery are also absent. Declarations remain metadata-only.",
+            "evidence": "Owner-authenticated uploads now stream into private storage and append a business-scoped stored_unscanned event only after actual size and SHA-256 verification. The configured host volume is not verified as durable at runtime; malware scanning, scan-result lifecycle, retrieval authorization, controlled downloads, and delivery approval remain absent. Stored files remain unavailable.",
         })
 
         blockers.append("owner_activation_approval")
