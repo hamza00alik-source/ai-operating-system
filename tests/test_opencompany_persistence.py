@@ -347,6 +347,32 @@ def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_key
         pass
     else:
         raise AssertionError("database must reject mismatched business/customer scope")
+    agency_scope = customer_scope
+    try:
+        db.execute(
+            """INSERT INTO commercial_quotes
+               (id,opportunity_id,business_id,customer_scope_id,title,currency,currency_exponent,
+                subtotal_minor,terms,status,created_at,updated_at)
+               VALUES('cross-unit-quote','opp-2','physical-agency',?,'Cross-unit','USD',2,100,
+                      'Terms','draft','2026-01-04','2026-01-04')""",
+            (agency_scope,),
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("database must reject a quote linked across business/customer scopes")
+    try:
+        db.execute(
+            """INSERT INTO commercial_orders
+               (id,quote_id,opportunity_id,business_id,customer_scope_id,customer_name,status,created_at,updated_at)
+               VALUES('cross-unit-order','quote-1','opp-2','physical-agency',?,'Buyer B',
+                      'awaiting_owner_fulfilment','2026-01-04','2026-01-04')""",
+            (agency_scope,),
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        raise AssertionError("database must reject an order linked across business/customer scopes")
     try:
         db.execute(
             """INSERT INTO commercial_suppliers
