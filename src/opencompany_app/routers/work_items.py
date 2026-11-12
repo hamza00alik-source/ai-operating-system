@@ -1,7 +1,7 @@
 """Owner-authenticated work-item creation and listing routes."""
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -125,6 +125,9 @@ def reassign_work_item(
         },
     )
     try:
-        return runtime.queue.reassign_queued_work_item(work_item_id, target.id, record)
+        return runtime.queue.reassign_queued_work_item(
+            work_item_id, target.id, record,
+            expected_current_agent_id=item.assigned_agent_id,
+        )
     except QueueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
