@@ -3512,7 +3512,8 @@ def list_business_assets(business_id: str, limit: int = 100,
     except ValueError as exc:
         raise HTTPException(status_code=404 if "unknown" in str(exc) else 422, detail=str(exc)) from exc
     return {"business_id": business_id, "count": len(items), "assets": list(items),
-            "file_storage_enabled": False}
+            "file_storage_enabled": runtime.asset_storage is not None,
+            "download_enabled": False}
 
 
 @app.post("/business-units/{business_id}/assets", dependencies=[Depends(require_owner_key)])
