@@ -114,7 +114,7 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     assert {"role_key", "team_key"} <= columns
     work_item_columns = {row["name"] for row in store._connection.execute("PRAGMA table_info(work_items)").fetchall()}
     assert "business_id" in work_item_columns
-    assert version == 11
+    assert version == 12
     store.close()
 
 
@@ -529,3 +529,50 @@ def test_business_credential_vault_rejects_non_owner_and_unknown_units(tmp_path,
     with pytest.raises(ValueError, match="unknown business"):
         vault.put("unknown-unit", "marketplace-api", {"api_key": "secret"}, audit_record("credential.write"))
     store.close()
+
+
+def test_business_integration_registry_isolated_and_never_connects(tmp_path, monkeypatch):
+    import sqlite3
+    from opencompany_core.integration_registry import BusinessIntegrationRegistry
+    from opencompany_core.secret_vault import BusinessCredentialVault
+
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    store = SQLiteStore(tmp_path / "business-integrations.sqlite3")
+    credentials = BusinessCredentialVault(store._connection, store._lock)
+    integrations = BusinessIntegrationRegistry(store._connection, store._lock)
+    credentials.put(
+        "physical-agency", "marketplace-api", {"api_key": "agency-only-secret"},
+        audit_record("business.credential.stored"),
+    )
+    result = integrations.register(
+        "physical-agency", provider_key="marketplace-x",
+        display_name="Marketplace X", credential_key="marketplace-api",
+        permissions=["catalog:read", "orders:read"],
+        audit=audit_record("business.integration.registered"),
+        rationale="Read-only discovery integration",
+    )
+    assert result["status"] == "pending_review"
+    assert result["network_connection_attempted"] is False
+    assert integrations.list("physical-agency")[0]["permissions"] == ["catalog:read", "orders:read"]
+    assert integrations.list("physical-brand") == ()
+    assert integrations.events("physical-agency", result["integration_id"])[0]["action"] == "registered"
+    with pytest.raises(ValueError, match="stored credential"):
+        integrations.register(
+            "physical-brand", provider_key="marketplace-x",
+            display_name="Marketplace X", credential_key="marketplace-api",
+            permissions=["catalog:read"], audit=audit_record("business.integration.registered"),
+        )
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_integrations SET integration_scope_id='changed' "
+                "WHERE integration_id=?", (result["integration_id"],),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "DELETE FROM opencompany_business_integration_events WHERE integration_id=?",
+                (result["integration_id"],),
+            )
+    store.close()
+
+
