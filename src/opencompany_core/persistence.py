@@ -180,6 +180,14 @@ def _migrate_v7_commercial_business_ids(connection: sqlite3.Connection) -> None:
             "AND sql IS NOT NULL"
         ).fetchall()
     ]
+    index_sql = [
+        row["sql"] for row in connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' "
+            "AND tbl_name IN ('commercial_opportunities','commercial_products',"
+            "'commercial_quotes','commercial_orders','commercial_suppliers') "
+            "AND sql IS NOT NULL"
+        ).fetchall()
+    ]
     for name in expected:
         if connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -208,10 +216,8 @@ def _migrate_v7_commercial_business_ids(connection: sqlite3.Connection) -> None:
             connection.execute(f"DROP TABLE {name}")
         for name in tables:
             connection.execute(f"ALTER TABLE {name}_v8 RENAME TO {name}")
-        for name, (_, _, index_name, index_columns) in tables.items():
-            connection.execute(
-                f"CREATE INDEX {index_name} ON {name}({index_columns})"
-            )
+        for statement in index_sql:
+            connection.execute(statement)
         for statement in trigger_sql:
             connection.execute(statement)
         violations = connection.execute("PRAGMA foreign_key_check").fetchall()
@@ -337,6 +343,13 @@ def _migrate_v8_customer_scopes(connection: sqlite3.Connection) -> None:
             "AND sql IS NOT NULL"
         ).fetchall()
     ]
+    indexes = [
+        row["sql"] for row in connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' "
+            "AND tbl_name IN ('commercial_opportunities','commercial_quotes','commercial_orders') "
+            "AND sql IS NOT NULL"
+        ).fetchall()
+    ]
     for name in definitions:
         if connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -362,8 +375,8 @@ def _migrate_v8_customer_scopes(connection: sqlite3.Connection) -> None:
             connection.execute(f"DROP TABLE {name}")
         for name in ("commercial_opportunities", "commercial_quotes", "commercial_orders"):
             connection.execute(f"ALTER TABLE {name}_v9 RENAME TO {name}")
-        for name, (_, _, index_name, index_columns) in definitions.items():
-            connection.execute(f"CREATE INDEX {index_name} ON {name}({index_columns})")
+        for statement in indexes:
+            connection.execute(statement)
         for statement in triggers:
             connection.execute(statement)
         violations = connection.execute("PRAGMA foreign_key_check").fetchall()
