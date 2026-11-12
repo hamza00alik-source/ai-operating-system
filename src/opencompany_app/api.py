@@ -5,63 +5,12 @@ write operations require owner authentication. Model calls are cost-gated to exp
 """
 from __future__ import annotations
 
-import hmac
-import json
 import logging
 import os
-import tempfile
-import time
-from datetime import datetime, timezone
-from dataclasses import replace
-from uuid import UUID, uuid4
 
-from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from starlette.background import BackgroundTask
 
-from opencompany_core.platform import PLATFORM_ID, PLATFORM_NAME, PLATFORM_VERSION
-from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState, WorkItem
-from opencompany_core.persistence import SQLiteStore
-from opencompany_core.planning import PlanError, WorkPlan, action_requires_owner_approval
-from opencompany_core.workforce import default_workforce
-from opencompany_core.organization import default_organization
-from opencompany_core.provider_catalog import free_provider_candidates
-from opencompany_core.unorouter_adapter import (
-    unorouter_configuration_status,
-)
-from opencompany_core.secret_vault import SecretVaultError
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
-from opencompany_core.manager_orchestration import plan_department_work
-from opencompany_core.delegation_records import DelegationRepository
-from opencompany_core.worker_queue import QueueError
-from opencompany_core.manager_ai import ManagerPlanningError, recommend_department_plan
-from opencompany_core.executive_ai import ExecutivePlanningError, create_executive_plan
-from opencompany_core.model_gateway import CostPolicyViolation, ModelRequest, NoEligibleProvider, ProviderUnavailable
-from opencompany_core.collaboration import AgentHandoff, HandoffState, accept_handoff, decline_handoff, deliver_handoff
-from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, OutcomeGrade, ProposalState
-from opencompany_app.api_schemas import (
-    UnoRouterDiscoveryInput,
-    PlanItemInput,
-    PlanPreviewInput,
-    WorkItemCreateInput,
-    DelegationPreviewInput,
-    OutcomeEvaluationInput,
-    LearningAIProposalInput,
-    ImprovementProposalInput,
-    LearningDecisionInput,
-    LearningNoteInput,
-    HandoffCreateInput,
-    HandoffDeliverInput,
-    ExecutivePlanInput,
-    ManagerProposalInput,
-)
-from opencompany_app.api_dependencies import (
-    _default_runtime,
-    get_delegation_store,
-    get_optional_runtime,
-    get_runtime,
-    get_store,
-    require_owner_key,
-)
+from opencompany_app.api_dependencies import _default_runtime
 from opencompany_app.routers.catalogue import router as catalogue_router
 from opencompany_app.routers.system import router as system_router
 from opencompany_app.routers.dashboard import router as dashboard_router
@@ -81,7 +30,6 @@ from opencompany_app.routers.auth import router as auth_router
 from opencompany_app.routers.operations import backup_router as operations_backup_router, diagnostics_router as operations_diagnostics_router
 from opencompany_app.routers.planning import planning_router, queue_router, delegation_router
 from opencompany_app.routers.provider_info import provider_status_router, provider_candidates_router, executive_portfolio_router
-from opencompany_app.runtime import OpenCompanyRuntime
 
 
 app = FastAPI(
