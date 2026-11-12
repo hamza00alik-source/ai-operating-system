@@ -5,6 +5,7 @@ from opencompany_core.venture_portfolio import VenturePortfolio
 from opencompany_core.business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
 from opencompany_core.worker_queue import DurableWorkerQueue, QueueError
 from uuid import uuid4
+from opencompany_core.domain import WorkItem
 
 
 def setup():
@@ -185,3 +186,43 @@ def test_foundational_unit_activation_readiness_is_already_operational():
         assert report["blockers"] == []
     finally:
         store.close()
+
+
+
+def test_work_item_persistence_accepts_only_operational_registered_dynamic_units():
+    store, portfolio, registry = setup()
+    try:
+        approved = approved_opportunity(portfolio)
+        unit = provision(registry, portfolio, approved)
+        dynamic_item = WorkItem(
+            uuid4(), "Provisioning task", "Must remain blocked", "research",
+            business_id=unit["business_id"],
+        )
+        with pytest.raises(ValueError, match="not operational"):
+            store.save_work_item(dynamic_item)
+
+        unknown_item = WorkItem(
+            uuid4(), "Unknown task", "Must remain blocked", "research",
+            business_id="not-registered-unit",
+        )
+        with pytest.raises(ValueError, match="unknown business unit"):
+            store.save_work_item(unknown_item)
+
+        foundational_item = WorkItem(
+            uuid4(), "Foundational task", "Allowed existing scope", "research",
+            business_id="physical-agency",
+        )
+        store.save_work_item(foundational_item)
+        assert store.get_work_item(foundational_item.id) == foundational_item
+    finally:
+        store.close()
+
+
+def test_work_item_domain_accepts_valid_new_business_slug_but_rejects_invalid_slug():
+    item = WorkItem(
+        uuid4(), "Future task", "Valid identity syntax", "research",
+        business_id="new-software-company",
+    )
+    assert item.business_id == "new-software-company"
+    with pytest.raises(ValueError, match="lowercase slug"):
+        WorkItem(uuid4(), "Bad task", "Invalid identity", "research", business_id="Bad Unit")
