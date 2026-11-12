@@ -1,0 +1,45 @@
+version: 2.1
+
+jobs:
+  python-tests:
+    docker:
+      - image: cimg/python:3.11
+    working_directory: ~/project
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - pip-v1-{{ checksum "pyproject.toml" }}
+            - pip-v1-
+      - run:
+          name: Install test dependencies
+          command: |
+            python -m pip install --disable-pip-version-check -e ".[dev]"
+      - save_cache:
+          key: pip-v1-{{ checksum "pyproject.toml" }}
+          paths:
+            - ~/.cache/pip
+      - run:
+          name: Compile application
+          command: python -m compileall -q src worker_main.py main.py
+      - run:
+          name: Run test suite
+          command: pytest -q
+
+  container-build:
+    docker:
+      - image: cimg/base:stable
+    working_directory: ~/project
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - run:
+          name: Build production container without publishing
+          command: docker build --pull --tag opencompany-api:ci .
+
+workflows:
+  validate:
+    jobs:
+      - python-tests
+      - container-build
