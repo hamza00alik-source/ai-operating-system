@@ -68,18 +68,18 @@ class BusinessIntegrationRegistry:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 unit = self._db.execute(
-                    "SELECT integration_scope_id,status FROM opencompany_business_units WHERE business_id=?",
+                    "SELECT integration_scope_id,credential_scope_id,status FROM opencompany_business_units WHERE business_id=?",
                     (business_id,),
                 ).fetchone()
                 if unit is None:
                     raise ValueError("unknown business unit")
+                if unit["status"] == "paused":
+                    raise ValueError("integrations cannot be registered for a paused business unit")
+                credential_scope_id = unit["credential_scope_id"]
                 credential = self._db.execute(
                     """SELECT 1 FROM opencompany_business_credentials
                        WHERE business_id=? AND credential_scope_id=? AND credential_key=?""",
-                    (business_id, self._db.execute(
-                        "SELECT credential_scope_id FROM opencompany_business_units WHERE business_id=?",
-                        (business_id,),
-                    ).fetchone()["credential_scope_id"], credential_key),
+                    (business_id, credential_scope_id, credential_key),
                 ).fetchone()
                 if credential is None:
                     raise ValueError("credential_key must refer to a stored credential in this business unit")
@@ -89,10 +89,7 @@ class BusinessIntegrationRegistry:
                         credential_scope_id,credential_key,permissions_json,status,created_at,updated_at)
                        VALUES(?,?,?,?,?,?,?,?,'pending_review',?,?)""",
                     (integration_id, business_id, unit["integration_scope_id"], provider_key,
-                     display_name.strip(), self._db.execute(
-                         "SELECT credential_scope_id FROM opencompany_business_units WHERE business_id=?",
-                         (business_id,),
-                     ).fetchone()["credential_scope_id"], credential_key,
+                     display_name.strip(), credential_scope_id, credential_key,
                      json.dumps(sorted(permissions), separators=(",", ":")), now, now),
                 )
                 self._db.execute(
