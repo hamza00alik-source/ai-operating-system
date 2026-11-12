@@ -1,15 +1,15 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, read-only catalogue-router extraction, and health/readiness-router extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. The request-schema extraction, runtime/auth dependency extraction, duplicate workflow-route consolidation, read-only catalogue-router extraction, health/readiness-router extraction, and read-only UnoRouter provider-route extraction are implemented on the development branch; route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
-Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification` at blob SHA `f282b0ba05e7e703219f504eb85a2e5386255999`.
+Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification` at blob SHA `ae4124b6b88a58c37ef25510ed0994338ba8c6f3`.
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 89 direct route decorators in `api.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). Both routers are included at their original positions so registration order relative to the remaining API routes is preserved.
-- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py` and `system.py`, in addition to the composition, dashboard and runtime modules.
+- The API now has 85 direct route decorators in `api.py`, four read-only UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, and four read-only catalogue routes in `routers/catalogue.py` (95 total registrations by static composition count). All three routers are included at their original positions so registration order relative to the remaining API routes is preserved.
+- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py` and `system.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
@@ -37,9 +37,9 @@ Keep `api.py` as a thin composition root that creates the FastAPI app and includ
 | `api_dependencies.py` | Runtime/store/delegation dependencies, owner authentication, login throttling, shared response helpers |
 | `api_schemas.py` | Pydantic request models currently declared in the API module |
 | `routers/auth.py` | Session creation/status/logout and owner dashboard/backup endpoints |
-| `routers/system.py` | Remaining health/readiness and provider status routes |
+| `routers/system.py` | Health/readiness probes |
 | `routers/catalogue.py` | Workforce roles/route preview, departments and media capabilities (extracted) |
-| `routers/providers.py` | UnoRouter settings/discovery/test lifecycle and provider candidates |
+| `routers/providers.py` | UnoRouter discovery, saved settings status, accessible free-model list and catalogue (partially extracted) |
 | `routers/integrations.py` | GitHub evolution settings and API-Anything read-only integration routes |
 | `routers/agents.py` | Agent listing/state and bootstrap endpoints |
 | `routers/commercial.py` | Suppliers, opportunities, products, quotes and orders |
@@ -92,3 +92,18 @@ Static verification after the write fetched the file back from GitHub, confirmed
 - No endpoint contract changes, auth weakening, permission broadening, background execution changes, database migrations, or business-unit isolation changes as part of mechanical extraction.
 - No tests or CI runs before 2026-12-01, per owner instruction.
 - No merge, deploy, production routing change, paid provider use, external publishing, customer commitment, or financial action is authorized by this plan.
+
+## UnoRouter read/discovery route extraction
+
+Four owner-authenticated UnoRouter discovery and read-only settings endpoints were moved into `src/opencompany_app/routers/providers.py`:
+
+- `POST /settings/providers/unorouter/discover`
+- `GET /settings/providers/unorouter`
+- `GET /settings/providers/unorouter/models`
+- `GET /settings/providers/unorouter/catalog`
+
+The extracted handler block was compared with the source block after changing only the decorator target from `app` to `router`; the bodies and route metadata match exactly. All four routes retain their explicit `require_owner_key` dependency. The settings response exposes only whether a credential is present/decryptable and the selected model; it does not return the API key. The new router is included immediately before the existing provider-save route, preserving the original registration position of the moved endpoints relative to provider mutations.
+
+Provider writes, deletion, and asynchronous inference testing remain in `api.py` for now. This intentionally avoids moving the worker-stop/configuration transaction, encrypted-secret writes, background job state and zero-dollar inference test until their shared lifecycle and module-level state can be extracted as one cohesive unit. No credential values, confirmation requirements, paid-fallback policy, or worker behavior were changed.
+
+Static verification after re-fetching all four route-bearing modules found 85 direct API decorators, four provider routes, four catalogue routes and two system routes (95 total). There were no duplicate method/path pairs across these modules. All four provider routes retain owner authentication. No imports, app startup, OpenAPI generation, tests or runtime checks were performed.
