@@ -522,6 +522,8 @@ class BusinessUnitRegistry:
             "opencompany_business_integration_events_no_update",
             "opencompany_business_integration_events_no_delete",
             "opencompany_business_integrations_no_scope_change",
+            "opencompany_business_integrations_no_update",
+            "opencompany_business_integrations_no_delete",
             "opencompany_business_units_integration_scope_no_update",
         }.issubset(integration_triggers)
         integration_ready = (
