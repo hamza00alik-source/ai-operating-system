@@ -102,7 +102,7 @@ def heartbeat_loop(job_id, lease, stop, cancellation):
         try:
             result = request_json(
                 f"/video/worker/jobs/{job_id}/heartbeat",
-                {"progress": 10, "message": "LongCat inference running"},
+                {"progress": None, "message": ""},
                 lease,
             )
             if result.get("cancel_requested"):
@@ -166,13 +166,17 @@ def main():
         hb.start()
         try:
             output, metadata = generate_one(pipe,torch,job)
-            stop.set(); hb.join(timeout=2)
             if cancellation.is_set():
                 request_json(f"/video/worker/jobs/{job_id}/fail",
                              {"error":"Cancellation requested or worker heartbeat lost during inference","retryable":False},lease)
                 continue
+            # Keep renewing the lease while the MP4 is uploaded; the API also
+            # refreshes it while streaming and checks for owner cancellation.
             result = upload_artifact(job_id,lease,output)
             print(f"Completed {job_id}: {result.get('result_uri')}",flush=True)
+        finally:
+            stop.set()
+            hb.join(timeout=2)
         except Exception as exc:
             stop.set(); hb.join(timeout=2)
             try:
