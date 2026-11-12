@@ -195,3 +195,20 @@ def test_asset_registry_rejects_unregistered_or_inactive_business_units(tmp_path
         assets.list("physical-brand")
     assert units.require_active("physical-agency")["status"] == "active"
     store.close()
+
+
+def test_asset_declaration_and_audit_event_roll_back_together(tmp_path):
+    store=SQLiteStore(tmp_path/"asset-atomicity.sqlite3")
+    BusinessUnitRegistry(store._connection,store._lock)
+    assets=BusinessAssetRegistry(store._connection,store._lock)
+    with store._lock:
+        store._connection.execute("""CREATE TRIGGER reject_asset_event BEFORE INSERT ON opencompany_business_asset_events
+            BEGIN SELECT RAISE(ABORT,'simulated audit sink failure'); END""")
+        store._connection.commit()
+    with pytest.raises(Exception,match="simulated audit sink failure"):
+        declare(assets,asset_key="atomicity-check")
+    assert assets.list("physical-agency") == ()
+    with store._lock:
+        store._connection.execute("DROP TRIGGER reject_asset_event")
+        store._connection.commit()
+    store.close()
