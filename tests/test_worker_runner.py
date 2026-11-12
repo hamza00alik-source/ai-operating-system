@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from threading import Event, Thread
 from time import sleep
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import pytest
 
@@ -365,4 +365,79 @@ def test_worker_does_not_persist_result_after_owner_cancellation(tmp_path):
     assert queue.counts() == {"dead": 1}
     assert store.list_deliverables(item.id) == ()
     assert store.verify_audit_chain()
+    store.close()
+
+
+def test_worker_resumes_completed_specialist_output_checkpoint_without_reexecution(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    first_lease = queue.claim(agent)
+    assert first_lease is not None
+    stable_id = uuid5(
+        NAMESPACE_URL,
+        f"opencompany:deliverable:{item.id}:marketplace_operations_analyst",
+    )
+    checkpoint_payload = {
+        "id": str(stable_id),
+        "work_item_id": str(item.id),
+        "role_key": "marketplace_operations_analyst",
+        "content": "Checkpointed draft from the completed model stage",
+        "provider": "fake",
+        "model": "deterministic",
+        "cost_usd": 0.0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "review_required": True,
+    }
+    assert store.save_execution_checkpoint(
+        first_lease, "marketplace_operations_analyst",
+        "specialist_output", checkpoint_payload,
+    ) is True
+    failed_at = datetime.now(timezone.utc)
+    assert queue.fail(first_lease, "simulated_worker_restart", now=failed_at) == "queued"
+    with queue._lock:
+        queue._db.execute(
+            "UPDATE worker_queue SET next_attempt_at=? WHERE work_item_id=?",
+            ((failed_at - timedelta(seconds=1)).isoformat(), str(item.id)),
+        )
+
+    class MustNotExecute(FakeExecutor):
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, role_key, work_item, **kwargs):
+            self.calls += 1
+            raise AssertionError("completed checkpoint should resume without model execution")
+
+    executor = MustNotExecute()
+    sink = MemorySink()
+    worker = OpenCompanyWorker(queue, store, executor, sink)
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert executor.calls == 0
+    assert len(sink.items) == 1
+    artifact = next(iter(sink.items.values()))
+    assert artifact.id == stable_id
+    assert artifact.content == checkpoint_payload["content"]
+    assert store.get_execution_checkpoint(
+        item.id, "marketplace_operations_analyst", "specialist_output"
+    ) is None
+    assert queue.counts() == {"done": 1}
+    assert store.get_work_item(item.id).state == TaskState.REVIEW
+    queue.close()
+    store.close()
+
+
+def test_checkpoint_write_is_rejected_for_stale_or_cancelled_lease(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    lease = queue.claim(agent)
+    assert lease is not None
+    assert queue.request_cancel(item.id, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.cancellation_requested",
+        subject_type="work_item", subject_id=str(item.id), outcome="recorded",
+        correlation_id=str(uuid4()), details={"reason": "owner_requested"},
+    )) == "cancellation_requested"
+    assert store.save_execution_checkpoint(
+        lease, "marketplace_operations_analyst", "specialist_output", {"content": "must not save"}
+    ) is False
+    assert store.list_execution_checkpoints(item.id) == ()
+    queue.close()
     store.close()
