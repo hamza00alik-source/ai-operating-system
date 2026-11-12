@@ -176,7 +176,12 @@ def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blocke
             if check["key"] == "commercial_persistence_dynamic_business_ids"
         )
         assert dynamic_check["ready"] is True
-        assert "customer_scope_enforcement" in report["blockers"]
+        assert "customer_scope_enforcement" not in report["blockers"]
+        customer_check = next(
+            check for check in report["checks"]
+            if check["key"] == "customer_scope_enforcement"
+        )
+        assert customer_check["ready"] is True
         assert "finance_ledger_scope" in report["blockers"]
         assert "owner_activation_approval" in report["blockers"]
         assert registry.get(unit["business_id"])["status"] == "provisioning"
