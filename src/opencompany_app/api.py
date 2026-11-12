@@ -2603,8 +2603,16 @@ def create_work_item_delegation_proposal(
     elif plan.mode.value == "specialist_team":
         for specialist in plan.specialists:
             profile = next((agent for agent in profiles if agent.role_key == specialist.role_key and agent.team_key == specialist.team_key and agent.department == item.department), None)
-            if profile is None:
-                raise HTTPException(status_code=409, detail=f"Specialist profile is not provisioned: {specialist.role_key}")
+            if (
+                profile is None or profile.state != AgentState.ACTIVE
+                or profile.role_key != specialist.role_key
+                or profile.team_key != specialist.team_key
+                or profile.department != item.department
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Specialist must be provisioned, ACTIVE, and correctly assigned: {specialist.role_key}",
+                )
             children.append({
                 "assigned_agent_id": str(profile.id), "role_key": specialist.role_key,
                 "team_key": specialist.team_key, "title": f"{specialist.title}: {item.title}",
