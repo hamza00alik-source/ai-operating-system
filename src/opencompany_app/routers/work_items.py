@@ -119,6 +119,7 @@ def reassign_work_item(
         outcome="recorded", correlation_id=str(uuid4()),
         details={
             "previous_agent_id": str(item.assigned_agent_id) if item.assigned_agent_id else None,
+            "previous_task_state": item.state.value,
             "target_agent_id": str(target.id), "role_key": target.role_key,
             "team_key": target.team_key, "business_id": item.business_id,
             "rationale": payload.rationale,
