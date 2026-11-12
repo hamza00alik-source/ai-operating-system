@@ -269,3 +269,93 @@ def test_shared_runtime_atomically_persists_deliverable_and_completes_lease(tmp_
     assert store.audit_event_count() == 1
     assert store.verify_audit_chain()
     store.close()
+
+
+def _owner_cancel_record(item_id):
+    return AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.cancellation_requested",
+        subject_type="work_item", subject_id=str(item_id), outcome="recorded",
+        correlation_id=str(uuid4()), details={"reason": "owner_requested"},
+    )
+
+
+def test_queued_work_can_be_cancelled_atomically(tmp_path):
+    agent, item, store, separate_queue = setup(tmp_path)
+    separate_queue.close()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    with store._lock:
+        store._connection.execute(
+            "UPDATE work_items SET state=? WHERE id=?",
+            (TaskState.QUEUED.value, str(item.id)),
+        )
+    queue.enqueue(item.id, agent, {"source": "cancel-test"})
+    assert queue.request_cancel(item.id, _owner_cancel_record(item.id)) == "cancelled"
+    assert store.get_work_item(item.id).state == TaskState.CANCELLED
+    assert queue.counts() == {"dead": 1}
+    assert queue.get_entry(item.id)["last_error"] == "owner_cancelled"
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_leased_work_cancellation_is_finalized_only_by_current_lease(tmp_path):
+    agent, item, store, separate_queue = setup(tmp_path)
+    separate_queue.close()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue(item.id, agent, {"source": "cancel-test"})
+    lease = queue.claim(agent)
+    assert lease is not None
+    assert queue.request_cancel(item.id, _owner_cancel_record(item.id)) == "cancellation_requested"
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+    assert queue.finalize_cancel(
+        lease, AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+            actor_id=str(agent), action="worker.execution_cancelled",
+            subject_type="work_item", subject_id=str(item.id), outcome="recorded",
+            correlation_id=str(lease.lease_token), details={},
+        )
+    ) is True
+    assert store.get_work_item(item.id).state == TaskState.CANCELLED
+    assert queue.counts() == {"dead": 1}
+    assert queue.finalize_cancel(lease, _owner_cancel_record(item.id)) is False
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_worker_does_not_persist_result_after_owner_cancellation(tmp_path):
+    agent, item, store, separate_queue = setup(tmp_path)
+    separate_queue.close()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue(item.id, agent, {"source": "cancel-test"})
+    started = Event()
+    finish = Event()
+
+    class SlowExecutor(FakeExecutor):
+        def execute(self, role_key, work_item, **kwargs):
+            started.set()
+            assert finish.wait(3)
+            return super().execute(role_key, work_item, **kwargs)
+
+    worker = OpenCompanyWorker(queue, store, SlowExecutor(), store)
+    results, errors = [], []
+
+    def run():
+        try:
+            results.append(worker.run_once(agent, "marketplace_operations_analyst"))
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = Thread(target=run)
+    thread.start()
+    assert started.wait(1)
+    assert queue.request_cancel(item.id, _owner_cancel_record(item.id)) == "cancellation_requested"
+    finish.set()
+    thread.join(timeout=4)
+    assert not thread.is_alive()
+    assert errors == []
+    assert results == ["cancelled"]
+    assert store.get_work_item(item.id).state == TaskState.CANCELLED
+    assert queue.counts() == {"dead": 1}
+    assert store.list_deliverables(item.id) == ()
+    assert store.verify_audit_chain()
+    store.close()
