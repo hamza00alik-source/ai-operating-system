@@ -26,14 +26,14 @@ class AssetStorageError(ValueError):
 
 
 _MEDIA_SIGNATURES = {
-    "model/gltf-binary": lambda data: len(data) >= 12 and data[:4] == b"glTF" and data[4:8] == b"\\x02\\x00\\x00\\x00",
-    "image/png": lambda data: data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"),
-    "image/jpeg": lambda data: data.startswith(b"\\xff\\xd8\\xff"),
+    "model/gltf-binary": lambda data: len(data) >= 12 and data[:4] == b"glTF" and data[4:8] == b"\x02\x00\x00\x00",
+    "image/png": lambda data: data.startswith(b"\x89PNG\\r\\n\x1a\\n"),
+    "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
     "image/gif": lambda data: data.startswith((b"GIF87a", b"GIF89a")),
     "image/webp": lambda data: len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
     "application/pdf": lambda data: data.startswith(b"%PDF-"),
-    "application/zip": lambda data: data.startswith((b"PK\\x03\\x04", b"PK\\x05\\x06", b"PK\\x07\\x08")),
-    "text/plain": lambda data: b"\\x00" not in data and _is_utf8_text(data),
+    "application/zip": lambda data: data.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")),
+    "text/plain": lambda data: b"\x00" not in data and _is_utf8_text(data),
 }
 
 
@@ -229,6 +229,7 @@ class PrivateFilesystemAssetStorage:
         fd, staging_name = tempfile.mkstemp(prefix=".incoming-", suffix=".part", dir=self.root)
         staging_path = Path(staging_name)
         total = 0
+        prefix = bytearray()
         try:
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "wb") as stream:
@@ -239,7 +240,10 @@ class PrivateFilesystemAssetStorage:
                     total += len(data)
                     if total > MAX_ASSET_BYTES or total > expected_size:
                         raise AssetStorageError("received asset exceeds its declared size or the 100 MiB limit")
+                    if len(prefix) < 4096:
+                        prefix.extend(data[:4096 - len(prefix)])
                     stream.write(data)
+                validate_asset_media_type(expected_media_type, bytes(prefix))
                 stream.flush()
                 os.fsync(stream.fileno())
             if total != expected_size:
