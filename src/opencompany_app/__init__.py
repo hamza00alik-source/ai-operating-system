@@ -1,0 +1,1 @@
+"""OpenCompany application package."""
