@@ -1954,3 +1954,27 @@ def test_workflow_view_exposes_secret_free_execution_attempt_history(owner_clien
 
     unauthorized = owner_client.get(f"/work-items/{item_id}/workflow")
     assert unauthorized.status_code == 401
+
+
+def test_owner_cannot_enqueue_ready_delegated_synthesis_before_all_children_complete(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    prerequisite = owner_client.post("/work-items", headers=headers, json={
+        "title": "Collect evidence", "objective": "Gather primary sources",
+        "department": "intelligence-research",
+    }).json()
+    synthesis = owner_client.post("/work-items", headers=headers, json={
+        "title": "Synthesize evidence", "objective": "Combine approved child outputs",
+        "department": "intelligence-research", "depends_on": [prerequisite["item_id"]],
+    }).json()
+    ready = owner_client.post(
+        f"/work-items/{synthesis['item_id']}/transition", headers=headers,
+        json={"target_state": "ready"},
+    )
+    assert ready.status_code == 200
+
+    response = owner_client.post(
+        f"/work-items/{synthesis['item_id']}/enqueue", headers=headers,
+    )
+    assert response.status_code == 409
+    assert "prerequisites must be completed" in response.json()["detail"]
+    assert owner_client.get("/workers/queue", headers=headers).json()["total"] == 0
