@@ -32,7 +32,7 @@ def test_owner_login_creates_persistent_cookie_session(monkeypatch, tmp_path):
         assert client.get("/tasks").status_code == 401
 
 
-def test_company_department_registry_exposes_twelve_departments():
+def test_company_department_registry_exposes_thirteen_departments():
     with TestClient(app) as client:
         response = client.get("/company/departments")
     assert response.status_code == 200
