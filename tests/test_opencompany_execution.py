@@ -88,7 +88,7 @@ def test_executor_receives_only_owner_approved_learning_notes():
     ))
     executor = AgentExecutor(
         gateway,
-        learning_context=lambda role_key: [
+        learning_context=lambda role_key, business_id: [
             {"note": "Always include primary-source URLs in demand estimates."},
             {"note": "Avoid extrapolating from one marketplace's reviews."},
         ],
@@ -199,3 +199,24 @@ def test_specialist_prompt_and_usage_are_scoped_to_work_item_business():
     )
     assert "Business unit: physical-brand" in adapter.request.prompt
     assert events[0]["business_id"] == "physical-brand"
+
+
+def test_learning_context_failure_never_retries_with_unscoped_callback():
+    adapter = CapturingAdapter()
+    gateway = ModelGateway.configure((
+        (ProviderPolicy("free", "test-model", BillingMode.FREE_CONFIRMED), adapter),
+    ))
+    calls = []
+
+    def scoped_learning(role_key, business_id):
+        calls.append((role_key, business_id))
+        raise TypeError("scoped repository failure")
+
+    executor = AgentExecutor(gateway, learning_context=scoped_learning)
+    item = WorkItem(
+        uuid4(), "Assess digital demand", "Prepare a digital product report",
+        "research", state=TaskState.IN_PROGRESS, business_id="digital-products",
+    )
+    executor.execute("market_intelligence_analyst", item)
+    assert calls == [("market_intelligence_analyst", "digital-products")]
+    assert "No owner-approved role learning notes are available." in adapter.request.prompt
