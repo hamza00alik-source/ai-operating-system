@@ -2836,8 +2836,13 @@ def get_work_item_workflow(
                 dependency.state == TaskState.COMPLETED and bool(dependency_deliverables)
             ),
         })
-    synthesis_ready = bool(parent.depends_on) and bool(manager) and all(
-        value["completed_with_deliverable"] for value in dependency_status
+    synthesis_ready = (
+        bool(parent.depends_on)
+        and manager is not None
+        and manager.state == AgentState.ACTIVE
+        and manager.department == parent.department
+        and manager.team_key == "management"
+        and all(value["completed_with_deliverable"] for value in dependency_status)
     )
 
     return {
