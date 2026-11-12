@@ -4,8 +4,8 @@ This module declares ownership and provenance only. It does not upload, scan,
 store, expose, or deliver file bytes.
 """
 from __future__ import annotations
-import hashlib
 import re
+import json
 import sqlite3
 from datetime import datetime, timezone
 from threading import RLock
@@ -105,4 +105,4 @@ class BusinessAssetRegistry:
             rows=self._db.execute("""SELECT event_id,asset_id,business_id,action,actor_type,actor_id,details_json,occurred_at
                 FROM opencompany_business_asset_events WHERE business_id=? AND asset_scope_id=? AND asset_id=?
                 ORDER BY occurred_at,event_id""",(business_id,scope,asset_id)).fetchall()
-        return tuple({**dict(row),"details":__import__("json").loads(row["details_json"])} for row in rows)
+        return tuple({**dict(row),"details":json.loads(row["details_json"])} for row in rows)
