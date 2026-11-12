@@ -469,3 +469,11 @@ No imports, application startup, OpenAPI generation, tests, CI, migrations or da
 - Supplier creation and status updates retain their single-transaction audit append, rollback behavior, and business/relationship type constraints. Listing retains its physical-business-only scope and bounded limit.
 - `SQLiteStore` now composes `SupplierPersistenceMixin`; commercial opportunity/product/quote/order methods remain in `CommercialPersistenceMixin`. The commercial module is reduced from 517 to 425 lines.
 - Static re-fetch confirms the three methods exist once in the supplier mixin, no longer appear in the commercial mixin, and the new mixin is inherited by `SQLiteStore`. No runtime imports, tests, CI or database operations were performed. The December 1 test/CI deferral remains active.
+
+## Commercial product persistence extraction (2026-11-12)
+
+- Added `src/opencompany_core/product_persistence.py` with `ProductPersistenceMixin`; moved `create_commercial_product`, `update_commercial_product_status` and `list_commercial_products` out of `commercial_persistence.py`.
+- The complete 91-line moved method block was compared with its immediate pre-extraction parent commit `c54a2dbfe968edec45e1aa160b969632c27f02cd` and is byte-for-byte identical.
+- Product create/status operations retain their existing transaction boundaries, audit-chain appends and rollback behavior. Business-unit constraints for physical agency, physical brand and digital products remain in the product mixin.
+- `SQLiteStore` composes `ProductPersistenceMixin`; opportunity, quote and order methods remain in `CommercialPersistenceMixin`. Commercial persistence module reduced from 425 to 333 lines.
+- Static re-fetch confirms all three methods appear once in the product mixin, are absent from the commercial mixin, and the product mixin is inherited by SQLiteStore. No imports, startup, tests, CI or database operations were run. The December 1 test/CI deferral remains active.
