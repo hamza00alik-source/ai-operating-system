@@ -94,3 +94,8 @@ def test_private_storage_accepts_async_bounded_stream(tmp_path):
     assert result["checksum_sha256"] == hashlib.sha256(payload).hexdigest()
     assert result["byte_size"] == len(payload)
     assert not list((tmp_path / "private-assets").glob(".incoming-*.part"))
+
+
+def test_private_storage_rejects_parent_traversal_root(tmp_path):
+    with pytest.raises(AssetStorageError, match="parent traversal"):
+        PrivateFilesystemAssetStorage(tmp_path / ".." / "outside")
