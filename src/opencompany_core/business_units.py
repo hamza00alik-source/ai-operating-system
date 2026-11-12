@@ -289,10 +289,29 @@ class BusinessUnitRegistry:
                 if not pair_found:
                     customer_scope_ready = False
                     customer_scope_evidence.append(f"{table_name}: missing composite unit/scope foreign key")
-            finance_tables = self._db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' "
-                "AND (name LIKE '%finance%' OR name LIKE '%ledger%' OR name LIKE '%payment%')"
-            ).fetchall()
+            finance_tables = {
+                row["name"]: row["sql"] or ""
+                for row in self._db.execute(
+                    "SELECT name,sql FROM sqlite_master WHERE type='table' "
+                    "AND name IN ('opencompany_finance_entries','opencompany_finance_entry_events')"
+                ).fetchall()
+            }
+            finance_columns = {
+                name: {row["name"] for row in self._db.execute(
+                    f'PRAGMA table_info("{name}")'
+                ).fetchall()}
+                for name in finance_tables
+            }
+            finance_fks = {
+                name: self._db.execute(f'PRAGMA foreign_key_list("{name}")').fetchall()
+                for name in finance_tables
+            }
+            finance_triggers = {
+                row["name"] for row in self._db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' "
+                    "AND tbl_name IN ('opencompany_finance_entries','opencompany_finance_entry_events')"
+                ).fetchall()
+            }
 
         constrained = sorted(
             name for name, sql in tables.items()
@@ -325,15 +344,53 @@ class BusinessUnitRegistry:
         if not customer_scope_ready:
             blockers.append("customer_scope_enforcement")
 
-        finance_scoped = bool(finance_tables)
+        expected_finance = {"opencompany_finance_entries", "opencompany_finance_entry_events"}
+        unit_pair = {("business_id", "business_id"), ("finance_scope_id", "finance_scope_id")}
+        entries_pair = any(
+            fk["table"] == "opencompany_business_units"
+            and {(x["from"], x["to"]) for x in finance_fks.get("opencompany_finance_entries", [])
+                 if x["id"] == fk["id"]} == unit_pair
+            for fk in finance_fks.get("opencompany_finance_entries", [])
+        )
+        events_unit_pair = any(
+            fk["table"] == "opencompany_business_units"
+            and {(x["from"], x["to"]) for x in finance_fks.get("opencompany_finance_entry_events", [])
+                 if x["id"] == fk["id"]} == unit_pair
+            for fk in finance_fks.get("opencompany_finance_entry_events", [])
+        )
+        event_entry_pair = any(
+            fk["table"] == "opencompany_finance_entries"
+            and {(x["from"], x["to"]) for x in finance_fks.get("opencompany_finance_entry_events", [])
+                 if x["id"] == fk["id"]} == {
+                     ("entry_id", "id"), ("business_id", "business_id"),
+                     ("finance_scope_id", "finance_scope_id")
+                 }
+            for fk in finance_fks.get("opencompany_finance_entry_events", [])
+        )
+        append_only_triggers = {
+            "opencompany_finance_entries_no_update", "opencompany_finance_entries_no_delete",
+            "opencompany_finance_entry_events_no_update", "opencompany_finance_entry_events_no_delete",
+        }.issubset(finance_triggers)
+        finance_ready = (
+            expected_finance.issubset(finance_tables)
+            and {"business_id", "finance_scope_id", "amount_minor", "currency", "entry_type"}
+                .issubset(finance_columns.get("opencompany_finance_entries", set()))
+            and {"entry_id", "business_id", "finance_scope_id", "action", "actor_type"}
+                .issubset(finance_columns.get("opencompany_finance_entry_events", set()))
+            and entries_pair and events_unit_pair and event_entry_pair and append_only_triggers
+        )
         checks.append({
             "key": "finance_ledger_scope",
-            "ready": finance_scoped,
-            "evidence": "A finance/ledger/payment persistence table exists; per-unit enforcement still requires review."
-                        if finance_scoped else
-                        "No finance, ledger, or payment persistence table is registered in this SQLite store.",
+            "ready": finance_ready,
+            "evidence": (
+                "OpenCompany finance entries and review events enforce business/finance-scope "
+                "pairing, same-scope entry/event relationships, and database-level append-only triggers."
+                if finance_ready else
+                "Finance ledger enforcement is incomplete: both scoped tables, composite foreign keys, "
+                "required columns, and all four append-only triggers must be present."
+            ),
         })
-        if not finance_scoped:
+        if not finance_ready:
             blockers.append("finance_ledger_scope")
 
         for key, label in (
