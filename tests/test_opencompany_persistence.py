@@ -501,6 +501,15 @@ def test_business_credential_vault_encrypts_and_isolates_business_scopes(tmp_pat
         "SELECT action FROM opencompany_business_credential_events WHERE business_id='physical-agency' ORDER BY occurred_at,event_id"
     ).fetchall()
     assert {row["action"] for row in events} == {"stored", "rotated", "deleted"}
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store._connection.execute(
+                "UPDATE opencompany_business_units SET credential_scope_id='changed-credential-scope' WHERE business_id='physical-agency'"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "DELETE FROM opencompany_business_credential_events WHERE business_id='physical-agency'"
+            )
     store.close()
 
 
