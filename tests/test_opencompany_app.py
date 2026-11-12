@@ -1,4 +1,5 @@
 import pytest
+import hashlib
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from uuid import UUID, uuid4
@@ -7,6 +8,7 @@ import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
 from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
@@ -1832,6 +1834,76 @@ def test_business_memory_api_requires_owner_confirmation_and_isolates_units(owne
     after = owner_client.get("/business-units/physical-agency/memory", headers=headers)
     assert after.status_code == 200 and after.json()["count"] == 0
 
+
+
+def test_business_asset_upload_is_owner_confirmed_private_and_unavailable(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = get_runtime()
+    payload_bytes = b"glTF" + b"\x02\x00\x00\x00" + b"\x18\x00\x00\x00" + b"test"
+    digest = hashlib.sha256(payload_bytes).hexdigest()
+    declared = owner_client.post("/business-units/digital-products/assets", headers=headers, json={
+        "asset_key": "demo-model", "title": "Demo model", "asset_type": "3d-model",
+        "filename": "demo.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": digest, "byte_size": len(payload_bytes),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    assert declared.status_code == 200
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+
+    no_confirmation = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary"},
+        content=payload_bytes,
+    )
+    assert no_confirmation.status_code == 422
+
+    uploaded = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload_bytes,
+    )
+    assert uploaded.status_code == 200
+    result = uploaded.json()
+    assert result["checksum_verified"] is True
+    assert result["malware_scan_completed"] is False
+    assert result["download_enabled"] is False
+    assert "storage_key" not in result["asset"]
+    listed = owner_client.get("/business-units/digital-products/assets", headers=headers).json()["assets"][0]
+    assert listed["storage_state"] == "private_stored_unscanned"
+    assert listed["status"] == "pending_scan"
+
+    duplicate = owner_client.put(
+        f"/business-units/digital-products/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
+        content=payload_bytes,
+    )
+    assert duplicate.status_code == 409
+    assert owner_client.get(
+        f"/business-units/physical-agency/assets/{asset_id}/events", headers=headers
+    ).status_code == 404
+
+
+def test_business_asset_upload_rejects_corrupt_bytes(owner_client, tmp_path):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = get_runtime()
+    expected = b"correct bytes"
+    declared = owner_client.post("/business-units/physical-agency/assets", headers=headers, json={
+        "asset_key": "checksum-test", "title": "Checksum test", "asset_type": "document",
+        "filename": "notes.txt", "media_type": "text/plain",
+        "checksum_sha256": hashlib.sha256(expected).hexdigest(), "byte_size": len(expected),
+        "source": "owner upload", "confirm_owner_declaration": True,
+    })
+    asset_id = declared.json()["asset"]["asset_id"]
+    runtime.asset_storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
+    response = owner_client.put(
+        f"/business-units/physical-agency/assets/{asset_id}/content",
+        headers={**headers, "Content-Type": "text/plain", "X-Confirm-Owner-Upload": "true"},
+        content=b"tampered bytes",
+    )
+    assert response.status_code == 422
+    assert "checksum" in response.json()["detail"].lower()
+    assert owner_client.get("/business-units/physical-agency/assets", headers=headers).json()["assets"][0]["status"] == "pending_storage"
 
 def test_business_asset_api_is_owner_confirmed_and_metadata_only(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
