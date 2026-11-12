@@ -4,6 +4,8 @@ import logging
 import threading
 import unicodedata
 import json
+import hmac
+import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
@@ -851,6 +853,7 @@ class VideoJobCreate(BaseModel):
     approved_budget_minor: int = Field(ge=0)
     currency: str = Field(default="USD", min_length=3, max_length=3)
     cost_basis: str = Field(min_length=1, max_length=300)
+    max_attempts: int = Field(default=3, ge=1, le=5)
 
 
 class VideoJobDecision(BaseModel):
@@ -909,3 +912,90 @@ def decide_video_job(job_id: str, payload: VideoJobDecision):
     if item is None:
         raise HTTPException(status_code=404, detail="Video job not found.")
     return {"job": item, "generation_started": False, "publishing_performed": False}
+
+
+
+class VideoWorkerClaim(BaseModel):
+    worker_id: str = Field(min_length=1, max_length=100)
+    lease_seconds: int = Field(default=120, ge=30, le=900)
+
+
+class VideoWorkerHeartbeat(BaseModel):
+    progress: float | None = Field(default=None, ge=0, le=100)
+    message: str = Field(default="", max_length=240)
+
+
+class VideoWorkerComplete(BaseModel):
+    result_uri: str = Field(min_length=9, max_length=2048)
+    metadata: dict = Field(default_factory=dict)
+
+
+class VideoWorkerFailure(BaseModel):
+    error: str = Field(min_length=1, max_length=2000)
+    retryable: bool = True
+
+
+def require_video_worker(x_video_worker_token: str | None = Header(default=None, alias="X-Video-Worker-Token")):
+    expected = os.getenv("VIDEO_WORKER_TOKEN", "").strip()
+    if not expected or not x_video_worker_token or not hmac.compare_digest(expected, x_video_worker_token.strip()):
+        raise HTTPException(status_code=401, detail="Valid video worker credential required.")
+
+
+@app.get("/video/jobs/{job_id}/events", dependencies=[Depends(require_api_key)])
+def get_video_job_events(job_id: str):
+    if video_jobs.get_job(job_id) is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    return video_jobs.list_events(job_id)
+
+
+@app.post("/video/jobs/{job_id}/cancel", dependencies=[Depends(require_owner_key)])
+def post_video_job_cancel(job_id: str):
+    try:
+        item = video_jobs.cancel_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    return {"job": item, "cancellation": "requested" if item["status"] == "running" else item["status"]}
+
+
+@app.post("/video/worker/claim", dependencies=[Depends(require_video_worker)])
+def post_video_worker_claim(payload: VideoWorkerClaim):
+    try:
+        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/video/worker/jobs/{job_id}/heartbeat", dependencies=[Depends(require_video_worker)])
+def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+    try:
+        return video_jobs.heartbeat(job_id, x_job_lease, progress=payload.progress, message=payload.message)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/video/worker/jobs/{job_id}/complete", dependencies=[Depends(require_video_worker)])
+def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+    try:
+        return video_jobs.complete_job(job_id, x_job_lease, result_uri=payload.result_uri, metadata=payload.metadata)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/video/worker/jobs/{job_id}/fail", dependencies=[Depends(require_video_worker)])
+def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+    try:
+        return video_jobs.fail_job(job_id, x_job_lease, error=payload.error, retryable=payload.retryable)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
