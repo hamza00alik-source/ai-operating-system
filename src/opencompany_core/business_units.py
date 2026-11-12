@@ -6,6 +6,7 @@ publish offers, contact customers, or mark a venture as launched.
 """
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -450,6 +451,7 @@ class BusinessUnitRegistry:
             and {"business_id", "credential_scope_id", "credential_key", "action", "revision"}
                 .issubset(credential_columns.get("opencompany_business_credential_events", set()))
             and credential_pair and credential_events_pair and credential_history_ready
+            and len(os.environ.get("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "").strip()) >= 32
         )
         checks.append({
             "key": "credential_scope_adapter",
