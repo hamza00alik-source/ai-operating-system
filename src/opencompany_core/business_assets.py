@@ -140,7 +140,10 @@ class BusinessAssetRegistry:
             item=self._get(business_id,asset_id)
             if item["storage_key"] is not None: raise ValueError("asset has already been stored")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("stored asset checksum or size does not match declaration")
-            if not isinstance(storage_key,str) or not re.fullmatch(r"[a-f0-9]{64}/"+re.escape(item["asset_id"])+r"\.blob",storage_key): raise ValueError("invalid business-scoped storage key")
+            expected_prefix = hashlib.sha256((business_id + "\\0" + item["asset_scope_id"]).encode("utf-8")).hexdigest()
+            expected_storage_key = expected_prefix + "/" + item["asset_id"] + ".blob"
+            if not isinstance(storage_key, str) or storage_key != expected_storage_key:
+                raise ValueError("storage key does not match this business asset's private scope")
             if audit.actor_type != "owner": raise PermissionError("only the owner may record asset storage")
             self._audit_dict(audit)
             self.connection.execute("UPDATE opencompany_business_assets SET storage_key=?,storage_state='private_stored_unscanned',status='pending_scan' WHERE business_id=? AND asset_id=?",(storage_key,business_id,item["asset_id"]))
