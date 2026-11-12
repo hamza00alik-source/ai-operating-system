@@ -628,6 +628,16 @@ def _migrate_v11_business_integrations(connection: sqlite3.Connection) -> None:
             BEGIN SELECT RAISE(ABORT, 'integration identity and scope are immutable'); END
         """)
         connection.execute("""
+            CREATE TRIGGER opencompany_business_integrations_no_update
+            BEFORE UPDATE ON opencompany_business_integrations
+            BEGIN SELECT RAISE(ABORT, 'integration declarations are immutable'); END
+        """)
+        connection.execute("""
+            CREATE TRIGGER opencompany_business_integrations_no_delete
+            BEFORE DELETE ON opencompany_business_integrations
+            BEGIN SELECT RAISE(ABORT, 'integration declarations are immutable'); END
+        """)
+        connection.execute("""
             CREATE TRIGGER opencompany_business_units_integration_scope_no_update
             BEFORE UPDATE OF integration_scope_id ON opencompany_business_units
             BEGIN SELECT RAISE(ABORT, 'business-unit integration scope is immutable'); END
