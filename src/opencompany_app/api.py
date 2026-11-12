@@ -73,10 +73,10 @@ def initialize_autonomous_runtime() -> None:
     # budget for every inference call; unavailable free models fail closed.
     if autostart_enabled:
         try:
-            if not runtime.start_workers_if_ready():
-                _LOGGER.info("Worker autostart remains stopped until a successful owner-triggered zero-cost provider test in this process.")
+            if runtime.start_workers_if_ready():
+                _LOGGER.info("Worker fleet started after owner-configured zero-cost provider verification.")
             else:
-                _LOGGER.warning("Worker autostart was requested but no confirmed-free provider is configured.")
+                _LOGGER.info("Worker autostart remains stopped until a successful owner-triggered zero-cost provider test in this process.")
         except Exception:
             _LOGGER.exception("Worker autostart could not initialize safely; workers remain stopped.")
 
