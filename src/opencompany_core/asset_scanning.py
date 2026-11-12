@@ -77,7 +77,7 @@ class ClamAVUnixSocketScanner:
                 if not block:
                     break
                 response.extend(block)
-                if b"\0" in response or b"\n" in response:
+                if b"\0" in response:
                     break
         except socket.timeout as exc:
             raise AssetScanError("scanner_timeout", "Local malware scanner timed out") from exc
@@ -86,10 +86,12 @@ class ClamAVUnixSocketScanner:
         finally:
             client.close()
 
+        if b"\0" not in response:
+            raise AssetScanError("scanner_invalid_response", "Local malware scanner response was not NUL-terminated")
         verdict = bytes(response).split(b"\0", 1)[0].decode("utf-8", errors="replace").strip()
-        if verdict.endswith(": OK") or verdict == "stream: OK":
+        if verdict == "stream: OK":
             status = "clean"
-        elif verdict.endswith(" FOUND"):
+        elif verdict.startswith("stream: ") and verdict.endswith(" FOUND"):
             status = "infected"
         else:
             raise AssetScanError("scanner_invalid_response", "Local malware scanner did not return a definitive verdict")
