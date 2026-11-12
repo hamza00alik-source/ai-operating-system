@@ -254,3 +254,18 @@ def test_worker_heartbeats_long_running_execution_before_lease_expiry(tmp_path):
     assert queue.counts() == {"done": 1}
     queue.close()
     store.close()
+
+
+def test_shared_runtime_atomically_persists_deliverable_and_completes_lease(tmp_path):
+    agent, item, store, separate_queue = setup(tmp_path)
+    separate_queue.close()
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue(item.id, agent, {"source": "shared-runtime"})
+    worker = OpenCompanyWorker(queue, store, FakeExecutor(), store)
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert queue.counts() == {"done": 1}
+    assert store.get_work_item(item.id).state == TaskState.REVIEW
+    assert len(store.list_deliverables(item.id)) == 1
+    assert store.audit_event_count() == 1
+    assert store.verify_audit_chain()
+    store.close()
