@@ -96,7 +96,7 @@ def _provider_config(provider: Provider) -> dict[str, Any]:
         "base_url": base if base else None,
         "secret_env": provider.secret_env,
         "reason": None if eligible else (
-            "Only an explicitly free OpenRouter model ID ending in :free is enabled for company inference. Other providers remain disabled until zero-cost routing can be independently verified."
+            "UnoRouter credentials may be used for personal tests only, not company inference. Only an explicitly free OpenRouter model ID ending in :free is enabled for company inference until zero-cost company routing can be independently verified."
         ),
     }
 
