@@ -9,8 +9,6 @@ import hmac
 import json
 import logging
 import os
-import re
-import secrets
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -18,7 +16,6 @@ from dataclasses import replace
 from uuid import UUID, uuid4
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.background import BackgroundTask
 
 from opencompany_core.platform import PLATFORM_ID, PLATFORM_NAME, PLATFORM_VERSION
@@ -32,7 +29,6 @@ from opencompany_core.unorouter_adapter import (
     unorouter_configuration_status,
 )
 from opencompany_core.secret_vault import SecretVaultError
-from opencompany_app.provider_settings_ui import OWNER_PROVIDER_SETTINGS_HTML, OWNER_PROVIDER_SETTINGS_JS
 from opencompany_core.provisioning import bootstrap_department_managers, bootstrap_specialist_profiles, bootstrap_executive_orchestrator
 from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_core.delegation_records import DelegationRepository
@@ -68,6 +64,7 @@ from opencompany_app.api_dependencies import (
 )
 from opencompany_app.routers.catalogue import router as catalogue_router
 from opencompany_app.routers.system import router as system_router
+from opencompany_app.routers.dashboard import router as dashboard_router
 from opencompany_app.routers.providers import router as providers_router, _worker_autostart_enabled
 from opencompany_app.routers.github_evolution import settings_router as github_settings_router, evolution_router as github_evolution_router
 from opencompany_app.routers.integrations import router as integrations_router
@@ -85,7 +82,6 @@ from opencompany_app.routers.operations import backup_router as operations_backu
 from opencompany_app.routers.planning import planning_router, queue_router, delegation_router
 from opencompany_app.routers.provider_info import provider_status_router, provider_candidates_router, executive_portfolio_router
 from opencompany_app.runtime import OpenCompanyRuntime
-from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
 
 app = FastAPI(
@@ -135,33 +131,10 @@ def close_autonomous_runtime() -> None:
         _default_runtime.cache_clear()
 
 
-@app.get("/owner", response_class=HTMLResponse)
-def owner_dashboard() -> HTMLResponse:
-    html = OWNER_DASHBOARD_HTML.replace("</main>", OWNER_PROVIDER_SETTINGS_HTML + "\n</main>")
-    before, marker, after = html.rpartition("})();")
-    if marker:
-        html = before + OWNER_PROVIDER_SETTINGS_JS + "\n  const previousLoad=load; load=async function(){await previousLoad(); await loadUnoRouterSettings(); await loadGitHubEvolutionSettings(); await loadModelUsage();};\n})();" + after
-    # The dashboard currently embeds its scripts. Give every script element a
-    # fresh nonce rather than allowing arbitrary inline script execution.
-    nonce = secrets.token_urlsafe(18)
-    html = re.sub(r"<script(?=[\s>])", f'<script nonce="{nonce}"', html)
-    html = re.sub(r"<style(?=[\s>])", f'<style nonce="{nonce}"', html)
-    response = HTMLResponse(html)
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["Content-Security-Policy"] = (
-        f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
-        f"style-src 'self' 'nonce-{nonce}'; connect-src 'self'; "
-        "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; "
-        "form-action 'self'; object-src 'none'"
-    )
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    return response
 
 
 
+app.include_router(dashboard_router)
 app.include_router(system_router)
 app.include_router(provider_status_router)
 app.include_router(operations_backup_router)
