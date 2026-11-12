@@ -9,7 +9,7 @@ import pytest
 from opencompany_core.asset_scanning import AssetScanError, ClamAVUnixSocketScanner
 
 
-def _fake_clamd(socket_path, verdict):
+def _fake_clamd(socket_path, verdict, *, terminate=True):
     received = bytearray()
     ready = threading.Event()
 
@@ -82,3 +82,14 @@ def test_clamav_scanner_rejects_regular_file_as_socket(tmp_path):
     with pytest.raises(AssetScanError) as error:
         scanner.scan([b"asset"])
     assert error.value.code == "invalid_socket"
+
+
+
+def test_clamav_scanner_rejects_unterminated_clean_looking_response(tmp_path):
+    socket_path = tmp_path / "clamd.sock"
+    thread, _ = _fake_clamd(socket_path, b"stream: OK\\n", terminate=False)
+    scanner = ClamAVUnixSocketScanner(socket_path, timeout_seconds=5)
+    with pytest.raises(AssetScanError) as error:
+        scanner.scan([b"asset"])
+    thread.join(timeout=2)
+    assert error.value.code == "scanner_invalid_response"
