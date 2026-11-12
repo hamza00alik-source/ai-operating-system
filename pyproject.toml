@@ -24,9 +24,9 @@ exclude = ["ai_os*"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-# Default discovery runs only the independent OpenCompany suite. Legacy AIOS
-# tests remain available by explicit path while their runtime is quarantined.
-python_files = ["test_opencompany_*.py"]
+# Exclude only the 11 historical tests that import the quarantined ai_os package.
+# All independent OpenCompany tests retain normal pytest discovery.
+addopts = "--ignore=tests/test_agent_runtime.py --ignore=tests/test_api.py --ignore=tests/test_brain.py --ignore=tests/test_business_ops.py --ignore=tests/test_credentials.py --ignore=tests/test_owner_session_auth.py --ignore=tests/test_provider_failover.py --ignore=tests/test_research_sources.py --ignore=tests/test_sessions_and_workforce.py --ignore=tests/test_website_api.py --ignore=tests/test_workflows.py"
 
 [tool.vercel]
 entrypoint = "src.opencompany_app.api:app"
