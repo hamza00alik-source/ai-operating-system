@@ -1886,7 +1886,7 @@ def test_business_asset_upload_is_owner_confirmed_private_and_unavailable(owner_
 
 def test_business_asset_upload_rejects_corrupt_bytes(owner_client, tmp_path):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
-    runtime = get_runtime()
+    runtime = app.dependency_overrides[get_runtime]()
     expected = b"correct bytes"
     declared = owner_client.post("/business-units/physical-agency/assets", headers=headers, json={
         "asset_key": "checksum-test", "title": "Checksum test", "asset_type": "document",
