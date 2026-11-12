@@ -124,7 +124,7 @@ def test_unorouter_is_not_eligible_for_company_routing_when_free_confirmed(monke
     monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
     assert status["eligible"] is False
-    assert "personal tests" in status["reason"]
+    assert "company inference" in status["reason"]
     assert status["model"] == "example-model:free"
     assert "unorouter-test-secret" not in json.dumps(llm_gateway.list_providers())
 
@@ -170,7 +170,7 @@ def test_unorouter_is_excluded_from_default_company_provider_routing(monkeypatch
     assert status["free_confirmed"] is True
     assert status["eligible"] is False
     assert status["experimental_only"] is False
-    assert "personal tests" in status["reason"]
+    assert "company inference" in status["reason"]
     assert llm_gateway.generate_with_fallback.__defaults__[0] == "unorouter"
 
 
@@ -214,7 +214,7 @@ def test_unorouter_env_model_must_end_in_free(monkeypatch):
     status = next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")
     assert status["configured"] is True
     assert status["eligible"] is False
-    assert "personal tests" in status["reason"]
+    assert "company inference" in status["reason"]
 
 
 def test_unorouter_personal_test_never_allows_paid_model(monkeypatch):
@@ -277,7 +277,7 @@ def test_unorouter_company_generate_is_blocked_even_when_consumer_key_is_configu
     monkeypatch.setenv("AI_OS_UNOROUTER_MODEL", "example-model:free")
     monkeypatch.setenv("AI_OS_UNOROUTER_API_KEY", "test-secret")
     monkeypatch.setenv("AI_OS_UNOROUTER_FREE_CONFIRMED", "true")
-    with pytest.raises(PermissionError, match="personal tests"):
+    with pytest.raises(PermissionError, match="company inference"):
         llm_gateway.generate("unorouter", "Draft an internal company report")
 
 
