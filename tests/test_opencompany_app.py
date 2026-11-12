@@ -7,6 +7,7 @@ import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
 from opencompany_app.runtime import create_runtime
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.worker_queue import DurableWorkerQueue, QueueError
 from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.delegation_records import DelegationRepository
