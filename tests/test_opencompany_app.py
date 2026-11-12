@@ -1831,3 +1831,35 @@ def test_business_memory_api_requires_owner_confirmation_and_isolates_units(owne
     assert forgotten.json()["historical_versions_retained"] is True
     after = owner_client.get("/business-units/physical-agency/memory", headers=headers)
     assert after.status_code == 200 and after.json()["count"] == 0
+
+
+def test_business_asset_api_is_owner_confirmed_and_metadata_only(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "asset_key": "hero-model", "title": "Hero model", "asset_type": "3d-model",
+        "filename": "hero.glb", "media_type": "model/gltf-binary",
+        "checksum_sha256": "a" * 64, "byte_size": 1024,
+        "source": "owner asset manifest", "confirm_owner_declaration": True,
+    }
+    unauthenticated = owner_client.post("/business-units/physical-agency/assets", json=payload)
+    assert unauthenticated.status_code == 401
+    unconfirmed = owner_client.post(
+        "/business-units/physical-agency/assets", headers=headers,
+        json={**payload, "confirm_owner_declaration": False},
+    )
+    assert unconfirmed.status_code == 422
+    declared = owner_client.post("/business-units/physical-agency/assets", headers=headers, json=payload)
+    assert declared.status_code == 200
+    result = declared.json()
+    assert result["file_bytes_received"] is False
+    assert result["asset"]["storage_state"] == "metadata_only"
+    assert "No file was uploaded" in result["message"]
+    asset_id = result["asset"]["asset_id"]
+    listed = owner_client.get("/business-units/physical-agency/assets", headers=headers)
+    assert listed.status_code == 200 and listed.json()["count"] == 1
+    isolated = owner_client.get("/business-units/physical-brand/assets", headers=headers)
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    events = owner_client.get(
+        f"/business-units/physical-agency/assets/{asset_id}/events", headers=headers
+    )
+    assert events.status_code == 200 and len(events.json()["events"]) == 1
