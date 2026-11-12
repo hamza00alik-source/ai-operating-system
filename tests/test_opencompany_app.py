@@ -799,6 +799,7 @@ def test_owner_can_start_and_stop_worker_fleet_explicitly(owner_client):
             return (object(),)
 
     runtime.gateway = ReadyFreeGateway()
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     started = owner_client.post("/workers/start", headers=headers, json={})
     assert started.status_code == 200 and started.json()["running"] is True
     stopped = owner_client.post("/workers/stop", headers=headers, json={})
@@ -1037,6 +1038,7 @@ def test_owner_can_generate_isolated_code_evolution_draft_pr(owner_client):
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
     runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     runtime.gateway = ModelGateway.configure(((
         ProviderPolicy("unorouter", "test/free-model:free", BillingMode.FREE_CONFIRMED, 0.0),
         _CodeEvolutionFakeAdapter(),
@@ -1060,6 +1062,7 @@ def test_code_evolution_config_status_does_not_expose_credentials(owner_client):
     runtime = app.dependency_overrides[get_runtime]()
     runtime.github_evolution = _CodeEvolutionFakeClient()
     runtime.github_evolution_tested_at = "2026-11-11T00:00:00+00:00"
+    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     response = owner_client.get("/code-evolution/config-status", headers={"X-OpenCompany-API-Key": "test-owner-key"})
     assert response.status_code == 200
     assert response.json()["enabled"] is True
