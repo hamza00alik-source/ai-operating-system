@@ -189,6 +189,12 @@ def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blocke
         assert "credential_scope_adapter" not in report["blockers"]
         credential_check = next(check for check in report["checks"] if check["key"] == "credential_scope_adapter")
         assert credential_check["ready"] is True
+        assert "integration_scope_adapter" not in report["blockers"]
+        integration_check = next(
+            check for check in report["checks"] if check["key"] == "integration_scope_adapter"
+        )
+        assert integration_check["ready"] is True
+        assert "integration_execution_adapter" in report["blockers"]
         assert "owner_activation_approval" in report["blockers"]
         assert registry.get(unit["business_id"])["status"] == "provisioning"
     finally:
