@@ -136,11 +136,7 @@ class ModelGateway:
             if (
                 item.policy.billing_mode == BillingMode.FREE_CONFIRMED
                 and item.policy.max_cost_per_request_usd == 0.0
-            ) or (
-                item.policy.billing_mode == BillingMode.PAID_OWNER_APPROVED
-                and item.policy.max_cost_per_request_usd > 0.0
-                and request_budget_usd >= item.policy.max_cost_per_request_usd
-            )
+)
         )
 
     def complete(
