@@ -183,4 +183,15 @@ class BusinessAssetRegistry:
             rows=self._db.execute("""SELECT event_id,asset_id,business_id,action,actor_type,actor_id,details_json,occurred_at
                 FROM opencompany_business_asset_events WHERE business_id=? AND asset_scope_id=? AND asset_id=?
                 ORDER BY occurred_at,event_id""",(business_id,scope,asset_id)).fetchall()
-        return tuple({**dict(row),"details":json.loads(row["details_json"])} for row in rows)
+        result=[{**dict(row),"details":json.loads(row["details_json"])} for row in rows]
+        with self._lock:
+            stored=self._db.execute("""SELECT event_id,asset_id,business_id,action,actor_type,actor_id,
+                checksum_sha256,byte_size,occurred_at
+                FROM opencompany_business_asset_storage_events
+                WHERE business_id=? AND asset_scope_id=? AND asset_id=?
+                ORDER BY occurred_at,event_id""",(business_id,scope,asset_id)).fetchall()
+        result.extend({**dict(row),"details":{"checksum_sha256":row["checksum_sha256"],
+            "byte_size":row["byte_size"],"scan_completed":False,"download_enabled":False}}
+            for row in stored)
+        result.sort(key=lambda item:(item["occurred_at"],item["event_id"]))
+        return tuple(result)
