@@ -102,7 +102,6 @@ class DurableWorkerQueue:
                 started_at TEXT NOT NULL,
                 finished_at TEXT,
                 error_code TEXT,
-                UNIQUE(work_item_id, attempt)
             )
         """)
         self._db.execute(
@@ -544,7 +543,7 @@ class DurableWorkerQueue:
         with self._lock:
             rows = self._db.execute(
                 """SELECT attempt,status,started_at,finished_at,error_code
-                   FROM worker_attempts WHERE work_item_id=? ORDER BY attempt""",
+                   FROM worker_attempts WHERE work_item_id=? ORDER BY id""",
                 (str(work_item_id),),
             ).fetchall()
         return tuple(dict(row) for row in rows)
