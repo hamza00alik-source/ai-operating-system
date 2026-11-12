@@ -340,6 +340,32 @@ class BusinessUnitRegistry:
                     "'opencompany_business_units_credential_scope_no_update')"
                 ).fetchall()
             }
+            integration_tables = {
+                row["name"]: row["sql"] or ""
+                for row in self._db.execute(
+                    "SELECT name,sql FROM sqlite_master WHERE type='table' "
+                    "AND name IN ('opencompany_business_integrations','opencompany_business_integration_events')"
+                ).fetchall()
+            }
+            integration_columns = {
+                name: {row["name"] for row in self._db.execute(
+                    f'PRAGMA table_info("{name}")'
+                ).fetchall()}
+                for name in integration_tables
+            }
+            integration_fks = {
+                name: self._db.execute(f'PRAGMA foreign_key_list("{name}")').fetchall()
+                for name in integration_tables
+            }
+            integration_triggers = {
+                row["name"] for row in self._db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' "
+                    "AND name IN ('opencompany_business_integration_events_no_update',"
+                    "'opencompany_business_integration_events_no_delete',"
+                    "'opencompany_business_integrations_no_scope_change',"
+                    "'opencompany_business_units_integration_scope_no_update')"
+                ).fetchall()
+            }
 
         constrained = sorted(
             name for name, sql in tables.items()
@@ -467,8 +493,70 @@ class BusinessUnitRegistry:
         if not credential_ready:
             blockers.append("credential_scope_adapter")
 
+        integration_unit_pair = any(
+            fk["table"] == "opencompany_business_units"
+            and {(x["from"], x["to"]) for x in integration_fks.get("opencompany_business_integrations", [])
+                 if x["id"] == fk["id"]} == {
+                     ("business_id", "business_id"), ("integration_scope_id", "integration_scope_id")
+                 }
+            for fk in integration_fks.get("opencompany_business_integrations", [])
+        )
+        integration_credential_pair = any(
+            fk["table"] == "opencompany_business_credentials"
+            and {(x["from"], x["to"]) for x in integration_fks.get("opencompany_business_integrations", [])
+                 if x["id"] == fk["id"]} == {
+                     ("business_id", "business_id"), ("credential_scope_id", "credential_scope_id"),
+                     ("credential_key", "credential_key")
+                 }
+            for fk in integration_fks.get("opencompany_business_integrations", [])
+        )
+        integration_event_pair = any(
+            fk["table"] == "opencompany_business_units"
+            and {(x["from"], x["to"]) for x in integration_fks.get("opencompany_business_integration_events", [])
+                 if x["id"] == fk["id"]} == {
+                     ("business_id", "business_id"), ("integration_scope_id", "integration_scope_id")
+                 }
+            for fk in integration_fks.get("opencompany_business_integration_events", [])
+        )
+        integration_history_ready = {
+            "opencompany_business_integration_events_no_update",
+            "opencompany_business_integration_events_no_delete",
+            "opencompany_business_integrations_no_scope_change",
+            "opencompany_business_units_integration_scope_no_update",
+        }.issubset(integration_triggers)
+        integration_ready = (
+            {"opencompany_business_integrations", "opencompany_business_integration_events"}
+                .issubset(integration_tables)
+            and {"integration_id", "business_id", "integration_scope_id", "provider_key",
+                 "credential_scope_id", "credential_key", "permissions_json", "status"}
+                .issubset(integration_columns.get("opencompany_business_integrations", set()))
+            and {"integration_id", "business_id", "integration_scope_id", "action", "actor_type"}
+                .issubset(integration_columns.get("opencompany_business_integration_events", set()))
+            and integration_unit_pair and integration_credential_pair and integration_event_pair
+            and integration_history_ready
+        )
+        checks.append({
+            "key": "integration_scope_adapter",
+            "ready": integration_ready,
+            "evidence": (
+                "Integration declarations are isolated by business/integration scope, bound to a credential "
+                "from the same business, and protected by append-only history and immutable scope identifiers. "
+                "Registration does not connect or execute the integration."
+                if integration_ready else
+                "Integration isolation requires scoped registry tables, a same-business credential foreign key, "
+                "append-only history, and immutable integration scope identifiers."
+            ),
+        })
+        if not integration_ready:
+            blockers.append("integration_scope_adapter")
+        blockers.append("integration_execution_adapter")
+        checks.append({
+            "key": "integration_execution_adapter",
+            "ready": False,
+            "evidence": "External integration execution, permission enforcement, connection testing, and per-action owner approval are deliberately not enabled by the registry-only increment.",
+        })
+
         for key, label in (
-            ("integration_scope_id", "integration_scope_adapter"),
             ("memory_scope_id", "memory_scope_adapter"),
             ("asset_scope_id", "asset_scope_adapter"),
         ):
