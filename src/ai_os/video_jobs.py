@@ -213,6 +213,7 @@ def heartbeat(job_id,token,*,progress=None,message=""):
     initialize()
     with connect() as db:
         row=_verify_lease(db,job_id,token)
+        db.execute("UPDATE video_worker_presence SET last_seen_at=? WHERE worker_id=?",(_iso(),row["lease_owner"]))
         if row["cancel_requested"]: return {"cancel_requested":True,"lease_expires_at":row["lease_expires_at"]}
         if progress is not None and not 0<=progress<=100: raise ValueError("progress must be between 0 and 100.")
         now=_now(); expires=(now+timedelta(seconds=int(os.getenv("VIDEO_JOB_LEASE_SECONDS","120")))).isoformat()
