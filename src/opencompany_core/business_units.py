@@ -181,6 +181,28 @@ class BusinessUnitRegistry:
                 raise
         return self.get(business_id)
 
+    def require_operational(self, business_id: str) -> dict[str, Any]:
+        """Resolve an operational unit or fail closed for unknown/provisioning units."""
+        unit = self.get(business_id)
+        if unit is None:
+            raise BusinessUnitProvisioningError("unknown business unit; provision it through an approved venture first")
+        if unit["status"] not in {"foundational", "active"}:
+            raise BusinessUnitProvisioningError(
+                "business unit is not operational; provisioning must be completed and owner-approved before work is assigned"
+            )
+        return unit
+
+    def scope_for(self, business_id: str) -> dict[str, str]:
+        """Return opaque namespace identifiers only after operational status is confirmed."""
+        unit = self.require_operational(business_id)
+        return {
+            key: unit[key] for key in (
+                "namespace_id", "customer_scope_id", "finance_scope_id",
+                "credential_scope_id", "integration_scope_id", "memory_scope_id",
+                "asset_scope_id",
+            )
+        }
+
     def events(self, business_id: str) -> tuple[dict[str, Any], ...]:
         with self._lock:
             rows = self._db.execute(
