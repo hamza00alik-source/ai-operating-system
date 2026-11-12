@@ -56,6 +56,20 @@ class DurableWorkerQueue:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA busy_timeout=10000")
         self._db.execute("""
+            CREATE TABLE IF NOT EXISTS delegation_child_tasks (
+                id TEXT PRIMARY KEY,
+                proposal_id TEXT NOT NULL,
+                parent_work_item_id TEXT NOT NULL,
+                assigned_agent_id TEXT NOT NULL,
+                role_key TEXT NOT NULL,
+                team_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                objective TEXT NOT NULL,
+                state TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        self._db.execute("""
             CREATE TABLE IF NOT EXISTS worker_queue (
                 work_item_id TEXT PRIMARY KEY,
                 agent_id TEXT NOT NULL,
