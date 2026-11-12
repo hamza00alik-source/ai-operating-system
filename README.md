@@ -173,3 +173,8 @@ This release does not publish, schedule, upload media, invoke Canva, or generate
 ### LongCat-Video engine evaluation
 
 The LongCat-Video fork is tracked as an optional upstream video engine, not as OpenCompany's core system. Its `main` branch currently matches `meituan-longcat/LongCat-Video` exactly (0 commits ahead/behind). The model supports text-to-video, image-to-video, video continuation and avatar workflows, but requires a separate GPU-capable worker; open-source weights do not make GPU compute free. OpenCompany remains functional without LongCat installed. Generation must have its own owner approval and cost ceiling, and publishing requires a separate approval. See [docs/LONGCAT_VIDEO_INTEGRATION.md](docs/LONGCAT_VIDEO_INTEGRATION.md).
+
+
+## Optional LongCat GPU worker
+
+OpenCompany's video queue remains operational without a GPU worker. The optional separate LongCat worker uses authenticated claims, per-job leases, heartbeats, bounded retries, cancellation signals, and private MP4 artifact reporting. The first adapter supports single-GPU text-to-video; no hosted GPU is provisioned automatically. See [worker deployment instructions](workers/README_LONGCAT.md) and the [integration design](docs/LONGCAT_VIDEO_INTEGRATION.md). Configure a persistent artifact volume and HTTPS API origin before accepting generated videos.
