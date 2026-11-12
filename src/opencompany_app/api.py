@@ -43,7 +43,6 @@ from opencompany_core.model_gateway import CostPolicyViolation, ModelRequest, No
 from opencompany_core.collaboration import AgentHandoff, HandoffState, accept_handoff, decline_handoff, deliver_handoff
 from opencompany_core.learning import ImprovementProposal, OutcomeEvaluation, OutcomeGrade, ProposalState
 from opencompany_app.api_schemas import (
-    OwnerLoginInput,
     UnoRouterDiscoveryInput,
     PlanItemInput,
     PlanPreviewInput,
@@ -60,9 +59,7 @@ from opencompany_app.api_schemas import (
     ManagerProposalInput,
 )
 from opencompany_app.api_dependencies import (
-    _clear_login_failures,
     _default_runtime,
-    _login_retry_after,
     get_delegation_store,
     get_optional_runtime,
     get_runtime,
@@ -83,6 +80,7 @@ from opencompany_app.routers.orchestration import router as orchestration_router
 from opencompany_app.routers.lifecycle import router as lifecycle_router
 from opencompany_app.routers.learning import router as learning_router
 from opencompany_app.routers.portfolio import router as portfolio_router
+from opencompany_app.routers.auth import router as auth_router
 from opencompany_app.runtime import OpenCompanyRuntime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -132,90 +130,6 @@ def close_autonomous_runtime() -> None:
     if _default_runtime.cache_info().currsize:
         _default_runtime().close()
         _default_runtime.cache_clear()
-
-
-@app.post("/auth/session")
-def create_owner_session(
-    payload: OwnerLoginInput,
-    request: Request,
-    response: Response,
-    runtime: OpenCompanyRuntime = Depends(get_runtime),
-) -> dict:
-    """Exchange the owner API key for a revocable HttpOnly session cookie."""
-    expected = os.environ.get("OPENCOMPANY_OWNER_API_KEY")
-    if not expected:
-        raise HTTPException(status_code=503, detail="Owner authentication is not configured.")
-    client_key = request.client.host if request.client else "unknown"
-    retry_after = _login_retry_after(client_key)
-    if retry_after:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many failed owner login attempts. Try again later.",
-            headers={"Retry-After": str(retry_after)},
-        )
-    if not hmac.compare_digest(payload.api_key, expected):
-        retry_after = _login_retry_after(client_key, failed=True)
-        if retry_after:
-            raise HTTPException(
-                status_code=429,
-                detail="Too many failed owner login attempts. Try again later.",
-                headers={"Retry-After": str(retry_after)},
-            )
-        raise HTTPException(status_code=401, detail="Owner authentication failed.")
-    _clear_login_failures(client_key)
-    token, csrf, expires = runtime.sessions.create(lifetime_hours=168)
-    secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
-    response.set_cookie(
-        "opencompany_session", token, max_age=7 * 24 * 60 * 60, httponly=True,
-        secure=secure_cookie, samesite="strict", path="/",
-    )
-    response.set_cookie(
-        "opencompany_csrf", csrf, max_age=7 * 24 * 60 * 60, httponly=True,
-        secure=secure_cookie, samesite="strict", path="/",
-    )
-    response.headers["Cache-Control"] = "no-store"
-    return {"authenticated": True, "csrf_token": csrf, "expires_at": expires.isoformat()}
-
-
-@app.get("/auth/session", dependencies=[Depends(require_owner_key)])
-def owner_session_status(
-    response: Response,
-    runtime: OpenCompanyRuntime = Depends(get_runtime),
-    opencompany_session: str | None = Cookie(default=None),
-    opencompany_csrf: str | None = Cookie(default=None),
-) -> dict:
-    """Restore the same CSRF token across tabs; rotate only if its cookie is missing or invalid."""
-    if not opencompany_session:
-        raise HTTPException(status_code=401, detail="Owner browser session is missing.")
-    renewed = runtime.sessions.rotate_csrf(opencompany_session, opencompany_csrf)
-    if renewed is None:
-        raise HTTPException(status_code=401, detail="Owner browser session has expired or been revoked.")
-    csrf, expires = renewed
-    secure_cookie = os.environ.get("OPENCOMPANY_COOKIE_SECURE", "true").strip().lower() == "true"
-    response.set_cookie(
-        "opencompany_csrf", csrf, max_age=7 * 24 * 60 * 60, httponly=True,
-        secure=secure_cookie, samesite="strict", path="/",
-    )
-    response.headers["Cache-Control"] = "no-store"
-    return {
-        "authenticated": True, "session_type": "owner",
-        "csrf_token": csrf, "expires_at": expires.isoformat(),
-    }
-
-
-@app.post("/auth/logout", dependencies=[Depends(require_owner_key)])
-def revoke_owner_session(
-    request: Request,
-    response: Response,
-    runtime: OpenCompanyRuntime = Depends(get_runtime),
-    opencompany_session: str | None = Cookie(default=None),
-) -> dict:
-    if opencompany_session:
-        runtime.sessions.revoke(opencompany_session)
-    response.delete_cookie("opencompany_session", path="/", httponly=True, samesite="strict")
-    response.delete_cookie("opencompany_csrf", path="/", httponly=True, samesite="strict")
-    response.headers["Cache-Control"] = "no-store"
-    return {"authenticated": False, "revoked": bool(opencompany_session)}
 
 
 @app.get("/owner", response_class=HTMLResponse)
@@ -655,4 +569,5 @@ def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
 
 app.include_router(commercial_supplier_router)
 app.include_router(portfolio_router)
+app.include_router(auth_router)
 
