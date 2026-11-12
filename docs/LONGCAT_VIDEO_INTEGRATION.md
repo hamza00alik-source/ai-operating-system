@@ -104,4 +104,13 @@ A durable SQLite video-job queue and owner-facing API are now implemented:
 - Reusing an idempotency key with different request data is rejected.
 - Approval only queues the request. It does not start generation, allocate compute, contact LongCat, spend money, or publish output.
 
-Still not implemented: provider adapter, authenticated worker claim/lease protocol, GPU worker, result storage/validation, cancellation/retry execution, and actual video generation. The status endpoint deliberately reports the worker and provider as disconnected and generation as disabled. The queue is a persistence and approval foundation, not a functioning video-generation service.
+The authenticated lease protocol and optional single-GPU LongCat text-to-video worker are now implemented in code:
+- Worker authentication uses a server-side `VIDEO_WORKER_TOKEN`; every claim also receives a unique per-job lease token whose hash alone is stored.
+- Claims are atomic, provider-scoped, and include bounded lease expiry/reclaim.
+- Heartbeats extend leases and carry progress/cancellation signals.
+- Owner cancellation is immediate for queued jobs and cooperative for running inference.
+- Retry attempts are bounded (1–5, default 3); lease expiry and retryable failures return jobs to the queue until the limit.
+- Success/failure and lifecycle events are persisted; MP4 artifacts are size/container-checked, uploaded over the authenticated worker route, stored privately, and downloadable only through owner authentication.
+- The optional worker loads LongCat separately from the API, passes the approved prompt to the model pipeline, and does not run when no GPU worker is configured.
+
+See [the worker deployment guide](../workers/README_LONGCAT.md). The first adapter supports single-process, single-GPU text-to-video only; image-to-video, continuation, Avatar, multi-GPU execution, and 720p refinement remain out of scope. Actual inference has not been run in this development environment because no CUDA worker/model weights were provisioned. Keep `VIDEO_ARTIFACT_DIR` on persistent storage and set `PUBLIC_API_BASE_URL` to the API's HTTPS origin before enabling uploads.
