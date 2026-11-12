@@ -263,6 +263,55 @@ class BusinessAssetRegistry:
                 "status":"pending_delivery_approval" if status=="clean" else "quarantined",
                 "scanner_key":scanner_key,"download_enabled":False,"delivery_approved":False}
 
+
+    def authorize_download(self,business_id: str,asset_id: str,*,audit) -> dict[str,Any]:
+        """Authorize owner-only retrieval only after a current clean scan verdict."""
+        if audit.actor_type!="owner":
+            raise PermissionError("only the owner may retrieve private business assets")
+        scope=self._scope(business_id)
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                asset=self._db.execute("""SELECT asset_id,business_id,asset_scope_id,title,filename,
+                    media_type,checksum_sha256,byte_size FROM opencompany_business_assets
+                    WHERE business_id=? AND asset_scope_id=? AND asset_id=?""",
+                    (business_id,scope,asset_id)).fetchone()
+                stored=self._db.execute("""SELECT checksum_sha256,byte_size FROM opencompany_business_asset_storage_events
+                    WHERE business_id=? AND asset_scope_id=? AND asset_id=?""",
+                    (business_id,scope,asset_id)).fetchone()
+                latest=self._db.execute("""SELECT action,checksum_sha256,byte_size FROM opencompany_business_asset_scan_events
+                    WHERE business_id=? AND asset_scope_id=? AND asset_id=?
+                    ORDER BY occurred_at DESC,event_id DESC LIMIT 1""",
+                    (business_id,scope,asset_id)).fetchone()
+                if asset is None or stored is None:
+                    raise ValueError("stored asset not found in this business scope")
+                if latest is None or latest["action"]!="scan_clean":
+                    raise ValueError("asset is not eligible for download; a current clean scan is required")
+                if (asset["checksum_sha256"]!=stored["checksum_sha256"]
+                    or asset["byte_size"]!=stored["byte_size"]
+                    or latest["checksum_sha256"]!=stored["checksum_sha256"]
+                    or latest["byte_size"]!=stored["byte_size"]):
+                    raise ValueError("asset integrity records do not agree; download is blocked")
+                previous=self._db.execute("SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+                previous_hash=previous["event_hash"] if previous else _ZERO_HASH
+                from .domain import AuditRecord
+                audited=AuditRecord(id=audit.id,occurred_at=audit.occurred_at,actor_type="owner",
+                    actor_id=audit.actor_id,action="business.asset_download_authorized",
+                    subject_type="business_asset",subject_id=f"{business_id}:{asset_id}",
+                    outcome="owner_only_authorized",correlation_id=audit.correlation_id,
+                    details={"business_id":business_id,"asset_id":asset_id,
+                             "checksum_sha256":stored["checksum_sha256"],
+                             "byte_size":stored["byte_size"],"recipient":"owner",
+                             "clean_scan_required":True,"public_url_created":False})
+                payload=_audit_payload(audited,previous_hash)
+                self._db.execute("INSERT INTO audit_events(event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audited.id),audited.occurred_at.isoformat(),_json(payload),previous_hash,_digest(payload)))
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction: self._db.execute("ROLLBACK")
+                raise
+        return dict(asset)
+
     def events(self,business_id: str,asset_id: str) -> tuple[dict[str,Any],...]:
         scope=self._scope(business_id)
         with self._lock:
