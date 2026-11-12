@@ -79,11 +79,13 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
         assert saved.status_code == 200
         assert worker_starts == []
         tested = client.post("/settings/providers/unorouter/test", headers=headers, json={})
-        assert tested.status_code == 200
-        assert tested.json()["cost_usd"] == 0
-        assert tested.json()["paid_fallback"] is False
-        assert tested.json()["worker_autostart_enabled"] is True
-        assert tested.json()["worker_started"] is True
+        assert tested.status_code == 202
+        result = client.get(f"/settings/providers/unorouter/test/{tested.json()['job_id']}", headers=headers)
+        assert result.status_code == 200
+        assert result.json()["cost_usd"] == 0
+        assert result.json()["paid_fallback"] is False
+        assert result.json()["worker_autostart_enabled"] is True
+        assert result.json()["worker_started"] is True
         assert worker_starts == [True]
         assert captured["url"] == "https://api.unorouter.com/v1/chat/completions"
         assert captured["payload"]["model"] == "qwen/model:free"
