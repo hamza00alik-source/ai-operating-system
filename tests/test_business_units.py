@@ -182,7 +182,9 @@ def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blocke
             if check["key"] == "customer_scope_enforcement"
         )
         assert customer_check["ready"] is True
-        assert "finance_ledger_scope" in report["blockers"]
+        assert "finance_ledger_scope" not in report["blockers"]
+        finance_check = next(check for check in report["checks"] if check["key"] == "finance_ledger_scope")
+        assert finance_check["ready"] is True
         assert "owner_activation_approval" in report["blockers"]
         assert registry.get(unit["business_id"])["status"] == "provisioning"
     finally:
