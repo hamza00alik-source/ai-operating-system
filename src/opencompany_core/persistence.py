@@ -575,7 +575,7 @@ def _migrate_v11_business_integrations(connection: sqlite3.Connection) -> None:
                 credential_key TEXT NOT NULL,
                 permissions_json TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending_review'
-                    CHECK(status IN ('pending_review','paused','revoked')),
+                    CHECK(status='pending_review'),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 UNIQUE(integration_id,business_id,integration_scope_id),
