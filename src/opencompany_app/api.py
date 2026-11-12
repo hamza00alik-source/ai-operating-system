@@ -52,6 +52,7 @@ from opencompany_core.code_evolution import CodeEvolutionError, generate_code_ev
 from opencompany_core.api_anything import ApiAnythingError
 from opencompany_core.venture_portfolio import VenturePortfolio, VenturePortfolioError
 from opencompany_core.business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
+from opencompany_core.asset_storage import AssetStorageError
 from opencompany_app.runtime import OpenCompanyRuntime, create_runtime
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 
@@ -3536,6 +3537,77 @@ def declare_business_asset(business_id: str, payload: BusinessAssetInput,
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"asset": item, "file_bytes_received": False,
             "message": "Asset metadata declared only. No file was uploaded, scanned, stored, or delivered."}
+
+
+@app.put("/business-units/{business_id}/assets/{asset_id}/content", dependencies=[Depends(require_owner_key)])
+async def upload_business_asset_content(
+    business_id: str,
+    asset_id: UUID,
+    request: Request,
+    x_confirm_owner_upload: bool = Header(default=False, alias="X-Confirm-Owner-Upload"),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Store owner-uploaded bytes privately; the result remains unscanned and unavailable."""
+    if x_confirm_owner_upload is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to upload asset bytes.")
+    if runtime.asset_storage is None:
+        raise HTTPException(status_code=503, detail="Private asset storage is not configured; no bytes were accepted.")
+    try:
+        declaration = runtime.business_assets.storage_declaration(business_id, str(asset_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    supplied_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if supplied_type != declaration["media_type"]:
+        raise HTTPException(status_code=415, detail="Content-Type must match the asset declaration.")
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_length = int(content_length)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header.") from exc
+        if declared_length < 0 or declared_length > declaration["byte_size"]:
+            raise HTTPException(status_code=413, detail="Upload exceeds the declared asset size.")
+
+    try:
+        stored = await runtime.asset_storage.store_stream(
+            business_id=business_id,
+            asset_scope_id=declaration["asset_scope_id"],
+            asset_id=str(asset_id),
+            expected_sha256=declaration["checksum_sha256"],
+            expected_size=declaration["byte_size"],
+            chunks=request.stream(),
+        )
+        result = runtime.business_assets.record_storage(
+            business_id, str(asset_id),
+            storage_key=stored["storage_key"],
+            checksum_sha256=stored["checksum_sha256"],
+            byte_size=stored["byte_size"],
+            audit=AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                actor_type="owner", actor_id="owner", action="business.asset_bytes_stored",
+                subject_type="business_asset", subject_id=f"{business_id}:{asset_id}",
+                outcome="stored_unscanned", correlation_id=str(uuid4()),
+                details={"business_id": business_id, "asset_id": str(asset_id),
+                         "checksum_verified": True, "malware_scan_completed": False},
+            ),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except AssetStorageError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail="Private asset storage failed; no download was enabled.") from exc
+    return {
+        "asset": result,
+        "file_bytes_received": True,
+        "checksum_verified": True,
+        "malware_scan_completed": False,
+        "download_enabled": False,
+        "message": "Bytes are stored privately and remain unavailable until scanning and retrieval authorization are implemented.",
+    }
 
 
 @app.get("/business-units/{business_id}/assets/{asset_id}/events", dependencies=[Depends(require_owner_key)])
