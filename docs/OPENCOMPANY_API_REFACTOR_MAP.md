@@ -192,3 +192,18 @@ All five handler blocks were compared against the immediately preceding API sour
 Execution safeguards remain intact: worker start and run-once both require the owner-triggered zero-cost UnoRouter test to have succeeded in the current runtime and require an eligible provider at a zero-dollar request budget. Run-once additionally requires an existing agent explicitly in ACTIVE state with a role key. The queue endpoint continues to reject unknown business-unit filters. Worker start/stop remain explicit API actions; no worker was started, stopped, or run during extraction.
 
 The router is included at the original position between work-item enqueue and delegation-preview routes. Static re-fetch verification found 58 direct API decorators, five worker routes, five agent routes, six API Anything routes, seven GitHub routes, eight provider routes, four catalogue routes and two system routes (95 total). No duplicate HTTP-method/path pairs were found across the inspected route-bearing modules. This is static source verification only; no imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed.
+
+
+## Owner-controlled agent handoff router extraction
+
+Five owner-authenticated agent handoff lifecycle endpoints now live in `src/opencompany_app/routers/handoffs.py`:
+
+- `POST /work-items/{item_id}/handoffs` — propose a handoff without starting execution
+- `GET /work-items/{item_id}/handoffs` — list handoffs for a work item
+- `POST /handoffs/{handoff_id}/accept` — owner-controlled acceptance
+- `POST /handoffs/{handoff_id}/decline` — owner-controlled decline
+- `POST /handoffs/{handoff_id}/deliver` — record delivery of response artifact references
+
+The router owns the handoff payload serializer and imports only the collaboration domain operations, request schemas, runtime/store dependencies and owner-authentication dependency it needs. The router is included immediately before the executive portfolio route group, preserving the original registration position. All five routes retain explicit owner authentication, work-item existence checks, state-transition conflict handling and audit events carrying the work item's business-unit identifier. Proposal and acceptance responses continue to state that execution has not started; no worker is triggered by these routes.
+
+Static source checks after re-fetch found 88 route decorators across the API composition root and router modules, with 0 duplicate method/path pairs. The handoff router contains five route decorators. These checks do not establish import, startup, OpenAPI or runtime correctness; tests and CI remain deferred until 2026-12-01. No handoff was created, accepted, declined or delivered during extraction.
