@@ -29,6 +29,7 @@ from opencompany_core.integration_registry import BusinessIntegrationRegistry
 from opencompany_core.business_memory import BusinessMemoryStore
 from opencompany_core.business_assets import BusinessAssetRegistry
 from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
+from opencompany_core.asset_scanning import ClamAVUnixSocketScanner
 from opencompany_core.model_usage import ModelUsageRepository
 
 
@@ -51,6 +52,7 @@ class OpenCompanyRuntime:
     business_memory: BusinessMemoryStore
     business_assets: BusinessAssetRegistry
     asset_storage: PrivateFilesystemAssetStorage | None
+    asset_scanner: ClamAVUnixSocketScanner | None
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
@@ -175,6 +177,14 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         if not data_mount.is_mount():
             raise RuntimeError("asset storage is disabled because /data is not verified as a mounted persistent volume")
         asset_storage = PrivateFilesystemAssetStorage(storage_path)
+    clamd_socket_path = os.environ.get("OPENCOMPANY_CLAMD_SOCKET_PATH", "").strip()
+    asset_scanner = (
+        ClamAVUnixSocketScanner(
+            clamd_socket_path,
+            timeout_seconds=float(os.environ.get("OPENCOMPANY_CLAMD_TIMEOUT_SECONDS", "120")),
+        )
+        if clamd_socket_path else None
+    )
     usage = ModelUsageRepository(store._connection, store._lock)
     secret_vault_errors: dict[str, str] = {}
     try:
@@ -258,6 +268,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         business_memory=business_memory,
         business_assets=business_assets,
         asset_storage=asset_storage,
+        asset_scanner=asset_scanner,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
     )
