@@ -22,7 +22,7 @@ from .domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 
 
 _ZERO_HASH = "0" * 64
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
@@ -229,6 +229,158 @@ def _migrate_v7_commercial_business_ids(connection: sqlite3.Connection) -> None:
         raise RuntimeError("foreign-key enforcement could not be restored after schema migration")
     if connection.execute("PRAGMA foreign_key_check").fetchall():
         raise RuntimeError("schema migration failed post-commit foreign-key validation")
+
+
+def _migrate_v8_customer_scopes(connection: sqlite3.Connection) -> None:
+    """Backfill customer scopes and enforce business/scope pairing in the database."""
+    from .business_units import BusinessUnitRegistry
+
+    if connection.in_transaction:
+        raise RuntimeError("customer-scope migration cannot run inside an existing transaction")
+    registry = BusinessUnitRegistry(connection, RLock())
+    registry_units = registry.list()
+    if not registry_units:
+        raise RuntimeError("customer-scope migration requires registered business units")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_customer_scope "
+        "ON opencompany_business_units(business_id, customer_scope_id)"
+    )
+    definitions = {
+        "commercial_opportunities": (
+            """CREATE TABLE commercial_opportunities_v9 (
+                id TEXT PRIMARY KEY,
+                business_id TEXT NOT NULL,
+                customer_scope_id TEXT NOT NULL,
+                customer_name TEXT NOT NULL,
+                customer_contact TEXT,
+                customer_need TEXT NOT NULL,
+                stage TEXT NOT NULL DEFAULT 'new' CHECK(stage IN ('new','qualified','proposal','won','lost','on_hold')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(id,business_id,customer_scope_id),
+                FOREIGN KEY(business_id,customer_scope_id)
+                    REFERENCES opencompany_business_units(business_id,customer_scope_id)
+            )""",
+            """INSERT INTO commercial_opportunities_v9
+               (id,business_id,customer_scope_id,customer_name,customer_contact,customer_need,stage,created_at,updated_at)
+               SELECT o.id,o.business_id,u.customer_scope_id,o.customer_name,o.customer_contact,
+                      o.customer_need,o.stage,o.created_at,o.updated_at
+               FROM commercial_opportunities o
+               JOIN opencompany_business_units u ON u.business_id=o.business_id""",
+            "idx_commercial_opportunities_unit",
+            "business_id, created_at",
+        ),
+        "commercial_quotes": (
+            """CREATE TABLE commercial_quotes_v9 (
+                id TEXT PRIMARY KEY,
+                opportunity_id TEXT NOT NULL,
+                business_id TEXT NOT NULL,
+                customer_scope_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                currency TEXT NOT NULL CHECK(length(currency)=3),
+                currency_exponent INTEGER NOT NULL CHECK(currency_exponent BETWEEN 0 AND 3),
+                subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor > 0),
+                terms TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved_for_delivery','accepted','rejected','void')),
+                acceptance_reference TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(id,business_id,customer_scope_id),
+                FOREIGN KEY(business_id,customer_scope_id)
+                    REFERENCES opencompany_business_units(business_id,customer_scope_id),
+                FOREIGN KEY(opportunity_id,business_id,customer_scope_id)
+                    REFERENCES commercial_opportunities(id,business_id,customer_scope_id)
+            )""",
+            """INSERT INTO commercial_quotes_v9
+               (id,opportunity_id,business_id,customer_scope_id,title,currency,currency_exponent,
+                subtotal_minor,terms,status,acceptance_reference,created_at,updated_at)
+               SELECT q.id,q.opportunity_id,q.business_id,u.customer_scope_id,q.title,q.currency,
+                      q.currency_exponent,q.subtotal_minor,q.terms,q.status,q.acceptance_reference,
+                      q.created_at,q.updated_at
+               FROM commercial_quotes q
+               JOIN opencompany_business_units u ON u.business_id=q.business_id""",
+            "idx_commercial_quotes_scope",
+            "business_id, opportunity_id, created_at",
+        ),
+        "commercial_orders": (
+            """CREATE TABLE commercial_orders_v9 (
+                id TEXT PRIMARY KEY,
+                quote_id TEXT NOT NULL,
+                opportunity_id TEXT NOT NULL,
+                business_id TEXT NOT NULL,
+                customer_scope_id TEXT NOT NULL,
+                customer_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'awaiting_owner_fulfilment' CHECK(status IN ('awaiting_owner_fulfilment','in_progress','fulfilled','cancelled')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(business_id,customer_scope_id)
+                    REFERENCES opencompany_business_units(business_id,customer_scope_id),
+                FOREIGN KEY(quote_id,business_id,customer_scope_id)
+                    REFERENCES commercial_quotes(id,business_id,customer_scope_id),
+                FOREIGN KEY(opportunity_id,business_id,customer_scope_id)
+                    REFERENCES commercial_opportunities(id,business_id,customer_scope_id)
+            )""",
+            """INSERT INTO commercial_orders_v9
+               (id,quote_id,opportunity_id,business_id,customer_scope_id,customer_name,status,created_at,updated_at)
+               SELECT o.id,o.quote_id,o.opportunity_id,o.business_id,u.customer_scope_id,
+                      o.customer_name,o.status,o.created_at,o.updated_at
+               FROM commercial_orders o
+               JOIN opencompany_business_units u ON u.business_id=o.business_id""",
+            "idx_commercial_orders_scope",
+            "business_id, status, created_at",
+        ),
+    }
+    triggers = [
+        row["sql"] for row in connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' "
+            "AND tbl_name IN ('commercial_opportunities','commercial_quotes','commercial_orders') "
+            "AND sql IS NOT NULL"
+        ).fetchall()
+    ]
+    for name in definitions:
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (f"{name}_v9",),
+        ).fetchone():
+            raise RuntimeError(f"customer-scope migration found an unexpected staging table: {name}_v9")
+    connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        before = {
+            name: int(connection.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0])
+            for name in definitions
+        }
+        for name, (ddl, copy_sql, _, _) in definitions.items():
+            connection.execute(ddl)
+            connection.execute(copy_sql)
+            copied = int(connection.execute(f"SELECT COUNT(*) FROM {name}_v9").fetchone()[0])
+            if copied != before[name]:
+                raise RuntimeError(
+                    f"customer-scope migration could not map every {name} row to a registered unit"
+                )
+        for name in ("commercial_orders", "commercial_quotes", "commercial_opportunities"):
+            connection.execute(f"DROP TABLE {name}")
+        for name in ("commercial_opportunities", "commercial_quotes", "commercial_orders"):
+            connection.execute(f"ALTER TABLE {name}_v9 RENAME TO {name}")
+        for name, (_, _, index_name, index_columns) in definitions.items():
+            connection.execute(f"CREATE INDEX {index_name} ON {name}({index_columns})")
+        for statement in triggers:
+            connection.execute(statement)
+        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError("customer-scope migration produced foreign-key violations")
+        connection.execute("PRAGMA user_version = 9")
+        connection.execute("COMMIT")
+    except Exception:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
+    if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
+        raise RuntimeError("foreign-key enforcement could not be restored after customer-scope migration")
+    if connection.execute("PRAGMA foreign_key_check").fetchall():
+        raise RuntimeError("customer-scope migration failed post-commit foreign-key validation")
 
 
 def _json(value: Any) -> str:
@@ -489,6 +641,9 @@ class SQLiteStore:
                 version = 7
             if version == 7:
                 _migrate_v7_commercial_business_ids(self._connection)
+                version = 8
+            if version == 8:
+                _migrate_v8_customer_scopes(self._connection)
                 return
             raise RuntimeError(f"unsupported database schema version: {version}")
 
@@ -501,11 +656,13 @@ class SQLiteStore:
             try:
                 self._connection.execute(
                     """INSERT INTO commercial_opportunities
-                       (id,business_id,customer_name,customer_contact,customer_need,stage,created_at,updated_at)
-                       VALUES(?,?,?,?,?,?,?,?)""",
-                    (record["id"], record["business_id"], record["customer_name"],
-                     record.get("customer_contact"), record["customer_need"],
-                     record.get("stage", "new"), record["created_at"], record["updated_at"]),
+                       (id,business_id,customer_scope_id,customer_name,customer_contact,customer_need,stage,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (record["id"], record["business_id"], _assert_operational_commercial_scope(
+                        self._connection, self._lock, record["business_id"]
+                    )["customer_scope_id"], record["customer_name"], record.get("customer_contact"),
+                     record["customer_need"], record.get("stage", "new"),
+                     record["created_at"], record["updated_at"]),
                 )
                 previous = self._connection.execute(
                     "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
@@ -687,10 +844,12 @@ class SQLiteStore:
                     raise ValueError("quote subtotal does not match its line items")
                 self._connection.execute(
                     """INSERT INTO commercial_quotes
-                       (id,opportunity_id,business_id,title,currency,currency_exponent,subtotal_minor,terms,status,created_at,updated_at)
-                       VALUES(?,?,?,?,?,?,?,?,'draft',?,?)""",
-                    (record["id"], record["opportunity_id"], business_id, record["title"],
-                     record["currency"], record["currency_exponent"], subtotal, record["terms"], record["created_at"], record["updated_at"]),
+                       (id,opportunity_id,business_id,customer_scope_id,title,currency,currency_exponent,subtotal_minor,terms,status,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,'draft',?,?)""",
+                    (record["id"], record["opportunity_id"], business_id,
+                     opportunity["customer_scope_id"], record["title"], record["currency"],
+                     record["currency_exponent"], subtotal, record["terms"],
+                     record["created_at"], record["updated_at"]),
                 )
                 for item in items:
                     self._connection.execute(
@@ -823,10 +982,11 @@ class SQLiteStore:
                     raise ValueError("an order already exists for this quote")
                 self._connection.execute(
                     """INSERT INTO commercial_orders
-                       (id,quote_id,opportunity_id,business_id,customer_name,status,created_at,updated_at)
-                       VALUES(?,?,?,?,?,'awaiting_owner_fulfilment',?,?)""",
+                       (id,quote_id,opportunity_id,business_id,customer_scope_id,customer_name,status,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,'awaiting_owner_fulfilment',?,?)""",
                     (order_id, quote_id, quote["opportunity_id"], quote["business_id"],
-                     quote["customer_name"], datetime.now(timezone.utc).isoformat(),
+                     quote["customer_scope_id"], quote["customer_name"],
+                     datetime.now(timezone.utc).isoformat(),
                      datetime.now(timezone.utc).isoformat()),
                 )
                 self._connection.execute(
