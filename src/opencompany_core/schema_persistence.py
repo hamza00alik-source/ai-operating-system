@@ -220,4 +220,5 @@ class SchemaInitializationMixin:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")
                     raise
+                return
             raise RuntimeError(f"unsupported database schema version: {version}")
