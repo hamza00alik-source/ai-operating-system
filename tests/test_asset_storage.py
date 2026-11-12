@@ -134,7 +134,7 @@ def test_private_download_verifies_hash_before_returning_file(tmp_path):
     finally:
         stream.close()
 
-    (storage.root / stored["storage_key"]).write_bytes(b"tampered")
+    (storage.root / stored["storage_key"]).write_bytes(b"tampered private download")
     with pytest.raises(AssetStorageError, match="checksum"):
         storage.open_verified_download(
             business_id="digital-products", asset_scope_id="digital-scope", asset_id=asset_id,
