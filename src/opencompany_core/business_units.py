@@ -203,6 +203,137 @@ class BusinessUnitRegistry:
             )
         }
 
+
+    def activation_readiness(self, business_id: str) -> dict[str, Any]:
+        """Return a fail-closed, evidence-based activation report without changing state."""
+        unit = self.get(business_id)
+        if unit is None:
+            raise BusinessUnitProvisioningError("unknown business unit")
+        if unit["status"] == "foundational":
+            return {
+                "business_id": business_id,
+                "status": "foundational_operational",
+                "activation_allowed": True,
+                "blockers": [],
+                "checks": [{"key": "foundational_unit", "ready": True,
+                            "evidence": "Existing foundational operating unit; no activation transition required."}],
+            }
+        if unit["status"] == "active":
+            return {
+                "business_id": business_id,
+                "status": "active",
+                "activation_allowed": True,
+                "blockers": [],
+                "checks": [{"key": "unit_active", "ready": True,
+                            "evidence": "Registry status is already active."}],
+            }
+
+        checks: list[dict[str, Any]] = []
+        blockers: list[str] = []
+        scope_keys = (
+            "namespace_id", "customer_scope_id", "finance_scope_id",
+            "credential_scope_id", "integration_scope_id", "memory_scope_id",
+            "asset_scope_id",
+        )
+        scopes_complete = all(bool(unit.get(key)) for key in scope_keys) and len(
+            {unit.get(key) for key in scope_keys}
+        ) == len(scope_keys)
+        checks.append({
+            "key": "unique_scope_identifiers",
+            "ready": scopes_complete,
+            "evidence": "Seven distinct internal scope identifiers are present." if scopes_complete
+                        else "One or more required scope identifiers are missing or duplicated.",
+        })
+        if not scopes_complete:
+            blockers.append("unique_scope_identifiers")
+
+        with self._lock:
+            tables = {
+                row["name"]: row["sql"] or ""
+                for row in self._db.execute(
+                    "SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'commercial_%'"
+                ).fetchall()
+            }
+            columns = {
+                name: {row["name"] for row in self._db.execute(
+                    f'PRAGMA table_info("{name}")'
+                ).fetchall()}
+                for name in tables
+            }
+            finance_tables = self._db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND (name LIKE '%finance%' OR name LIKE '%ledger%' OR name LIKE '%payment%')"
+            ).fetchall()
+
+        constrained = sorted(
+            name for name, sql in tables.items()
+            if "business_id" in columns[name] and "CHECK" in sql.upper()
+            and "BUSINESS_ID IN" in sql.upper()
+        )
+        commercial_dynamic = bool(tables) and not constrained
+        checks.append({
+            "key": "commercial_persistence_dynamic_business_ids",
+            "ready": commercial_dynamic,
+            "evidence": (
+                "Commercial tables do not contain a fixed business_id allowlist."
+                if commercial_dynamic else
+                "Commercial schema still contains fixed business_id allowlists: " + ", ".join(constrained)
+            ),
+        })
+        if not commercial_dynamic:
+            blockers.append("commercial_persistence_dynamic_business_ids")
+
+        customer_scoped = bool(tables) and all(
+            "customer_scope_id" in value for value in columns.values()
+        )
+        checks.append({
+            "key": "customer_scope_enforcement",
+            "ready": customer_scoped,
+            "evidence": "Commercial tables persist customer scope identifiers."
+                        if customer_scoped else
+                        "Commercial customer/opportunity records do not yet persist customer_scope_id.",
+        })
+        if not customer_scoped:
+            blockers.append("customer_scope_enforcement")
+
+        finance_scoped = bool(finance_tables)
+        checks.append({
+            "key": "finance_ledger_scope",
+            "ready": finance_scoped,
+            "evidence": "A finance/ledger/payment persistence table exists; per-unit enforcement still requires review."
+                        if finance_scoped else
+                        "No finance, ledger, or payment persistence table is registered in this SQLite store.",
+        })
+        if not finance_scoped:
+            blockers.append("finance_ledger_scope")
+
+        for key, label in (
+            ("credential_scope_id", "credential_scope_adapter"),
+            ("integration_scope_id", "integration_scope_adapter"),
+            ("memory_scope_id", "memory_scope_adapter"),
+            ("asset_scope_id", "asset_scope_adapter"),
+        ):
+            blockers.append(key.replace("_scope_id", "_scope_adapter"))
+            checks.append({
+                "key": key.replace("_scope_id", "_scope_adapter"),
+                "ready": False,
+                "evidence": f"{label} is recorded as an identifier only; an enforcing adapter is not registered by this readiness gate.",
+            })
+
+        blockers.append("owner_activation_approval")
+        checks.append({
+            "key": "owner_activation_approval",
+            "ready": False,
+            "evidence": "A separate activation approval and audited status transition have not been implemented.",
+        })
+        return {
+            "business_id": business_id,
+            "status": unit["status"],
+            "activation_allowed": not blockers,
+            "blockers": blockers,
+            "checks": checks,
+        }
+
     def events(self, business_id: str) -> tuple[dict[str, Any], ...]:
         with self._lock:
             rows = self._db.execute(
