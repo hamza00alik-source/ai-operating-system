@@ -147,16 +147,25 @@ class BusinessIntegrationRegistry:
             ).fetchone() is None:
                 raise ValueError("unknown business unit")
             rows = self._db.execute(
-                """SELECT integration_id,business_id,provider_key,display_name,credential_key,
-                          permissions_json,status,created_at,updated_at
-                   FROM opencompany_business_integrations WHERE business_id=?
-                   ORDER BY created_at,integration_id""",
+                """SELECT i.integration_id,i.business_id,i.provider_key,i.display_name,
+                          i.credential_key,i.credential_scope_id,i.permissions_json,i.status,
+                          i.created_at,i.updated_at,
+                          EXISTS(
+                              SELECT 1 FROM opencompany_business_credentials c
+                              WHERE c.business_id=i.business_id
+                                AND c.credential_scope_id=i.credential_scope_id
+                                AND c.credential_key=i.credential_key
+                          ) AS credential_available
+                   FROM opencompany_business_integrations i WHERE i.business_id=?
+                   ORDER BY i.created_at,i.integration_id""",
                 (business_id,),
             ).fetchall()
         result = []
         for row in rows:
             item = dict(row)
             item["permissions"] = json.loads(item.pop("permissions_json"))
+            item["credential_available"] = bool(item["credential_available"])
+            item.pop("credential_scope_id", None)
             item["network_connection_enabled"] = False
             result.append(item)
         return tuple(result)
