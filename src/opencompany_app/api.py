@@ -2398,7 +2398,6 @@ def get_executive_portfolio(
     ceo = next((agent for agent in profiles
                 if agent.role_key == "chief_executive_orchestrator"), None)
     work_items = store.list_work_items(business_id=business_id, limit=1000)
-    known = {item.id: item for item in work_items}
     department_rows: dict[str, dict] = {}
     items_payload = []
     for item in work_items:
@@ -2427,7 +2426,9 @@ def get_executive_portfolio(
                 ),
             })
         manager_ready = (
-            bool(item.depends_on) and manager is not None
+            item.state == TaskState.READY
+            and bool(item.depends_on)
+            and manager is not None
             and manager.state == AgentState.ACTIVE
             and item.assigned_agent_id == manager.id
             and all(value["completed_with_deliverable"] for value in dependencies)
