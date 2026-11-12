@@ -1,6 +1,7 @@
 """Work-item and deliverable persistence operations for SQLiteStore."""
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
