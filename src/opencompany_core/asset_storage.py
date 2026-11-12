@@ -12,7 +12,7 @@ import re
 import stat
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import BinaryIO, Iterable
 from uuid import UUID
 
 
@@ -183,6 +183,50 @@ class PrivateFilesystemAssetStorage:
             "byte_size": total,
         }
 
+
+
+    def open_verified_download(
+        self, *, business_id: str, asset_scope_id: str, asset_id: str,
+        expected_sha256: str, expected_size: int,
+    ) -> BinaryIO:
+        """Open one private file and verify it on the same descriptor before serving."""
+        try:
+            canonical_asset_id = str(UUID(asset_id))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise AssetStorageError("asset_id must be a UUID") from exc
+        if not re.fullmatch(r"[a-f0-9]{64}", expected_sha256):
+            raise AssetStorageError("invalid expected checksum for private download")
+        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or not 0 <= expected_size <= MAX_ASSET_BYTES:
+            raise AssetStorageError("invalid expected size for private download")
+        scope_dir = self.root / self._scope_directory(business_id, asset_scope_id)
+        target = scope_dir / (canonical_asset_id + ".blob")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(target, flags)
+        except OSError as exc:
+            raise AssetStorageError("private asset bytes are unavailable for download") from exc
+        stream = os.fdopen(fd, "rb")
+        try:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size != expected_size:
+                raise AssetStorageError("private asset size does not match its verified storage record")
+            digest = hashlib.sha256()
+            total = 0
+            while True:
+                block = stream.read(1024 * 1024)
+                if not block:
+                    break
+                total += len(block)
+                if total > expected_size:
+                    raise AssetStorageError("private asset grew beyond its verified storage size")
+                digest.update(block)
+            if total != expected_size or digest.hexdigest() != expected_sha256:
+                raise AssetStorageError("private asset checksum does not match its verified storage record")
+            stream.seek(0)
+            return stream
+        except Exception:
+            stream.close()
+            raise
 
     def read_chunks(
         self, *, business_id: str, asset_scope_id: str, asset_id: str, chunk_size: int = 1024 * 1024
