@@ -208,7 +208,8 @@ class DurableWorkerQueue:
 
 
     def reassign_queued_work_item(
-        self, work_item_id: UUID, target_agent_id: UUID, record: AuditRecord
+        self, work_item_id: UUID, target_agent_id: UUID, record: AuditRecord,
+        *, expected_current_agent_id: UUID | None,
     ) -> dict:
         """Atomically reassign an unleased, non-delegated queued task and audit it."""
         if self._owns_connection:
@@ -233,6 +234,8 @@ class DurableWorkerQueue:
                     raise QueueError("only queued work with no active lease can be reassigned")
                 if not task["assigned_agent_id"] or queue["agent_id"] != task["assigned_agent_id"]:
                     raise QueueError("work item and queue assignee are inconsistent")
+                if task["assigned_agent_id"] != (str(expected_current_agent_id) if expected_current_agent_id else None):
+                    raise QueueError("work item assignee changed; refresh before reassignment")
                 if str(target_agent_id) == task["assigned_agent_id"]:
                     raise QueueError("target agent is already assigned")
                 child = self._db.execute(
