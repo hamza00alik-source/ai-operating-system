@@ -1873,7 +1873,7 @@ def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
 
 
 def test_owner_can_reassign_queued_work_through_api_and_unauthorized_call_is_blocked(owner_client):
-    runtime = api_module._default_runtime()
+    runtime = app.dependency_overrides[get_runtime]()
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     current_id, target_id = uuid4(), uuid4()
     for agent_id, name in ((current_id, "Current Analyst"), (target_id, "Target Analyst")):
