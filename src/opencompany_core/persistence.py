@@ -558,12 +558,12 @@ def _migrate_v11_business_integrations(connection: sqlite3.Connection) -> None:
     """Create an isolated integration registry without enabling external execution."""
     if connection.in_transaction:
         raise RuntimeError("business-integration migration cannot run inside an existing transaction")
-    connection.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_integration_scope "
-        "ON opencompany_business_units(business_id,integration_scope_id)"
-    )
     connection.execute("BEGIN IMMEDIATE")
     try:
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_opencompany_unit_integration_scope "
+            "ON opencompany_business_units(business_id,integration_scope_id)"
+        )
         connection.execute("""
             CREATE TABLE opencompany_business_integrations (
                 integration_id TEXT PRIMARY KEY,
