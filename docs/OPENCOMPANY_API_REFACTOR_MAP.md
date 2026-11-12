@@ -461,3 +461,11 @@ No imports, application startup, OpenAPI generation, tests, CI, migrations or da
 - Static comparison against the pre-extraction `persistence.py` at commit `9d74552de0d754c2b12cbe574bf2ea3027fbfaea` confirms the 27-line `backup_to` method body is byte-for-byte identical in the mixin. It still uses SQLite's online backup API and runs `PRAGMA integrity_check`, removing a failed destination on error.
 - The current `persistence.py` composition root is 52 lines and composes seven mixins: work-item, agent, commercial, delegation, audit, schema initialization and backup. The constructor and connection/lock ownership remain in `SQLiteStore`.
 - Static source review only; no backup was generated and no runtime/import/test/CI operation was performed. Test/CI deferral until 2026-12-01 remains active.
+
+## Supplier persistence extraction (2026-11-12)
+
+- Added `src/opencompany_core/supplier_persistence.py` with `SupplierPersistenceMixin`; moved supplier creation, listing and verification-status update methods out of `commercial_persistence.py`.
+- The three method bodies were compared against the immediate pre-extraction parent commit `87fedea4da96017e6a0d802745e5e686ceb481ad`; the complete moved method block is byte-for-byte identical.
+- Supplier creation and status updates retain their single-transaction audit append, rollback behavior, and business/relationship type constraints. Listing retains its physical-business-only scope and bounded limit.
+- `SQLiteStore` now composes `SupplierPersistenceMixin`; commercial opportunity/product/quote/order methods remain in `CommercialPersistenceMixin`. The commercial module is reduced from 517 to 425 lines.
+- Static re-fetch confirms the three methods exist once in the supplier mixin, no longer appear in the commercial mixin, and the new mixin is inherited by `SQLiteStore`. No runtime imports, tests, CI or database operations were performed. The December 1 test/CI deferral remains active.
