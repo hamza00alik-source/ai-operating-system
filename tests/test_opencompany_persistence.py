@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import uuid4\n\nimport pytest
 
 from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.persistence import SQLiteStore
@@ -112,7 +112,7 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     assert {"role_key", "team_key"} <= columns
     work_item_columns = {row["name"] for row in store._connection.execute("PRAGMA table_info(work_items)").fetchall()}
     assert "business_id" in work_item_columns
-    assert version == 9
+    assert version == 10
     store.close()
 
 
@@ -383,4 +383,77 @@ def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_key
         pass
     else:
         raise AssertionError("legacy agency supplier relationship constraint must remain enforced")
+    store.close()
+
+
+def test_finance_ledger_derives_scope_and_is_append_only(tmp_path):
+    import sqlite3
+
+    store = SQLiteStore(tmp_path / "finance-ledger.sqlite3")
+    unit = store._connection.execute(
+        "SELECT finance_scope_id FROM opencompany_business_units WHERE business_id='physical-agency'"
+    ).fetchone()
+    entry = {
+        "id": "agency-revenue-001",
+        "business_id": "physical-agency",
+        # An untrusted caller value is deliberately ignored.
+        "finance_scope_id": "forged-scope",
+        "entry_type": "revenue",
+        "amount_minor": 12500,
+        "currency": "USD",
+        "description": "Owner-confirmed marketplace revenue record",
+        "source_reference": "marketplace-order-001",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    store.create_finance_entry(entry, audit_record("finance.entry.recorded"))
+    rows = store.list_finance_entries(business_id="physical-agency")
+    assert len(rows) == 1
+    assert rows[0]["finance_scope_id"] == unit["finance_scope_id"]
+    assert rows[0]["latest_review_action"] == "recorded"
+    assert store.list_finance_entries(business_id="physical-brand") == ()
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "UPDATE opencompany_finance_entries SET amount_minor=1 WHERE id=?",
+                ("agency-revenue-001",),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            store._connection.execute(
+                "DELETE FROM opencompany_finance_entry_events WHERE entry_id=?",
+                ("agency-revenue-001",),
+            )
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_finance_ledger_rejects_invalid_money_and_cross_scope_records(tmp_path):
+    import sqlite3
+    import pytest
+
+    store = SQLiteStore(tmp_path / "finance-ledger-constraints.sqlite3")
+    base = {
+        "id": "finance-invalid-001",
+        "business_id": "physical-agency",
+        "entry_type": "expense",
+        "amount_minor": 100,
+        "currency": "USD",
+        "description": "Test entry",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    invalid = dict(base, amount_minor=True)
+    with pytest.raises(ValueError, match="positive integer"):
+        store.create_finance_entry(invalid, audit_record("finance.invalid"))
+    invalid_currency = dict(base, id="finance-invalid-002", currency="usd")
+    with pytest.raises(ValueError, match="uppercase"):
+        store.create_finance_entry(invalid_currency, audit_record("finance.invalid"))
+    store.create_finance_entry(dict(base, id="finance-valid-003"), audit_record("finance.recorded"))
+    with store._lock:
+        with pytest.raises(sqlite3.IntegrityError):
+            store._connection.execute(
+                """INSERT INTO opencompany_finance_entry_events
+                   (event_id,entry_id,business_id,finance_scope_id,action,actor_type,occurred_at)
+                   VALUES('forged-event','finance-valid-003','physical-brand',
+                          (SELECT finance_scope_id FROM opencompany_business_units WHERE business_id='physical-brand'),
+                          'owner_approved','owner','2026-11-12T00:00:00+00:00')"""
+            )
     store.close()
