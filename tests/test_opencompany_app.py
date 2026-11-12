@@ -1882,7 +1882,7 @@ def test_owner_can_reassign_queued_work_through_api_and_unauthorized_call_is_blo
             id=agent_id, name=name, department="intelligence-research",
             purpose="Research evidence", capabilities=("research",),
             state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
-            team_key="general",
+            team_key="management",
         ))
     item = WorkItem(
         id=uuid4(), title="API reassignment", objective="Prepare an internal evidence report",
@@ -1892,7 +1892,7 @@ def test_owner_can_reassign_queued_work_through_api_and_unauthorized_call_is_blo
     runtime.store.save_work_item(item)
     runtime.queue.enqueue_authorized(item, current_id, {
         "role_key": "market_intelligence_analyst",
-        "team_key": "general",
+        "team_key": "management",
     }, AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
         actor_id="owner", action="work_item.queued", subject_type="work_item",
@@ -1925,7 +1925,7 @@ def test_reassignment_rejects_stale_expected_assignee(tmp_path):
             id=agent_id, name=name, department="intelligence-research",
             purpose="Research evidence", capabilities=("research",),
             state=AgentState.ACTIVE, role_key="market_intelligence_analyst",
-            team_key="general",
+            team_key="management",
         ))
     item = WorkItem(
         id=uuid4(), title="Stale reassignment", objective="Prepare report",
@@ -1934,7 +1934,7 @@ def test_reassignment_rejects_stale_expected_assignee(tmp_path):
     store.save_work_item(item)
     queue = DurableWorkerQueue(store._connection, lock=store._lock)
     queue.enqueue_authorized(item, first_id, {"role_key": "market_intelligence_analyst",
-        "team_key": "general"}, AuditRecord(
+        "team_key": "management"}, AuditRecord(
             id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
             actor_id="owner", action="work_item.queued", subject_type="work_item",
             subject_id=str(item.id), outcome="recorded", correlation_id="stale-admission",
