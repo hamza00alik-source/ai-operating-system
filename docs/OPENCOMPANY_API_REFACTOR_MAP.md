@@ -1,15 +1,15 @@
 # OpenCompany API Refactor Map
 
-Status: active refactor record. Request-schema and runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue/system/provider/GitHub/API Anything/agent/worker/work-item/handoff/orchestration/lifecycle router extractions are implemented on the development branch. Route behavior and runtime correctness remain unverified until the deferred test window.
+Status: active refactor record. Request-schema and runtime/auth dependency extraction, duplicate workflow-route consolidation, catalogue/system/provider/GitHub/API Anything/agent/worker/work-item/handoff/orchestration/lifecycle/learning router extractions are implemented on the development branch. Route behavior and runtime correctness remain unverified until the deferred test window.
 
 ## Scope and evidence
 
-Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after lifecycle extraction: `22c233b146229681b8f8b0a5a10d0f30b8b48ee8`.
+Inspected `src/opencompany_app/api.py` on branch `feature/opencompany-aios-unification`; latest API blob SHA after learning extraction: `642749f66e743fe58320172909db4b9fab87add1`.
 
 - Before duplicate-route consolidation, the module was approximately 3,360 lines and had 96 route decorators; the duplicate was removed, leaving 95 route decorators.
 - `src/opencompany_app/api.py` no longer declares request models. The 36 original Pydantic request models now live in `src/opencompany_app/api_schemas.py`; static comparison against the pre-extraction API source confirms each class body is byte-for-byte identical.
-- The API now has 42 direct route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, four read-only catalogue routes in `routers/catalogue.py`, five handoff routes in `routers/handoffs.py`, five planning/delegation routes in `routers/orchestration.py`, and four work-item lifecycle/review/deliverable routes in `routers/lifecycle.py` (95 total registrations by static composition count). The routers are included at their original route-group positions.
-- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py`, `work_items.py`, `handoffs.py`, `orchestration.py` and `lifecycle.py`, in addition to the composition, dashboard and runtime modules.
+- The API now has 33 direct route decorators in `api.py`, two work-item creation/listing routes in `routers/work_items.py`, five worker queue/fleet routes in `routers/workers.py`, five agent/workforce routes in `routers/agents.py`, six read-only API Anything routes in `routers/integrations.py`, seven GitHub integration/code-evolution routes in `routers/github_evolution.py`, eight UnoRouter routes in `routers/providers.py`, two health/readiness routes in `routers/system.py`, four read-only catalogue routes in `routers/catalogue.py`, five handoff routes in `routers/handoffs.py`, five planning/delegation routes in `routers/orchestration.py`, four work-item lifecycle/review/deliverable routes in `routers/lifecycle.py`, and nine outcome-evaluation/learning routes in `routers/learning.py` (95 total registrations by static composition count). The routers are included at their original route-group positions.
+- The app package now includes `api_schemas.py`, `api_dependencies.py`, and a `routers/` package with `catalogue.py`, `providers.py`, `system.py`, `github_evolution.py`, `integrations.py`, `agents.py`, `workers.py`, `work_items.py`, `handoffs.py`, `orchestration.py`, `lifecycle.py` and `learning.py`, in addition to the composition, dashboard and runtime modules.
 - `api.py` now imports its cached runtime singleton, runtime/store dependencies, login throttling helpers, and owner-authentication dependency from `api_dependencies.py`. Application startup/shutdown hooks remain in `api.py` and use the same imported singleton. Request schemas are isolated in `api_schemas.py`.
 - This is a static source inspection. No tests, imports, server startup, or runtime route-resolution checks were performed.
 
@@ -238,3 +238,20 @@ Four owner-authenticated routes now live in `src/opencompany_app/routers/lifecyc
 The four handler blocks were compared against the immediately preceding API source after normalizing only the decorator target; all four comparisons matched exactly. The workflow view still rejects cross-business delegated work/dependencies and filters dependent work to the parent business unit. Review retains its audit record, outcome evaluation, disabled-by-default auto-queue and strict free-provider/role checks. State-only transitions still cannot complete review-required work, cancel queued/running work, or enter queued/in-progress states; those remain behind the review or queue/worker pipeline. All four routes retain explicit owner authentication.
 
 The lifecycle router is included immediately after the orchestration router, at the former workflow-route registration position. Static re-fetch found 42 direct API route decorators plus 53 router decorators (95 total), with zero duplicate HTTP-method/path pairs across the composition root and router modules. No imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed. Test/CI deferral until 2026-12-01 remains active. No work item was reviewed or transitioned; no queue action, merge, deployment or production change occurred.
+
+
+## Outcome evaluation and learning router extraction
+
+Nine owner-authenticated routes now live in `src/opencompany_app/routers/learning.py`:
+
+- Create/list work-item outcome evaluations
+- Create manual or AI-generated improvement proposals
+- List proposals and record owner approve/reject decisions
+- Apply an approved proposal as a durable role-learning note
+- Create/list approved learning notes
+
+All nine route handlers were moved without changing their handler source; the GitHub commit diff confirms the extracted block is removed from `api.py` and the router is included immediately after the preceding GitHub evolution router at the original registration point. Static re-fetch found 33 direct API routes plus 62 router routes (95 total), with zero duplicate HTTP-method/path pairs. All nine learning endpoints explicitly retain owner authentication.
+
+Safeguards retained include owner-only review and decisions, evidence-backed evaluations, same-work-item deliverable references, single-business-unit evidence for AI learning analysis, zero-dollar preferred UnoRouter model requests with no paid fallback, strict model-output shape and role validation, business-scoped proposals/notes, atomic audit persistence, and the requirement that a proposal be owner-approved before it can be applied as a role note. No evaluation, proposal, model call, decision or learning note was created or applied during this extraction.
+
+Static source checks only. No imports, app startup, OpenAPI generation, tests, CI or runtime checks were performed. Test/CI deferral until 2026-12-01 remains active. No merge, deployment or production changes occurred.
