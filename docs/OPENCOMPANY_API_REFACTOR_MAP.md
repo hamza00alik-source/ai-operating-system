@@ -492,3 +492,10 @@ No imports, application startup, OpenAPI generation, tests, CI, migrations or da
 - [insight] The complete quote method block was moved without editing its method bodies; it retains opportunity/business matching, active same-business product checks, currency and amount bounds, subtotal validation, quote-state transitions, acceptance evidence requirements, accepted-order void protection, atomic audit-chain appends and rollback.
 - [solution] `SQLiteStore` composes the quote mixin. Order creation and order-status methods remain in the commercial mixin; order creation still requires an accepted quote and does not trigger payment or fulfilment.
 - [context] Static source verification only; no imports, startup, tests, CI or database operations. December 1 test/CI deferral remains active. No merge, deployment or production change.
+
+## Commercial order persistence extraction (2026-11-12)
+
+- [solution] Added `src/opencompany_core/order_persistence.py` with `OrderPersistenceMixin`; moved order creation, order-status transition and order-listing methods out of `commercial_persistence.py`.
+- [insight] Order creation still requires a quote with recorded customer acceptance, prevents duplicate orders for one quote, atomically updates the opportunity stage and appends audit evidence, and initializes the order as awaiting owner fulfilment. It does not trigger payment or fulfilment. Status transitions and business-unit listing constraints are unchanged.
+- [solution] `SQLiteStore` composes the order mixin. Quote creation, listing and acceptance/status decisions remain in `QuotePersistenceMixin`.
+- [context] Static source comparison/re-fetch only; no imports, startup, tests, CI or database operations. December 1 test/CI deferral remains active. No merge, deployment or production change.
