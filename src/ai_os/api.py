@@ -6,6 +6,7 @@ import unicodedata
 import json
 import hmac
 import os
+import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
@@ -1029,6 +1030,7 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
     prefix = bytearray()
     try:
         with temporary.open("wb") as output:
+            last_lease_refresh = time.monotonic()
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > 300 * 1024 * 1024:
@@ -1036,6 +1038,17 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
                 if len(prefix) < 12:
                     prefix.extend(chunk[:12 - len(prefix)])
                 output.write(chunk)
+                # Keep the lease alive during slow uploads and observe owner cancellation.
+                if time.monotonic() - last_lease_refresh >= 10:
+                    try:
+                        lease_state = video_jobs.heartbeat(
+                            job_id, x_job_lease, progress=95, message="Uploading generated MP4"
+                        )
+                    except (LookupError, PermissionError) as exc:
+                        raise HTTPException(status_code=409, detail=str(exc)) from exc
+                    if lease_state.get("cancel_requested"):
+                        raise HTTPException(status_code=409, detail="Cancellation was requested.")
+                    last_lease_refresh = time.monotonic()
         if size < 12 or bytes(prefix[4:8]) != b"ftyp":
             raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
         temporary.replace(destination)
