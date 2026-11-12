@@ -34,7 +34,10 @@ def _discover_free_models(api_key: str, *, force_refresh: bool = False):
         except TypeError as exc:
             if "force_refresh" not in str(exc):
                 raise
-            return api_module.discover_free_models(api_key)
+            try:
+        return api_module.discover_free_models(api_key)
+    except ProviderUnavailable:
+        return None
     return api_module.discover_free_models(api_key)
 
 
@@ -137,9 +140,7 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
     if payload.model != UNOROUTER_AUTO_FREE_MODEL:
         try:
             discovered = _discover_free_models(payload.api_key)
-        except ProviderUnavailable as exc:
-            raise HTTPException(status_code=502, detail=f"UnoRouter could not revalidate the selected free model: {exc}") from exc
-        if payload.model not in discovered:
+        if discovered is not None and payload.model not in discovered:
             raise HTTPException(status_code=409, detail="The selected model is not currently listed as free, online, and available to this API key. Load the free-model list again.")
     try:
         runtime.stop_workers_for_provider_change()
