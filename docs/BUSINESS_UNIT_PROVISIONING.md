@@ -108,3 +108,10 @@ OpenCompany now has owner-managed, versioned memory for each business unit. Ever
 Memory content is limited to 20,000 characters and provenance to 500 characters. Basic secret-marker checks reject common credential-like strings; credentials belong in the encrypted business credential vault instead. This is a defensive filter, not a guarantee that arbitrary text contains no secrets. Agent-originated writes remain disabled until provenance, role permissions, and owner review are enforced.
 
 Schema v13 creates versioned memory records, a latest-revision index, composite business/memory-scope foreign keys, append-only update/delete triggers, and an immutable registry memory-scope trigger. Activation readiness verifies these constraints, clears the storage-isolation blocker when proven, and retains a separate `memory_ingestion_adapter` blocker. This does not activate any business unit.
+
+
+## Business-specific asset registry (SQLite schema version 14)
+
+OpenCompany now records asset metadata under each unit's immutable `asset_scope_id`. Asset declarations are owner-confirmed and include a business-local key, title, type, plain filename, media type, SHA-256 checksum, declared byte size, and provenance. Composite foreign keys bind declarations and their event history to the same business and asset scope. Declarations and events are append-only; no global asset listing or cross-business lookup is exposed.
+
+**This is metadata only.** The API explicitly reports `file_bytes_received=false` and `storage_state=metadata_only`. It does not upload or store file bytes, verify the supplied checksum against a file, scan for malware, generate signed URLs, or serve/download assets. Activation readiness therefore verifies the metadata isolation adapter but retains `asset_storage_adapter` as a hard blocker until private storage, integrity verification, scanning, access control, and controlled delivery are implemented. This does not activate any business unit.
