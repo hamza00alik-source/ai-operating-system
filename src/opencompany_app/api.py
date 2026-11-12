@@ -157,6 +157,18 @@ class BusinessIntegrationInput(BaseModel):
     confirm_owner_registration: bool = False
 
 
+class BusinessMemoryInput(BaseModel):
+    memory_key: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9._-]{0,79}$")
+    category: str = Field(min_length=2, max_length=40, pattern=r"^[a-z][a-z0-9_-]{1,39}$")
+    content: str = Field(min_length=1, max_length=20000)
+    source: str = Field(min_length=1, max_length=500)
+    confirm_owner_write: bool = False
+
+
+class BusinessMemoryForgetInput(BaseModel):
+    confirm_owner_forget: bool = False
+
+
 class BusinessCredentialDeleteInput(BaseModel):
     confirm_owner_deletion: bool = False
 
@@ -3416,6 +3428,65 @@ def list_business_integration_events(
     if not items:
         raise HTTPException(status_code=404, detail="Integration history not found.")
     return {"business_id": business_id, "integration_id": integration_id, "events": list(items)}
+
+
+
+@app.get("/business-units/{business_id}/memory", dependencies=[Depends(require_owner_key)])
+def list_business_memory(business_id: str, category: str | None = None, limit: int = 100,
+                         runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_memory.list(business_id, category=category, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "unknown" in str(exc) else 422, detail=str(exc)) from exc
+    return {"business_id": business_id, "count": len(items), "memories": list(items),
+            "agent_writes_enabled": False}
+
+
+@app.get("/business-units/{business_id}/memory/{memory_key}/history", dependencies=[Depends(require_owner_key)])
+def get_business_memory_history(business_id: str, memory_key: str,
+                                runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    try:
+        items = runtime.business_memory.history(business_id, memory_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"business_id": business_id, "memory_key": memory_key, "history": list(items)}
+
+
+@app.post("/business-units/{business_id}/memory", dependencies=[Depends(require_owner_key)])
+def save_business_memory(business_id: str, payload: BusinessMemoryInput,
+                         runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if payload.confirm_owner_write is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to save business memory.")
+    audit = AuditRecord(id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="business.memory_saved", subject_type="business_memory",
+        subject_id=f"{business_id}:{payload.memory_key}", outcome="stored",
+        correlation_id=str(uuid4()), details={"business_id": business_id})
+    try:
+        item = runtime.business_memory.put(business_id, payload.memory_key, payload.category,
+                                           payload.content, payload.source, audit)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"memory": item, "agent_writes_enabled": False}
+
+
+@app.delete("/business-units/{business_id}/memory/{memory_key}", dependencies=[Depends(require_owner_key)])
+def forget_business_memory(business_id: str, memory_key: str, payload: BusinessMemoryForgetInput,
+                           runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    if payload.confirm_owner_forget is not True:
+        raise HTTPException(status_code=422, detail="Explicit owner confirmation is required to forget business memory.")
+    audit = AuditRecord(id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="business.memory_forgotten", subject_type="business_memory",
+        subject_id=f"{business_id}:{memory_key}", outcome="forgotten",
+        correlation_id=str(uuid4()), details={"business_id": business_id})
+    try:
+        item = runtime.business_memory.forget(business_id, memory_key, audit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Active business memory not found.")
+    return {"memory": item, "historical_versions_retained": True}
 
 
 @app.get("/business-units/{business_id}/activation-readiness", dependencies=[Depends(require_owner_key)])
