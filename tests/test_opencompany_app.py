@@ -2068,7 +2068,6 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
             json={"target_state": "active", "expected_revision": profile["revision"]},
         )
         assert active.status_code == 200
-        agents[profile["id"]]["revision"] = active.json()["agent"]["revision"]
 
     agents = {
         agent["id"]: agent
