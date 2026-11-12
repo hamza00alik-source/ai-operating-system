@@ -260,6 +260,35 @@ class BusinessUnitRegistry:
                 ).fetchall()}
                 for name in tables
             }
+            customer_tables = {
+                "commercial_opportunities", "commercial_quotes", "commercial_orders"
+            }
+            customer_scope_ready = customer_tables.issubset(tables)
+            customer_scope_evidence = []
+            for table_name in sorted(customer_tables):
+                if table_name not in tables or not {
+                    "business_id", "customer_scope_id"
+                }.issubset(columns.get(table_name, set())):
+                    customer_scope_ready = False
+                    customer_scope_evidence.append(f"{table_name}: missing scope columns")
+                    continue
+                foreign_keys = self._db.execute(
+                    f'PRAGMA foreign_key_list("{table_name}")'
+                ).fetchall()
+                grouped: dict[int, list[tuple[str, str]]] = {}
+                for fk in foreign_keys:
+                    grouped.setdefault(fk["id"], []).append((fk["from"], fk["to"]))
+                required_pair = {("business_id", "business_id"),
+                                 ("customer_scope_id", "customer_scope_id")}
+                pair_found = any(
+                    fk["table"] == "opencompany_business_units"
+                    and set(pairs) == required_pair
+                    for fk_id, pairs in grouped.items()
+                    for fk in foreign_keys if fk["id"] == fk_id
+                )
+                if not pair_found:
+                    customer_scope_ready = False
+                    customer_scope_evidence.append(f"{table_name}: missing composite unit/scope foreign key")
             finance_tables = self._db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' "
                 "AND (name LIKE '%finance%' OR name LIKE '%ledger%' OR name LIKE '%payment%')"
@@ -283,17 +312,17 @@ class BusinessUnitRegistry:
         if not commercial_dynamic:
             blockers.append("commercial_persistence_dynamic_business_ids")
 
-        customer_scoped = bool(tables) and all(
-            "customer_scope_id" in value for value in columns.values()
-        )
         checks.append({
             "key": "customer_scope_enforcement",
-            "ready": customer_scoped,
-            "evidence": "Commercial tables persist customer scope identifiers."
-                        if customer_scoped else
-                        "Commercial customer/opportunity records do not yet persist customer_scope_id.",
+            "ready": customer_scope_ready,
+            "evidence": (
+                "Opportunities, quotes, and orders persist customer_scope_id and enforce "
+                "business_id/customer_scope_id pairing plus same-scope parent relationships."
+                if customer_scope_ready else
+                "Customer scope enforcement is incomplete: " + "; ".join(customer_scope_evidence)
+            ),
         })
-        if not customer_scoped:
+        if not customer_scope_ready:
             blockers.append("customer_scope_enforcement")
 
         finance_scoped = bool(finance_tables)
