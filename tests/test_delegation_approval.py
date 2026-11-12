@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from opencompany_core.domain import AuditRecord, TaskState, WorkItem
+from opencompany_core.domain import AgentProfile, AgentState, AuditRecord, TaskState, WorkItem
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.persistence import SQLiteStore
 
@@ -16,6 +16,12 @@ def test_owner_approval_materializes_child_tasks_atomically(tmp_path):
     store.save_work_item(WorkItem(
         id=parent_id, title="Parent", objective="Delegate research",
         department="Intelligence & Research", business_id="physical-agency",
+    ))
+    store.save_agent(AgentProfile(
+        id=agent_id, name="Source Analyst", department="Intelligence & Research",
+        purpose="Research source verification", capabilities=("source_verification",),
+        state=AgentState.ACTIVE, role_key="research__source_analyst",
+        team_key="intelligence-research__team_1",
     ))
     child = {
         "assigned_agent_id": str(agent_id), "role_key": "research__source_analyst",
@@ -157,6 +163,50 @@ def test_approval_rejects_delegation_when_parent_is_missing(tmp_path):
     )
     with pytest.raises(ValueError, match="parent work item does not exist"):
         store.approve_delegation_proposal(UUID(proposal["id"]), (orphan,), (event,))
+    assert store.get_work_item(child_id) is None
+    assert delegations.get_proposal(UUID(proposal["id"]))["status"] == "draft"
+    store.close()
+    delegations.close()
+
+
+def test_approval_rejects_inactive_or_wrong_role_assignee(tmp_path):
+    database = tmp_path / "inactive-assignee.sqlite3"
+    delegations = DelegationRepository(database)
+    store = SQLiteStore(database)
+    parent_id, agent_id = uuid4(), uuid4()
+    store.save_work_item(WorkItem(
+        id=parent_id, title="Parent", objective="Delegate research",
+        department="Intelligence & Research", business_id="physical-agency",
+    ))
+    store.save_agent(AgentProfile(
+        id=agent_id, name="Paused Analyst", department="Intelligence & Research",
+        purpose="Research source verification", capabilities=("source_verification",),
+        state=AgentState.PAUSED, role_key="research__source_analyst",
+        team_key="intelligence-research__team_1",
+    ))
+    child = {
+        "assigned_agent_id": str(agent_id), "role_key": "research__source_analyst",
+        "team_key": "intelligence-research__team_1", "title": "Draft",
+        "objective": "Prepare research.",
+    }
+    proposal = delegations.create_proposal(
+        parent_work_item_id=parent_id, request={"required_capabilities": ["source_verification"]},
+        manager_agent_id=None, mode="specialist_team", team_key=child["team_key"],
+        children=[child],
+    )
+    child_id = UUID(proposal["children"][0]["id"])
+    task = WorkItem(
+        id=child_id, title=child["title"], objective=child["objective"],
+        department="Intelligence & Research", state=TaskState.READY,
+        assigned_agent_id=agent_id, business_id="physical-agency",
+    )
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="delegation.approval_attempted", subject_type="work_item",
+        subject_id=str(child_id), outcome="rejected", correlation_id=proposal["id"],
+    )
+    with pytest.raises(ValueError, match="active agent"):
+        store.approve_delegation_proposal(UUID(proposal["id"]), (task,), (event,))
     assert store.get_work_item(child_id) is None
     assert delegations.get_proposal(UUID(proposal["id"]))["status"] == "draft"
     store.close()
