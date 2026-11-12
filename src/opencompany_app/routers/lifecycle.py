@@ -132,6 +132,13 @@ def get_work_item_workflow(
         "cancelled": "terminal",
     }.get(parent.state.value, "inspect")
 
+    if (
+        parent.state == TaskState.READY
+        and parent.depends_on
+        and any(not value["completed_with_deliverable"] for value in dependency_status)
+    ):
+        next_action = "complete_prerequisites"
+
     queue_entry = runtime.queue.get_entry(item_id)
     attempts = list(runtime.queue.list_attempts(item_id))
     checkpoints = list(runtime.queue.list_checkpoints(item_id))
