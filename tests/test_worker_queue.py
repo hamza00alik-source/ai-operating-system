@@ -320,10 +320,12 @@ def test_live_lease_can_be_renewed_but_expired_or_replaced_lease_cannot(tmp_path
     assert queue.claim(agent, now=start + timedelta(seconds=11)) is None
     assert queue.renew(first, now=start + timedelta(seconds=20)) is False
 
-    replacement = queue.claim(agent, now=start + timedelta(seconds=20))
+    expired_at = start + timedelta(seconds=20)
+    assert queue.claim(agent, now=expired_at) is None
+    replacement = queue.claim(agent, now=expired_at + timedelta(seconds=5))
     assert replacement is not None and replacement.attempt == 2
-    assert queue.renew(first, now=start + timedelta(seconds=21)) is False
-    assert queue.renew(replacement, now=start + timedelta(seconds=21)) is True
+    assert queue.renew(first, now=expired_at + timedelta(seconds=6)) is False
+    assert queue.renew(replacement, now=expired_at + timedelta(seconds=6)) is True
     queue.close()
 
 def test_execution_attempt_history_records_retry_and_success(tmp_path):
@@ -353,7 +355,9 @@ def test_expired_lease_is_recorded_as_interrupted_before_reclaim(tmp_path):
     start = datetime.now(timezone.utc)
     first = queue.claim(agent, now=start)
     assert first is not None
-    second = queue.claim(agent, now=start + timedelta(seconds=11))
+    expired_at = start + timedelta(seconds=11)
+    assert queue.claim(agent, now=expired_at) is None
+    second = queue.claim(agent, now=expired_at + timedelta(seconds=5))
     assert second is not None and second.attempt == 2
     history = queue.list_attempts(work)
     assert [row["status"] for row in history] == ["interrupted", "running"]
