@@ -162,7 +162,8 @@ def test_worker_queue_rejects_provisioning_unit_even_through_low_level_enqueue()
 
 
 
-def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blockers():
+def test_provisioned_unit_activation_readiness_fails_closed_with_specific_blockers(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
     store, portfolio, registry = setup()
     try:
         item = approved_opportunity(portfolio)
