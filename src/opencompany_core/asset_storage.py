@@ -184,6 +184,39 @@ class PrivateFilesystemAssetStorage:
             "byte_size": total,
         }
 
+
+    def read_chunks(
+        self, *, business_id: str, asset_scope_id: str, asset_id: str, chunk_size: int = 1024 * 1024
+    ):
+        """Read a private stored object internally; this is not a download interface."""
+        try:
+            canonical_asset_id = str(UUID(asset_id))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise AssetStorageError("asset_id must be a UUID") from exc
+        if not 1 <= chunk_size <= 4 * 1024 * 1024:
+            raise AssetStorageError("invalid internal scan chunk size")
+        scope_dir = self.root / self._scope_directory(business_id, asset_scope_id)
+        target = scope_dir / (canonical_asset_id + ".blob")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(target, flags)
+        except OSError as exc:
+            raise AssetStorageError("private asset bytes are unavailable for scanning") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise AssetStorageError("private asset is not a regular file")
+            with os.fdopen(fd, "rb") as stream:
+                fd = -1
+                while True:
+                    block = stream.read(chunk_size)
+                    if not block:
+                        break
+                    yield block
+        finally:
+            if fd >= 0:
+                os.close(fd)
+
     def discard_uncommitted(
         self, *, business_id: str, asset_scope_id: str, asset_id: str, storage_key: str
     ) -> None:
