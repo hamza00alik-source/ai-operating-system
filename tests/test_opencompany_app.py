@@ -1724,8 +1724,8 @@ def test_business_credentials_are_owner_scoped_encrypted_and_never_returned(owne
     )
     assert isolated.status_code == 200
     assert isolated.json()["count"] == 0
-    deleted = owner_client.delete(
-        "/business-units/physical-agency/credentials/marketplace-api",
+    deleted = owner_client.request(
+        "DELETE", "/business-units/physical-agency/credentials/marketplace-api",
         headers=headers, json={"confirm_owner_deletion": True},
     )
     assert deleted.status_code == 200
