@@ -200,3 +200,117 @@ def test_commercial_persistence_rejects_provisioning_business_unit(tmp_path):
         raise AssertionError("provisioning business unit must not create commercial records")
     assert store.get_commercial_opportunity(record["id"]) is None
     store.close()
+
+
+
+def test_schema_v7_migrates_commercial_tables_without_losing_rows_or_foreign_keys(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "legacy-v7.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript("""
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE commercial_opportunities (
+            id TEXT PRIMARY KEY,
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            customer_name TEXT NOT NULL, customer_contact TEXT, customer_need TEXT NOT NULL,
+            stage TEXT NOT NULL DEFAULT 'new' CHECK(stage IN ('new','qualified','proposal','won','lost','on_hold')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_opportunities_unit ON commercial_opportunities(business_id, created_at);
+        CREATE TABLE commercial_products (
+            id TEXT PRIMARY KEY,
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            name TEXT NOT NULL, description TEXT NOT NULL, category TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','active','archived')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_products_unit ON commercial_products(business_id, status, created_at);
+        CREATE TABLE commercial_quotes (
+            id TEXT PRIMARY KEY,
+            opportunity_id TEXT NOT NULL REFERENCES commercial_opportunities(id),
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            title TEXT NOT NULL, currency TEXT NOT NULL CHECK(length(currency)=3),
+            currency_exponent INTEGER NOT NULL CHECK(currency_exponent BETWEEN 0 AND 3),
+            subtotal_minor INTEGER NOT NULL CHECK(subtotal_minor > 0), terms TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved_for_delivery','accepted','rejected','void')),
+            acceptance_reference TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_quotes_scope ON commercial_quotes(business_id, opportunity_id, created_at);
+        CREATE TABLE commercial_quote_items (
+            id TEXT PRIMARY KEY,
+            quote_id TEXT NOT NULL REFERENCES commercial_quotes(id) ON DELETE CASCADE,
+            product_id TEXT NOT NULL REFERENCES commercial_products(id),
+            description TEXT NOT NULL, quantity INTEGER NOT NULL CHECK(quantity > 0),
+            unit_price_minor INTEGER NOT NULL CHECK(unit_price_minor > 0),
+            line_total_minor INTEGER NOT NULL CHECK(line_total_minor > 0)
+        );
+        CREATE INDEX idx_commercial_quote_items_quote ON commercial_quote_items(quote_id);
+        CREATE TABLE commercial_orders (
+            id TEXT PRIMARY KEY, quote_id TEXT NOT NULL UNIQUE REFERENCES commercial_quotes(id),
+            opportunity_id TEXT NOT NULL REFERENCES commercial_opportunities(id),
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+            customer_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'awaiting_owner_fulfilment' CHECK(status IN ('awaiting_owner_fulfilment','in_progress','fulfilled','cancelled')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_commercial_orders_scope ON commercial_orders(business_id, status, created_at);
+        CREATE TABLE commercial_suppliers (
+            id TEXT PRIMARY KEY,
+            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand')),
+            relationship_type TEXT NOT NULL CHECK(relationship_type IN ('agency_supplier','own_brand_supplier')),
+            name TEXT NOT NULL, contact_name TEXT, email TEXT, phone TEXT, country TEXT,
+            product_categories_json TEXT NOT NULL,
+            verification_status TEXT NOT NULL DEFAULT 'draft' CHECK(verification_status IN ('draft','verified','blocked')),
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            CHECK((business_id='physical-agency' AND relationship_type='agency_supplier')
+               OR (business_id='physical-brand' AND relationship_type='own_brand_supplier'))
+        );
+        CREATE INDEX idx_commercial_suppliers_scope ON commercial_suppliers(business_id, verification_status, created_at);
+
+        INSERT INTO commercial_opportunities VALUES
+            ('opp-1','physical-agency','Buyer A','buyer@example.test','Physical goods','qualified','2026-01-01','2026-01-02');
+        INSERT INTO commercial_products VALUES
+            ('prod-1','physical-agency','Salt','Product description','food','active','2026-01-01','2026-01-02');
+        INSERT INTO commercial_quotes VALUES
+            ('quote-1','opp-1','physical-agency','Quote A','USD',2,100,'Terms','draft',NULL,'2026-01-01','2026-01-02');
+        INSERT INTO commercial_quote_items VALUES
+            ('line-1','quote-1','prod-1','Salt',1,100,100);
+        INSERT INTO commercial_orders VALUES
+            ('order-1','quote-1','opp-1','physical-agency','Buyer A','awaiting_owner_fulfilment','2026-01-01','2026-01-02');
+        INSERT INTO commercial_suppliers VALUES
+            ('supplier-1','physical-agency','agency_supplier','Supplier A',NULL,NULL,NULL,'PK','[]','verified','','2026-01-01','2026-01-02');
+        PRAGMA user_version = 7;
+    """)
+    connection.close()
+
+    store = SQLiteStore(path)
+    db = store._connection
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert db.execute("SELECT business_id FROM commercial_opportunities WHERE id='opp-1'").fetchone()[0] == "physical-agency"
+    assert db.execute("SELECT id FROM commercial_quote_items WHERE id='line-1'").fetchone()[0] == "line-1"
+    assert db.execute("SELECT id FROM commercial_orders WHERE id='order-1'").fetchone()[0] == "order-1"
+    assert db.execute("SELECT id FROM commercial_suppliers WHERE id='supplier-1'").fetchone()[0] == "supplier-1"
+    assert not db.execute("PRAGMA foreign_key_check").fetchall()
+    assert {"idx_commercial_opportunities_unit", "idx_commercial_products_unit",
+            "idx_commercial_quotes_scope", "idx_commercial_quote_items_quote",
+            "idx_commercial_orders_scope", "idx_commercial_suppliers_scope"} <= {
+        row["name"] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+        ).fetchall()
+    }
+    # The schema accepts a new unit identity; application writes still require
+    # an operational registry record at the persistence boundary.
+    db.execute(
+        """INSERT INTO commercial_opportunities
+           (id,business_id,customer_name,customer_need,stage,created_at,updated_at)
+           VALUES('opp-2','new-software-unit','Buyer B','Software access','new','2026-01-03','2026-01-03')"""
+    )
+    db.execute(
+        """INSERT INTO commercial_suppliers
+           (id,business_id,relationship_type,name,product_categories_json,created_at,updated_at)
+           VALUES('supplier-2','new-physical-unit','supplier','Supplier B','[]','2026-01-03','2026-01-03')"""
+    )
+    assert db.execute("SELECT COUNT(*) FROM commercial_opportunities").fetchone()[0] == 2
+    assert db.execute("SELECT COUNT(*) FROM commercial_suppliers").fetchone()[0] == 2
+    store.close()
