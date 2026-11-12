@@ -128,6 +128,15 @@ class BusinessCredentialVault:
         return row
 
     @staticmethod
+    def _cipher() -> AESGCM:
+        key = HKDF(
+            algorithm=hashes.SHA256(), length=32,
+            salt=ProviderSecretVault._SALT,
+            info=b"opencompany/aes-256-gcm/business-credentials",
+        ).derive(ProviderSecretVault._key_material())
+        return AESGCM(key)
+
+    @staticmethod
     def _aad(business_id: str, scope_id: str, credential_key: str) -> bytes:
         return f"opencompany:business-credential:{business_id}:{scope_id}:{credential_key}:v1".encode()
 
@@ -193,7 +202,7 @@ class BusinessCredentialVault:
                 revision = int(prior["revision"]) + 1 if prior else 1
                 action = "rotated" if prior else "stored"
                 nonce = secrets.token_bytes(12)
-                ciphertext = ProviderSecretVault._cipher().encrypt(
+                ciphertext = self._cipher().encrypt(
                     nonce, plaintext, self._aad(business_id, scope_id, credential_key)
                 )
                 self._db.execute(
@@ -237,7 +246,7 @@ class BusinessCredentialVault:
         if row["credential_scope_id"] != unit["credential_scope_id"]:
             raise SecretVaultError("Credential record scope does not match its registered business unit.")
         try:
-            raw = ProviderSecretVault._cipher().decrypt(
+            raw = self._cipher().decrypt(
                 bytes(row["nonce"]), bytes(row["ciphertext"]),
                 self._aad(business_id, row["credential_scope_id"], credential_key),
             )
