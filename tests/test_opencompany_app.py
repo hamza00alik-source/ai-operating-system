@@ -1754,3 +1754,48 @@ def test_delegation_rejects_paused_department_manager(owner_client):
     assert rejected.status_code == 409
     assert "must be ACTIVE" in rejected.json()["detail"]
 
+def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    owner_client.post("/agents/bootstrap", headers=headers)
+    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    created = owner_client.post("/work-items", headers=headers, json={
+        "title": "Research international buyer demand",
+        "objective": "Prepare a sourced buyer-demand assessment for the physical agency",
+        "department": "intelligence-research",
+        "business_id": "physical-agency",
+    })
+    assert created.status_code == 200
+    item_id = created.json()["item_id"]
+    proposed = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals",
+        headers=headers,
+        json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
+    )
+    assert proposed.status_code == 200
+    proposal_id = proposed.json()["id"]
+
+    before = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+    assert before.status_code == 200
+    assert before.json()["work_item"]["business_id"] == "physical-agency"
+    assert before.json()["delegation_proposals"][0]["status"] == "draft"
+    assert before.json()["child_work_items"]
+    assert all(not child["materialized"] for child in before.json()["child_work_items"])
+
+    approved = owner_client.post(
+        f"/work-items/{item_id}/delegation-proposals/{proposal_id}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+
+    after = owner_client.get(f"/work-items/{item_id}/workflow", headers=headers)
+    assert after.status_code == 200
+    payload = after.json()
+    assert payload["work_item"]["state"] == "ready"
+    assert payload["manager"]["state"] == "active"
+    assert payload["manager"]["role_key"]
+    assert payload["delegation_proposals"][0]["status"] == "approved"
+    assert payload["child_work_items"]
+    assert all(child["materialized"] for child in payload["child_work_items"])
+    assert all(child["state"] == "ready" for child in payload["child_work_items"])
+    assert payload["external_actions_performed"] is False
+
