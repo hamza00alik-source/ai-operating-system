@@ -114,7 +114,7 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     assert {"role_key", "team_key"} <= columns
     work_item_columns = {row["name"] for row in store._connection.execute("PRAGMA table_info(work_items)").fetchall()}
     assert "business_id" in work_item_columns
-    assert version == 10
+    assert version == 11
     store.close()
 
 
@@ -462,4 +462,61 @@ def test_finance_ledger_rejects_invalid_money_and_cross_scope_records(tmp_path):
                           (SELECT finance_scope_id FROM opencompany_business_units WHERE business_id='physical-brand'),
                           'owner_approved','owner','2026-11-12T00:00:00+00:00')"""
             )
+    store.close()
+
+
+def test_business_credential_vault_encrypts_and_isolates_business_scopes(tmp_path, monkeypatch):
+    import sqlite3
+    from opencompany_core.secret_vault import BusinessCredentialVault
+
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    store = SQLiteStore(tmp_path / "business-credentials.sqlite3")
+    vault = BusinessCredentialVault(store._connection, store._lock)
+    event = audit_record("business.credential.stored")
+    revision = vault.put(
+        "physical-agency", "marketplace-api",
+        {"api_key": "agency-secret-value", "endpoint": "https://example.invalid"},
+        event,
+    )
+    assert revision == 1
+    assert vault.get("physical-agency", "marketplace-api")["api_key"] == "agency-secret-value"
+    assert vault.get("physical-brand", "marketplace-api") is None
+    assert vault.list_status("physical-agency")[0]["credential_key"] == "marketplace-api"
+    with store._lock:
+        row = store._connection.execute(
+            "SELECT ciphertext FROM opencompany_business_credentials WHERE business_id='physical-agency'"
+        ).fetchone()
+        assert b"agency-secret-value" not in bytes(row["ciphertext"])
+    rotated = vault.put(
+        "physical-agency", "marketplace-api",
+        {"api_key": "agency-secret-rotated"}, audit_record("business.credential.rotated"),
+    )
+    assert rotated == 2
+    assert vault.get("physical-agency", "marketplace-api")["api_key"] == "agency-secret-rotated"
+    assert vault.delete(
+        "physical-agency", "marketplace-api", audit_record("business.credential.deleted")
+    ) is True
+    assert vault.get("physical-agency", "marketplace-api") is None
+    events = store._connection.execute(
+        "SELECT action FROM opencompany_business_credential_events WHERE business_id='physical-agency' ORDER BY occurred_at,event_id"
+    ).fetchall()
+    assert {row["action"] for row in events} == {"stored", "rotated", "deleted"}
+    store.close()
+
+
+def test_business_credential_vault_rejects_non_owner_and_unknown_units(tmp_path, monkeypatch):
+    from opencompany_core.secret_vault import BusinessCredentialVault
+
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    store = SQLiteStore(tmp_path / "business-credentials-gates.sqlite3")
+    vault = BusinessCredentialVault(store._connection, store._lock)
+    system_event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="system",
+        actor_id="worker", action="credential.write", subject_type="credential",
+        subject_id="x", outcome="blocked", correlation_id="corr", details={},
+    )
+    with pytest.raises(PermissionError):
+        vault.put("physical-agency", "marketplace-api", {"api_key": "secret"}, system_event)
+    with pytest.raises(ValueError, match="unknown business"):
+        vault.put("unknown-unit", "marketplace-api", {"api_key": "secret"}, audit_record("credential.write"))
     store.close()
