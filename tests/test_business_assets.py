@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 import pytest
+import hashlib
 from opencompany_core.domain import AuditRecord
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.business_units import BusinessUnitRegistry
@@ -12,6 +13,11 @@ def audit(actor_type="owner"):
         actor_type=actor_type,actor_id="owner",action="business.asset_declared",
         subject_type="business_asset",subject_id="test",outcome="pending_storage",
         correlation_id=str(uuid4()),details={})
+
+
+def expected_storage_key(business_id, declared):
+    prefix=hashlib.sha256((business_id+"\\0"+declared["asset_scope_id"]).encode("utf-8")).hexdigest()
+    return prefix+"/"+declared["asset_id"]+".blob"
 
 
 def declare(registry,business_id="physical-agency",asset_key="hero-model",audit_record=None):
@@ -76,7 +82,7 @@ def test_verified_storage_lifecycle_is_business_scoped_and_not_downloadable(tmp_
     assert declaration["asset_scope_id"]
     result=assets.record_storage(
         "physical-agency",declared["asset_id"],
-        storage_key="a"*64+"/"+declared["asset_id"]+".blob",
+        storage_key=expected_storage_key("physical-agency",declared),
         checksum_sha256=declared["checksum_sha256"],byte_size=declared["byte_size"],
         audit=audit(),
     )
@@ -211,4 +217,23 @@ def test_asset_declaration_and_audit_event_roll_back_together(tmp_path):
     with store._lock:
         store._connection.execute("DROP TRIGGER reject_asset_event")
         store._connection.commit()
+    store.close()
+
+
+def test_storage_key_must_match_the_exact_business_asset_scope(tmp_path):
+    store=SQLiteStore(tmp_path/"asset-exact-scope.sqlite3")
+    BusinessUnitRegistry(store._connection,store._lock)
+    assets=BusinessAssetRegistry(store._connection,store._lock)
+    declared=declare(assets)
+    wrong_scope="f"*64+"/"+declared["asset_id"]+".blob"
+    with pytest.raises(ValueError,match="private scope"):
+        assets.record_storage(
+            "physical-agency",declared["asset_id"],storage_key=wrong_scope,
+            checksum_sha256=declared["checksum_sha256"],byte_size=declared["byte_size"],audit=audit(),
+        )
+    result=assets.record_storage(
+        "physical-agency",declared["asset_id"],storage_key=expected_storage_key("physical-agency",declared),
+        checksum_sha256=declared["checksum_sha256"],byte_size=declared["byte_size"],audit=audit(),
+    )
+    assert result["storage_key"]==expected_storage_key("physical-agency",declared)
     store.close()
