@@ -69,6 +69,10 @@ def initialize():
             worker_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL,
             capabilities_json TEXT NOT NULL DEFAULT '{}'
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS video_worker_presence (
+            worker_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL,
+            capabilities_json TEXT NOT NULL DEFAULT '{}'
+        )""")
 
 
 def _event(db, job_id, event, details=None):
@@ -246,10 +250,20 @@ def fail_job(job_id,token,*,error,retryable=True):
 
 
 def worker_status():
-    return {"configured":bool(os.getenv("VIDEO_WORKER_TOKEN","").strip()),"worker_protocol":"lease-v1",
-            "provider":"longcat-video","generation_enabled":False,
-            "note":"A separately deployed GPU worker must connect; API remains independent."}
-
+    initialize()
+    cutoff = (_now() - timedelta(seconds=90)).isoformat()
+    with connect() as db:
+        count = db.execute("SELECT COUNT(*) AS n FROM video_worker_presence WHERE last_seen_at>=?", (cutoff,)).fetchone()["n"]
+    configured = bool(os.getenv("VIDEO_WORKER_TOKEN", "").strip())
+    return {
+        "worker_secret_configured": configured,
+        "worker_protocol": "lease-v1",
+        "provider": "longcat-video",
+        "worker_connected": count > 0,
+        "active_workers": count,
+        "generation_enabled": count > 0,
+        "note": "The API remains fully available when no GPU worker is connected.",
+    }
 
 def _serialize(row):
     return {"id":row["id"],"provider":row["provider"],"prompt":row["prompt"],
