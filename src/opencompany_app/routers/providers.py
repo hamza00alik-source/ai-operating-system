@@ -136,8 +136,7 @@ def save_unorouter_settings(payload: UnoRouterSettingsInput, runtime: OpenCompan
     if payload.model != UNOROUTER_AUTO_FREE_MODEL and not payload.model.endswith(":free"):
         raise HTTPException(status_code=422, detail="Only explicitly free model IDs or automatic free-catalog routing are accepted.")
     if payload.model != UNOROUTER_AUTO_FREE_MODEL:
-        try:
-            discovered = _discover_free_models(payload.api_key)
+        discovered = _discover_free_models(payload.api_key)
         if discovered is not None and payload.model not in discovered:
             raise HTTPException(status_code=409, detail="The selected model is not currently listed as free, online, and available to this API key. Load the free-model list again.")
     try:
