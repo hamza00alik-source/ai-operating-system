@@ -77,7 +77,7 @@ class ClamAVUnixSocketScanner:
                 if not block:
                     break
                 response.extend(block)
-                if b"\0" in response or b"\\n" in response:
+                if b"\0" in response or b"\n" in response:
                     break
         except socket.timeout as exc:
             raise AssetScanError("scanner_timeout", "Local malware scanner timed out") from exc
