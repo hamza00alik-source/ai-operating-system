@@ -132,6 +132,23 @@ def get_work_item_workflow(
         "cancelled": "terminal",
     }.get(parent.state.value, "inspect")
 
+    queue_entry = runtime.queue.get_entry(item_id)
+    attempts = list(runtime.queue.list_attempts(item_id))
+    attempts_used = int(queue_entry["attempts"]) if queue_entry else 0
+    recovery = {
+        "queue_state": queue_entry["state"] if queue_entry else None,
+        "last_error": queue_entry["last_error"] if queue_entry else None,
+        "attempts_used": attempts_used,
+        "attempts_remaining": max(0, runtime.queue.max_attempts - attempts_used),
+        "can_retry": bool(
+            queue_entry
+            and queue_entry["state"] == "queued"
+            and attempts_used < runtime.queue.max_attempts
+        ),
+        "next_attempt_at": queue_entry["next_attempt_at"] if queue_entry else None,
+        "retry_scheduled": bool(queue_entry and queue_entry["next_attempt_at"]),
+    }
+
     return {
         "work_item": {
             "id": str(parent.id), "title": parent.title, "objective": parent.objective,
@@ -145,8 +162,9 @@ def get_work_item_workflow(
         "next_action": next_action,
         "prerequisites": prerequisites,
         "dependents": dependents,
-        "queue": runtime.queue.get_entry(item_id),
-        "execution_attempts": list(runtime.queue.list_attempts(item_id)),
+        "queue": queue_entry,
+        "recovery": recovery,
+        "execution_attempts": attempts,
         "manager": ({
             "agent_id": str(manager.id), "role_key": manager.role_key,
             "team_key": manager.team_key, "department": manager.department,
