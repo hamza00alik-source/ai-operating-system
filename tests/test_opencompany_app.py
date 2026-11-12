@@ -2007,6 +2007,13 @@ def test_owner_cannot_enqueue_delegated_synthesis_until_every_child_is_complete(
         json={"target_state": "ready"},
     )
     assert ready.status_code == 200
+    workflow = owner_client.get(
+        f"/work-items/{synthesis['item_id']}/workflow", headers=headers,
+    )
+    assert workflow.status_code == 200
+    assert workflow.json()["next_action"] == "complete_prerequisites"
+    assert workflow.json()["manager_synthesis"]["ready"] is False
+    assert workflow.json()["manager_synthesis"]["blocked_by"] == [second["item_id"]]
     response = owner_client.post(
         f"/work-items/{synthesis['item_id']}/enqueue", headers=headers,
     )
