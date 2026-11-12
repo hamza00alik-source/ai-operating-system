@@ -207,3 +207,20 @@ Five owner-authenticated agent handoff lifecycle endpoints now live in `src/open
 The router owns the handoff payload serializer and imports only the collaboration domain operations, request schemas, runtime/store dependencies and owner-authentication dependency it needs. The router is included immediately before the executive portfolio route group, preserving the original registration position. All five routes retain explicit owner authentication, work-item existence checks, state-transition conflict handling and audit events carrying the work item's business-unit identifier. Proposal and acceptance responses continue to state that execution has not started; no worker is triggered by these routes.
 
 Static source checks after re-fetch found 95 route registrations across the API composition root and router modules, counting the seven routes registered on the two GitHub sub-routers, with 0 duplicate method/path pairs. The handoff router contains five route decorators. These checks do not establish import, startup, OpenAPI or runtime correctness; tests and CI remain deferred until 2026-12-01. No handoff was created, accepted, declined or delivered during extraction.
+
+
+## Executive planning and manager delegation router extraction
+
+Five owner-authenticated planning/delegation endpoints now live in `src/opencompany_app/routers/orchestration.py`:
+
+- `POST /executive/plan` — generate an owner-reviewable draft plan from an objective
+- `POST /work-items/{item_id}/manager-proposal` — request an active department manager's AI-assisted team proposal
+- `POST /work-items/{item_id}/delegation-proposals` — persist a deterministic manager/team proposal
+- `POST /work-items/{item_id}/delegation-proposals/{proposal_id}/approve` — owner approval and child-task materialization
+- `GET /work-items/{item_id}/delegation-proposals` — list proposals for a parent work item
+
+The router preserves explicit owner authentication on all five endpoints. Executive planning still requires a known business unit and an explicitly ACTIVE CEO orchestrator, and saves draft work items with owner review required, no queue entries and no execution. Manager planning still requires the parent to be an unassigned DRAFT item and validates an ACTIVE manager and ACTIVE specialist profiles against the expected role, team and department. Proposals do not assign or enqueue work. Approval still verifies proposal-to-parent identity, draft state, manager and specialist identity, creates child work items in the parent's business unit, atomically records approval/materialization audit events, and only then applies the existing optional auto-queue policy. Auto-queue remains disabled by default and is still guarded by the strict zero-dollar eligible-provider check and role/team validation.
+
+The three shared auto-queue helpers were moved from `api.py` to `api_dependencies.py`, so the new router and remaining enqueue/workflow code use one implementation rather than duplicating safety logic. The orchestration router is included immediately before the workflow route group, preserving registration order.
+
+Static re-fetch verification found 95 route decorators across `api.py` and router modules, with zero duplicate HTTP-method/path pairs. The orchestration router contains five endpoints and all five retain explicit owner authentication. The three shared helper definitions now exist only in `api_dependencies.py`; the main API imports and reuses them. These are source-level checks only—not import, startup, OpenAPI, test, CI or runtime verification. Test/CI deferral until 2026-12-01 remains active. No plan or delegation proposal was created or approved; no work was queued or executed; no merge, deployment or production change occurred.
