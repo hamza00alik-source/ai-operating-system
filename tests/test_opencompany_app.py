@@ -1795,3 +1795,39 @@ def test_business_integration_registry_requires_owner_and_never_connects(owner_c
     assert after_removal.json()["integrations"][0]["credential_available"] is False
 
 
+
+
+def test_business_memory_api_requires_owner_confirmation_and_isolates_units(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "memory_key": "buyer-profile", "category": "strategy",
+        "content": "International wholesale buyers", "source": "owner research note",
+        "confirm_owner_write": True,
+    }
+    unauthorized = owner_client.post("/business-units/physical-agency/memory", json=payload)
+    assert unauthorized.status_code == 401
+    unconfirmed = owner_client.post(
+        "/business-units/physical-agency/memory", headers=headers,
+        json={**payload, "confirm_owner_write": False},
+    )
+    assert unconfirmed.status_code == 422
+    saved = owner_client.post("/business-units/physical-agency/memory", headers=headers, json=payload)
+    assert saved.status_code == 200
+    assert saved.json()["memory"]["revision"] == 1
+    assert saved.json()["agent_writes_enabled"] is False
+    listed = owner_client.get("/business-units/physical-agency/memory", headers=headers)
+    assert listed.status_code == 200 and listed.json()["count"] == 1
+    isolated = owner_client.get("/business-units/physical-brand/memory", headers=headers)
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    history = owner_client.get(
+        "/business-units/physical-agency/memory/buyer-profile/history", headers=headers
+    )
+    assert history.status_code == 200 and len(history.json()["history"]) == 1
+    forgotten = owner_client.request(
+        "DELETE", "/business-units/physical-agency/memory/buyer-profile", headers=headers,
+        json={"confirm_owner_forget": True},
+    )
+    assert forgotten.status_code == 200
+    assert forgotten.json()["historical_versions_retained"] is True
+    after = owner_client.get("/business-units/physical-agency/memory", headers=headers)
+    assert after.status_code == 200 and after.json()["count"] == 0
