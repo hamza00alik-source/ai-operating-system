@@ -82,7 +82,7 @@ def test_private_storage_rejects_symlinked_root(tmp_path):
 
 def test_private_storage_accepts_async_bounded_stream(tmp_path):
     storage = PrivateFilesystemAssetStorage(tmp_path / "private-assets")
-    payload = b"glTF" + b"\\x02\\x00\\x00\\x00" + b"\\x18\\x00\\x00\\x00" + b"test"
+    payload = b"glTF" + b"\x02\x00\x00\x00" + b"\x18\x00\x00\x00" + b"test"
     async def chunks():
         yield payload[:7]
         yield payload[7:]
