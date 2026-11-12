@@ -188,6 +188,32 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
   </section>
   <p class="muted console-footer">This console does not publish content, contact customers, spend money, deploy production, or activate agents. Protected actions remain owner-gated.</p>
+
+  <section class="panel">
+    <h2 class="section-title">Company-wide venture portfolio</h2>
+    <p class="muted">Discover opportunities across any legitimate business model. This portfolio is separate from the three existing operating businesses. Validation never creates a business, spends money, publishes, contacts customers, or changes fulfilment.</p>
+    <div class="grid">
+      <div class="item">
+        <label for="venture-title">Opportunity name</label>
+        <input id="venture-title" maxlength="160" placeholder="e.g. Research subscription for niche buyers">
+        <label for="venture-slug">Unique ID (lowercase, hyphens)</label>
+        <input id="venture-slug" maxlength="63" placeholder="research-subscription">
+        <label for="venture-model">Business model</label>
+        <input id="venture-model" maxlength="80" placeholder="e.g. SaaS, services, licensing, digital downloads">
+        <label for="venture-market">Target market</label>
+        <input id="venture-market" maxlength="300" placeholder="Who might pay for this?">
+        <label for="venture-description">Opportunity description</label>
+        <textarea id="venture-description" rows="3" maxlength="5000" placeholder="Problem, offer, possible revenue model, and constraints"></textarea>
+        <label for="venture-evidence">Evidence URL (optional, HTTPS)</label>
+        <input id="venture-evidence" maxlength="2000" placeholder="https://...">
+        <button id="create-venture" disabled>Save opportunity for research</button>
+      </div>
+      <div>
+        <h3>Opportunity pipeline</h3>
+        <div id="venture-opportunities" class="list"><p class="muted">Connect to load opportunities.</p></div>
+      </div>
+    </div>
+  </section>
 </main>
 <script>
 (() => {
@@ -390,6 +416,36 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       byId("commercial-suppliers").append(card);
     });
     ["create-opportunity","create-catalog-product","create-supplier"].forEach(id=>byId(id).disabled=false);
+  }
+
+  async function loadVenturePortfolio(){
+    const data=await request("/venture-opportunities");
+    clear("venture-opportunities","No opportunities recorded yet.");
+    data.items.forEach(item=>{
+      const card=document.createElement("article");card.className="item";
+      const heading=document.createElement("h3");heading.textContent=item.title+" · "+item.status;card.append(heading);
+      const details=document.createElement("p");details.textContent=item.business_model+" · "+item.target_market;card.append(details);
+      const description=document.createElement("p");description.textContent=item.description;card.append(description);
+      const evidence=document.createElement("p");evidence.textContent="Evidence references: "+item.evidence.length;card.append(evidence);
+      const next={discovered:"researching",researching:"validated",validated:"approved_to_launch",rejected:"researching",approved_to_launch:"launched"}[item.status];
+      if(next){
+        const action=document.createElement("button");
+        action.textContent=({researching:"Start research",validated:"Mark validated",approved_to_launch:"Approve launch planning",launched:"Confirm launched"}[next]||"Continue");
+        action.addEventListener("click",async()=>{
+          const protectedStep=next==="approved_to_launch"||next==="launched";
+          if(protectedStep&&!window.confirm(next==="approved_to_launch"?"Approve this opportunity for launch planning? This does not create accounts or spend money.":"Confirm that this venture has actually launched?"))return;
+          action.disabled=true;
+          try{
+            await request("/venture-opportunities/"+item.id+"/status",{method:"POST",body:JSON.stringify({status:next,rationale:"Owner decision recorded in OpenCompany.",confirm_owner_approval:protectedStep})});
+            await loadVenturePortfolio();
+            setMessage("Opportunity moved to "+next+". No external action was performed.","success");
+          }catch(error){setMessage(error.message,"error");action.disabled=false;}
+        });
+        card.append(action);
+      }
+      byId("venture-opportunities").append(card);
+    });
+    byId("create-venture").disabled=false;
   }
   async function load(){
     byId("provision").disabled=true;
@@ -617,6 +673,19 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       setMessage("Connected. Private records loaded. No agents were activated and no external actions were performed.","success");
     }catch(error){setMessage(error.message,"error");}
   }
+
+  byId("create-venture").addEventListener("click",async()=>{
+    const title=byId("venture-title").value.trim(),slug=byId("venture-slug").value.trim();
+    const evidenceUrl=byId("venture-evidence").value.trim();
+    if(!title||!slug||!byId("venture-model").value.trim()||!byId("venture-market").value.trim()||!byId("venture-description").value.trim()){setMessage("Complete the required opportunity fields first.","error");return;}
+    const evidence=evidenceUrl?[{url:evidenceUrl,note:"Owner-supplied research lead"}]:[];
+    const button=byId("create-venture");button.disabled=true;
+    try{
+      await request("/venture-opportunities",{method:"POST",body:JSON.stringify({title,slug,business_model:byId("venture-model").value.trim(),target_market:byId("venture-market").value.trim(),description:byId("venture-description").value.trim(),evidence})});
+      ["venture-title","venture-slug","venture-model","venture-market","venture-description","venture-evidence"].forEach(id=>byId(id).value="");
+      await loadVenturePortfolio();setMessage("Opportunity added to the company-wide research portfolio.","success");
+    }catch(error){setMessage(error.message,"error");button.disabled=false;}
+  });
   byId("business-filter").addEventListener("change",()=>{if(csrfToken)load();});
   byId("connect").addEventListener("click",async()=>{
     const apiKey=keyInput.value.trim();
@@ -633,9 +702,9 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     try{if(csrfToken) await fetch("/auth/logout",{method:"POST",headers:{"X-CSRF-Token":csrfToken},credentials:"same-origin",cache:"no-store"});}
     finally{
       csrfToken="";keyInput.value="";
-      ["departments","agents","capabilities","work-items","commercial-opportunities","commercial-products","commercial-quotes","commercial-orders"].forEach(id=>clear(id,"Disconnected."));
+      ["departments","agents","capabilities","work-items","commercial-opportunities","commercial-products","commercial-quotes","commercial-orders","venture-opportunities"].forEach(id=>clear(id,"Disconnected."));
       ["department-count","agent-count","specialist-count","work-count","queue-count","provider-state"].forEach(id=>byId(id).textContent="—");
-      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
+      byId("provision").disabled=true;byId("provision-executive").disabled=true;byId("provision-specialists").disabled=true;byId("start-workers").disabled=true;byId("stop-workers").disabled=true;byId("create-executive-plan").disabled=true;byId("create-code-pr").disabled=true;byId("create-venture").disabled=true;byId("search-research").disabled=true;setMessage("Disconnected. The server session has been revoked.");
     }
   });
   byId("create-opportunity").addEventListener("click",async()=>{
