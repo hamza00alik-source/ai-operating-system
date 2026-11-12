@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 class TaskState(str, Enum):
+    DRAFT = "draft"
     PENDING = "pending"
     READY = "ready"
     QUEUED = "queued"
