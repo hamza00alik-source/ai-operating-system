@@ -476,7 +476,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
           try{
             await request("/venture-opportunities/"+item.id+"/status",{method:"POST",body:JSON.stringify({status:next,rationale:"Owner decision recorded in OpenCompany.",confirm_owner_approval:protectedStep})});
             await loadVenturePortfolio();
-      await loadBusinessUnits();
+            await loadBusinessUnits();
             setMessage("Opportunity moved to "+next+". No external action was performed.","success");
           }catch(error){setMessage(error.message,"error");action.disabled=false;}
         });
@@ -515,6 +515,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request(businessFilter?"/workers/queue?business_id="+encodeURIComponent(businessFilter):"/workers/queue"),request("/workers/status"),request(businessFilter?"/learning/proposals?business_id="+encodeURIComponent(businessFilter):"/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
       await loadCommercial();
+      await loadVenturePortfolio();
+      await loadBusinessUnits();
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
       byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
