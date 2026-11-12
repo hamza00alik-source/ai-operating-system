@@ -86,3 +86,16 @@ The vault encrypts each payload with AES-256-GCM using the dedicated `OPENCOMPAN
 Credential change events are append-only and hash-linked to the core audit chain. A deleted secret leaves its non-secret history event. Composite foreign keys bind both secret rows and history events to the registered business/credential-scope pair, and a registry trigger prevents credential scope identifiers from changing. Provisioning units may have credentials stored in preparation, but this does not make them operational or authorize an external integration.
 
 Schema version 11 creates the scoped tables, indexes, foreign keys, append-only history triggers, and immutable registry-scope trigger transactionally. Existing platform-level encrypted credentials are not migrated, rewritten, or exposed by this new per-business vault. Activation readiness verifies the encrypted columns, both composite scope foreign keys, history triggers, registry immutability, and the presence of the dedicated encryption key. This clears the credential-storage isolation blocker only; the integration adapter remains a separate blocker until external connections are independently scoped and approved.
+
+
+## Business-specific integration registry (SQLite schema version 12)
+
+OpenCompany now records third-party integration declarations under each business unit's immutable `integration_scope_id`. This registry is separate from platform-level model/provider configuration and separate from the encrypted per-business credential vault.
+
+An integration declaration must reference a credential key already stored for the same business unit. Composite foreign keys enforce both the business/integration-scope pair and the business/credential-scope/credential-key tuple. The registry records a bounded permission declaration, display name, provider key, and `pending_review` status. A provider can be registered only once per business unit. A paused business unit cannot register new integrations.
+
+Only the owner-authenticated API can register a declaration, and the request requires explicit confirmation. The API exposes status and append-only registration history; it never returns credential material. Registration does not test, connect, authenticate with, or call the external provider.
+
+Integration declarations are immutable at the database layer. Both declarations and their history are protected from update/delete; integration scope identifiers are immutable in the business-unit registry. Registration events are also written to the hash-linked audit chain. Schema v12 creates the registry, indexes, composite foreign keys, and immutable-history triggers transactionally.
+
+**Important boundary:** this increment implements storage isolation and registration intent only. It does not implement OAuth, token refresh, webhook handling, permission enforcement at execution time, connection testing, or external action execution. Activation readiness therefore clears the integration-storage isolation check but deliberately retains `integration_execution_adapter` as a blocker, in addition to owner activation approval and the remaining memory/asset isolation work.
