@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opencompany-aios"
-version = "0.1.0"
+version = "0.3.0"
 description = "OpenCompany AIOS: a unified, human-supervised AI company operating system"
 readme = "README.md"
 requires-python = ">=3.11"
