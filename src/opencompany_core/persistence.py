@@ -1220,7 +1220,9 @@ class SQLiteStore:
                 previous_hash = previous["event_hash"] if previous else _ZERO_HASH
                 details = dict(audit.details)
                 details.update({"business_id": business_id, "finance_entry_id": entry_id,
-                                "amount_minor": amount_minor, "currency": currency})
+                                "entry_type": entry_type, "amount_minor": amount_minor,
+                                "currency": currency, "description": description.strip(),
+                                "source_reference": source_reference})
                 audited = AuditRecord(
                     id=audit.id, occurred_at=audit.occurred_at, actor_type=audit.actor_type,
                     actor_id=audit.actor_id, action=audit.action, subject_type="finance_entry",
@@ -1267,6 +1269,14 @@ class SQLiteStore:
                 _assert_operational_commercial_scope(
                     self._connection, self._lock, entry["business_id"]
                 )
+                prior_decision = self._connection.execute(
+                    """SELECT action FROM opencompany_finance_entry_events
+                       WHERE entry_id=? AND action!='recorded'
+                       ORDER BY occurred_at DESC,event_id DESC LIMIT 1""",
+                    (entry_id,),
+                ).fetchone()
+                if prior_decision is not None:
+                    raise ValueError("finance entry already has an owner review decision")
                 self._connection.execute(
                     """INSERT INTO opencompany_finance_entry_events
                        (event_id,entry_id,business_id,finance_scope_id,action,actor_type,
@@ -1281,7 +1291,7 @@ class SQLiteStore:
                 previous_hash = previous["event_hash"] if previous else _ZERO_HASH
                 details = dict(audit.details)
                 details.update({"business_id": entry["business_id"], "finance_entry_id": entry_id,
-                                "finance_decision": action})
+                                "finance_decision": action, "rationale": rationale.strip()})
                 audited = AuditRecord(
                     id=audit.id, occurred_at=audit.occurred_at, actor_type="owner",
                     actor_id=audit.actor_id, action=audit.action, subject_type="finance_entry",
