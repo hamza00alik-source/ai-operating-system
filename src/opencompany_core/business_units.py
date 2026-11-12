@@ -309,7 +309,9 @@ class BusinessUnitRegistry:
             finance_triggers = {
                 row["name"] for row in self._db.execute(
                     "SELECT name FROM sqlite_master WHERE type='trigger' "
-                    "AND tbl_name IN ('opencompany_finance_entries','opencompany_finance_entry_events')"
+                    "AND name IN ('opencompany_finance_entries_no_update','opencompany_finance_entries_no_delete',"
+                    "'opencompany_finance_entry_events_no_update','opencompany_finance_entry_events_no_delete',"
+                    "'opencompany_business_units_finance_scope_no_update')"
                 ).fetchall()
             }
 
@@ -370,6 +372,7 @@ class BusinessUnitRegistry:
         append_only_triggers = {
             "opencompany_finance_entries_no_update", "opencompany_finance_entries_no_delete",
             "opencompany_finance_entry_events_no_update", "opencompany_finance_entry_events_no_delete",
+            "opencompany_business_units_finance_scope_no_update",
         }.issubset(finance_triggers)
         finance_ready = (
             expected_finance.issubset(finance_tables)
