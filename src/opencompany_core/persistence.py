@@ -27,32 +27,46 @@ _SCHEMA_VERSION = 7
 _WORK_ITEM_BUSINESS_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
 
-def _assert_operational_work_item_scope(connection: sqlite3.Connection, lock: RLock, business_id: str) -> None:
-    """Validate work-item business identity at the persistence boundary, not only the API."""
+def _registered_operational_unit(
+    connection: sqlite3.Connection, lock: RLock, business_id: str,
+) -> dict[str, Any]:
+    """Read operational eligibility without running DDL inside a caller transaction."""
     if not isinstance(business_id, str) or not _WORK_ITEM_BUSINESS_ID.fullmatch(business_id):
         raise ValueError("business_id must be a 2-63 character lowercase slug")
+    with lock:
+        exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='opencompany_business_units'"
+        ).fetchone()
+        if exists is None:
+            if connection.in_transaction:
+                raise ValueError("business-unit registry must be initialized before transactional writes")
+            from .business_units import BusinessUnitRegistry
+            BusinessUnitRegistry(connection, lock)
+        row = connection.execute(
+            "SELECT * FROM opencompany_business_units WHERE business_id=?", (business_id,)
+        ).fetchone()
+    if row is None:
+        raise ValueError("unknown business unit; provision it through an approved venture first")
+    unit = dict(row)
+    if unit["status"] not in {"foundational", "active"}:
+        raise ValueError("business unit is not operational; provisioning must be completed and owner-approved before work is assigned")
+    return unit
+
+
+def _assert_operational_work_item_scope(
+    connection: sqlite3.Connection, lock: RLock, business_id: str,
+) -> None:
+    """Validate work-item business identity at the persistence boundary."""
     if business_id == "core":
         return
-    from .business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
-    try:
-        BusinessUnitRegistry(connection, lock).require_operational(business_id)
-    except BusinessUnitProvisioningError as exc:
-        raise ValueError(str(exc)) from exc
-
-
+    _registered_operational_unit(connection, lock, business_id)
 
 
 def _assert_operational_commercial_scope(
     connection: sqlite3.Connection, lock: RLock, business_id: str,
 ) -> dict[str, Any]:
     """Require an existing, operational registry unit at every commercial write boundary."""
-    if not isinstance(business_id, str) or not _WORK_ITEM_BUSINESS_ID.fullmatch(business_id):
-        raise ValueError("business_id must be a 2-63 character lowercase slug")
-    from .business_units import BusinessUnitRegistry, BusinessUnitProvisioningError
-    try:
-        return BusinessUnitRegistry(connection, lock).require_operational(business_id)
-    except BusinessUnitProvisioningError as exc:
-        raise ValueError(str(exc)) from exc
+    return _registered_operational_unit(connection, lock, business_id)
 
 
 def _json(value: Any) -> str:
