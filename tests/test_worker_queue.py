@@ -280,3 +280,61 @@ def test_live_lease_can_be_renewed_but_expired_or_replaced_lease_cannot(tmp_path
     assert queue.renew(first, now=start + timedelta(seconds=21)) is False
     assert queue.renew(replacement, now=start + timedelta(seconds=21)) is True
     queue.close()
+
+
+
+def test_standalone_queue_dead_letters_expired_final_lease_without_core_tables(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "standalone-expiry.sqlite3", max_attempts=1, lease_seconds=10)
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {})
+    start = datetime.now(timezone.utc)
+    first = queue.claim(agent, now=start)
+    assert first is not None
+    assert queue.claim(agent, now=start + timedelta(seconds=20)) is None
+    assert queue.counts() == {"dead": 1}
+    queue.close()
+
+
+def test_expired_lease_cannot_be_completed_even_before_reclaim(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "expired-finish.sqlite3", lease_seconds=10)
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {})
+    lease = queue.claim(agent)
+    assert lease is not None
+    with queue._lock:
+        queue._db.execute(
+            "UPDATE worker_queue SET lease_expires_at=? WHERE work_item_id=?",
+            ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), str(work)),
+        )
+    with pytest.raises(QueueError, match="stale"):
+        queue.complete(lease)
+    with pytest.raises(QueueError, match="stale"):
+        queue.fail(lease, "late_failure")
+    queue.close()
+
+
+def test_shared_queue_does_not_lease_work_for_deactivated_agent(tmp_path):
+    store = SQLiteStore(tmp_path / "deactivated-agent.sqlite3")
+    agent_id = uuid4()
+    agent = AgentProfile(
+        id=agent_id, name="Research Specialist", department="intelligence-research",
+        purpose="Prepare evidence", capabilities=("research",), state=AgentState.ACTIVE,
+        role_key="market_intelligence_analyst", team_key="intelligence-research__team_1",
+    )
+    store.save_agent(agent)
+    item = WorkItem(
+        id=uuid4(), title="Queued research", objective="Prepare an internal draft",
+        department="intelligence-research", state=TaskState.QUEUED,
+        assigned_agent_id=agent_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock)
+    queue.enqueue(item.id, agent_id, {"role_key": agent.role_key})
+    with store._lock:
+        store._connection.execute(
+            "UPDATE agent_profiles SET state='inactive' WHERE id=?", (str(agent_id),)
+        )
+    assert queue.claim(agent_id) is None
+    assert queue.counts() == {"queued": 1}
+    assert store.get_work_item(item.id).state == TaskState.QUEUED
+    store.close()
