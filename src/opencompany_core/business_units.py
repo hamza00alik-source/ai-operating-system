@@ -643,7 +643,7 @@ class BusinessUnitRegistry:
         blockers.append("asset_storage_adapter")
         checks.append({
             "key": "asset_storage_adapter", "ready": False,
-            "evidence": "File upload, private object storage, malware scanning, signed retrieval, and controlled delivery are not implemented; declarations remain metadata-only.",
+            "evidence": "A private write-once filesystem storage primitive now verifies actual bytes and SHA-256, but no authenticated upload route or append-only lifecycle transition uses it yet. Persistent-volume durability is not verified at runtime; malware scanning, retrieval authorization, and controlled delivery are also absent. Declarations remain metadata-only.",
         })
 
         blockers.append("owner_activation_approval")
