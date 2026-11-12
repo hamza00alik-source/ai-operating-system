@@ -322,3 +322,36 @@ def test_live_lease_can_be_renewed_but_expired_or_replaced_lease_cannot(tmp_path
     assert queue.renew(first, now=start + timedelta(seconds=21)) is False
     assert queue.renew(replacement, now=start + timedelta(seconds=21)) is True
     queue.close()
+
+def test_execution_attempt_history_records_retry_and_success(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "attempt-history.sqlite3", lease_seconds=10)
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {})
+    first = queue.claim(agent)
+    assert first is not None
+    assert queue.list_attempts(work)[0]["status"] == "running"
+    assert queue.fail(first, "TemporaryError") == "queued"
+    second = queue.claim(agent)
+    assert second is not None and second.attempt == 2
+    queue.complete(second)
+    history = queue.list_attempts(work)
+    assert [row["status"] for row in history] == ["retryable_failed", "succeeded"]
+    assert history[0]["error_code"] == "TemporaryError"
+    assert history[0]["finished_at"] is not None
+    assert history[1]["finished_at"] is not None
+    queue.close()
+
+
+def test_expired_lease_is_recorded_as_interrupted_before_reclaim(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "attempt-recovery.sqlite3", lease_seconds=10)
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {})
+    start = datetime.now(timezone.utc)
+    first = queue.claim(agent, now=start)
+    assert first is not None
+    second = queue.claim(agent, now=start + timedelta(seconds=11))
+    assert second is not None and second.attempt == 2
+    history = queue.list_attempts(work)
+    assert [row["status"] for row in history] == ["interrupted", "running"]
+    assert history[0]["finished_at"] is not None
+    queue.close()
