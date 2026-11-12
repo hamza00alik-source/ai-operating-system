@@ -44,7 +44,7 @@ The owner-authenticated endpoint `GET /business-units/{business_id}/activation-r
 
 For a newly provisioned unit, the report is expected to remain blocked today. In particular, the commercial tables still constrain business IDs to the original three units, and their customer records do not yet persist the new customer scope. The readiness report does not change registry status. There is deliberately no activation endpoint until these storage and service boundaries are implemented and reviewed. Foundational units are reported as already operational; they are not re-activated.
 
-This is a safety gate, not a claim that scope identifiers alone isolate data. Existing commercial records and schema constraints are preserved; no migration or customer/order data rewrite is performed by this increment.
+This is a safety gate, not a claim that scope identifiers alone isolate data. The schema migration below removes fixed business-ID allowlists but does not add customer or finance scope enforcement.
 
 
 ## Dynamic work-item identity (latest increment)
@@ -56,7 +56,11 @@ The work-item domain now accepts a syntactically valid business-unit slug rather
 
 Commercial write operations now resolve the owning business through the business-unit registry at the SQLite persistence boundary. Creating opportunities/products, creating quotes from an opportunity, changing quote/order/product/supplier states, and supplier registration require an operational unit; provisioning and unknown units fail closed even if a caller bypasses the API. Quote creation also verifies the opportunity's registered unit before accepting product lines, and supplier registration retains physical-goods and relationship-type constraints.
 
-This enforcement does not yet make arbitrary new business IDs writable: the existing commercial tables still have fixed SQLite CHECK(business_id IN (...)) constraints. Those constraints are intentionally preserved until a versioned table migration can rebuild the related opportunity/product/quote/order/supplier tables, their foreign keys and indexes, while proving existing records remain intact. The readiness endpoint continues to report that schema blocker. Dynamic activation is therefore still disabled.
+This enforcement now supports dynamically registered business IDs at the schema level. SQLite schema version 8 transactionally rebuilds the opportunity, product, quote, order, and supplier tables to remove their fixed business-ID allowlists. The migration copies every row, preserves the existing quote-item child table and its foreign keys, recreates all six commercial indexes, retains any table triggers, checks row counts and foreign-key integrity, and restores foreign-key enforcement. Existing supplier relationship types remain valid; newly created physical business units use the generic `supplier` relationship type, while the original agency and own-brand relationship rules remain strict.
+
+Application writes still pass through the operational registry guard, so the more permissive schema does not authorize unknown or provisioning units. Product list filters now use the same operational check. The activation-readiness report should therefore clear only the fixed-business-ID schema blocker. Customer-scope persistence, finance-ledger scoping, credential/integration/memory/asset adapters, and separate owner activation approval remain blockers; no newly provisioned unit is activated by this migration.
+
+The migration is applied automatically when a schema-version-7 database is opened. It does not rewrite customer/order data or change the three foundational units.
 
 
 The persistence guard reads the already-initialized registry directly and avoids executing registry DDL from inside a commercial transaction. If the registry is absent during an active transaction, the write fails closed rather than performing an implicit SQLite commit. Accepted-quote order creation rechecks operational eligibility immediately before inserting the order.
