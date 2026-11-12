@@ -147,23 +147,22 @@ def test_unorouter_discovery_requires_owner_and_returns_only_free_models(owner_c
     assert "valid-api-key-123456" not in response.text
 
 
-def test_unorouter_save_revalidates_model_before_persisting(owner_client, monkeypatch):
-    monkeypatch.setattr(api_module, "discover_free_models", lambda api_key: [])
+def test_unorouter_credentials_save_without_network_and_wait_for_live_test(owner_client, monkeypatch):
+    discovery_calls = []
+    monkeypatch.setattr(api_module, "discover_free_models", lambda api_key: discovery_calls.append(api_key) or [])
     response = owner_client.put(
         "/settings/providers/unorouter",
         headers={"X-OpenCompany-API-Key": "test-owner-key"},
-        json={
-            "api_key": "valid-api-key-123456",
-            "model": "provider/model:free",
-            "confirm_free": True,
-        },
+        json={"api_key": "valid-api-key-123456", "model": "provider/model:free", "confirm_free": True},
     )
-    assert response.status_code == 409
-    assert owner_client.get(
+    assert response.status_code == 200
+    assert discovery_calls == []
+    status = owner_client.get(
         "/settings/providers/unorouter",
         headers={"X-OpenCompany-API-Key": "test-owner-key"},
-    ).json()["configured"] is False
-
+    ).json()
+    assert status["configured"] is True
+    assert status["real_inference_verified"] is False
 
 def test_workforce_endpoint_exposes_only_original_opencompany_roles():
     response = client.get("/workforce/roles")
