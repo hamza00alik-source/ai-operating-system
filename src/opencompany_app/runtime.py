@@ -27,7 +27,7 @@ from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
 from opencompany_core.product_rd_coordinator import ProductRDCoordinator
-from opencompany_app.routers.external_approvals import record_agent_approval_requests
+from opencompany_core.external_approval_service import record_agent_approval_requests
 
 
 @dataclass(slots=True)
