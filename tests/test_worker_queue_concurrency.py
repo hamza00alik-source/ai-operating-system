@@ -25,7 +25,7 @@ def test_independent_queue_connections_never_issue_duplicate_live_claims(tmp_pat
         DurableWorkerQueue(database, lease_seconds=30),
     ]
     barrier = Barrier(2)
-    instant = datetime(2026, 11, 12, 9, 0, tzinfo=timezone.utc)
+    instant = datetime.now(timezone.utc) + timedelta(seconds=30)
 
     def compete(queue):
         barrier.wait(timeout=5)
