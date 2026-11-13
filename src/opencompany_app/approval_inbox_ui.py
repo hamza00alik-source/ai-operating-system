@@ -4,7 +4,19 @@ APPROVAL_INBOX_HTML = r'''
   <div class="row" style="margin-top:12px"><label for="approval-inbox-business">Business unit</label><select id="approval-inbox-business"><option value="all">All business units</option><option value="core">Core / internal</option><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-product brand</option><option value="digital-products">Digital products</option></select><button id="approval-inbox-refresh" type="button">Refresh inbox</button></div>
   <div class="grid"><div class="metric"><span class="muted">Pending decisions</span><strong id="approval-inbox-count">—</strong></div><div class="metric"><span class="muted">Manager proposals</span><strong id="approval-inbox-proposals">—</strong></div><div class="metric"><span class="muted">Deliverable reviews</span><strong id="approval-inbox-reviews">—</strong></div><div class="metric"><span class="muted">Product checkpoints</span><strong id="approval-inbox-products">—</strong></div></div>
   <div id="approval-inbox-items" class="list"><p class="muted">Connect as owner to load approval items.</p></div>
-  <p class="muted">Not yet connected: payment, purchasing, customer-message, publishing, production-change, and other external-action approval requests. This inbox does not create or execute those actions.</p>
+  <div class="item" id="external-approval-create">
+    <h3>Register an external-action request</h3>
+    <p class="muted">Creates an approval record only. It does not publish, send, purchase, pay, deploy, or change accounts.</p>
+    <label for="external-approval-business">Business unit</label>
+    <select id="external-approval-business"><option value="core">Core / internal</option><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-product brand</option><option value="digital-products">Digital products</option></select>
+    <label for="external-approval-type">Action type</label>
+    <select id="external-approval-type"><option value="publish_listing">Publish listing</option><option value="send_customer_message">Send customer message</option><option value="make_customer_commitment">Make customer commitment</option><option value="purchase">Purchase</option><option value="payment">Payment</option><option value="production_change">Production change</option><option value="credential_change">Credential change</option><option value="account_change">Account change</option><option value="deploy_production">Production deployment</option><option value="delete_customer_data">Delete customer data</option><option value="other">Other external action</option></select>
+    <label for="external-approval-title">Request title</label><input id="external-approval-title" maxlength="200" placeholder="What action is being requested?">
+    <label for="external-approval-description">Details and exact scope</label><textarea id="external-approval-description" rows="3" maxlength="4000" placeholder="Describe target, scope, expected result, risks, and any customer or financial impact. Do not enter passwords or payment credentials."></textarea>
+    <button id="external-approval-submit" type="button">Create pending approval request</button>
+    <p id="external-approval-create-status" class="muted"></p>
+  </div>
+  <p class="muted">Authorization records are not execution. Each real external action still needs its own reviewed, scope-limited executor and a separate execution record.</p>
 </section>
 '''
 
@@ -49,6 +61,13 @@ APPROVAL_INBOX_JS = r'''
         }
       }
       if(proposalScans===100)addText(host,"p","Proposal scan capped at 100 draft work items for dashboard responsiveness. Narrow the business filter if older proposals may be pending.","warn");
+      for(const unit of units){
+        const external=await request("/external-approvals?business_id="+encodeURIComponent(unit)+"&status=pending");
+        for(const item of (external.requests||[])){
+          pending.push({kind:"external",business:unit,title:item.title,summary:item.description,
+            created:item.requested_at,id:item.id,external:item});
+        }
+      }
       pending.sort((a,b)=>String(b.created||"").localeCompare(String(a.created||"")));
       byId("approval-inbox-count").textContent=String(pending.length);
       byId("approval-inbox-proposals").textContent=String(pending.filter(x=>x.kind==="proposal").length);
@@ -57,11 +76,29 @@ APPROVAL_INBOX_JS = r'''
       if(!pending.length){addText(host,"p","No pending owner decisions were found for the selected business scope.","muted");return;}
       for(const entry of pending){
         const card=document.createElement("article");card.className="item";
-        const labels={proposal:"Manager proposal",deliverable:"Deliverable review","product-preview":"Human preview","product-ceo":"CEO review"};
+        const labels={proposal:"Manager proposal",deliverable:"Deliverable review","product-preview":"Human preview","product-ceo":"CEO review",external:"External-action authorization"};
         const heading=addText(card,"h3",entry.title);
         addText(card,"p",labels[entry.kind]+" · "+entry.business+" · "+(entry.created||"Current checkpoint"),"muted");
         addText(card,"p",entry.summary);
-        if(entry.kind==="proposal"){
+        if(entry.kind==="external"){
+          const requestData=entry.external;
+          addText(card,"p","Action: "+requestData.action_type.replaceAll("_"," ")+" · Status: "+requestData.status);
+          addText(card,"p","Target: "+(requestData.target_reference||"Not specified")+
+            (requestData.estimated_amount_minor!==null&&requestData.estimated_amount_minor!==undefined
+              ? " · Amount (minor units): "+requestData.estimated_amount_minor+" "+requestData.currency : ""));
+          addText(card,"p","Requested by: "+requestData.requested_by+" · No executor is connected.");
+          action(card,"Authorize (record only)",async()=>{
+            const rationale=window.prompt("Explain exactly what you are authorizing. This records authorization only; it will NOT execute the action.");
+            if(!rationale||!rationale.trim())return;
+            const confirmAction=window.prompt("Type AUTHORIZE to confirm this authorization record.");
+            await request("/external-approvals/"+entry.id+"/decision",{method:"POST",body:JSON.stringify({decision:"approve",rationale:rationale.trim(),confirm_action:confirmAction||""})});
+          });
+          action(card,"Reject request",async()=>{
+            const rationale=window.prompt("Reason for rejecting this request.");
+            if(!rationale||!rationale.trim())return;
+            await request("/external-approvals/"+entry.id+"/decision",{method:"POST",body:JSON.stringify({decision:"reject",rationale:rationale.trim()})});
+          });
+        }else if(entry.kind==="proposal"){
           const proposal=entry.proposal, payload=proposal.payload||{}, requestData=payload.request||{};
           addText(card,"p","Manager: "+(proposal.manager_agent_id||payload.manager_agent_id||"not recorded")+" · Mode: "+(proposal.mode||"unknown")+" · Proposed tasks: "+((proposal.children||[]).length));
           if(requestData.required_capabilities) addText(card,"p","Capabilities: "+requestData.required_capabilities.join(", "));
@@ -92,4 +129,21 @@ APPROVAL_INBOX_JS = r'''
   }
   byId("approval-inbox-refresh").addEventListener("click",loadCompanyApprovalInbox);
   byId("approval-inbox-business").addEventListener("change",loadCompanyApprovalInbox);
+  byId("external-approval-submit").addEventListener("click",async()=>{
+    const button=byId("external-approval-submit"),status=byId("external-approval-create-status");
+    button.disabled=true;status.textContent="Creating pending approval record…";
+    try{
+      const result=await request("/external-approvals",{method:"POST",body:JSON.stringify({
+        business_id:byId("external-approval-business").value,
+        action_type:byId("external-approval-type").value,
+        title:byId("external-approval-title").value,
+        description:byId("external-approval-description").value,
+        requested_by:"owner"
+      })});
+      status.textContent="Pending request created: "+result.request_id+". No external action was executed.";
+      byId("external-approval-title").value="";byId("external-approval-description").value="";
+      await loadCompanyApprovalInbox();
+    }catch(error){status.textContent=error.message;}
+    finally{button.disabled=false;}
+  });
 '''
