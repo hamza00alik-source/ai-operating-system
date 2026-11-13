@@ -27,6 +27,7 @@ from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
 from opencompany_core.product_rd_coordinator import ProductRDCoordinator
+from opencompany_app.routers.external_approvals import record_agent_approval_requests
 
 
 @dataclass(slots=True)
@@ -226,6 +227,9 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         executor=executor,
         artifact_sink=store,
         request_budget_usd=0.0,
+        approval_request_sink=lambda agent_id, item, requests: record_agent_approval_requests(
+            store, agent_id, item, requests
+        ),
         preferred_provider="unorouter",
     )
     worker_concurrency = int(os.environ.get("OPENCOMPANY_WORKER_CONCURRENCY", "2"))
