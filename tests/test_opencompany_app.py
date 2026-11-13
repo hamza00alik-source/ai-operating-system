@@ -2186,3 +2186,39 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
     assert repeated.json()["queued_work_item_ids"] == []
     assert repeated.json()["errors"] == []
     assert runtime.queue.get_entry(parent_id)["state"] == "queued"
+
+def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to_commission(owner_client):
+    unauthorized = client.post("/commercial/financial-events", json={})
+    assert unauthorized.status_code in {401, 403}
+
+    payload = {
+        "business_id": "physical-agency",
+        "event_type": "agency_commission",
+        "amount_minor": 2500,
+        "currency": "USD",
+        "source_reference": "synthetic-agency-invoice-001",
+        "evidence_reference": "synthetic-owner-reviewed-statement-line-4",
+        "note": "synthetic test record",
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "owner_verified": True,
+    }
+    recorded = owner_client.post("/commercial/financial-events", json=payload)
+    assert recorded.status_code == 200
+    assert recorded.json()["payment_initiated"] is False
+
+    summary = owner_client.get("/commercial/financial-summary?business_id=physical-agency")
+    assert summary.status_code == 200
+    row = summary.json()["summaries"][0]
+    assert row["recognized_revenue_minor"] == 2500
+    assert row["revenue_basis"] == "agency commission only"
+
+    invalid_model = dict(payload, event_type="sales_revenue",
+                         source_reference="synthetic-invalid-gross-sale")
+    rejected = owner_client.post("/commercial/financial-events", json=invalid_model)
+    assert rejected.status_code == 422
+
+    unverified = dict(payload, source_reference="synthetic-unverified-event",
+                      owner_verified=False)
+    rejected = owner_client.post("/commercial/financial-events", json=unverified)
+    assert rejected.status_code == 422
+
