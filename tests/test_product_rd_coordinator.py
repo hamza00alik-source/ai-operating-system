@@ -1,4 +1,4 @@
-from opencompany_core import product_rd_coordinator as coordinator_module
+import opencompany_core.product_rd_coordinator as coordinator_module
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.product_rd import ProductRDRepository
 
