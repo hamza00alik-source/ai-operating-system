@@ -159,6 +159,8 @@ class ProductRDCoordinator:
         if (not self.auto_manager_proposals_enabled or self.gateway is None
                 or self.delegations is None or not stage.get("work_item_id")):
             return False
+        if not self.gateway.eligible_providers(request_budget_usd=0.0):
+            return False
         item = self.store.get_work_item(UUID(stage["work_item_id"]))
         if (item is None or item.business_id != workflow["business_id"]
                 or item.state != TaskState.DRAFT or item.assigned_agent_id is not None):
