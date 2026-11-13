@@ -24,7 +24,7 @@
 
 ### Required to complete
 
-1. Persisted execution-attempt history for every claim, heartbeat loss, retry, cancellation, provider call, checkpoint, deliverable, and failure; expose a safe per-attempt timeline.
+1. Extend the existing durable attempt records and newly added owner-authenticated execution-history endpoint to cover heartbeat events, provider-call correlation/latency, cancellation detail, structured failure classes, and workflow-level aggregation. The current endpoint exposes ordered attempt number/status/timestamps/bounded error code, queue metadata and checkpoint metadata only.
 2. Workflow-level orchestration that tracks parent/child tasks, parallel branches, dependencies, manager synthesis, rework, cancellation, pause/resume, and final outcome without relying on an operator to manually stitch each stage.
 3. Durable scheduled-job definitions and missed-run/restart recovery. Scheduling must be opt-in, bounded, auditable, and disabled by default until configured.
 4. Shared context/artifact references with business-scoped retrieval, provenance, access checks, retention, and explicit minimal cross-business handoffs.
