@@ -48,6 +48,7 @@ APPROVAL_INBOX_JS = r'''
           if(executive)pending.push({kind:"product-ceo",business:unit,title:workflow.title,summary:"Internal CEO review checkpoint. This is not marketplace publishing or customer approval.",id:workflow.id});
         }
       }
+      if(proposalScans===100)addText(host,"p","Proposal scan capped at 100 draft work items for dashboard responsiveness. Narrow the business filter if older proposals may be pending.","warn");
       pending.sort((a,b)=>String(b.created||"").localeCompare(String(a.created||"")));
       byId("approval-inbox-count").textContent=String(pending.length);
       byId("approval-inbox-proposals").textContent=String(pending.filter(x=>x.kind==="proposal").length);
