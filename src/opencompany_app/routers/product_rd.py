@@ -190,8 +190,36 @@ def sync_product_stage(workflow_id: UUID,
     if item is None or item.business_id != workflow["business_id"]:
         raise HTTPException(status_code=409, detail="Stage work item is missing or belongs to another business.")
     assigned = runtime.store.get_agent(item.assigned_agent_id) if item.assigned_agent_id else None
-    if assigned is None or assigned.role_key != stage["owner_role"] or item.department != assigned.department:
-        raise HTTPException(status_code=409, detail="Stage work item assignee does not match the required Product & R&D role.")
+    if assigned is None or assigned.state != AgentState.ACTIVE or item.department != assigned.department:
+        raise HTTPException(status_code=409, detail="Stage work item must have an active assignee in its declared department.")
+    try:
+        from opencompany_core.organization import default_organization
+        from opencompany_core.workforce import default_workforce
+        department_spec = default_organization().get(item.department)
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail="Stage work item department is not in the canonical organization.") from exc
+    # A specialist-owned stage is executed through its department manager's
+    # approved synthesis parent. Direct stage-role assignment is also valid.
+    direct_stage_owner = assigned.role_key == stage["owner_role"]
+    manager_synthesis = assigned.role_key == department_spec.manager_role_key
+    if not direct_stage_owner and not manager_synthesis:
+        raise HTTPException(status_code=409, detail="Stage work item assignee is neither the required role nor its department manager.")
+    expected_team = (
+        "executive" if assigned.role_key == "chief_executive_orchestrator"
+        else "management" if manager_synthesis
+        else default_workforce().get(assigned.role_key).team_key
+    )
+    if assigned.team_key != expected_team:
+        raise HTTPException(status_code=409, detail="Stage work item assignee has an invalid canonical team assignment.")
+    if manager_synthesis and not direct_stage_owner:
+        if not item.depends_on:
+            raise HTTPException(status_code=409, detail="Manager synthesis must depend on owner-approved specialist work.")
+        for dependency_id in item.depends_on:
+            dependency = runtime.store.get_work_item(dependency_id)
+            if (dependency is None or dependency.business_id != workflow["business_id"]
+                    or dependency.state != TaskState.COMPLETED
+                    or not runtime.store.list_deliverables(dependency_id)):
+                raise HTTPException(status_code=409, detail="Every manager-synthesis prerequisite must be completed, owner-approved, and have a persisted deliverable.")
     if item.state != TaskState.COMPLETED:
         raise HTTPException(status_code=409, detail="The stage work item must be completed through owner review first.")
     deliverables = runtime.store.list_deliverables(item.id)
