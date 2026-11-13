@@ -7,8 +7,11 @@ pagination, and returns minimized records without customer PII.
 from __future__ import annotations
 
 import base64
+import http.client
 import ipaddress
 import json
+import socket
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,9 +22,30 @@ class WooCommerceReadError(RuntimeError):
     pass
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+class _PinnedPublicHTTPSConnection(http.client.HTTPSConnection):
+    """Resolve once, reject non-public addresses, and pin the TLS socket to that IP."""
+
+    def connect(self) -> None:
+        addresses = socket.getaddrinfo(self.host, self.port, type=socket.SOCK_STREAM)
+        candidates = []
+        for item in addresses:
+            address = item[4][0]
+            parsed = ipaddress.ip_address(address)
+            if not parsed.is_global:
+                raise WooCommerceReadError("WooCommerce hostname resolved to a non-public network address.")
+            candidates.append((item[0], item[4]))
+        if not candidates:
+            raise WooCommerceReadError("WooCommerce hostname did not resolve to a public address.")
+        last_error = None
+        for family, sockaddr in candidates:
+            try:
+                raw = socket.create_connection(sockaddr, self.timeout, self.source_address)
+                self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
+                return
+            except OSError as exc:
+                last_error = exc
+        if last_error:
+            raise last_error
 
 
 class WooCommerceReadOnlyClient:
@@ -67,11 +91,17 @@ class WooCommerceReadOnlyClient:
             "Authorization": self._authorization,
             "User-Agent": "OpenCompany-WooCommerce-ReadOnly/1.0",
         })
+        connection = None
         try:
             if self._transport is not None:
                 response = self._transport(request, timeout=10)
             else:
-                response = urllib.request.build_opener(_NoRedirect()).open(request, timeout=10)
+                parsed = urllib.parse.urlsplit(url)
+                connection = _PinnedPublicHTTPSConnection(parsed.hostname, timeout=10, context=ssl.create_default_context())
+                connection.request("GET", parsed.path + "?" + parsed.query, headers=dict(request.header_items()))
+                response = connection.getresponse()
+                if response.status < 200 or response.status >= 300:
+                    raise WooCommerceReadError(f"WooCommerce rejected the read request (HTTP {response.status}).")
             raw = response.read(self.MAX_RESPONSE_BYTES + 1)
             if len(raw) > self.MAX_RESPONSE_BYTES:
                 raise WooCommerceReadError("WooCommerce response exceeded the safe size limit.")
@@ -79,10 +109,15 @@ class WooCommerceReadOnlyClient:
             if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
                 raise WooCommerceReadError("WooCommerce returned an unexpected response shape.")
             return value
-        except urllib.error.HTTPError as exc:
-            raise WooCommerceReadError(f"WooCommerce rejected the read request (HTTP {exc.code}).") from exc
-        except (urllib.error.URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except WooCommerceReadError:
+            raise
+        except (urllib.error.HTTPError, urllib.error.URLError, http.client.HTTPException,
+                ssl.SSLError, socket.gaierror, TimeoutError, OSError,
+                UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise WooCommerceReadError(f"WooCommerce read request failed safely ({type(exc).__name__}).") from exc
+        finally:
+            if connection is not None:
+                connection.close()
 
     def products(self, *, page: int = 1, per_page: int = 20) -> dict:
         rows = self._get("products", page=page, per_page=per_page)
