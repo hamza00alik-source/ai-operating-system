@@ -8,10 +8,11 @@ reviewed action-specific adapter.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import re
 import hmac
 import os
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -122,13 +123,68 @@ class AgentExternalApprovalCreateInput(ExternalApprovalCreateInput):
     originating_work_item_id: UUID
 
 
+def record_agent_approval_requests(store: SQLiteStore, agent_id: UUID, item, requests: list[dict]) -> list[dict]:
+    """Persist model-originated approval intents using trusted worker identity."""
+    agent = store.get_agent(agent_id)
+    current_item = store.get_work_item(item.id)
+    if agent is None or agent.state != AgentState.ACTIVE:
+        raise ValueError("requesting agent is not active")
+    if (current_item is None or current_item.business_id != item.business_id
+            or current_item.assigned_agent_id != agent.id
+            or current_item.state != TaskState.IN_PROGRESS):
+        raise ValueError("agent is not the active assignee of this in-progress work item")
+    _ensure_table(store)
+    recorded = []
+    for index, request in enumerate(requests):
+        action = request["action_type"]
+        if action not in ACTION_TYPES:
+            continue
+        amount, currency = request.get("estimated_amount_minor"), request.get("currency")
+        if (amount is None) != (currency is None):
+            continue
+        if currency and not re.fullmatch(r"[A-Za-z]{3}", currency):
+            continue
+        request_id = str(uuid5(
+            NAMESPACE_URL,
+            f"opencompany:agent-approval:{item.id}:{index}:{json.dumps(request, sort_keys=True)}",
+        ))
+        now = datetime.now(timezone.utc)
+        requested_by = f"agent:{agent.id}:role:{agent.role_key}:work_item:{item.id}"
+        with store._lock:
+            exists = store._connection.execute(
+                "SELECT id FROM external_action_approvals WHERE id=?", (request_id,)
+            ).fetchone()
+            if exists is None:
+                store._connection.execute(
+                    """INSERT INTO external_action_approvals
+                       (id,business_id,action_type,title,description,target_reference,requested_by,
+                        estimated_amount_minor,currency,status,requested_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,'pending',?)""",
+                    (request_id, item.business_id, action, request["title"].strip(),
+                     request["description"].strip(), request.get("target_reference"), requested_by,
+                     amount, currency.upper() if currency else None, now.isoformat()),
+                )
+                store.append_audit_record(AuditRecord(
+                    id=uuid4(), occurred_at=now, actor_type="agent", actor_id=str(agent.id),
+                    action="external_approval.agent_requested",
+                    subject_type="external_action_approval", subject_id=request_id,
+                    outcome="pending", correlation_id=str(item.id),
+                    details={"business_id": item.business_id, "action_type": action,
+                             "work_item_id": str(item.id), "role_key": agent.role_key,
+                             "execution_performed": False},
+                ))
+        recorded.append({"request_id": request_id, "status": "pending",
+                         "execution_performed": False})
+    return recorded
+
+
 @router.post("/internal/agent-approval-requests")
 def create_agent_external_approval(
     payload: AgentExternalApprovalCreateInput,
     x_opencompany_agent_key: str | None = Header(default=None),
     store: SQLiteStore = Depends(get_store),
 ) -> dict:
-    """Accept a narrowly scoped agent request; never execute the requested action."""
+    """Accept an authenticated agent request; never execute the requested action."""
     expected = os.environ.get("OPENCOMPANY_AGENT_APPROVAL_API_KEY", "").strip()
     if not expected or not x_opencompany_agent_key or not hmac.compare_digest(x_opencompany_agent_key, expected):
         raise HTTPException(status_code=401, detail="Agent approval submission is not configured or authenticated.")
@@ -146,33 +202,14 @@ def create_agent_external_approval(
         raise HTTPException(status_code=404, detail="Originating work item was not found in this business unit.")
     if item.assigned_agent_id != agent.id:
         raise HTTPException(status_code=403, detail="Agent is not assigned to the originating work item.")
-    if item.state not in {TaskState.QUEUED, TaskState.RUNNING, TaskState.COMPLETED}:
+    if item.state not in {TaskState.QUEUED, TaskState.IN_PROGRESS, TaskState.COMPLETED}:
         raise HTTPException(status_code=409, detail="Only admitted or completed work can raise an approval request.")
-    _ensure_table(store)
-    now = datetime.now(timezone.utc)
-    request_id = str(uuid4())
-    with store._lock:
-        store._connection.execute(
-            """INSERT INTO external_action_approvals
-               (id,business_id,action_type,title,description,target_reference,requested_by,
-                estimated_amount_minor,currency,status,requested_at)
-               VALUES(?,?,?,?,?,?,?,?,?,'pending',?)""",
-            (request_id, payload.business_id, payload.action_type, payload.title.strip(),
-             payload.description.strip(), payload.target_reference,
-             f"agent:{agent.id}:role:{agent.role_key}:work_item:{item.id}",
-             payload.estimated_amount_minor, payload.currency.upper() if payload.currency else None,
-             now.isoformat()),
-        )
-    store.append_audit_record(AuditRecord(
-        id=uuid4(), occurred_at=now, actor_type="agent", actor_id=str(agent.id),
-        action="external_approval.agent_requested", subject_type="external_action_approval",
-        subject_id=request_id, outcome="pending", correlation_id=str(uuid4()),
-        details={"business_id": payload.business_id, "action_type": payload.action_type,
-                 "work_item_id": str(item.id), "role_key": agent.role_key,
-                 "execution_performed": False},
-    ))
-    return {"request_id": request_id, "status": "pending",
-            "submitted_by_agent": str(agent.id), "execution_performed": False}
+    result = record_agent_approval_requests(store, agent.id, item, [{
+        "action_type": payload.action_type, "title": payload.title,
+        "description": payload.description, "target_reference": payload.target_reference,
+        "estimated_amount_minor": payload.estimated_amount_minor, "currency": payload.currency,
+    }])
+    return {**result[0], "submitted_by_agent": str(agent.id)}
 
 
 @router.get("/external-approvals", dependencies=[Depends(require_owner_key)])
