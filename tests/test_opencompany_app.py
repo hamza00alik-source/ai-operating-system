@@ -2222,3 +2222,17 @@ def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to
     rejected = owner_client.post("/commercial/financial-events", json=unverified)
     assert rejected.status_code == 422
 
+def test_production_readiness_endpoint_is_owner_only_and_never_authorizes_cutover(owner_client):
+    unauthorized = client.get("/owner/production-readiness")
+    assert unauthorized.status_code in {401, 403}
+    response = owner_client.get("/owner/production-readiness")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "evidence_snapshot_only"
+    assert body["production_cutover_authorized"] is False
+    assert body["tests_and_ci"] == "not_verified_by_this_endpoint"
+    assert body["independent_security_review"] == "not_verified"
+    assert body["backup_restore_rehearsal"] == "not_verified"
+    assert body["staging_acceptance"] == "not_verified"
+    assert "database_path" not in body
+
