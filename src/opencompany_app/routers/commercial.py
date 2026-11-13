@@ -417,6 +417,8 @@ def record_commercial_financial_event(
         raise HTTPException(status_code=422, detail="Currency must be a three-letter ISO code.")
     if payload.owner_verified is not True:
         raise HTTPException(status_code=422, detail="Owner verification of the source evidence is required.")
+    if not payload.source_reference.strip() or not payload.evidence_reference.strip():
+        raise HTTPException(status_code=422, detail="Non-empty source and evidence references are required.")
     if payload.occurred_at.tzinfo is None or payload.occurred_at.utcoffset() is None:
         raise HTTPException(status_code=422, detail="Event time must include a timezone.")
     event_id = str(uuid4())
