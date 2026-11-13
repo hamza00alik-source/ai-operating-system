@@ -234,7 +234,7 @@ class OpenCompanyWorker:
     def _extract_approval_requests(content: str) -> tuple[list[dict], str]:
         """Extract at most five allowlisted approval intents from one exact block."""
         pattern = re.compile(
-            r"<OPENCOMPANY_APPROVAL_REQUESTS>\s*(\[.*?\])\s*</OPENCOMPANY_APPROVAL_REQUESTS>",
+            r"<OPENCOMPANY_APPROVAL_REQUESTS>(?:\\[nrt]|\s)*(\[.*?\])(?:\\[nrt]|\s)*</OPENCOMPANY_APPROVAL_REQUESTS>",
             re.DOTALL,
         )
         matches = list(pattern.finditer(content))
@@ -285,6 +285,7 @@ class OpenCompanyWorker:
                 "currency": currency.upper() if currency else None,
             })
         cleaned = (content[:matches[0].start()] + content[matches[0].end():]).strip()
+        cleaned = re.sub(r"(?:\\[nrt])+$", "", cleaned).rstrip()
         if not cleaned:
             cleaned = "Draft deliverable contained only an external approval request; see owner approval inbox."
         return accepted, cleaned
