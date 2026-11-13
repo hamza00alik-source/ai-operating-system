@@ -1,6 +1,6 @@
 """Owner-gated registry for external-action authorization requests.
 
-This module records decisions only. It deliberately has no executor, connector,
+This module records decisions only. No external action was executed by this module. It deliberately has no executor, connector,
 payment client, publisher, messaging client, or production mutation capability.
 An authorized request must still be implemented and executed by a separately
 reviewed action-specific adapter.
