@@ -87,3 +87,14 @@ Before merge or production use, run the approved test suite after the testing pa
 - Product & R&D checkpoints link back to the existing studio controls; the studio remains the place to inspect artifacts/evidence and complete its established owner review.
 - Payment, purchasing, customer-message, publishing, production-change, credential-change, and other external-action requests are explicitly marked as not yet connected. The inbox does not create or execute those actions.
 - Added static UI safeguard tests. Tests remain unexecuted under the owner's testing pause through 2026-12-01; no browser/runtime validation was performed.
+
+
+## External-action approval registry — 2026-11-13
+
+- Added owner-authenticated API records for publishing, customer messages/commitments, purchases, payments, production changes, credential/account changes, production deployments, customer-data deletion, and other explicitly scoped requests.
+- Requests are isolated by one business-unit ID, have bounded title/description/reference fields, and intentionally do not accept credentials, payment instruments, or arbitrary execution payloads.
+- The owner can authorize (requires the explicit `AUTHORIZE` confirmation phrase), reject, or cancel a pending request. Decisions are recorded in the existing tamper-evident audit chain.
+- An approval is recorded as `authorized_not_executed`, with a 24-hour expiry timestamp. No generic executor, payment client, publisher, messaging client, deployment adapter, or account mutation is connected. Authorization therefore does not execute or imply that an action has occurred.
+- The company-wide inbox now lists pending external-action requests and provides explicit authorize/reject controls. The owner can also register a request from the dashboard; this only creates a pending record.
+- Action-specific execution adapters, expiry enforcement before execution, one-time execution receipts, and provider/account-specific risk controls remain future work. No external action was performed by this implementation.
+- Added static tests for the action catalogue, owner-gated routes, and the no-executor boundary. Tests remain unexecuted under the owner's testing pause through 2026-12-01.
