@@ -1,0 +1,36 @@
+name: Python tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - fix/release-hardening
+  push:
+    branches:
+      - main
+      - fix/release-hardening
+      - feat/product-rd-workflow
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project and test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Run test suite
+        run: python -m pytest -q
