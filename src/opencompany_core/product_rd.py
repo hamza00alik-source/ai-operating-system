@@ -238,6 +238,7 @@ class ProductRDRepository:
                 raise ProductRDError("QA requires passed_checks, failed_checks, and untested_claims lists.")
             if qa_result["failed_checks"]:
                 stage["status"] = "blocked"
+                workflow["status"] = "blocked"
                 stage["blockers"] = [str(x)[:1000] for x in qa_result["failed_checks"]]
                 stage["output"] = output
                 stage["evidence"] = evidence
