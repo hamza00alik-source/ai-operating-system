@@ -82,9 +82,13 @@ PRODUCT_RD_JS = r'''
                 actionButton("Run queued specialist: "+child.role_key,async()=>{await request("/workers/"+child.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});});
               }else if(child.state==="review"){
                 actionButton("Approve specialist: "+child.role_key,async()=>{await request("/work-items/"+child.id+"/review",{method:"POST",body:JSON.stringify({approved:true,rationale:"Owner reviewed this internal Product & R&D specialist deliverable."})});});
+              }else if(child.state==="failed"){
+                actionButton("Retry specialist: "+child.role_key,async()=>{await request("/work-items/"+child.id+"/transition",{method:"POST",body:JSON.stringify({target_state:"ready"})});await request("/work-items/"+child.id+"/enqueue",{method:"POST",body:"{}"});await request("/workers/"+child.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});});
               }
             }
-            if(item.state==="ready"){
+            if(item.state==="failed"){
+              actionButton("Retry stage manager",async()=>{await request("/work-items/"+item.id+"/transition",{method:"POST",body:JSON.stringify({target_state:"ready"})});await request("/work-items/"+item.id+"/enqueue",{method:"POST",body:"{}"});await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});});
+            }else if(item.state==="ready"){
               const allChildrenDone=children.length>0&&children.every(child=>child.state==="completed");
               if(item.depends_on.length===0||allChildrenDone){
                 actionButton("Enqueue & run stage manager once",async()=>{await runOnce(item);});
