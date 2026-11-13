@@ -56,7 +56,7 @@ def test_expired_claim_is_fenced_from_checkpoint_after_reclaim(tmp_path):
         retry_max_seconds=1,
     )
     work_item_id, agent_id = uuid4(), uuid4()
-    start = datetime(2026, 11, 12, 9, 0, tzinfo=timezone.utc)
+    start = datetime.now(timezone.utc) + timedelta(seconds=30)
     queue.enqueue(work_item_id, agent_id, {})
     first = queue.claim(agent_id, now=start)
     assert first is not None
