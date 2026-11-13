@@ -451,9 +451,10 @@ def test_queue_health_reports_age_expired_leases_and_dead_letters_without_secret
         tmp_path / "queue-health.sqlite3", lease_seconds=10, max_attempts=1
     )
     agent = uuid4()
-    leased_work, queued_work = uuid4(), uuid4()
+    leased_work, queued_work, pending_work = uuid4(), uuid4(), uuid4()
     queue.enqueue(leased_work, agent, {"private": "never-return-this"})
     queue.enqueue(queued_work, agent, {})
+    queue.enqueue(pending_work, agent, {})
     lease = queue.claim(agent)
     assert lease is not None
     queue.fail(lease, "provider_timeout")
