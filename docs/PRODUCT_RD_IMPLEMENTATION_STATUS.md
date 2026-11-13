@@ -67,3 +67,12 @@ Before merge or production use, run the approved test suite after the testing pa
 - The proposal and child tasks remain DRAFT. This feature does not approve proposals, materialize READY work, enqueue work, start inference for the child tasks, approve deliverables, or perform external actions. Owner approval remains required before the existing delegation-approval endpoint can materialize READY tasks.
 - `/workers/queue` reports whether this additional automation is enabled.
 - Added a static unit test for default-off behavior and proposal idempotency. Tests remain unexecuted during the owner's testing pause through 2026-12-01.
+
+
+## Manager proposal review dashboard — 2026-11-13
+
+- Expanded the Product & R&D owner dashboard's pending manager-proposal card to show proposal status and mode, manager profile ID, selected team, planner provider/model, manager rationale, required capabilities, and creation time.
+- Shows each proposed child task's title, canonical role, team, DRAFT state, assigned profile, and objective so the owner can inspect the complete proposed work breakdown before approval.
+- Owner-review/empty-team proposals are shown as clarification blockers and cannot be approved through the dashboard. The approval action is shown only when a concrete child-task proposal exists.
+- The UI explicitly explains that approval materializes READY delegation tasks but does not run agents or publish anything. Existing API approval-time profile checks remain authoritative.
+- Added static UI assertions. Tests remain unexecuted during the owner's testing pause through 2026-12-01; no browser/runtime validation was performed.
