@@ -98,3 +98,13 @@ Before merge or production use, run the approved test suite after the testing pa
 - The company-wide inbox now lists pending external-action requests and provides explicit authorize/reject controls. The owner can also register a request from the dashboard; this only creates a pending record.
 - Action-specific execution adapters, expiry enforcement before execution, one-time execution receipts, provider/account-specific risk controls, and authenticated AI-agent request submission remain future work. No external action was performed by this implementation.
 - Added static tests for the action catalogue, owner-gated routes, and the no-executor boundary. Tests remain unexecuted under the owner's testing pause through 2026-12-01.
+
+
+## Authenticated agent approval submission — 2026-11-13
+
+- Added `POST /internal/agent-approval-requests`, protected by a separate `OPENCOMPANY_AGENT_APPROVAL_API_KEY` secret. It is disabled by default when the secret is absent and is not exposed through the owner dashboard.
+- Each request must identify an existing ACTIVE agent and an originating work item in the same business unit. The agent must be the assigned owner, and the task must be QUEUED, RUNNING, or COMPLETED.
+- Agent identity, role, originating work-item ID, business unit, and action type are written to the audit chain. Agent submissions enter the same pending owner inbox as owner-created requests.
+- The route cannot approve requests or execute actions. The separate agent key must be provisioned securely by an owner/operator before agents can call it; no environment secret was set or changed.
+- This is an authenticated submission API, not yet automatic tool integration in the model worker. Agent prompts/tool schemas and a safe runtime client still need implementation.
+- Added static boundary tests. Tests remain unexecuted under the testing pause through 2026-12-01.
