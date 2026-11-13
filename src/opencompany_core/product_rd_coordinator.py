@@ -205,8 +205,6 @@ class ProductRDCoordinator:
         return True
 
     def _generate_outpost(self, workflow: dict, stats: dict[str, int]) -> bool:
-        import zipfile
-
         generated = generate_outpost_pack(str(workflow["id"]), self.artifact_root)
         refs = [item["download_url"] for item in generated["artifacts"]]
         self.repo.complete_stage(
