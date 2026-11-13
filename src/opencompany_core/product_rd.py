@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from datetime import datetime, timezone
 from threading import RLock
@@ -132,7 +133,7 @@ class ProductRDRepository:
                 "input": {"title": title, "brief": brief} if index == 0 else {},
                 "output": None, "artifact_refs": [],
                 "started_at": now if index == 0 else None,
-                "completed_at": None, "cost_estimate_usd": 0.0,
+                "completed_at": None, "cost_estimate_usd": 0.0, "cost_actual_usd": 0.0,
                 "evidence": [], "blockers": [],
             })
         workflow = {
@@ -241,6 +242,7 @@ class ProductRDRepository:
     def complete_stage(self, workflow_id: UUID | str, stage_key: str, *, output: str,
                        evidence: list[str], artifact_refs: list[str] | None = None,
                        qa_result: dict[str, Any] | None = None,
+                       cost_actual_usd: float = 0.0,
                        actor_id: str = "owner") -> dict[str, Any]:
         workflow = self._load(workflow_id)
         stage = next((s for s in workflow["stages"] if s["key"] == stage_key), None)
@@ -248,6 +250,14 @@ class ProductRDRepository:
             raise ProductRDError("Only the active stage can be completed.")
         if not output.strip() or len(output) > 12000:
             raise ProductRDError("Stage output is required (maximum 12000 characters).")
+        try:
+            actual_cost = float(cost_actual_usd)
+        except (TypeError, ValueError) as exc:
+            raise ProductRDError("Actual stage cost must be a finite USD amount.") from exc
+        if not math.isfinite(actual_cost) or actual_cost < 0:
+            raise ProductRDError("Actual stage cost must be a finite non-negative USD amount.")
+        if actual_cost > 0:
+            raise ProductRDError("Non-zero stage cost is blocked by the USD 0 product workflow ceiling.")
         if not evidence or len(evidence) > 30 or any(not isinstance(x,str) or not x.strip() for x in evidence):
             raise ProductRDError("Completion requires 1-30 evidence entries.")
         refs = artifact_refs or []
@@ -265,6 +275,7 @@ class ProductRDRepository:
                 stage["blockers"] = [str(x)[:1000] for x in qa_result["failed_checks"]]
                 stage["output"] = output
                 stage["evidence"] = evidence
+                stage["cost_actual_usd"] = actual_cost
                 stage["qa_result"] = qa_result
                 self._commit(str(workflow_id),workflow,action="product_rd.qa_failed",
                              actor_type="owner",actor_id=actor_id,details={"stage":stage_key,"qa_result":qa_result})
@@ -272,6 +283,7 @@ class ProductRDRepository:
             stage["qa_result"] = qa_result
         stage["status"], stage["output"] = "completed", output
         stage["artifact_refs"], stage["evidence"] = refs, evidence
+        stage["cost_actual_usd"] = actual_cost
         stage["completed_at"] = self._now()
         index = PRODUCT_STAGES.index(stage_key)
         if index == len(PRODUCT_STAGES)-1:
@@ -280,7 +292,8 @@ class ProductRDRepository:
             next_stage = workflow["stages"][index+1]
             next_stage["status"], next_stage["started_at"] = "in_progress", self._now()
         self._commit(str(workflow_id),workflow,action="product_rd.stage_completed",
-                     actor_type="owner",actor_id=actor_id,details={"stage":stage_key,"artifact_refs":refs})
+                     actor_type="owner",actor_id=actor_id,
+                     details={"stage":stage_key,"artifact_refs":refs,"cost_actual_usd":actual_cost})
         return self._load(workflow_id)
 
     def return_to_production(self, workflow_id: UUID | str, *, rationale: str,
@@ -293,7 +306,7 @@ class ProductRDRepository:
         for stage in workflow["stages"][PRODUCT_STAGES.index("artifact_generation"):]:
             stage.update(status="pending", output=None, artifact_refs=[], evidence=[],
                          blockers=[], started_at=None, completed_at=None,
-                         qa_result=None, work_item_id=None)
+                         qa_result=None, work_item_id=None, cost_actual_usd=0.0)
         production = workflow["stages"][PRODUCT_STAGES.index("artifact_generation")]
         production["status"], production["started_at"] = "in_progress", self._now()
         qa["rework_history"] = qa.get("rework_history", []) + [{"rationale":rationale[:2000],"returned_at":self._now()}]
