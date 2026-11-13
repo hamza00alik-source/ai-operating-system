@@ -250,6 +250,7 @@ def create_work_item_delegation_proposal(
             profile = next((agent for agent in profiles if agent.role_key == specialist.role_key and agent.team_key == specialist.team_key and agent.department == item.department), None)
             if (
                 profile is None
+                or profile.state != AgentState.ACTIVE
                 or profile.role_key != specialist.role_key
                 or profile.team_key != specialist.team_key
                 or profile.department != item.department
