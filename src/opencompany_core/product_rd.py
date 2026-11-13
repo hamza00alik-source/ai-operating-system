@@ -211,7 +211,7 @@ class ProductRDRepository:
         return workflow
 
     def attach_work_item(self, workflow_id: UUID | str, stage_key: str, work_item_id: str,
-                         *, actor_id: str = "owner") -> dict[str, Any]:
+                         *, actor_id: str = "owner", actor_type: str = "owner") -> dict[str, Any]:
         workflow = self._load(workflow_id)
         stage = next((s for s in workflow["stages"] if s["key"] == stage_key), None)
         if stage is None or stage["status"] != "in_progress":
@@ -220,7 +220,7 @@ class ProductRDRepository:
             raise ProductRDError("The active stage already has an assigned work item.")
         stage["work_item_id"] = work_item_id
         self._commit(str(workflow_id), workflow, action="product_rd.stage_work_item_attached",
-                     actor_type="owner", actor_id=actor_id,
+                     actor_type=actor_type, actor_id=actor_id,
                      details={"stage": stage_key, "work_item_id": work_item_id})
         return self._load(workflow_id)
 
@@ -243,7 +243,8 @@ class ProductRDRepository:
                        evidence: list[str], artifact_refs: list[str] | None = None,
                        qa_result: dict[str, Any] | None = None,
                        cost_actual_usd: float = 0.0,
-                       actor_id: str = "owner") -> dict[str, Any]:
+                       actor_id: str = "owner",
+                       actor_type: str = "owner") -> dict[str, Any]:
         workflow = self._load(workflow_id)
         stage = next((s for s in workflow["stages"] if s["key"] == stage_key), None)
         if stage is None or stage["status"] != "in_progress":
@@ -285,7 +286,7 @@ class ProductRDRepository:
                 stage["cost_actual_usd"] = actual_cost
                 stage["qa_result"] = qa_result
                 self._commit(str(workflow_id),workflow,action="product_rd.qa_failed",
-                             actor_type="owner",actor_id=actor_id,details={"stage":stage_key,"qa_result":qa_result,"cost_actual_usd":actual_cost})
+                             actor_type=actor_type,actor_id=actor_id,details={"stage":stage_key,"qa_result":qa_result,"cost_actual_usd":actual_cost})
                 return self._load(workflow_id)
             stage["qa_result"] = qa_result
         stage["status"], stage["output"] = "completed", output
@@ -299,7 +300,7 @@ class ProductRDRepository:
             next_stage = workflow["stages"][index+1]
             next_stage["status"], next_stage["started_at"] = "in_progress", self._now()
         self._commit(str(workflow_id),workflow,action="product_rd.stage_completed",
-                     actor_type="owner",actor_id=actor_id,
+                     actor_type=actor_type,actor_id=actor_id,
                      details={"stage":stage_key,"artifact_refs":refs,"cost_actual_usd":actual_cost})
         return self._load(workflow_id)
 
