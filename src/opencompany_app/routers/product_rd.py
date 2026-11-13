@@ -118,10 +118,12 @@ def delegate_product_stage(workflow_id: UUID,
     except LookupError as exc:
         raise HTTPException(status_code=409, detail="The assigned role does not match the canonical department catalogue.") from exc
 
+    completed_stages = [prior for prior in workflow["stages"] if prior["status"] == "completed"][-3:]
     prior_context = json.dumps([
-        {"stage": prior["key"], "output": prior.get("output"),
-         "evidence": prior.get("evidence", []), "artifact_refs": prior.get("artifact_refs", [])}
-        for prior in workflow["stages"] if prior["status"] == "completed"
+        {"stage": prior["key"], "output": (prior.get("output") or "")[:700],
+         "evidence": prior.get("evidence", [])[:4],
+         "artifact_refs": prior.get("artifact_refs", [])[:4]}
+        for prior in completed_stages
     ], ensure_ascii=False)[:3500]
     objective = (
         f"OpenCompany Product & R&D workflow {workflow_id}. Business unit: {workflow['business_id']}. "
