@@ -1,7 +1,7 @@
 """Deterministic, no-cost SVG product artifact generation and ZIP QA."""
 from __future__ import annotations
 import hashlib, json, math, re, shutil, tempfile, xml.etree.ElementTree as ET, zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import UUID
 
@@ -102,7 +102,14 @@ def inspect_outpost_pack(target: str | Path) -> dict[str, Any]:
             corrupt=bundle.testzip()
             if corrupt: failed.append(f"ZIP CRC failure: {corrupt}")
             else: passed.append("ZIP archive CRC integrity")
-            names=set(bundle.namelist())
+            entries=bundle.namelist()
+            names=set(entries)
+            if len(entries)!=len(names):
+                failed.append("ZIP contains duplicate file entries")
+            if any(PurePosixPath(name).is_absolute() or ".." in PurePosixPath(name).parts for name in entries):
+                failed.append("ZIP contains an unsafe path entry")
+            else:
+                passed.append("ZIP paths contain no absolute or traversal entries")
             required={"README.md","LICENSE-DRAFT.txt","manifest.json","preview.svg"}
             if required.issubset(names): passed.append("Required docs and preview exist")
             else: failed.append("Required package files are missing")
@@ -110,9 +117,14 @@ def inspect_outpost_pack(target: str | Path) -> dict[str, Any]:
             if len(icons)==30: passed.append("Exactly 30 individual SVG icons are present")
             else: failed.append(f"Expected 30 SVG icons; found {len(icons)}")
             manifest=json.loads(bundle.read("manifest.json"))
+            expected_files=set(manifest["files"])
+            if expected_files != names - {"manifest.json"}:
+                failed.append("Manifest file inventory does not match archive contents")
             for name,expected in manifest["files"].items():
-                if _sha(bundle.read(name))!=expected: failed.append(f"Manifest hash mismatch: {name}")
-            if not failed: passed.append("Manifest SHA-256 hashes match archived files")
+                if name not in names or _sha(bundle.read(name))!=expected:
+                    failed.append(f"Manifest hash mismatch: {name}")
+            if not any("Manifest" in failure for failure in failed):
+                passed.append("Manifest inventory and SHA-256 hashes match archived files")
             for name in [*icons,"preview.svg"]: ET.fromstring(bundle.read(name))
             passed.append("All SVG files parse as well-formed XML")
     except (OSError,zipfile.BadZipFile,KeyError,ValueError,ET.ParseError) as exc:
