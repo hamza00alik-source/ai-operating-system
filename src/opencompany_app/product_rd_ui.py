@@ -29,7 +29,7 @@ PRODUCT_RD_JS = r'''
       const stageLine=document.createElement("p");stageLine.textContent=active?"Active stage: "+active.key:(blocked?"Blocked at: "+blocked.key:"No active stage");card.append(stageLine);
       const stageList=document.createElement("p");stageList.className="muted";stageList.textContent=workflow.stages.map(s=>s.key.replaceAll("_"," ")+": "+s.status).join("  ·  ");card.append(stageList);
       const actions=document.createElement("div");actions.className="auth";
-      const actionButton=(label,fn)=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.addEventListener("click",async()=>{b.disabled=true;try{await fn();await loadProductRD();setMessage("Product & R&D workflow updated. No external action was performed.","success");}catch(e){setMessage(e.message,"error");b.disabled=false;}});actions.append(b);return b;};
+      const actionButton=(label,fn)=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.addEventListener("click",async()=>{b.disabled=true;try{await fn();await loadProductRD();setMessage("Product & R&D workflow updated. No external action was performed.","success");}catch(e){setMessage(e.message,"error");b.disabled=false;try{await loadProductRD();}catch{}}});actions.append(b);return b;};
       const addLink=(label,url)=>{const a=document.createElement("a");a.href=url;a.textContent=label;a.target="_blank";a.rel="noopener noreferrer";a.style.color="#9cc7ff";a.style.marginRight="12px";card.append(a);};
       if(active){
         if(["opportunity_brief","product_specification","production_plan","packaging","listing_packet","ceo_review"].includes(active.key)){
