@@ -234,7 +234,7 @@ class OpenCompanyWorker:
     def _extract_approval_requests(content: str) -> tuple[list[dict], str]:
         """Extract at most five allowlisted approval intents from one exact block."""
         pattern = re.compile(
-            r"<OPENCOMPANY_APPROVAL_REQUESTS>\\s*(\\[.*?\\])\\s*</OPENCOMPANY_APPROVAL_REQUESTS>",
+            r"<OPENCOMPANY_APPROVAL_REQUESTS>\s*(\[.*?\])\s*</OPENCOMPANY_APPROVAL_REQUESTS>",
             re.DOTALL,
         )
         matches = list(pattern.finditer(content))
