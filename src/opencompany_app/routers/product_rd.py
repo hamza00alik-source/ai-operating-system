@@ -1,6 +1,7 @@
 """Owner-authenticated Product & R&D workflow API and artifact delivery."""
 from __future__ import annotations
 
+import json
 import os
 import zipfile
 from datetime import datetime, timezone
@@ -117,18 +118,25 @@ def delegate_product_stage(workflow_id: UUID,
     except LookupError as exc:
         raise HTTPException(status_code=409, detail="The assigned role does not match the canonical department catalogue.") from exc
 
+    prior_context = json.dumps([
+        {"stage": prior["key"], "output": prior.get("output"),
+         "evidence": prior.get("evidence", []), "artifact_refs": prior.get("artifact_refs", [])}
+        for prior in workflow["stages"] if prior["status"] == "completed"
+    ], ensure_ascii=False)[:3500]
     objective = (
         f"OpenCompany Product & R&D workflow {workflow_id}. Business unit: {workflow['business_id']}. "
         f"Stage: {stage['key']}. Product: {workflow['title']}. "
-        f"Product brief: {workflow['brief']}. "
+        f"Product brief: {workflow['brief'][:6000]}. "
+        f"Prior completed-stage evidence and outputs (JSON excerpt): {prior_context}. "
         "Produce an internal, evidence-backed stage deliverable only. "
-        "Include method, findings, assumptions, acceptance criteria, limitations, and handoff. "
+        "Follow prior-stage acceptance criteria; include method, findings, assumptions, limitations, and handoff. "
+        "Distinguish sourced facts from assumptions and identify missing inputs. "
         "Do not create unsupported claims, contact customers, publish, purchase, spend, or change accounts. "
         "Use only confirmed zero-cost resources."
     )
     direct_ceo_assignment = role_key == "chief_executive_orchestrator"
     item = WorkItem(
-        id=uuid4(), title=f"Product R&D · {stage['key']} · {workflow['title']}",
+        id=uuid4(), title=f"Product R&D · {stage['key']} · {workflow['title']}"[:240],
         objective=objective, department=department, state=TaskState.DRAFT,
         assigned_agent_id=agent.id if direct_ceo_assignment else None,
         business_id=workflow["business_id"],
