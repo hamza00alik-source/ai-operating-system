@@ -67,7 +67,9 @@ Do not promise a connector until the provider's supported API, account eligibili
 - Business-scoped commercial opportunity, supplier, product, quote and order records.
 - Product & R&D nine-stage workflow with draft listing packet, artifact provenance, structural QA, and owner checkpoints.
 - Owner approval inbox and model-usage cost reporting.
-- No live storefront, marketplace publishing, payment verification, customer messaging, fulfilment or revenue ledger is currently proven operational.
+- Added schema-version-8 append-only financial event ledger, owner-verified event recording, business/order scope validation, source-reference idempotency, audit events, and per-business/per-currency summary endpoints.
+- Revenue classification is model-aware: physical agency recognizes commission only; physical brand and digital products recognize their own sales; cash receipts are shown separately and are not double-counted as revenue. The ledger records evidence supplied and verified by the owner; it does not connect to a payment provider or initiate transactions.
+- No live storefront, marketplace publishing, payment verification, customer messaging or automated fulfilment is currently proven operational.
 
 ### Required to complete
 
@@ -77,7 +79,7 @@ Do not promise a connector until the provider's supported API, account eligibili
 4. **Channel preparation:** platform-specific listing copy, images, keywords, compatibility, price rationale, fees, refund policy and fulfilment plan. Listing remains a draft until owner approval.
 5. **Inbound sales:** channel attribution, enquiry triage, qualification, response drafts, quote approval, order confirmation, customer status and escalation. No cold outreach.
 6. **Fulfilment:** digital download entitlement/version delivery or physical supplier/stock/dispatch coordination, with idempotent status transitions and failure handling.
-7. **Finance:** separate revenue, commission, supplier payable, fees, taxes, refunds, chargebacks, cost of goods, fulfilment cost and net contribution by business and currency. Reconcile against provider statements; never infer revenue from an order record alone.
+7. **Finance:** extend the newly added owner-verified, append-only ledger to reconcile separate revenue, commission, supplier payable, fees, taxes, refunds, chargebacks, cost of goods, fulfilment cost and net contribution against provider statements; add provider webhook ingestion only after secure read-only adapters exist. Never infer revenue from an order record alone.
 8. **Feedback loop:** returns/refunds, support tickets, reviews, conversion, margin and product defects feed owner-reviewed product and marketing improvements.
 
 Business-model-specific rules:
@@ -85,7 +87,7 @@ Business-model-specific rules:
 - `physical-brand`: track the owner's brand sales, inventory/production costs, fulfilment, returns and margin independently.
 - `digital-products`: track platform fees, refunds, taxes, licences, versions, download entitlement and support independently.
 
-**Acceptance evidence:** one fully reconciled synthetic order per business model; correct gross/net/commission accounting; refund and cancellation path; duplicate webhook protection; fulfilment retry; owner approval at all protected boundaries; no real customer data in tests.
+**Acceptance evidence:** ledger tests for model-specific revenue classification, per-business/per-currency isolation, duplicate source-reference rejection and order scope; then one fully reconciled synthetic order per business model; refund and cancellation path; duplicate webhook protection; fulfilment retry; owner approval at all protected boundaries; no real customer data in tests.
 
 ## 4. Production readiness
 
