@@ -76,3 +76,14 @@ Before merge or production use, run the approved test suite after the testing pa
 - Owner-review/empty-team proposals are shown as clarification blockers and cannot be approved through the dashboard. The approval action is shown only when a concrete child-task proposal exists.
 - The UI explicitly explains that approval materializes READY delegation tasks but does not run agents or publish anything. Existing API approval-time profile checks remain authoritative.
 - Added static UI assertions. Tests remain unexecuted during the owner's testing pause through 2026-12-01; no browser/runtime validation was performed.
+
+
+## Company-wide owner approval inbox — 2026-11-13
+
+- Added a mobile-friendly approval inbox to the owner dashboard with an all-business view and per-business filter.
+- Aggregates pending manager delegation proposals, work-item deliverable reviews, Product & R&D human-preview checkpoints, and Product & R&D CEO-review checkpoints from the existing owner-authenticated read routes.
+- Concrete manager proposals can be approved from the inbox through the existing delegation-proposal approval endpoint. Owner-review/empty-team proposals remain blocked and are not offered an approval action.
+- Deliverables can be opened and approved or returned for revision through the existing work-item deliverable and review endpoints. The inbox does not introduce a parallel approval implementation.
+- Product & R&D checkpoints link back to the existing studio controls; the studio remains the place to inspect artifacts/evidence and complete its established owner review.
+- Payment, purchasing, customer-message, publishing, production-change, credential-change, and other external-action requests are explicitly marked as not yet connected. The inbox does not create or execute those actions.
+- Added static UI safeguard tests. Tests remain unexecuted under the owner's testing pause through 2026-12-01; no browser/runtime validation was performed.
