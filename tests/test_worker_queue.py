@@ -446,3 +446,27 @@ def test_execution_history_is_secret_free_and_ordered(tmp_path):
     assert "payload_json" not in history[0]
     queue.close()
 
+def test_queue_health_reports_age_expired_leases_and_dead_letters_without_secrets(tmp_path):
+    queue = DurableWorkerQueue(
+        tmp_path / "queue-health.sqlite3", lease_seconds=10, max_attempts=1
+    )
+    agent = uuid4()
+    leased_work, queued_work = uuid4(), uuid4()
+    queue.enqueue(leased_work, agent, {"private": "never-return-this"})
+    queue.enqueue(queued_work, agent, {})
+    lease = queue.claim(agent)
+    assert lease is not None
+    queue.fail(lease, "provider_timeout")
+    # Exhaust the first task to create a dead-letter entry.
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+    second_lease = queue.claim(agent, now=retry_at)
+    assert second_lease is not None
+    queue.fail(second_lease, "provider_timeout")
+
+    snapshot = queue.health_snapshot(now=retry_at + timedelta(seconds=11))
+    assert snapshot["dead_letter_count"] == 1
+    assert snapshot["queued_oldest_age_seconds"] >= 10
+    assert "lease_token" not in snapshot
+    assert "payload_json" not in snapshot
+    queue.close()
+
