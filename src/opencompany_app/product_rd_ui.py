@@ -108,7 +108,7 @@ PRODUCT_RD_JS = r'''
             const unavailable=document.createElement("p");unavailable.className="warn";unavailable.textContent="No deterministic artifact generator is configured for this product yet. The OUTPOST prototype generator is the only current pilot.";card.append(unavailable);
           }
         }else if(active.key==="human_preview"){
-          actionButton("Confirm human preview review",async()=>{await request("/product-rd/workflows/"+workflow.id+"/stages/human_preview/complete",{method:"POST",body:JSON.stringify({output:"Owner reviewed the generated SVG contact sheet. This is a human visual checkpoint, not engine or legal approval.",evidence:["Owner visually inspected the preview contact sheet."]})});});
+          actionButton("Confirm human preview review",async()=>{await request("/product-rd/workflows/"+workflow.id+"/stages/human_preview/complete",{method:"POST",body:JSON.stringify({output:"Owner reviewed the generated SVG contact sheet. This is a human visual checkpoint, not engine or legal approval.",evidence:["Owner visually inspected the preview contact sheet."],artifact_refs:["/product-rd/workflows/"+workflow.id+"/artifacts/preview.svg"]})});});
           addLink("Open SVG preview","/product-rd/workflows/"+workflow.id+"/artifacts/preview.svg");
         }
       }
