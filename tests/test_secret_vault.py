@@ -67,3 +67,44 @@ def test_provider_secret_vault_requires_dedicated_encryption_key(monkeypatch):
     vault = ProviderSecretVault(_database(), __import__("threading").RLock())
     with pytest.raises(SecretVaultError, match="OPENCOMPANY_SECRET_ENCRYPTION_KEY"):
         vault.put("unorouter", {"api_key": "private-token", "model": "model:free"})
+
+
+def test_woocommerce_credentials_are_encrypted_and_isolated_per_business(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "encryption-key-for-tests-at-least-32")
+    db = _database()
+    vault = ProviderSecretVault(db, __import__("threading").RLock())
+    agency = {
+        "store_url": "https://agency.example.com",
+        "consumer_key": "ck_agencyprivate123",
+        "consumer_secret": "cs_agencyprivate123",
+    }
+    brand = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    assert vault.put("woocommerce:physical-agency", agency) == 1
+    assert vault.put("woocommerce:physical-brand", brand) == 1
+    rows = db.execute("SELECT provider,nonce,ciphertext FROM provider_secrets ORDER BY provider").fetchall()
+    assert len(rows) == 2
+    assert b"agencyprivate" not in bytes(rows[0]["ciphertext"])
+    assert b"brandprivate" not in bytes(rows[1]["ciphertext"])
+    assert vault.get("woocommerce:physical-agency") == agency
+    assert vault.get("woocommerce:physical-brand") == brand
+    assert vault.delete("woocommerce:physical-agency") is True
+    assert vault.get("woocommerce:physical-agency") is None
+    assert vault.get("woocommerce:physical-brand") == brand
+
+
+def test_woocommerce_vault_rejects_unknown_business_or_extra_secret_fields(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "encryption-key-for-tests-at-least-32")
+    vault = ProviderSecretVault(_database(), __import__("threading").RLock())
+    payload = {
+        "store_url": "https://shop.example.com",
+        "consumer_key": "ck_testprivate123",
+        "consumer_secret": "cs_testprivate123",
+    }
+    with pytest.raises(ValueError, match="unsupported provider"):
+        vault.put("woocommerce:core", payload)
+    with pytest.raises(ValueError, match="unsupported fields"):
+        vault.put("woocommerce:physical-brand", {**payload, "unexpected": "value"})
