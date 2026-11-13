@@ -45,6 +45,7 @@ class OpenCompanyRuntime:
     secret_vault: ProviderSecretVault
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
+    product_rd_auto_proposals_enabled: bool = False
     unorouter_tested_at: str | None = None
     github_evolution_tested_at: str | None = None
 
@@ -231,7 +232,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     product_rd_automation_enabled = os.environ.get(
         "OPENCOMPANY_PRODUCT_RD_AUTOMATION", "false"
     ).strip().casefold() in {"1", "true", "yes", "on"}
-    product_rd_auto_proposals_enabled = os.environ.get(
+    product_rd_auto_proposals_enabled = product_rd_automation_enabled and os.environ.get(
         "OPENCOMPANY_PRODUCT_RD_AUTO_PROPOSALS", "false"
     ).strip().casefold() in {"1", "true", "yes", "on"}
     product_rd_coordinator = ProductRDCoordinator(
@@ -254,6 +255,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         secret_vault=secret_vault,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
+        product_rd_auto_proposals_enabled=product_rd_auto_proposals_enabled,
     )
     # Runtime construction stays inert. For dashboard-managed credentials,
     # workers start only after the owner runs a successful provider test in
