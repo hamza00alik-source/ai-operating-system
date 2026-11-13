@@ -2222,6 +2222,11 @@ def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to
     rejected = owner_client.post("/commercial/financial-events", json=unverified)
     assert rejected.status_code == 422
 
+    blank_evidence = dict(payload, source_reference="synthetic-blank-evidence",
+                          evidence_reference="   ")
+    rejected = owner_client.post("/commercial/financial-events", json=blank_evidence)
+    assert rejected.status_code == 422
+
 def test_production_readiness_endpoint_is_owner_only_and_never_authorizes_cutover(owner_client):
     unauthorized = client.get("/owner/production-readiness")
     assert unauthorized.status_code in {401, 403}
