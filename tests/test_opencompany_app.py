@@ -554,8 +554,8 @@ def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_c
 def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
-    assert owner_client.post("/agents/bootstrap-specialists", headers=headers)
-    _activate_department_profiles(owner_client, headers, "intelligence-research").status_code == 200
+    assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Assess market demand",
         "objective": "Prepare a sourced market-demand assessment",
