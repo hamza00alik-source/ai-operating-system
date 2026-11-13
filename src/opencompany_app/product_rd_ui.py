@@ -53,10 +53,14 @@ PRODUCT_RD_JS = r'''
                   await request("/work-items/"+item.id+"/manager-proposal",{method:"POST",body:JSON.stringify({max_specialists:5})});
                 });
               }else{
-                const summary=document.createElement("p");summary.textContent="Manager proposal: "+draftProposal.mode+" · "+draftProposal.children.length+" proposed specialist task(s). Owner approval is required.";card.append(summary);
-                actionButton("Approve manager's team proposal",async()=>{
-                  await request("/work-items/"+item.id+"/delegation-proposals/"+draftProposal.id+"/approve",{method:"POST",body:"{}"});
-                });
+                const summary=document.createElement("p");summary.textContent="Manager proposal: "+draftProposal.mode+" · "+draftProposal.children.length+" proposed specialist task(s).";card.append(summary);
+                if(draftProposal.mode==="owner_review"||!draftProposal.children.length){
+                  const blockedPlan=document.createElement("p");blockedPlan.className="warn";blockedPlan.textContent="The manager could not safely form a complete team. Improve the brief or resolve missing role profiles before continuing.";card.append(blockedPlan);
+                }else{
+                  actionButton("Approve manager's team proposal",async()=>{
+                    await request("/work-items/"+item.id+"/delegation-proposals/"+draftProposal.id+"/approve",{method:"POST",body:"{}"});
+                  });
+                }
               }
             }else if(item.state==="draft"&&item.assigned_agent_id){
               actionButton("Approve, enqueue & run CEO review once",async()=>{await runOnce(item);});
