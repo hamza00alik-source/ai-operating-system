@@ -44,3 +44,15 @@ Before merge or production use, run the approved test suite after the testing pa
 - Corrected Product & R&D stage delegation to validate each role against its canonical team: department managers use the management team, the CEO uses executive, and specialist roles use their workforce-catalogue team. This avoids incorrectly requiring every non-CEO role to belong to management.
 - Corrected stage synchronization for specialist-owned work: the completed stage parent may be authored by the canonical department manager after owner-approved specialist prerequisites, and sync now revalidates those same-business completed prerequisites and persisted deliverables. Direct assignment to the stage owner remains valid.
 - This is a static code correction only. The test pause remains in force; no tests or runtime execution were performed.
+
+
+## Opt-in background coordinator — 2026-11-13
+
+- Added `ProductRDCoordinator`, invoked by one worker-fleet thread at a bounded interval when `OPENCOMPANY_PRODUCT_RD_AUTOMATION=true`. The default is disabled.
+- The coordinator can create the next stage's internal DRAFT work item when its canonical role profile is explicitly ACTIVE and correctly assigned. It never approves the manager's delegation proposal, changes the work item to READY, admits it to the queue, or starts inference.
+- It can synchronize a stage only after its attached work item is COMPLETED through the existing owner-review lifecycle, with a persisted deliverable and validated business, role, team, manager-synthesis dependencies, and zero actual cost.
+- It can generate the OUTPOST local SVG prototype and run deterministic QA automatically when that exact pilot reaches artifact generation. This uses local deterministic code only; failed QA blocks the workflow as before. Human preview remains a hard owner checkpoint.
+- Automated stage/work-item audit events identify the system coordinator rather than impersonating the owner.
+- Worker status exposes whether maintenance is configured and the number of successful/failed maintenance cycles.
+- This is opt-in and inactive by default. It only runs while the owner-started worker fleet is running (which still requires a successful owner-triggered zero-cost provider test). No paid calls, automatic delegation approval, queue admission, owner deliverable approval, external actions, or publishing were added.
+- Static implementation only: no tests or runtime execution were performed under the testing pause.
