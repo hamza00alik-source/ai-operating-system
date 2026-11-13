@@ -105,17 +105,22 @@ def delegate_product_stage(workflow_id: UUID,
     if agent is None:
         raise HTTPException(status_code=409,
             detail=f"Required role {role_key} is not provisioned and ACTIVE. Provision and activate it before delegation.")
-    expected_team = "executive" if role_key == "chief_executive_orchestrator" else "management"
-    if agent.team_key != expected_team:
-        raise HTTPException(status_code=409, detail="The active agent profile has an invalid team assignment for this role.")
     if stage.get("work_item_id"):
         raise HTTPException(status_code=409, detail="This stage already has an assigned work item.")
     department = agent.department
     try:
         from opencompany_core.organization import default_organization
+        from opencompany_core.workforce import default_workforce
         spec = default_organization().get(department)
         if role_key not in spec.role_keys:
             raise LookupError("role is not part of its declared department")
+        expected_team = (
+            "executive" if role_key == "chief_executive_orchestrator"
+            else "management" if role_key == spec.manager_role_key
+            else default_workforce().get(role_key).team_key
+        )
+        if agent.team_key != expected_team:
+            raise HTTPException(status_code=409, detail="The active agent profile has an invalid team assignment for this role.")
     except LookupError as exc:
         raise HTTPException(status_code=409, detail="The assigned role does not match the canonical department catalogue.") from exc
 
