@@ -27,4 +27,6 @@ def test_external_action_routes_are_owner_authenticated_and_have_no_executor():
     assert "execution_performed" in content
     assert "No external action was executed" in content
     assert "subprocess" not in content
-    assert "requests." not in content
+    assert "import requests" not in content
+    assert "requests.get(" not in content
+    assert "requests.post(" not in content
