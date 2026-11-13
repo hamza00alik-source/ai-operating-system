@@ -7,7 +7,7 @@ This document distinguishes committed implementation from runtime verification. 
 - Owner-authenticated Product & R&D workflow endpoints for create, list, detail, stage delegation, stage synchronization, human preview confirmation, QA rework, and internal owner review.
 - Nine ordered stages: opportunity brief, product specification, production plan, artifact generation, automated QA, human preview, packaging, listing packet, and CEO review.
 - Workflow records are bound to one commercial business unit and have a database-enforced USD 0 ceiling and external-actions-disabled flag.
-- Product planning stages create normal OpenCompany work items in the same business scope.
+- Product stages create normal OpenCompany work items in the same business scope. Opportunity research routes to Intelligence & Research, specification/production/packaging to Product & Innovation, listing preparation to Revenue & Partnerships, and final executive review to the CEO role.
 - Manager stages use the existing AI manager-planning and delegation-proposal flow. The owner must approve the proposal before child tasks are materialized. Specialist work is separately queued and reviewed through the existing lifecycle.
 - CEO review uses the existing CEO profile and owner-reviewed work-item deliverable path.
 - A stage can be synchronized only from a completed, owner-reviewed work item and its persisted deliverable.
