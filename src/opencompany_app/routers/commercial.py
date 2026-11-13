@@ -17,6 +17,7 @@ from opencompany_app.api_schemas import (
     CommercialQuoteDecisionInput,
     CommercialOrderStatusInput,
     CommercialOrderInput,
+    CommercialFinancialEventInput,
 )
 from opencompany_app.api_dependencies import get_store, require_owner_key
 
@@ -392,4 +393,85 @@ def update_commercial_supplier_status(
     return {"supplier_id": str(supplier_id), "status": payload.status,
             "external_contact_made": False, "purchase_or_commitment_created": False}
 
+@router.post("/commercial/financial-events", dependencies=[Depends(require_owner_key)])
+def record_commercial_financial_event(
+    payload: CommercialFinancialEventInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    """Record owner-verified accounting evidence; this endpoint never moves money."""
+    allowed_by_business = {
+        "physical-agency": {"agency_commission", "supplier_payable", "platform_fee", "tax",
+                            "refund", "chargeback", "fulfillment_cost", "payment_received",
+                            "payment_refund"},
+        "physical-brand": {"sales_revenue", "supplier_payable", "cost_of_goods", "platform_fee",
+                           "tax", "refund", "chargeback", "fulfillment_cost", "payment_received",
+                           "payment_refund"},
+        "digital-products": {"sales_revenue", "cost_of_goods", "platform_fee", "tax", "refund",
+                             "chargeback", "fulfillment_cost", "payment_received", "payment_refund"},
+    }
+    if payload.business_id not in allowed_by_business:
+        raise HTTPException(status_code=422, detail="Select exactly one commercial business unit.")
+    if payload.event_type not in allowed_by_business[payload.business_id]:
+        raise HTTPException(status_code=422, detail="Financial event type is not valid for this business model.")
+    currency = payload.currency.upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise HTTPException(status_code=422, detail="Currency must be a three-letter ISO code.")
+    if payload.owner_verified is not True:
+        raise HTTPException(status_code=422, detail="Owner verification of the source evidence is required.")
+    if payload.occurred_at.tzinfo is None or payload.occurred_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="Event time must include a timezone.")
+    event_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event = {
+        "id": event_id, "business_id": payload.business_id,
+        "order_id": str(payload.order_id) if payload.order_id else None,
+        "event_type": payload.event_type, "amount_minor": payload.amount_minor,
+        "currency": currency, "source_reference": payload.source_reference.strip(),
+        "evidence_reference": payload.evidence_reference.strip(), "note": payload.note.strip(),
+        "occurred_at": payload.occurred_at.astimezone(timezone.utc).isoformat(),
+    }
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="owner", actor_id="owner",
+        action="commercial.financial_event_recorded",
+        subject_type="commercial_financial_event", subject_id=event_id,
+        outcome="owner_verified_reference_recorded", correlation_id=str(uuid4()),
+        details={"business_id": payload.business_id, "event_type": payload.event_type,
+                 "currency": currency, "amount_minor": payload.amount_minor,
+                 "order_id": event["order_id"], "payment_initiated": False,
+                 "owner_verified": True},
+    )
+    try:
+        return store.record_financial_event(event, audit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        if "UNIQUE constraint failed" in str(exc):
+            raise HTTPException(status_code=409, detail="This source reference was already recorded for this business and event type.") from exc
+        raise
+
+
+@router.get("/commercial/financial-events", dependencies=[Depends(require_owner_key)])
+def list_commercial_financial_events(
+    business_id: str | None = None, currency: str | None = None,
+    store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        events = store.list_financial_events(business_id=business_id, currency=currency)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(events), "events": list(events), "payment_initiated": False}
+
+
+@router.get("/commercial/financial-summary", dependencies=[Depends(require_owner_key)])
+def commercial_financial_summary(
+    business_id: str | None = None, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        summaries = store.financial_summary(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "count": len(summaries), "summaries": list(summaries),
+        "currency_conversion_performed": False,
+        "note": "Totals are grouped by business and currency. Payment receipts are cash movements, not recognized revenue.",
+    }
 
