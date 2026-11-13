@@ -56,7 +56,7 @@ Every stage must record its responsible role/agent, status, start/completion tim
 
 ## Pilot: OUTPOST Sci-Fi Survival UI Icon Pack
 
-The repository tree on the current OpenCompany branch does not contain the referenced OUTPOST source package. Do not claim that the existing package has been inspected or validated. First locate the original files in an accessible repository/library attachment or create a new original pilot from a documented brief. If the source is unavailable, record that as a blocker and request only the missing source or permission to create a clean replacement.
+The repository tree on the current OpenCompany branch does not contain the referenced OUTPOST source package. A Library search found the unpublished listing draft and business notes, but not the claimed SVG/PNG archive or preview files. The listing draft describes an intended inventory of 30 SVGs, 30 icons exported at 512/256/128 px, a 6×5 atlas, dark/light previews, a manifest, and import notes; these are draft claims, not verified files. Do not claim that the existing package has been inspected or validated. First locate the original files in an accessible repository/library attachment or create a new original pilot from a documented brief. If the source is unavailable, record that as a blocker and request only the missing source or permission to create a clean replacement.
 
 The pilot's completion report must separate:
 - generated files and reproducible hashes;
