@@ -50,7 +50,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
   </section>
   <section class="panel">
     <div class="row">
-      <div><h2 class="section-title compact">Company agent profiles</h2><p class="muted">CEO, managers and specialists are created as drafts; provisioning does not start workers.</p></div>
+      <div><h2 class="section-title compact">Company agent profiles</h2><p class="muted">Provisioning creates drafts. Activate an individual, team, or department when ready; activation does not queue tasks or start workers.</p></div>
       <div class="auth"><button id="provision-executive" disabled>Provision CEO</button><button id="provision" disabled>Provision managers</button><button id="provision-specialists" disabled>Provision 500 specialists</button></div>
     </div>
     <div id="agents" class="list"><p class="muted">Connect to view manager profiles.</p></div>
@@ -96,7 +96,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     <div class="auth worker-actions"><button id="start-workers" disabled>Start worker fleet</button><button id="stop-workers" disabled>Stop worker fleet</button></div>
     <div id="work-items" class="list"><p class="muted">Connect to view work items.</p></div>
   </section>
-  <p class="muted console-footer">This console does not publish content, contact customers, spend money, deploy production, or activate agents. Protected actions remain owner-gated.</p>
+  <p class="muted console-footer">This console does not publish content, contact customers, spend money, or deploy production. Agent activation, task admission, and worker startup remain owner-gated.</p>
 </main>
 <script>
 (() => {
@@ -171,7 +171,42 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         byId("learning-proposals").append(card);
       });
       clear("departments","No departments returned.");
-      org.departments.forEach(d=>addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)"));
+      org.departments.forEach(d=>{
+        addCard(byId("departments"),d.name,d.mission,d.role_keys.length+" role assignment(s)");
+        const departmentCard=byId("departments").lastElementChild;
+        const draftProfiles=agents.agents.filter(a=>a.department===d.key && a.state==="draft");
+        if(!draftProfiles.length)return;
+        const departmentButton=document.createElement("button");
+        departmentButton.textContent="Activate all "+draftProfiles.length+" draft profile(s) in department";
+        departmentButton.addEventListener("click",async()=>{
+          departmentButton.disabled=true;
+          try{
+            const result=await request("/agents/activate",{method:"POST",body:JSON.stringify({department:d.key})});
+            setMessage(result.activated_count+" profiles activated in "+d.name+". Workers were not started and no tasks were queued.","success");
+            await load();
+          }catch(error){setMessage(error.message,"error");departmentButton.disabled=false;}
+        });
+        departmentCard.append(departmentButton);
+        const byTeam=new Map();
+        draftProfiles.forEach(profile=>{
+          if(!byTeam.has(profile.team_key))byTeam.set(profile.team_key,[]);
+          byTeam.get(profile.team_key).push(profile);
+        });
+        byTeam.forEach((profiles,teamKey)=>{
+          const teamButton=document.createElement("button");
+          teamButton.style.margin="8px 6px 0 0";
+          teamButton.textContent="Activate "+teamKey+" ("+profiles.length+")";
+          teamButton.addEventListener("click",async()=>{
+            teamButton.disabled=true;
+            try{
+              const result=await request("/agents/activate",{method:"POST",body:JSON.stringify({department:d.key,team_key:teamKey})});
+              setMessage(result.activated_count+" profiles activated in "+d.name+" / "+teamKey+". Workers were not started.","success");
+              await load();
+            }catch(error){setMessage(error.message,"error");teamButton.disabled=false;}
+          });
+          departmentCard.append(teamButton);
+        });
+      });
       clear("agents","No agent profiles yet. Provision the CEO, managers and specialists first.");
       agents.agents.forEach(a=>{
         const card=document.createElement("article");card.className="item";
