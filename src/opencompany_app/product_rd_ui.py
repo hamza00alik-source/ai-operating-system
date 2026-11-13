@@ -23,7 +23,8 @@ PRODUCT_RD_JS = r'''
     for(const workflow of result.workflows){
       const card=document.createElement("article");card.className="item";
       const heading=document.createElement("h3");heading.textContent=workflow.title;card.append(heading);
-      const meta=document.createElement("p");meta.textContent=workflow.business_id+" · "+workflow.status+" · cost ceiling USD "+workflow.cost_ceiling_usd;card.append(meta);
+      const actualCost=workflow.stages.reduce((sum,s)=>sum+(Number(s.cost_actual_usd)||0),0);
+      const meta=document.createElement("p");meta.textContent=workflow.business_id+" · "+workflow.status+" · cost ceiling USD "+workflow.cost_ceiling_usd+" · actual USD "+actualCost.toFixed(6);card.append(meta);
       const active=workflow.stages.find(s=>s.status==="in_progress");
       const blocked=workflow.stages.find(s=>s.status==="blocked");
       const stageLine=document.createElement("p");stageLine.textContent=active?"Active stage: "+active.key:(blocked?"Blocked at: "+blocked.key:"No active stage");card.append(stageLine);
