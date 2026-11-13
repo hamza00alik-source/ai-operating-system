@@ -38,26 +38,55 @@ PRODUCT_RD_JS = r'''
           }else{
             const wi=await request("/work-items/"+active.work_item_id+"/workflow");
             const item=wi.work_item;
-            const task=document.createElement("p");task.textContent="Assigned task: "+item.id+" · "+item.state+" · agent "+(item.assigned_agent_id||"unassigned");card.append(task);
-            if(item.state==="draft"){
-              actionButton("Approve, enqueue & run once",async()=>{
-                await request("/work-items/"+item.id+"/transition",{method:"POST",body:JSON.stringify({target_state:"ready"})});
-                await request("/work-items/"+item.id+"/enqueue",{method:"POST",body:"{}"});
-                await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});
-              });
-            }else if(item.state==="ready"){
-              actionButton("Enqueue & run agent once",async()=>{
-                await request("/work-items/"+item.id+"/enqueue",{method:"POST",body:"{}"});
-                await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});
-              });
+            const task=document.createElement("p");task.textContent="Stage task: "+item.id+" · "+item.state+" · "+(item.assigned_agent_id||"awaiting team assignment");card.append(task);
+            const proposals=wi.delegation_proposals||[];
+            const draftProposal=proposals.find(p=>p.status==="draft");
+            const approvedProposal=proposals.find(p=>p.status==="approved");
+            const runOnce=async(workItem)=>{
+              if(workItem.state==="draft")await request("/work-items/"+workItem.id+"/transition",{method:"POST",body:JSON.stringify({target_state:"ready"})});
+              if(workItem.state==="draft"||workItem.state==="ready")await request("/work-items/"+workItem.id+"/enqueue",{method:"POST",body:"{}"});
+              await request("/workers/"+workItem.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});
+            };
+            if(item.state==="draft"&&!item.assigned_agent_id){
+              if(!draftProposal){
+                actionButton("Ask department manager to plan specialist team",async()=>{
+                  await request("/work-items/"+item.id+"/manager-proposal",{method:"POST",body:JSON.stringify({max_specialists:5})});
+                });
+              }else{
+                const summary=document.createElement("p");summary.textContent="Manager proposal: "+draftProposal.mode+" · "+draftProposal.children.length+" proposed specialist task(s). Owner approval is required.";card.append(summary);
+                actionButton("Approve manager's team proposal",async()=>{
+                  await request("/work-items/"+item.id+"/delegation-proposals/"+draftProposal.id+"/approve",{method:"POST",body:"{}"});
+                });
+              }
+            }else if(item.state==="draft"&&item.assigned_agent_id){
+              actionButton("Approve, enqueue & run CEO review once",async()=>{await runOnce(item);});
+            }
+            const children=wi.child_work_items||[];
+            for(const child of children){
+              const childLine=document.createElement("p");childLine.textContent="Team task: "+child.title+" · "+child.state+" · "+child.role_key;card.append(childLine);
+              if(child.state==="ready"){
+                actionButton("Run specialist: "+child.role_key,async()=>{await runOnce(child);});
+              }else if(child.state==="queued"){
+                actionButton("Run queued specialist: "+child.role_key,async()=>{await request("/workers/"+child.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});});
+              }else if(child.state==="review"){
+                actionButton("Approve specialist: "+child.role_key,async()=>{await request("/work-items/"+child.id+"/review",{method:"POST",body:JSON.stringify({approved:true,rationale:"Owner reviewed this internal Product & R&D specialist deliverable."})});});
+              }
+            }
+            if(item.state==="ready"){
+              const allChildrenDone=children.length>0&&children.every(child=>child.state==="completed");
+              if(item.depends_on.length===0||allChildrenDone){
+                actionButton("Enqueue & run stage manager once",async()=>{await runOnce(item);});
+              }else{
+                const waiting=document.createElement("p");waiting.className="muted";waiting.textContent="Manager synthesis waits for every specialist deliverable to be owner-approved.";card.append(waiting);
+              }
             }else if(item.state==="queued"){
-              actionButton("Run agent once",async()=>{await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});});
+              actionButton("Run stage manager once",async()=>{await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});});
             }else if(item.state==="review"){
-              actionButton("Approve agent deliverable",async()=>{await request("/work-items/"+item.id+"/review",{method:"POST",body:JSON.stringify({approved:true,rationale:"Owner reviewed the internal Product & R&D stage deliverable."})});});
+              actionButton("Approve stage manager deliverable",async()=>{await request("/work-items/"+item.id+"/review",{method:"POST",body:JSON.stringify({approved:true,rationale:"Owner reviewed the internal Product & R&D stage deliverable."})});});
             }else if(item.state==="completed"){
               actionButton("Sync approved deliverable to stage",async()=>{await request("/product-rd/workflows/"+workflow.id+"/sync-stage",{method:"POST",body:"{}"});});
-            }else{
-              const status=document.createElement("p");status.className="muted";status.textContent="Agent task state: "+item.state+". Check Work queue for the next owner-controlled action.";card.append(status);
+            }else if(item.state==="in_progress"){
+              const status=document.createElement("p");status.className="muted";status.textContent="Agent execution is in progress. Refresh after the worker finishes.";card.append(status);
             }
           }
         }else if(active.key==="artifact_generation"){
