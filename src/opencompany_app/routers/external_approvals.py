@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.external_approval_service import record_agent_approval_requests
 from opencompany_app.api_dependencies import get_store, require_owner_key
 
 router = APIRouter()
@@ -121,62 +122,6 @@ def create_external_approval(
 class AgentExternalApprovalCreateInput(ExternalApprovalCreateInput):
     requesting_agent_id: UUID
     originating_work_item_id: UUID
-
-
-def record_agent_approval_requests(store: SQLiteStore, agent_id: UUID, item, requests: list[dict], *, allowed_states=None) -> list[dict]:
-    """Persist model-originated approval intents using trusted worker identity."""
-    agent = store.get_agent(agent_id)
-    current_item = store.get_work_item(item.id)
-    if agent is None or agent.state != AgentState.ACTIVE:
-        raise ValueError("requesting agent is not active")
-    permitted_states = allowed_states or {TaskState.IN_PROGRESS}
-    if (current_item is None or current_item.business_id != item.business_id
-            or current_item.assigned_agent_id != agent.id
-            or current_item.state not in permitted_states):
-        raise ValueError("agent is not the active assignee of this in-progress work item")
-    _ensure_table(store)
-    recorded = []
-    for index, request in enumerate(requests):
-        action = request["action_type"]
-        if action not in ACTION_TYPES:
-            continue
-        amount, currency = request.get("estimated_amount_minor"), request.get("currency")
-        if (amount is None) != (currency is None):
-            continue
-        if currency and not re.fullmatch(r"[A-Za-z]{3}", currency):
-            continue
-        request_id = str(uuid5(
-            NAMESPACE_URL,
-            f"opencompany:agent-approval:{item.id}:{index}:{json.dumps(request, sort_keys=True)}",
-        ))
-        now = datetime.now(timezone.utc)
-        requested_by = f"agent:{agent.id}:role:{agent.role_key}:work_item:{item.id}"
-        with store._lock:
-            exists = store._connection.execute(
-                "SELECT id FROM external_action_approvals WHERE id=?", (request_id,)
-            ).fetchone()
-            if exists is None:
-                store._connection.execute(
-                    """INSERT INTO external_action_approvals
-                       (id,business_id,action_type,title,description,target_reference,requested_by,
-                        estimated_amount_minor,currency,status,requested_at)
-                       VALUES(?,?,?,?,?,?,?,?,?,'pending',?)""",
-                    (request_id, item.business_id, action, request["title"].strip(),
-                     request["description"].strip(), request.get("target_reference"), requested_by,
-                     amount, currency.upper() if currency else None, now.isoformat()),
-                )
-                store.append_audit_record(AuditRecord(
-                    id=uuid4(), occurred_at=now, actor_type="agent", actor_id=str(agent.id),
-                    action="external_approval.agent_requested",
-                    subject_type="external_action_approval", subject_id=request_id,
-                    outcome="pending", correlation_id=str(item.id),
-                    details={"business_id": item.business_id, "action_type": action,
-                             "work_item_id": str(item.id), "role_key": agent.role_key,
-                             "execution_performed": False},
-                ))
-        recorded.append({"request_id": request_id, "status": "pending",
-                         "execution_performed": False})
-    return recorded
 
 
 @router.post("/internal/agent-approval-requests")
