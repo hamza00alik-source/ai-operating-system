@@ -118,8 +118,17 @@ class ProductRDRepository:
             stages.append({
                 "key": key,
                 "status": "in_progress" if index == 0 else "pending",
-                "owner_role": ("chief_executive_orchestrator" if key == "ceo_review"
-                               else "product_planning_lead"),
+                "owner_role": {
+                    "opportunity_brief": "market_intelligence_analyst",
+                    "product_specification": "product_planning_lead",
+                    "production_plan": "product_planning_lead",
+                    "artifact_generation": "deterministic_product_generator",
+                    "automated_qa": "automated_quality_gate",
+                    "human_preview": "owner_visual_reviewer",
+                    "packaging": "product_planning_lead",
+                    "listing_packet": "marketplace_operations_analyst",
+                    "ceo_review": "chief_executive_orchestrator",
+                }[key],
                 "input": {"title": title, "brief": brief} if index == 0 else {},
                 "output": None, "artifact_refs": [],
                 "started_at": now if index == 0 else None,
