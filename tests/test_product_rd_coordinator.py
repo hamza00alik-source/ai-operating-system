@@ -68,6 +68,6 @@ def test_background_coordinator_does_not_auto_approve_or_queue_drafts(tmp_path):
 
         assert result["work_items_drafted"] == 0
         assert updated["stages"][0]["work_item_id"] is None
-        assert store.list_work_items(business_id="digital-products", limit=10) == []
+        assert store.list_work_items(business_id="digital-products", limit=10) == ()
     finally:
         store.close()
