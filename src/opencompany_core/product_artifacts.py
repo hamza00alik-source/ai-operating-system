@@ -106,10 +106,15 @@ def inspect_outpost_pack(target: str | Path) -> dict[str, Any]:
             names=set(entries)
             if len(entries)!=len(names):
                 failed.append("ZIP contains duplicate file entries")
-            if any(PurePosixPath(name).is_absolute() or ".." in PurePosixPath(name).parts for name in entries):
+            if any(PurePosixPath(name).is_absolute() or ".." in PurePosixPath(name).parts or "\\" in name for name in entries):
                 failed.append("ZIP contains an unsafe path entry")
             else:
-                passed.append("ZIP paths contain no absolute or traversal entries")
+                passed.append("ZIP paths contain no absolute, traversal, or backslash entries")
+            infos=bundle.infolist()
+            if len(infos)>64 or sum(info.file_size for info in infos)>2_000_000 or any(info.file_size>500_000 for info in infos):
+                failed.append("ZIP exceeds the product package entry or uncompressed-size limits")
+            else:
+                passed.append("ZIP entry count and uncompressed sizes are within limits")
             required={"README.md","LICENSE-DRAFT.txt","manifest.json","preview.svg"}
             if required.issubset(names): passed.append("Required docs and preview exist")
             else: failed.append("Required package files are missing")
