@@ -54,6 +54,7 @@ def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
             if agent.state == AgentState.ACTIVE and agent.role_key
         ),
         "product_rd_automation_enabled": status.maintenance_enabled,
+        "product_rd_auto_proposals_enabled": runtime.product_rd_auto_proposals_enabled,
         "product_rd_automation_cycles": status.maintenance_cycles,
         "product_rd_automation_failures": status.maintenance_failures,
     }
