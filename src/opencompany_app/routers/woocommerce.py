@@ -57,7 +57,7 @@ def woo_status(business_id: str, runtime: OpenCompanyRuntime = Depends(get_runti
         "updated_at": status["updated_at"], "revision": status["revision"],
         "mode": "read-only", "available_reads": ["products", "orders"],
         "writes_enabled": False, "customer_personal_data_returned": False,
-        "connection_tested": False,
+        "test_result_persisted": False,
     }
 
 
@@ -126,7 +126,9 @@ def read_woo_products(
     client = _client(runtime, business_id)
     try:
         result = client.products(page=page, per_page=per_page)
-    except (WooCommerceReadError, ValueError) as exc:
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except WooCommerceReadError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     _audit(runtime, business_id, "integration.woocommerce_products_read", "succeeded", {
         "page": page, "per_page": per_page, "records_returned": result["count"],
@@ -142,7 +144,9 @@ def read_woo_orders(
     client = _client(runtime, business_id)
     try:
         result = client.orders(page=page, per_page=per_page)
-    except (WooCommerceReadError, ValueError) as exc:
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except WooCommerceReadError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     _audit(runtime, business_id, "integration.woocommerce_orders_read", "succeeded", {
         "page": page, "per_page": per_page, "records_returned": result["count"],
