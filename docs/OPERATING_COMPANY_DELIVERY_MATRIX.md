@@ -99,7 +99,7 @@ Business-model-specific rules:
 
 ### Required to complete
 
-1. **Verification:** after the owner's test pause, run the complete independent suite and CI, resolve failures, add coverage for all new integrations and approval boundaries, and record exact commit/workflow evidence.
+1. **Verification:** after the owner's test pause, run the complete independent suite and CI, resolve failures, add coverage for all new integrations and approval boundaries, and record exact commit/workflow evidence. The new readiness endpoint is an evidence snapshot, not a substitute for this gate.
 2. **Security:** independent review of authentication, authorization, tenant/business isolation, secret encryption/rotation, session revocation, CSRF, SSRF, file/path handling, dependency vulnerabilities, logs, rate limits and API exposure.
 3. **Data durability:** verify SQLite WAL/backup behavior on the intended persistent volume; encrypted off-host backups; restore rehearsal; key recovery; documented RPO/RTO.
 4. **Operations:** structured redacted logs, metrics, uptime/queue alerts, provider health, audit-chain checks, disk/DB growth monitoring, incident response and rollback runbooks.
