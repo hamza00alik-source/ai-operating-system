@@ -31,7 +31,7 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [x] Owner-authenticated workflow inspection endpoint for prerequisites, dependents, delegation proposals, handoffs, deliverables, queue state, and next action.
 - [ ] Workflow-level artifact aggregation and specialist-specific machine-readable deliverable schemas.
 - [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
-- [ ] Durable per-attempt execution history and richer failure diagnostics.
+- [x] Durable worker-attempt records with a secret-free, owner-authenticated per-work-item execution-history endpoint (attempt number, state, timestamps, bounded error code, queue metadata and checkpoint metadata).\n- [ ] Richer per-attempt diagnostics (provider latency/usage correlation, heartbeat events, structured failure classification and workflow-level aggregation).
 - [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
 
 ### Queue re-admission change
