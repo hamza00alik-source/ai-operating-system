@@ -26,6 +26,7 @@ from opencompany_core.api_anything import ApiAnythingClient
 from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
+from opencompany_core.product_rd_coordinator import ProductRDCoordinator
 
 
 @dataclass(slots=True)
@@ -227,10 +228,18 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         preferred_provider="unorouter",
     )
     worker_concurrency = int(os.environ.get("OPENCOMPANY_WORKER_CONCURRENCY", "2"))
+    product_rd_automation_enabled = os.environ.get(
+        "OPENCOMPANY_PRODUCT_RD_AUTOMATION", "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    product_rd_coordinator = ProductRDCoordinator(store) if product_rd_automation_enabled else None
     fleet = WorkerFleet(
         worker, store,
         idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
         concurrency=worker_concurrency,
+        maintenance_callback=product_rd_coordinator.run_once if product_rd_coordinator else None,
+        maintenance_interval_seconds=float(
+            os.environ.get("OPENCOMPANY_PRODUCT_RD_AUTOMATION_INTERVAL_SECONDS", "5")
+        ),
     )
     runtime = OpenCompanyRuntime(
         store=store, queue=queue, worker=worker, delegations=delegations,
