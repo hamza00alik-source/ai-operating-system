@@ -22,6 +22,8 @@ def test_external_action_routes_are_owner_authenticated_and_have_no_executor():
     ).__file__
     content = open(source, encoding="utf-8").read()
     assert "authorized_not_executed" in content
+    assert 'confirm_action != "AUTHORIZE"' in content
+    assert "timedelta(hours=24)" in content
     assert "execution_performed" in content
     assert "No external action was executed" in content
     assert "subprocess" not in content
