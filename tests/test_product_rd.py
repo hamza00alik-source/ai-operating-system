@@ -112,6 +112,14 @@ def test_product_rd_cannot_skip_stages_or_approve_incomplete_work(tmp_path):
             assert False, "owner approval must wait for all stages"
         except ProductRDError:
             pass
+        try:
+            repo.complete_stage(
+                workflow["id"], "opportunity_brief", output="Paid work is not allowed.",
+                evidence=["Zero-dollar policy test"], cost_actual_usd=0.01,
+            )
+            assert False, "non-zero costs must be blocked"
+        except ProductRDError:
+            pass
     finally:
         store.close()
 
