@@ -103,6 +103,9 @@ def delegate_product_stage(workflow_id: UUID,
     if agent is None:
         raise HTTPException(status_code=409,
             detail=f"Required role {role_key} is not provisioned and ACTIVE. Provision and activate it before delegation.")
+    expected_team = "executive" if role_key == "chief_executive_orchestrator" else "management"
+    if agent.team_key != expected_team:
+        raise HTTPException(status_code=409, detail="The active agent profile has an invalid team assignment for this role.")
     if stage.get("work_item_id"):
         raise HTTPException(status_code=409, detail="This stage already has an assigned work item.")
     department = agent.department
@@ -166,6 +169,9 @@ def sync_product_stage(workflow_id: UUID,
     item = runtime.store.get_work_item(UUID(stage["work_item_id"]))
     if item is None or item.business_id != workflow["business_id"]:
         raise HTTPException(status_code=409, detail="Stage work item is missing or belongs to another business.")
+    assigned = runtime.store.get_agent(item.assigned_agent_id) if item.assigned_agent_id else None
+    if assigned is None or assigned.role_key != stage["owner_role"] or item.department != assigned.department:
+        raise HTTPException(status_code=409, detail="Stage work item assignee does not match the required Product & R&D role.")
     if item.state != TaskState.COMPLETED:
         raise HTTPException(status_code=409, detail="The stage work item must be completed through owner review first.")
     deliverables = runtime.store.list_deliverables(item.id)
@@ -230,8 +236,12 @@ def download_product_artifact(workflow_id: UUID, artifact_name: str,
     if artifact_name not in allowed:
         raise HTTPException(status_code=404, detail="Artifact not found.")
     root = _artifact_root().resolve()
-    target = (root / str(workflow_id) / artifact_name).resolve()
-    if target.parent != (root / str(workflow_id)).resolve() or not target.is_file() or target.is_symlink():
+    workflow_dir = root / str(workflow_id)
+    candidate = workflow_dir / artifact_name
+    if workflow_dir.is_symlink() or candidate.is_symlink():
+        raise HTTPException(status_code=404, detail="Artifact not found.")
+    target = candidate.resolve()
+    if target.parent != workflow_dir.resolve() or not target.is_file():
         raise HTTPException(status_code=404, detail="Artifact not found.")
     media = "application/zip" if artifact_name.endswith(".zip") else (
         "image/svg+xml" if artifact_name.endswith(".svg") else "application/json" if artifact_name.endswith(".json") else "text/plain"
