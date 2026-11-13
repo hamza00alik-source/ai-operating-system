@@ -123,15 +123,16 @@ class AgentExternalApprovalCreateInput(ExternalApprovalCreateInput):
     originating_work_item_id: UUID
 
 
-def record_agent_approval_requests(store: SQLiteStore, agent_id: UUID, item, requests: list[dict]) -> list[dict]:
+def record_agent_approval_requests(store: SQLiteStore, agent_id: UUID, item, requests: list[dict], *, allowed_states=None) -> list[dict]:
     """Persist model-originated approval intents using trusted worker identity."""
     agent = store.get_agent(agent_id)
     current_item = store.get_work_item(item.id)
     if agent is None or agent.state != AgentState.ACTIVE:
         raise ValueError("requesting agent is not active")
+    permitted_states = allowed_states or {TaskState.IN_PROGRESS}
     if (current_item is None or current_item.business_id != item.business_id
             or current_item.assigned_agent_id != agent.id
-            or current_item.state != TaskState.IN_PROGRESS):
+            or current_item.state not in permitted_states):
         raise ValueError("agent is not the active assignee of this in-progress work item")
     _ensure_table(store)
     recorded = []
@@ -208,7 +209,7 @@ def create_agent_external_approval(
         "action_type": payload.action_type, "title": payload.title,
         "description": payload.description, "target_reference": payload.target_reference,
         "estimated_amount_minor": payload.estimated_amount_minor, "currency": payload.currency,
-    }])
+    }], allowed_states={TaskState.QUEUED, TaskState.IN_PROGRESS, TaskState.COMPLETED})
     return {**result[0], "submitted_by_agent": str(agent.id)}
 
 
