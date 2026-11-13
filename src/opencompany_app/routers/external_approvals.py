@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import re
+import hmac
+import os
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from opencompany_core.domain import BUSINESS_UNIT_IDS, AuditRecord
+from opencompany_core.domain import BUSINESS_UNIT_IDS, AgentState, AuditRecord, TaskState
 from opencompany_core.persistence import SQLiteStore
 from opencompany_app.api_dependencies import get_store, require_owner_key
 
@@ -112,6 +114,65 @@ def create_external_approval(
         details={"business_id": payload.business_id, "action_type": payload.action_type},
     ))
     return {"request_id": request_id, "status": "pending", "execution_performed": False}
+
+
+
+class AgentExternalApprovalCreateInput(ExternalApprovalCreateInput):
+    requesting_agent_id: UUID
+    originating_work_item_id: UUID
+
+
+@router.post("/internal/agent-approval-requests")
+def create_agent_external_approval(
+    payload: AgentExternalApprovalCreateInput,
+    x_opencompany_agent_key: str | None = Header(default=None),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Accept a narrowly scoped agent request; never execute the requested action."""
+    expected = os.environ.get("OPENCOMPANY_AGENT_APPROVAL_API_KEY", "").strip()
+    if not expected or not x_opencompany_agent_key or not hmac.compare_digest(x_opencompany_agent_key, expected):
+        raise HTTPException(status_code=401, detail="Agent approval submission is not configured or authenticated.")
+    if payload.business_id not in BUSINESS_UNIT_IDS or payload.action_type not in ACTION_TYPES:
+        raise HTTPException(status_code=422, detail="Unknown business unit or action type.")
+    if (payload.estimated_amount_minor is None) != (payload.currency is None):
+        raise HTTPException(status_code=422, detail="Amount and currency must be supplied together.")
+    if payload.currency and not re.fullmatch(r"[A-Za-z]{3}", payload.currency):
+        raise HTTPException(status_code=422, detail="Currency must be a three-letter code.")
+    agent = store.get_agent(payload.requesting_agent_id)
+    item = store.get_work_item(payload.originating_work_item_id)
+    if agent is None or agent.state != AgentState.ACTIVE:
+        raise HTTPException(status_code=403, detail="Requesting agent is not active.")
+    if item is None or item.business_id != payload.business_id:
+        raise HTTPException(status_code=404, detail="Originating work item was not found in this business unit.")
+    if item.assigned_agent_id != agent.id:
+        raise HTTPException(status_code=403, detail="Agent is not assigned to the originating work item.")
+    if item.state not in {TaskState.QUEUED, TaskState.RUNNING, TaskState.COMPLETED}:
+        raise HTTPException(status_code=409, detail="Only admitted or completed work can raise an approval request.")
+    _ensure_table(store)
+    now = datetime.now(timezone.utc)
+    request_id = str(uuid4())
+    with store._lock:
+        store._connection.execute(
+            """INSERT INTO external_action_approvals
+               (id,business_id,action_type,title,description,target_reference,requested_by,
+                estimated_amount_minor,currency,status,requested_at)
+               VALUES(?,?,?,?,?,?,?,?,?,'pending',?)""",
+            (request_id, payload.business_id, payload.action_type, payload.title.strip(),
+             payload.description.strip(), payload.target_reference,
+             f"agent:{agent.id}:role:{agent.role_key}:work_item:{item.id}",
+             payload.estimated_amount_minor, payload.currency.upper() if payload.currency else None,
+             now.isoformat()),
+        )
+    store.append_audit_record(AuditRecord(
+        id=uuid4(), occurred_at=now, actor_type="agent", actor_id=str(agent.id),
+        action="external_approval.agent_requested", subject_type="external_action_approval",
+        subject_id=request_id, outcome="pending", correlation_id=str(uuid4()),
+        details={"business_id": payload.business_id, "action_type": payload.action_type,
+                 "work_item_id": str(item.id), "role_key": agent.role_key,
+                 "execution_performed": False},
+    ))
+    return {"request_id": request_id, "status": "pending",
+            "submitted_by_agent": str(agent.id), "execution_performed": False}
 
 
 @router.get("/external-approvals", dependencies=[Depends(require_owner_key)])
