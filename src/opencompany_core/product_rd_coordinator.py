@@ -18,6 +18,7 @@ from .domain import AgentState, AuditRecord, TaskState, WorkItem
 from .product_artifacts import generate_outpost_pack
 from .product_rd import PRODUCT_STAGES
 from .product_rd import ProductRDRepository
+from .manager_ai import recommend_department_plan
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +33,19 @@ def _artifact_root() -> Path:
 class ProductRDCoordinator:
     """Perform only deterministic or already-owner-approved internal transitions."""
 
-    def __init__(self, store, *, artifact_root: Path | None = None) -> None:
+    def __init__(self, store, *, artifact_root: Path | None = None, delegations=None,
+                 gateway=None, auto_manager_proposals_enabled: bool = False) -> None:
         self.store = store
         self.repo = ProductRDRepository(store._connection, store._lock)
+        self.delegations = delegations
+        self.gateway = gateway
+        self.auto_manager_proposals_enabled = bool(auto_manager_proposals_enabled)
         self.artifact_root = artifact_root or _artifact_root()
 
     def run_once(self) -> dict[str, int]:
-        stats = {"work_items_drafted": 0, "stages_synchronized": 0,
-                 "pilot_packs_generated": 0, "blocked_or_skipped": 0}
+        stats = {"work_items_drafted": 0, "manager_proposals_prepared": 0,
+                 "stages_synchronized": 0, "pilot_packs_generated": 0,
+                 "blocked_or_skipped": 0}
         for workflow in self.repo.list(limit=100):
             try:
                 stage = next((item for item in workflow["stages"]
@@ -57,6 +63,8 @@ class ProductRDCoordinator:
                     if stage.get("work_item_id"):
                         if self._sync_if_owner_approved(workflow, stage):
                             stats["stages_synchronized"] += 1
+                        elif self._prepare_manager_proposal(workflow, stage):
+                            stats["manager_proposals_prepared"] += 1
                     elif self._draft_stage_work_item(workflow, stage):
                         stats["work_items_drafted"] += 1
                     else:
@@ -145,6 +153,80 @@ class ProductRDCoordinator:
             )
             return True
 
+    def _prepare_manager_proposal(self, workflow: dict, stage: dict) -> bool:
+        """Persist one AI manager recommendation; never approve or enqueue it."""
+        if (not self.auto_manager_proposals_enabled or self.gateway is None
+                or self.delegations is None or not stage.get("work_item_id")):
+            return False
+        item = self.store.get_work_item(UUID(stage["work_item_id"]))
+        if (item is None or item.business_id != workflow["business_id"]
+                or item.state != TaskState.DRAFT or item.assigned_agent_id is not None):
+            return False
+        # Existing proposals are an idempotency boundary; never replace owner decisions.
+        if self.delegations.list_for_parent(item.id):
+            return False
+        from .organization import default_organization
+        from .domain import AgentState
+        try:
+            department = default_organization().get(item.department)
+        except LookupError:
+            return False
+        profiles = self.store.list_agents(limit=1000)
+        manager = next((agent for agent in profiles
+                        if agent.role_key == department.manager_role_key
+                        and agent.department == item.department), None)
+        if (manager is None or manager.state != AgentState.ACTIVE
+                or manager.team_key != "management"):
+            return False
+        recommendation = recommend_department_plan(item, self.gateway, max_specialists=15)
+        plan = recommendation.plan
+        children = []
+        if plan.mode.value == "manager_direct":
+            children.append({
+                "assigned_agent_id": str(manager.id), "role_key": plan.manager_role_key,
+                "team_key": "management", "title": f"{plan.manager_title}: {item.title}",
+                "objective": f"Handle parent work item {item.id}. Objective: {item.objective} Produce an internal draft for owner review.",
+            })
+        elif plan.mode.value == "specialist_team":
+            for specialist in plan.specialists:
+                profile = next((agent for agent in profiles
+                                if agent.role_key == specialist.role_key
+                                and agent.team_key == specialist.team_key
+                                and agent.department == item.department), None)
+                if (profile is None or profile.state != AgentState.ACTIVE
+                        or profile.role_key != specialist.role_key
+                        or profile.team_key != specialist.team_key
+                        or profile.department != item.department):
+                    return False
+                children.append({
+                    "assigned_agent_id": str(profile.id), "role_key": specialist.role_key,
+                    "team_key": specialist.team_key, "title": f"{specialist.title}: {item.title}",
+                    "objective": (
+                        f"Support parent work item {item.id}. Parent objective: {item.objective} "
+                        f"Manager rationale: {recommendation.rationale} "
+                        f"Required capabilities: {', '.join(recommendation.required_capabilities)}. "
+                        "Produce an internal draft for manager review only."
+                    ),
+                })
+        else:
+            return False
+        self.delegations.create_proposal(
+            parent_work_item_id=item.id,
+            request={
+                "required_capabilities": list(recommendation.required_capabilities),
+                "max_specialists": 15,
+                "manager_rationale": recommendation.rationale,
+                "planner_provider": recommendation.provider,
+                "planner_model": recommendation.model,
+                "selected_team_keys": list(dict.fromkeys(
+                    specialist.team_key for specialist in plan.specialists
+                )),
+                "created_by": SYSTEM_ACTOR,
+            },
+            manager_agent_id=manager.id, mode=plan.mode.value,
+            team_key=plan.selected_team_key, children=children,
+        )
+        return True
     def _sync_if_owner_approved(self, workflow: dict, stage: dict) -> bool:
         from .organization import default_organization
         from .workforce import default_workforce
