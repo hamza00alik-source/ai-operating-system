@@ -2241,3 +2241,71 @@ def test_production_readiness_endpoint_is_owner_only_and_never_authorizes_cutove
     assert body["staging_acceptance"] == "not_verified"
     assert "database_path" not in body
 
+
+
+def test_woocommerce_connection_is_owner_only_encrypted_and_business_scoped(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    unauthorized = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection", json=payload
+    )
+    assert unauthorized.status_code == 401
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200
+    assert saved.json()["network_request_made"] is False
+    assert saved.json()["writes_enabled"] is False
+    runtime = app.dependency_overrides[get_runtime]()
+    row = runtime.store._connection.execute(
+        "SELECT provider,ciphertext FROM provider_secrets WHERE provider=?",
+        ("woocommerce:physical-brand",),
+    ).fetchone()
+    assert row is not None
+    assert b"brandprivate" not in bytes(row["ciphertext"])
+    brand_status = owner_client.get(
+        "/integrations/woocommerce/physical-brand/status", headers=headers
+    ).json()
+    agency_status = owner_client.get(
+        "/integrations/woocommerce/physical-agency/status", headers=headers
+    ).json()
+    assert brand_status["configured"] is True
+    assert brand_status["credentials_encrypted"] is True
+    assert agency_status["configured"] is False
+    assert brand_status["writes_enabled"] is False
+
+
+def test_woocommerce_read_endpoint_uses_minimized_read_only_adapter(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200
+    from opencompany_core.woocommerce_readonly import WooCommerceReadOnlyClient
+    monkeypatch.setattr(
+        WooCommerceReadOnlyClient, "products",
+        lambda self, page=1, per_page=20: {
+            "page": page, "per_page": per_page, "count": 1,
+            "products": [{"id": 1, "name": "Test product"}],
+        },
+    )
+    response = owner_client.get(
+        "/integrations/woocommerce/physical-brand/products?page=1&per_page=5",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["read_only"] is True
+    assert response.json()["products"] == [{"id": 1, "name": "Test product"}]
