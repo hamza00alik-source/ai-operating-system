@@ -34,6 +34,7 @@ def worker_queue_status(
         "worker_autostart_configured": os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true",
         "free_provider_ready": bool(runtime.gateway.eligible_providers(request_budget_usd=0.0)),
         "product_rd_automation_enabled": status.maintenance_enabled,
+        "product_rd_auto_proposals_enabled": runtime.product_rd_auto_proposals_enabled,
         "product_rd_automation_cycles": status.maintenance_cycles,
         "product_rd_automation_failures": status.maintenance_failures,
     }
