@@ -43,6 +43,8 @@ class WorkerFleet:
             raise ValueError("idle_poll_seconds must be between 0.1 and 60")
         if not 1 <= concurrency <= 16:
             raise ValueError("worker concurrency must be between 1 and 16")
+        if not 1.0 <= maintenance_interval_seconds <= 300.0:
+            raise ValueError("maintenance_interval_seconds must be between 1 and 300")
         self.worker = worker
         self.store = store
         self.idle_poll_seconds = idle_poll_seconds
