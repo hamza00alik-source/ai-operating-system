@@ -261,6 +261,8 @@ class ProductRDRepository:
         if not evidence or len(evidence) > 30 or any(not isinstance(x,str) or not x.strip() for x in evidence):
             raise ProductRDError("Completion requires 1-30 evidence entries.")
         refs = artifact_refs or []
+        if not refs:
+            raise ProductRDError("A stage cannot complete without at least one persisted artifact reference.")
         if len(refs) > 30 or any(not isinstance(x,str) or not x.strip() or len(x)>500 for x in refs):
             raise ProductRDError("Artifact references must contain at most 30 non-empty entries.")
         if stage_key == "automated_qa":
@@ -271,12 +273,15 @@ class ProductRDRepository:
                 for k in required
             ):
                 raise ProductRDError("QA requires bounded lists of non-empty strings for passed_checks, failed_checks, and untested_claims.")
+            if not qa_result["passed_checks"] and not qa_result["failed_checks"]:
+                raise ProductRDError("Automated QA must report at least one executed check.")
             if qa_result["failed_checks"]:
                 stage["status"] = "blocked"
                 workflow["status"] = "blocked"
                 stage["blockers"] = [str(x)[:1000] for x in qa_result["failed_checks"]]
                 stage["output"] = output
                 stage["evidence"] = evidence
+                stage["artifact_refs"] = refs
                 stage["cost_actual_usd"] = actual_cost
                 stage["qa_result"] = qa_result
                 self._commit(str(workflow_id),workflow,action="product_rd.qa_failed",
