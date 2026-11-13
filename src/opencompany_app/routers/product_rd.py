@@ -200,7 +200,8 @@ def sync_product_stage(workflow_id: UUID,
     ]
     updated = _call(repo.complete_stage, workflow_id, stage["key"],
                     output=deliverable["content"][:12000], evidence=evidence,
-                    artifact_refs=[f"work-item:{item.id}", f"deliverable:{deliverable['id']}"])
+                    artifact_refs=[f"work-item:{item.id}", f"deliverable:{deliverable['id']}"],
+                    cost_actual_usd=float(deliverable["cost_usd"]))
     return {"workflow": updated, "synced_deliverable_id": deliverable["id"],
             "external_actions_performed": False}
 
