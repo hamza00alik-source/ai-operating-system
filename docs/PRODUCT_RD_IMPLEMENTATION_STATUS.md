@@ -12,7 +12,8 @@ This document distinguishes committed implementation from runtime verification. 
 - CEO review uses the existing CEO profile and owner-reviewed work-item deliverable path.
 - A stage can be synchronized only from a completed, owner-reviewed work item and its persisted deliverable.
 - The OUTPOST pilot generator creates 30 original geometric SVG prototype icons, a 6×5 SVG contact sheet, a manifest, README, draft-only license notice, and ZIP archive using deterministic local code.
-- ZIP generation uses fixed archive timestamps for reproducibility. QA checks ZIP CRC integrity, required files, icon count, manifest hashes, and SVG XML parsing.
+- ZIP generation uses fixed archive timestamps for reproducibility. QA checks ZIP CRC integrity, duplicate/path-traversal entries, required files, icon count, manifest inventory and hashes, and SVG XML parsing.
+- Generated artifact names, SHA-256 hashes, sizes, and download references are recorded in workflow stage evidence.
 - QA failures block the workflow. The owner can return the workflow to artifact generation; downstream stages are reset.
 - Artifacts are stored under a configurable local root and served through an allowlisted, owner-authenticated download route with path and symlink checks.
 - A mobile-friendly Product & R&D panel is injected into the existing owner dashboard. It exposes workflow creation, delegation, team-proposal approval, specialist/manager execution, owner review, artifact generation, preview review, rework, and internal workflow approval.
@@ -25,6 +26,7 @@ This document distinguishes committed implementation from runtime verification. 
 - No game-engine compatibility, accessibility, licensing/IP, or market-demand validation has been performed.
 - Product discovery research is only as strong as the evidence supplied to or retrieved by the research roles; the workflow does not manufacture market proof.
 - The system does not publish marketplace listings, contact buyers, purchase services, initiate payments, or make customer commitments.
+- Manager planning and specialist delegation use the existing free-provider-gated planner. A complete multi-agent round trip has not yet been executed in a live runtime.
 - Agent execution depends on correctly provisioned and explicitly ACTIVE profiles, an owner-tested zero-cost provider, and explicit owner queue admission. If those prerequisites are absent, the workflow stops with a blocker.
 - The current Product & R&D workflow does not claim 511 agents are continuously running. It uses the existing role contracts and the existing durable worker system.
 
