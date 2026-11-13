@@ -72,7 +72,11 @@ def generate_outpost_pack(workflow_id: str, root: str | Path) -> dict[str, Any]:
             destination.write_bytes(data)
         archive=staging/"package.zip"
         with zipfile.ZipFile(archive,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as bundle:
-            for relative in sorted(files): bundle.write(staging/relative,arcname=relative)
+            for relative in sorted(files):
+                info = zipfile.ZipInfo(relative, date_time=(2020, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o600 << 16
+                bundle.writestr(info, (staging / relative).read_bytes())
         for child in target.iterdir():
             if child.is_symlink(): raise ValueError("unexpected symlink in artifact directory")
             if child.is_file(): child.unlink()
