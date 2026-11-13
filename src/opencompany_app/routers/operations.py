@@ -62,3 +62,58 @@ def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
         "event_count": store.audit_event_count(),
         "chain_valid": store.verify_audit_chain(),
     }
+
+@diagnostics_router.get("/owner/production-readiness", dependencies=[Depends(require_owner_key)])
+def production_readiness_snapshot(
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Owner-only evidence snapshot; never declares a release approved."""
+    database = runtime.store.database
+    is_memory = database == ":memory:"
+    path = None if is_memory else os.path.abspath(os.path.expanduser(database))
+    parent = os.path.dirname(path) if path else None
+    try:
+        with runtime.store._lock:
+            connection = runtime.store._connection
+            integrity_row = connection.execute("PRAGMA quick_check").fetchone()
+            integrity_ok = bool(integrity_row and str(integrity_row[0]).casefold() == "ok")
+            journal_row = connection.execute("PRAGMA journal_mode").fetchone()
+            journal_mode = str(journal_row[0]).casefold() if journal_row else "unknown"
+            schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            connection.execute("SELECT 1").fetchone()
+        audit_valid = runtime.store.verify_audit_chain()
+    except Exception:
+        integrity_ok = False
+        journal_mode = "unavailable"
+        schema_version = None
+        audit_valid = False
+    fleet = runtime.fleet.status()
+    parent_exists = bool(parent and os.path.isdir(parent))
+    database_exists = bool(path and os.path.isfile(path))
+    database_under_data = bool(path and os.path.commonpath([path, "/data"]) == "/data")
+    checks = {
+        "database_not_in_memory": not is_memory,
+        "database_file_exists": database_exists,
+        "database_path_under_persistent_data_mount": database_under_data,
+        "database_parent_writable": bool(parent_exists and os.access(parent, os.W_OK)),
+        "sqlite_integrity_check": integrity_ok,
+        "audit_chain_valid": audit_valid,
+        "schema_version_current": schema_version == 8,
+        "secret_encryption_key_configured": bool(os.environ.get("OPENCOMPANY_SECRET_ENCRYPTION_KEY")),
+        "owner_api_key_configured": bool(os.environ.get("OPENCOMPANY_OWNER_API_KEY")),
+        "secure_cookie_configured": os.environ.get("OPENCOMPANY_COOKIE_SECURE", "false").casefold() == "true",
+        "worker_fleet_stopped_for_maintenance": not fleet.running,
+    }
+    return {
+        "status": "evidence_snapshot_only",
+        "checks": checks,
+        "sqlite": {"journal_mode": journal_mode, "schema_version": schema_version},
+        "worker_fleet_running": fleet.running,
+        "tests_and_ci": "not_verified_by_this_endpoint",
+        "independent_security_review": "not_verified",
+        "backup_restore_rehearsal": "not_verified",
+        "staging_acceptance": "not_verified",
+        "production_cutover_authorized": False,
+        "note": "This diagnostic is not a production-readiness certification and performs no deployment or configuration changes.",
+    }
+
