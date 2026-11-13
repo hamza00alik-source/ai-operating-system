@@ -7,7 +7,7 @@ boundary. Importing this module never starts a worker.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from opencompany_core.execution import AgentExecutor
@@ -26,6 +26,12 @@ from opencompany_core.api_anything import ApiAnythingClient
 from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
+from opencompany_core.domain import AgentState, AuditRecord, TaskState
+from opencompany_core.manager_review import review_specialist_deliverables
+from opencompany_core.organization import default_organization
+from opencompany_core.workforce import default_workforce
+from datetime import datetime, timezone
+from uuid import uuid4
 
 
 @dataclass(slots=True)
@@ -200,6 +206,142 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         usage_recorder=usage.record,
         dependency_context=read_dependency_deliverables,
     )
+    def automatic_manager_review(work_item_id):
+        """Run the manager quality gate after a specialist has durably delivered."""
+        if os.environ.get("OPENCOMPANY_AUTO_MANAGER_REVIEW", "false").strip().casefold() not in {"1", "true", "yes", "on"}:
+            return "completed_review_required"
+        item = store.get_work_item(work_item_id)
+        if item is None or item.state != TaskState.REVIEW or item.assigned_agent_id is None:
+            return "completed_review_required"
+        department = default_organization().get(item.department)
+        manager_role_key = department.manager_role_key
+        manager = next((agent for agent in store.list_agents(limit=1000)
+                        if agent.department == item.department
+                        and agent.role_key == manager_role_key
+                        and agent.team_key == "management"
+                        and agent.state == AgentState.ACTIVE), None)
+        if manager is None:
+            return "completed_review_required"
+        specialist = store.get_agent(item.assigned_agent_id)
+        if specialist is None or specialist.role_key == manager_role_key:
+            return "completed_review_required"
+        deliverables = store.list_deliverables(work_item_id)
+        decision = review_specialist_deliverables(item, manager_role_key, deliverables, gateway)
+        event = AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+            actor_id=str(manager.id),
+            action="manager.specialist_review_accepted" if decision.approved else "manager.specialist_rework_requested",
+            subject_type="work_item", subject_id=str(work_item_id),
+            outcome="recorded", correlation_id=str(uuid4()),
+            details={"manager_role_key": manager_role_key, "approved": decision.approved,
+                     "rationale": decision.rationale, "rework_instructions": decision.rework_instructions,
+                     "provider": decision.provider, "model": decision.model,
+                     "trigger": "worker_post_delivery"},
+        )
+        state = store.review_work_item_with_audit(
+            work_item_id, approved=decision.approved, rationale=decision.rationale, record=event,
+        )
+        if state is None:
+            return "completed_review_required"
+        if decision.approved:
+            # Once the last specialist dependency is approved, automatically
+            # admit its already-approved manager synthesis task when the
+            # owner has enabled zero-cost auto-queueing.
+            queued_synthesis_ids = []
+            auto_queue_enabled = os.environ.get(
+                "OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK", "false"
+            ).strip().casefold() in {"1", "true", "yes", "on"}
+            if auto_queue_enabled and gateway.eligible_providers(request_budget_usd=0.0):
+                completed_ids = {
+                    value.id for value in store.list_work_items(limit=1000)
+                    if value.state == TaskState.COMPLETED
+                }
+                for candidate in store.list_work_items(limit=1000):
+                    if (
+                        candidate.state != TaskState.READY
+                        or work_item_id not in candidate.depends_on
+                        or candidate.assigned_agent_id is None
+                        or not set(candidate.depends_on).issubset(completed_ids)
+                    ):
+                        continue
+                    proposals = delegations.list_for_parent(candidate.id)
+                    if not any(value["status"] == "approved" for value in proposals):
+                        continue
+                    synthesis_manager = store.get_agent(candidate.assigned_agent_id)
+                    expected_role = default_organization().get(candidate.department).manager_role_key
+                    if (
+                        synthesis_manager is None
+                        or synthesis_manager.state != AgentState.ACTIVE
+                        or synthesis_manager.department != candidate.department
+                        or synthesis_manager.role_key != expected_role
+                        or synthesis_manager.team_key != "management"
+                    ):
+                        store.append_audit_record(AuditRecord(
+                            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                            actor_type="system", actor_id="opencompany-manager-review",
+                            action="manager.synthesis_queue_blocked",
+                            subject_type="work_item", subject_id=str(candidate.id),
+                            outcome="blocked", correlation_id=str(event.correlation_id),
+                            details={"reason": "manager_profile_not_active_or_valid"},
+                        ))
+                        continue
+                    try:
+                        queue.enqueue_authorized(
+                            candidate, synthesis_manager.id,
+                            {"source": "automatic_manager_synthesis",
+                             "manager_role_key": synthesis_manager.role_key},
+                            AuditRecord(
+                                id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                                actor_type="agent", actor_id=str(manager.id),
+                                action="manager.synthesis_auto_queued",
+                                subject_type="work_item", subject_id=str(candidate.id),
+                                outcome="queued", correlation_id=str(event.correlation_id),
+                                details={"assigned_manager_id": str(synthesis_manager.id),
+                                         "request_budget_usd": 0.0},
+                            ),
+                        )
+                        queued_synthesis_ids.append(str(candidate.id))
+                    except Exception as exc:
+                        store.append_audit_record(AuditRecord(
+                            id=uuid4(), occurred_at=datetime.now(timezone.utc),
+                            actor_type="system", actor_id="opencompany-manager-review",
+                            action="manager.synthesis_queue_unavailable",
+                            subject_type="work_item", subject_id=str(candidate.id),
+                            outcome="failed", correlation_id=str(event.correlation_id),
+                            details={"error_type": type(exc).__name__},
+                        ))
+            return "manager_approved" if not queued_synthesis_ids else (
+                "manager_approved_synthesis_queued:" + ",".join(queued_synthesis_ids)
+            )
+        # Rejected drafts return to the same specialist with explicit rework.
+        updated = store.get_work_item(work_item_id)
+        updated = replace(
+            updated,
+            objective=(updated.objective + "\n\nManager rework request: " + decision.rework_instructions)[:12000],
+        )
+        rework_event = AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+            actor_id=str(manager.id), action="manager.rework_instructions_attached",
+            subject_type="work_item", subject_id=str(work_item_id), outcome="recorded",
+            correlation_id=str(event.correlation_id),
+            details={"instruction_length": len(decision.rework_instructions)},
+        )
+        store.save_work_item_with_audit(updated, rework_event)
+        queue.enqueue_authorized(
+            updated, specialist.id, {"source": "automatic_manager_rework", "manager_role_key": manager_role_key},
+            AuditRecord(
+                id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+                actor_id=str(manager.id), action="manager.rework_auto_queued",
+                subject_type="work_item", subject_id=str(work_item_id), outcome="queued",
+                correlation_id=str(event.correlation_id),
+                details={"specialist_role_key": specialist.role_key},
+            ),
+        )
+        return "manager_rework_queued"
+
+    auto_review_callback = automatic_manager_review if os.environ.get(
+        "OPENCOMPANY_AUTO_MANAGER_REVIEW", "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"} else None
     worker = OpenCompanyWorker(
         queue=queue,
         store=store,
@@ -207,6 +349,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         artifact_sink=store,
         request_budget_usd=0.0,
         preferred_provider="unorouter",
+        post_delivery_review=auto_review_callback,
     )
     worker_concurrency = int(os.environ.get("OPENCOMPANY_WORKER_CONCURRENCY", "2"))
     fleet = WorkerFleet(

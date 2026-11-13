@@ -228,6 +228,21 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         }
         if(w.state==="review"){
           const actions=document.createElement("div");actions.className="auth";
+          const managerReview=document.createElement("button");managerReview.textContent="Ask department manager to review";
+          managerReview.addEventListener("click",async()=>{
+            managerReview.disabled=true;
+            try{
+              const result=await request("/work-items/"+w.id+"/manager-review",{method:"POST",body:"{}"});
+              setMessage(
+                result.approved
+                  ? "Department manager accepted the specialist draft. "+(result.queued_work_item_ids.length?"Manager synthesis task queued.":"No dependent task was auto-queued.")
+                  : "Department manager requested rework: "+result.rework_instructions,
+                result.approved?"success":"info"
+              );
+              await load();
+            }catch(error){setMessage(error.message,"error");managerReview.disabled=false;}
+          });
+          actions.append(managerReview);
           const view=document.createElement("button");view.textContent="View draft";
           view.addEventListener("click",async()=>{
             view.disabled=true;

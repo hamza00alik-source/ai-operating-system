@@ -42,6 +42,7 @@ from opencompany_core.manager_orchestration import plan_department_work
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.worker_queue import QueueError
 from opencompany_core.manager_ai import ManagerPlanningError, recommend_department_plan
+from opencompany_core.manager_review import ManagerReviewError, review_specialist_deliverables
 from opencompany_core.executive_ai import ExecutivePlanningError, create_executive_plan
 from opencompany_core.model_gateway import CostPolicyViolation, ModelRequest, NoEligibleProvider, ProviderUnavailable
 from opencompany_core.collaboration import AgentHandoff, HandoffState, accept_handoff, decline_handoff, deliver_handoff
@@ -2431,4 +2432,149 @@ def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
     return {
         "event_count": store.audit_event_count(),
         "chain_valid": store.verify_audit_chain(),
+    }
+
+
+@app.post("/work-items/{item_id}/manager-review", dependencies=[Depends(require_owner_key)])
+def manager_review_specialist_work(
+    item_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    """Run an internal manager quality gate; owner authentication invokes the review."""
+    from datetime import datetime, timezone
+
+    item = store.get_work_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    if item.state != TaskState.REVIEW or item.assigned_agent_id is None:
+        raise HTTPException(status_code=409, detail="Only an assigned work item awaiting review can enter manager review.")
+    assigned = store.get_agent(item.assigned_agent_id)
+    department = default_organization().get(item.department)
+    manager_role_key = department.manager_role_key
+    manager = next(
+        (agent for agent in store.list_agents(limit=1000)
+         if agent.role_key == manager_role_key and agent.department == item.department
+         and agent.team_key == "management" and agent.state == AgentState.ACTIVE),
+        None,
+    )
+    if manager is None:
+        raise HTTPException(status_code=409, detail="An active department manager is required for internal review.")
+    if assigned is None or assigned.department != item.department or assigned.role_key == manager_role_key:
+        raise HTTPException(status_code=409, detail="Manager review is limited to specialist work; self-review is not permitted.")
+    try:
+        assigned_role = default_workforce().get(assigned.role_key)
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail="Assigned specialist role is not registered.") from exc
+    if (
+        assigned.role_key not in department.role_keys
+        or assigned.team_key != assigned_role.team_key
+    ):
+        raise HTTPException(status_code=409, detail="Assigned specialist profile does not match the department role catalogue.")
+    deliverables = store.list_deliverables(item_id)
+    if any(row["role_key"] != assigned.role_key for row in deliverables):
+        raise HTTPException(status_code=409, detail="Deliverable role identity does not match the assigned specialist.")
+    try:
+        decision = review_specialist_deliverables(
+            item, manager_role_key, deliverables, runtime.gateway,
+        )
+    except NoEligibleProvider as exc:
+        raise HTTPException(status_code=503, detail="No owner-configured zero-cost model is available for manager review.") from exc
+    except (ProviderUnavailable, CostPolicyViolation) as exc:
+        raise HTTPException(status_code=502, detail=f"Manager review failed safely: {type(exc).__name__}") from exc
+    except ManagerReviewError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    event = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+        actor_id=str(manager.id),
+        action="manager.specialist_review_accepted" if decision.approved else "manager.specialist_rework_requested",
+        subject_type="work_item", subject_id=str(item_id), outcome="recorded",
+        correlation_id=str(uuid4()),
+        details={
+            "manager_role_key": manager_role_key,
+            "approved": decision.approved,
+            "rationale": decision.rationale,
+            "rework_instructions": decision.rework_instructions,
+            "provider": decision.provider, "model": decision.model,
+        },
+    )
+    try:
+        state = store.review_work_item_with_audit(
+            item_id, approved=decision.approved, rationale=decision.rationale, record=event,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if state is None:
+        raise HTTPException(status_code=409, detail="Work item changed while manager review was running.")
+
+    queued_ids = []
+    queue_errors = []
+    if not decision.approved:
+        retry_item = store.get_work_item(item_id)
+        updated = replace(
+            retry_item,
+            objective=(
+                retry_item.objective[:10000]
+                + "\n\nManager rework request (address before resubmission): "
+                + decision.rework_instructions
+            )[:12000],
+        )
+        retry_event = AuditRecord(
+            id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="agent",
+            actor_id=str(manager.id), action="manager.rework_instructions_attached",
+            subject_type="work_item", subject_id=str(item_id), outcome="recorded",
+            correlation_id=str(event.correlation_id),
+            details={"instruction_length": len(decision.rework_instructions)},
+        )
+        store.save_work_item_with_audit(updated, retry_event)
+        if _auto_queue_approved_work_enabled() and _free_provider_ready(runtime):
+            try:
+                _auto_queue_task(runtime, updated, assigned, action="manager.rework_auto_queued")
+                queued_ids.append(str(item_id))
+            except (QueueError, ValueError) as exc:
+                queue_errors.append(type(exc).__name__)
+
+    if decision.approved and _auto_queue_approved_work_enabled() and _free_provider_ready(runtime):
+        completed_ids = {
+            value.id for value in store.list_work_items(limit=1000)
+            if value.state == TaskState.COMPLETED
+        }
+        for candidate in store.list_work_items(limit=1000):
+            if (
+                candidate.state != TaskState.READY
+                or item_id not in candidate.depends_on
+                or candidate.assigned_agent_id is None
+                or not set(candidate.depends_on).issubset(completed_ids)
+            ):
+                continue
+            proposals = runtime.delegations.list_for_parent(candidate.id)
+            if not any(value["status"] == "approved" for value in proposals):
+                continue
+            synthesis_manager = store.get_agent(candidate.assigned_agent_id)
+            if synthesis_manager is None or synthesis_manager.state != AgentState.ACTIVE:
+                queue_errors.append("InactiveManager")
+                continue
+            try:
+                _auto_queue_task(
+                    runtime, candidate, synthesis_manager,
+                    action="work_item.manager_synthesis_auto_queued",
+                )
+                queued_ids.append(str(candidate.id))
+            except (QueueError, ValueError) as exc:
+                queue_errors.append(type(exc).__name__)
+
+    return {
+        "item_id": str(item_id),
+        "manager_agent_id": str(manager.id),
+        "manager_role_key": manager_role_key,
+        "state": state.value,
+        "approved": decision.approved,
+        "rationale": decision.rationale,
+        "rework_instructions": decision.rework_instructions,
+        "provider": decision.provider, "model": decision.model,
+        "queued_work_item_ids": queued_ids,
+        "queue_errors": queue_errors,
+        "external_actions_performed": False,
+        "owner_final_review_still_required": True,
     }
