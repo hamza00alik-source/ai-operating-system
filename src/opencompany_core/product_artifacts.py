@@ -102,7 +102,7 @@ def inspect_outpost_pack(target: str | Path) -> dict[str, Any]:
             required={"README.md","LICENSE-DRAFT.txt","manifest.json","preview.svg"}
             if required.issubset(names): passed.append("Required docs and preview exist")
             else: failed.append("Required package files are missing")
-            icons=sorted(n for n in names if re.fullmatch(r"icons/[a-z0-9-]+\\.svg",n))
+            icons=sorted(n for n in names if re.fullmatch(r"icons/[a-z0-9-]+\.svg",n))
             if len(icons)==30: passed.append("Exactly 30 individual SVG icons are present")
             else: failed.append(f"Expected 30 SVG icons; found {len(icons)}")
             manifest=json.loads(bundle.read("manifest.json"))
