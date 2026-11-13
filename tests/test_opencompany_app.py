@@ -2202,11 +2202,12 @@ def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to
         "occurred_at": datetime.now(timezone.utc).isoformat(),
         "owner_verified": True,
     }
-    recorded = owner_client.post("/commercial/financial-events", json=payload)
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    recorded = owner_client.post("/commercial/financial-events", headers=headers, json=payload)
     assert recorded.status_code == 200
     assert recorded.json()["payment_initiated"] is False
 
-    summary = owner_client.get("/commercial/financial-summary?business_id=physical-agency")
+    summary = owner_client.get("/commercial/financial-summary?business_id=physical-agency", headers=headers)
     assert summary.status_code == 200
     row = summary.json()["summaries"][0]
     assert row["recognized_revenue_minor"] == 2500
@@ -2214,23 +2215,23 @@ def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to
 
     invalid_model = dict(payload, event_type="sales_revenue",
                          source_reference="synthetic-invalid-gross-sale")
-    rejected = owner_client.post("/commercial/financial-events", json=invalid_model)
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=invalid_model)
     assert rejected.status_code == 422
 
     unverified = dict(payload, source_reference="synthetic-unverified-event",
                       owner_verified=False)
-    rejected = owner_client.post("/commercial/financial-events", json=unverified)
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=unverified)
     assert rejected.status_code == 422
 
     blank_evidence = dict(payload, source_reference="synthetic-blank-evidence",
                           evidence_reference="   ")
-    rejected = owner_client.post("/commercial/financial-events", json=blank_evidence)
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=blank_evidence)
     assert rejected.status_code == 422
 
 def test_production_readiness_endpoint_is_owner_only_and_never_authorizes_cutover(owner_client):
     unauthorized = client.get("/owner/production-readiness")
     assert unauthorized.status_code in {401, 403}
-    response = owner_client.get("/owner/production-readiness")
+    response = owner_client.get("/owner/production-readiness", headers={"X-OpenCompany-API-Key": "test-owner-key"})
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "evidence_snapshot_only"
