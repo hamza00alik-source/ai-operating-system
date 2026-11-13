@@ -200,6 +200,20 @@ class ProductRDRepository:
             raise ProductRDError("Product workflow not found.")
         return workflow
 
+    def attach_work_item(self, workflow_id: UUID | str, stage_key: str, work_item_id: str,
+                         *, actor_id: str = "owner") -> dict[str, Any]:
+        workflow = self._load(workflow_id)
+        stage = next((s for s in workflow["stages"] if s["key"] == stage_key), None)
+        if stage is None or stage["status"] != "in_progress":
+            raise ProductRDError("A work item can only be attached to the active stage.")
+        if stage.get("work_item_id"):
+            raise ProductRDError("The active stage already has an assigned work item.")
+        stage["work_item_id"] = work_item_id
+        self._commit(str(workflow_id), workflow, action="product_rd.stage_work_item_attached",
+                     actor_type="owner", actor_id=actor_id,
+                     details={"stage": stage_key, "work_item_id": work_item_id})
+        return self._load(workflow_id)
+
     def start_stage(self, workflow_id: UUID | str, stage_key: str, *, actor_id: str = "owner") -> dict[str, Any]:
         workflow = self._load(workflow_id)
         index = next((i for i, s in enumerate(workflow["stages"]) if s["key"] == stage_key), -1)
