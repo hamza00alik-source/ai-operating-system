@@ -8,6 +8,7 @@ reviewed action-specific adapter.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import re
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -88,7 +89,7 @@ def create_external_approval(
         raise HTTPException(status_code=422, detail="Unsupported external action type.")
     if (payload.estimated_amount_minor is None) != (payload.currency is None):
         raise HTTPException(status_code=422, detail="Amount and currency must be supplied together.")
-    if payload.currency and not payload.currency.isalpha():
+    if payload.currency and not re.fullmatch(r"[A-Za-z]{3}", payload.currency):
         raise HTTPException(status_code=422, detail="Currency must be a three-letter code.")
     _ensure_table(store)
     now = datetime.now(timezone.utc)
