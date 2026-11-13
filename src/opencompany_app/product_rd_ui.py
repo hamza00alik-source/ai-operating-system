@@ -61,12 +61,44 @@ PRODUCT_RD_JS = r'''
                   await request("/work-items/"+item.id+"/manager-proposal",{method:"POST",body:JSON.stringify({max_specialists:5})});
                 });
               }else{
-                const summary=document.createElement("p");summary.textContent="Manager proposal: "+draftProposal.mode+" · "+draftProposal.children.length+" proposed specialist task(s).";card.append(summary);
-                if(draftProposal.mode==="owner_review"||!draftProposal.children.length){
-                  const blockedPlan=document.createElement("p");blockedPlan.className="warn";blockedPlan.textContent="The manager could not safely form a complete team. Improve the brief or resolve missing role profiles before continuing.";card.append(blockedPlan);
+                const proposal=draftProposal;
+                const proposalData=proposal.payload||{};
+                const proposalRequest=proposalData.request||{};
+                const managerLine=document.createElement("p");
+                managerLine.textContent="Manager proposal · "+proposal.status.toUpperCase()+" · "+proposal.mode.replaceAll("_"," ")+" · "+proposal.children.length+" proposed task(s)";
+                card.append(managerLine);
+                const detail=(label,value,muted=false)=>{
+                  if(value===undefined||value===null||value===""||(Array.isArray(value)&&!value.length))return;
+                  const p=document.createElement("p");if(muted)p.className="muted";
+                  p.textContent=label+": "+(Array.isArray(value)?value.join(", "):String(value));card.append(p);
+                };
+                detail("Manager profile",proposal.manager_agent_id||proposalData.manager_agent_id);
+                detail("Proposed team",proposal.team_key||proposalRequest.selected_team_keys);
+                detail("Planner",proposalRequest.planner_provider&&proposalRequest.planner_model?proposalRequest.planner_provider+" / "+proposalRequest.planner_model:proposalRequest.planner_provider||proposalRequest.planner_model);
+                detail("Manager rationale",proposalRequest.manager_rationale);
+                detail("Required capabilities",proposalRequest.required_capabilities);
+                detail("Created",proposal.created_at,true);
+                if(proposal.children.length){
+                  const teamTitle=document.createElement("h4");teamTitle.textContent="Proposed work breakdown";card.append(teamTitle);
+                  for(const child of proposal.children){
+                    const childCard=document.createElement("div");childCard.className="item";
+                    const childTitle=document.createElement("strong");childTitle.textContent=child.title;childCard.append(childTitle);
+                    const childMeta=document.createElement("p");childMeta.className="muted";
+                    childMeta.textContent=child.role_key+" · "+child.team_key+" · "+child.state.toUpperCase()+" · assigned profile "+child.assigned_agent_id;childCard.append(childMeta);
+                    const childObjective=document.createElement("p");childObjective.textContent=child.objective;childCard.append(childObjective);
+                    card.append(childCard);
+                  }
+                }
+                if(proposal.mode==="owner_review"||!proposal.children.length){
+                  const blockedPlan=document.createElement("p");blockedPlan.className="warn";
+                  blockedPlan.textContent="Owner clarification required. The manager could not safely form a complete team. Review the rationale and missing capabilities, then revise the task brief or provision the required role profiles. No tasks have been approved or queued.";
+                  card.append(blockedPlan);
                 }else{
+                  const approvalNote=document.createElement("p");approvalNote.className="muted";
+                  approvalNote.textContent="Approval will create READY delegation tasks according to the existing approval workflow. It will not itself run agents or publish anything.";
+                  card.append(approvalNote);
                   actionButton("Approve manager's team proposal",async()=>{
-                    await request("/work-items/"+item.id+"/delegation-proposals/"+draftProposal.id+"/approve",{method:"POST",body:"{}"});
+                    await request("/work-items/"+item.id+"/delegation-proposals/"+proposal.id+"/approve",{method:"POST",body:"{}"});
                   });
                 }
               }
