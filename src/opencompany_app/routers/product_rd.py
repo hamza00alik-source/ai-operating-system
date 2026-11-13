@@ -35,6 +35,7 @@ class ProductRDCreateInput(BaseModel):
 class ProductRDStageCompleteInput(BaseModel):
     output: str = Field(min_length=1, max_length=12000)
     evidence: list[str] = Field(min_length=1, max_length=30)
+    artifact_refs: list[str] = Field(min_length=1, max_length=30)
 
 
 class ProductRDOwnerReviewInput(BaseModel):
@@ -275,7 +276,8 @@ def complete_product_stage(workflow_id: UUID, stage_key: str,
     if stage_key not in OWNER_STAGES:
         raise HTTPException(status_code=409, detail="Only the human-preview checkpoint can be completed manually.")
     item = _call(_repository(runtime).complete_stage, workflow_id, stage_key,
-                 output=payload.output, evidence=payload.evidence)
+                 output=payload.output, evidence=payload.evidence,
+                 artifact_refs=payload.artifact_refs)
     return {"workflow": item}
 
 
