@@ -110,3 +110,25 @@ def test_product_rd_cannot_skip_stages_or_approve_incomplete_work(tmp_path):
             pass
     finally:
         store.close()
+
+
+
+def test_product_rd_attaches_one_work_item_only_to_active_stage(tmp_path):
+    store, repo = _repo(tmp_path)
+    try:
+        workflow = repo.create(title="Delegation check", brief="Test stage work-item linkage.")
+        stage_id = "00000000-0000-4000-8000-000000000001"
+        updated = repo.attach_work_item(workflow["id"], "opportunity_brief", stage_id)
+        assert updated["stages"][0]["work_item_id"] == stage_id
+        try:
+            repo.attach_work_item(workflow["id"], "opportunity_brief", "00000000-0000-4000-8000-000000000002")
+            assert False, "an active stage must not accept a second work item"
+        except ProductRDError:
+            pass
+        try:
+            repo.attach_work_item(workflow["id"], "product_specification", stage_id)
+            assert False, "a pending stage must not accept a work item"
+        except ProductRDError:
+            pass
+    finally:
+        store.close()
