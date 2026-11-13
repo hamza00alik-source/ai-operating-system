@@ -89,7 +89,7 @@ APPROVAL_INBOX_JS = r'''
           addText(card,"p","Requested by: "+requestData.requested_by+" · No executor is connected.");
           action(card,"Authorize (record only)",async()=>{
             const rationale=window.prompt("Explain exactly what you are authorizing. This records authorization only; it will NOT execute the action.");
-            if(!rationale||!rationale.trim())return;
+            if(!rationale||!rationale.trim())throw new Error("Authorization cancelled; no decision was recorded.");
             const confirmAction=window.prompt("Type AUTHORIZE to confirm this authorization record.");
             await request("/external-approvals/"+entry.id+"/decision",{method:"POST",body:JSON.stringify({decision:"approve",rationale:rationale.trim(),confirm_action:confirmAction||""})});
           });
