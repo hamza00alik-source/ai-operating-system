@@ -210,3 +210,9 @@ class CommercialFinancialEventInput(BaseModel):
     occurred_at: datetime
     owner_verified: bool
 
+
+
+class WooCommerceConnectionInput(BaseModel):
+    store_url: str = Field(min_length=12, max_length=500)
+    consumer_key: str = Field(min_length=8, max_length=256, pattern=r"^ck_[A-Za-z0-9]+$")
+    consumer_secret: str = Field(min_length=8, max_length=256, pattern=r"^cs_[A-Za-z0-9]+$")
