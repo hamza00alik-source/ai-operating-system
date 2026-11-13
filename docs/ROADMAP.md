@@ -75,6 +75,7 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Provider catalogue/configuration and usage visibility.
 - [x] Workflow details view backed by live API data.
 - [x] Owner-triggered consistent SQLite backup export with integrity check.
+- [x] Owner-authenticated production-readiness evidence snapshot; explicitly reports unverified external gates and never authorizes cutover.
 - [ ] Automated encrypted off-host backups and retention.
 - [ ] Restore rehearsal and documented recovery-point/recovery-time objectives.
 - [ ] Production monitoring, alerting, and incident runbooks.
