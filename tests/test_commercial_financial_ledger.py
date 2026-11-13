@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import sqlite3
 from uuid import uuid4
 
 import pytest
@@ -76,7 +77,7 @@ def test_financial_ledger_rejects_duplicate_source_reference_and_cross_business_
     first = _event("digital-products", "sales_revenue", "platform-order-42")
     store.record_financial_event(first, _audit(first["id"]))
     duplicate = _event("digital-products", "sales_revenue", "platform-order-42")
-    with pytest.raises(Exception):
+    with pytest.raises(sqlite3.IntegrityError):
         store.record_financial_event(duplicate, _audit(duplicate["id"]))
 
     mismatched = _event("physical-agency", "agency_commission", "agency-order-1")
