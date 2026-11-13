@@ -32,6 +32,10 @@ def test_product_rd_workflow_is_business_scoped_zero_cost_and_audited(tmp_path):
         assert workflow["cost_ceiling_usd"] == 0
         assert workflow["external_actions_enabled"] is False
         assert [stage["key"] for stage in workflow["stages"]] == list(PRODUCT_STAGES)
+        assert workflow["stages"][0]["owner_role"] == "market_intelligence_analyst"
+        assert workflow["stages"][1]["owner_role"] == "product_planning_lead"
+        assert workflow["stages"][7]["owner_role"] == "marketplace_operations_analyst"
+        assert workflow["stages"][8]["owner_role"] == "chief_executive_orchestrator"
 
         for stage in PRODUCT_STAGES:
             workflow = _complete(repo, workflow["id"], stage)
