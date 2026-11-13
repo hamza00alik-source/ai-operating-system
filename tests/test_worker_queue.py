@@ -425,3 +425,24 @@ def test_legacy_queue_database_adds_retry_column_without_losing_rows(tmp_path):
     lease = queue.claim(agent)
     assert lease is not None and lease.work_item_id == work
     queue.close()
+
+def test_execution_history_is_secret_free_and_ordered(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "history.sqlite3")
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {"role_key": "researcher"})
+    first = queue.claim(agent)
+    assert first is not None
+    assert queue.fail(first, "provider_timeout") == "queued"
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+    second = queue.claim(agent, now=retry_at)
+    assert second is not None and second.attempt == 2
+    queue.complete(second)
+
+    history = queue.list_attempts(work)
+    assert [row["attempt"] for row in history] == [1, 2]
+    assert [row["status"] for row in history] == ["retryable_failed", "succeeded"]
+    assert history[0]["error_code"] == "provider_timeout"
+    assert "lease_token" not in history[0]
+    assert "payload_json" not in history[0]
+    queue.close()
+
