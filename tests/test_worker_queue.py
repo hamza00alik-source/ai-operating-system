@@ -463,9 +463,16 @@ def test_queue_health_reports_age_expired_leases_and_dead_letters_without_secret
     second_lease = queue.claim(agent, now=retry_at)
     assert second_lease is not None
     queue.fail(second_lease, "provider_timeout")
+    expired_agent, expired_work = uuid4(), uuid4()
+    queue.enqueue(expired_work, expired_agent, {})
+    expired_lease = queue.claim(
+        expired_agent, now=retry_at + timedelta(seconds=11)
+    )
+    assert expired_lease is not None
 
-    snapshot = queue.health_snapshot(now=retry_at + timedelta(seconds=11))
-    assert snapshot["dead_letter_count"] == 1
+    snapshot = queue.health_snapshot(now=retry_at + timedelta(seconds=22))
+    assert snapshot["dead_letter_count"] == 2
+    assert snapshot["expired_leases"] == 1
     assert snapshot["queued_oldest_age_seconds"] >= 10
     assert "lease_token" not in snapshot
     assert "payload_json" not in snapshot
