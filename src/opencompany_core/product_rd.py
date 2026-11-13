@@ -266,9 +266,11 @@ class ProductRDRepository:
         if stage_key == "automated_qa":
             required = {"passed_checks","failed_checks","untested_claims"}
             if not isinstance(qa_result,dict) or set(qa_result) != required or any(
-                not isinstance(qa_result[k],list) for k in required
+                not isinstance(qa_result[k],list) or len(qa_result[k]) > 30
+                or any(not isinstance(value,str) or not value.strip() for value in qa_result[k])
+                for k in required
             ):
-                raise ProductRDError("QA requires passed_checks, failed_checks, and untested_claims lists.")
+                raise ProductRDError("QA requires bounded lists of non-empty strings for passed_checks, failed_checks, and untested_claims.")
             if qa_result["failed_checks"]:
                 stage["status"] = "blocked"
                 workflow["status"] = "blocked"
@@ -278,7 +280,7 @@ class ProductRDRepository:
                 stage["cost_actual_usd"] = actual_cost
                 stage["qa_result"] = qa_result
                 self._commit(str(workflow_id),workflow,action="product_rd.qa_failed",
-                             actor_type="owner",actor_id=actor_id,details={"stage":stage_key,"qa_result":qa_result})
+                             actor_type="owner",actor_id=actor_id,details={"stage":stage_key,"qa_result":qa_result,"cost_actual_usd":actual_cost})
                 return self._load(workflow_id)
             stage["qa_result"] = qa_result
         stage["status"], stage["output"] = "completed", output
