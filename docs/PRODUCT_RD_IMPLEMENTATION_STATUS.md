@@ -57,3 +57,13 @@ Before merge or production use, run the approved test suite after the testing pa
 - This is opt-in and inactive by default. It only runs while the owner-started worker fleet is running (which still requires a successful owner-triggered zero-cost provider test). No paid calls, automatic delegation approval, queue admission, owner deliverable approval, external actions, or publishing were added.
 - Added unexecuted coordinator tests for local OUTPOST generation/QA progression and the absence of draft creation when no ACTIVE role profile exists.
 - Static implementation only: no tests or runtime execution were performed under the testing pause.
+
+
+## Opt-in AI manager-proposal preparation — 2026-11-13
+
+- Added a separate `OPENCOMPANY_PRODUCT_RD_AUTO_PROPOSALS` switch, defaulting to false and subordinate to `OPENCOMPANY_PRODUCT_RD_AUTOMATION=true`.
+- When enabled, the background coordinator may ask the existing department-manager planner to prepare one proposal for an unassigned DRAFT stage work item. The existing model gateway is called with a USD 0 request budget and the confirmed-free provider route; provider/cost failures remain fail-closed.
+- Manager and specialist profiles are revalidated as explicitly ACTIVE and correctly assigned before proposal persistence. Existing proposals for the same parent prevent repeat planning on later ticks.
+- The proposal and child tasks remain DRAFT. This feature does not approve proposals, materialize READY work, enqueue work, start inference for the child tasks, approve deliverables, or perform external actions. Owner approval remains required before the existing delegation-approval endpoint can materialize READY tasks.
+- `/workers/queue` reports whether this additional automation is enabled.
+- Added a static unit test for default-off behavior and proposal idempotency. Tests remain unexecuted during the owner's testing pause through 2026-12-01.
