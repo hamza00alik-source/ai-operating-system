@@ -196,3 +196,16 @@ class CommercialSupplierInput(BaseModel):
 class CommercialSupplierStatusInput(BaseModel):
     status: str
     confirm_owner_decision: bool
+
+class CommercialFinancialEventInput(BaseModel):
+    business_id: str
+    order_id: UUID | None = None
+    event_type: str = Field(min_length=1, max_length=40)
+    amount_minor: int = Field(gt=0, le=9_000_000_000_000_000)
+    currency: str = Field(min_length=3, max_length=3)
+    source_reference: str = Field(min_length=1, max_length=200)
+    evidence_reference: str = Field(min_length=1, max_length=500)
+    note: str = Field(default="", max_length=2000)
+    occurred_at: datetime
+    owner_verified: bool
+
