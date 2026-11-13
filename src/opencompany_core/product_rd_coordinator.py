@@ -208,8 +208,7 @@ class ProductRDCoordinator:
                         "Produce an internal draft for manager review only."
                     ),
                 })
-        else:
-            return False
+        # Persist owner_review plans too, so unresolved scope is not replanned every tick.
         self.delegations.create_proposal(
             parent_work_item_id=item.id,
             request={
