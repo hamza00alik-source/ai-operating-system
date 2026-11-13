@@ -36,6 +36,7 @@ from opencompany_app.routers.lifecycle import router as lifecycle_router
 from opencompany_app.routers.learning import router as learning_router
 from opencompany_app.routers.portfolio import router as portfolio_router
 from opencompany_app.routers.product_rd import router as product_rd_router
+from opencompany_app.routers.external_approvals import router as external_approvals_router
 from opencompany_app.routers.auth import router as auth_router
 from opencompany_app.routers.operations import backup_router as operations_backup_router, diagnostics_router as operations_diagnostics_router
 from opencompany_app.routers.planning import planning_router, queue_router, delegation_router
@@ -139,6 +140,7 @@ app.include_router(lifecycle_router)
 app.include_router(commercial_supplier_router)
 app.include_router(portfolio_router)
 app.include_router(product_rd_router)
+app.include_router(external_approvals_router)
 app.include_router(executive_portfolio_router)
 app.include_router(auth_router)
 app.include_router(operations_diagnostics_router)
