@@ -35,3 +35,10 @@ This document distinguishes committed implementation from runtime verification. 
 Tests have been added for workflow state, audit, business isolation, QA failure/rework, deterministic archive generation, and path validation. They have deliberately not been run under the owner's testing pause through 2026-12-01. No claim of runtime or integration-test success is made.
 
 Before merge or production use, run the approved test suite after the testing pause, inspect the actual generated preview, validate the worker/manager/specialist round trip, inspect artifact storage on the intended persistent volume, and complete a security review of the new endpoints and storage paths.
+
+
+## Follow-up static review — 2026-11-13
+
+- Tightened delegation proposal validation so both AI-generated and deterministic manager proposals require the department manager profile to be explicitly ACTIVE.
+- Tightened both specialist-selection paths so every proposed specialist profile must be explicitly ACTIVE before a proposal can be created. The approval endpoint continues to re-check profile state and identity before materializing tasks, protecting against state changes between planning and approval.
+- This is a static code correction only. The test pause remains in force; no tests or runtime execution were performed.
