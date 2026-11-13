@@ -292,7 +292,8 @@ class ProductRDRepository:
             raise ProductRDError("Only failed QA can be returned to production with a rationale.")
         for stage in workflow["stages"][PRODUCT_STAGES.index("artifact_generation"):]:
             stage.update(status="pending", output=None, artifact_refs=[], evidence=[],
-                         blockers=[], started_at=None, completed_at=None)
+                         blockers=[], started_at=None, completed_at=None,
+                         qa_result=None, work_item_id=None)
         production = workflow["stages"][PRODUCT_STAGES.index("artifact_generation")]
         production["status"], production["started_at"] = "in_progress", self._now()
         qa["rework_history"] = qa.get("rework_history", []) + [{"rationale":rationale[:2000],"returned_at":self._now()}]
