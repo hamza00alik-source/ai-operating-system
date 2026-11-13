@@ -62,6 +62,34 @@ def work_item_execution_history(
     }
 
 
+@router.get("/workers/health", dependencies=[Depends(require_owner_key)])
+def worker_operational_health(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Expose queue pressure and worker supervision signals without secrets."""
+    try:
+        queue = runtime.queue.health_snapshot(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    fleet = runtime.fleet.status()
+    return {
+        **queue,
+        "fleet_running": fleet.running,
+        "configured_concurrency": fleet.concurrency,
+        "completed_cycles": fleet.completed_cycles,
+        "idle_cycles": fleet.idle_cycles,
+        "failed_cycles": fleet.failed_cycles,
+        "worker_autostart_enabled": os.environ.get(
+            "OPENCOMPANY_WORKER_AUTOSTART", "false"
+        ).casefold() == "true",
+        "free_provider_available": bool(
+            runtime.gateway.eligible_providers(request_budget_usd=0.0)
+        ),
+        "external_actions_enabled": False,
+    }
+
+
 @router.get("/workers/status", dependencies=[Depends(require_owner_key)])
 def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     status = runtime.fleet.status()
