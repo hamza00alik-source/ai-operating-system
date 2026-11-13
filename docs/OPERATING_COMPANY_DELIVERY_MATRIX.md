@@ -25,12 +25,13 @@
 ### Required to complete
 
 1. Extend the existing durable attempt records and newly added owner-authenticated execution-history endpoint to cover heartbeat events, provider-call correlation/latency, cancellation detail, structured failure classes, and workflow-level aggregation. The current endpoint exposes ordered attempt number/status/timestamps/bounded error code, queue metadata and checkpoint metadata only.
-2. Workflow-level orchestration that tracks parent/child tasks, parallel branches, dependencies, manager synthesis, rework, cancellation, pause/resume, and final outcome without relying on an operator to manually stitch each stage.
-3. Durable scheduled-job definitions and missed-run/restart recovery. Scheduling must be opt-in, bounded, auditable, and disabled by default until configured.
-4. Shared context/artifact references with business-scoped retrieval, provenance, access checks, retention, and explicit minimal cross-business handoffs.
-5. Worker supervision, queue-age/lease-expiry/dead-letter alerts, graceful shutdown, process restart recovery, and a single-host deployment guard. Multi-host support requires a different coordination store and is a separate design.
-6. Per-department operating procedures, machine-readable input/output contracts, manager quality gates, and evidence-based performance scorecards.
-7. A true end-to-end manager → specialists → manager synthesis → CEO → owner review acceptance run with a verified zero-cost provider and ACTIVE role profiles.
+2. Added owner-authenticated `/workers/health` metrics for queue age, expired leases, dead-letter count, worker fleet state, failed cycles, free-provider availability and business-filtered counts. Metrics are observational; no worker start/stop or recovery action is triggered by the endpoint.
+3. Workflow-level orchestration that tracks parent/child tasks, parallel branches, dependencies, manager synthesis, rework, cancellation, pause/resume, and final outcome without relying on an operator to manually stitch each stage.
+4. Durable scheduled-job definitions and missed-run/restart recovery. Scheduling must be opt-in, bounded, auditable, and disabled by default until configured.
+5. Shared context/artifact references with business-scoped retrieval, provenance, access checks, retention, and explicit minimal cross-business handoffs.
+6. Worker supervision, alert delivery for the newly exposed queue-age/lease-expiry/dead-letter metrics, graceful shutdown, process restart recovery, and a single-host deployment guard. Multi-host support requires a different coordination store and is a separate design.
+7. Per-department operating procedures, machine-readable input/output contracts, manager quality gates, and evidence-based performance scorecards.
+8. A true end-to-end manager → specialists → manager synthesis → CEO → owner review acceptance run with a verified zero-cost provider and ACTIVE role profiles.
 
 **Acceptance evidence:** attempt timeline; deterministic recovery after process restart; completed parallel and sequential workflow; no cross-business data leakage; no cost overrun; review-required final deliverable; operator-visible failure and recovery; repeatable acceptance tests.
 
