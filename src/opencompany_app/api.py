@@ -26,6 +26,7 @@ from opencompany_app.routers.dashboard import router as dashboard_router
 from opencompany_app.routers.providers import router as providers_router, _worker_autostart_enabled
 from opencompany_app.routers.github_evolution import settings_router as github_settings_router, evolution_router as github_evolution_router
 from opencompany_app.routers.integrations import router as integrations_router
+from opencompany_app.routers.woocommerce import router as woocommerce_router
 from opencompany_app.routers.agents import router as agents_router
 from opencompany_app.routers.commercial import router as commercial_router, supplier_router as commercial_supplier_router
 from opencompany_app.routers.workers import router as workers_router
@@ -124,6 +125,7 @@ app.include_router(delegation_router)
 
 
 app.include_router(integrations_router)
+app.include_router(woocommerce_router)
 
 
 app.include_router(github_evolution_router)
