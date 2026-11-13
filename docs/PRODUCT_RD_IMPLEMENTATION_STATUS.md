@@ -55,4 +55,5 @@ Before merge or production use, run the approved test suite after the testing pa
 - Automated stage/work-item audit events identify the system coordinator rather than impersonating the owner.
 - Worker status exposes whether maintenance is configured and the number of successful/failed maintenance cycles.
 - This is opt-in and inactive by default. It only runs while the owner-started worker fleet is running (which still requires a successful owner-triggered zero-cost provider test). No paid calls, automatic delegation approval, queue admission, owner deliverable approval, external actions, or publishing were added.
+- Added unexecuted coordinator tests for local OUTPOST generation/QA progression and the absence of draft creation when no ACTIVE role profile exists.
 - Static implementation only: no tests or runtime execution were performed under the testing pause.
