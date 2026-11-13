@@ -42,7 +42,7 @@
 - Owner-authenticated API Anything connector is read-only, tier-one only.
 - Commercial records support business-scoped opportunities, suppliers, products, quotes, and orders.
 - External-action request registry and owner approval inbox exist. Approval currently records `authorized_not_executed`; it is not an executor.
-- Integration credentials are encrypted by the existing credential service, but commerce/social/email/payment account adapters are not yet complete.
+- Integration credentials are encrypted by the existing credential service. A first WooCommerce adapter now supports separately encrypted credentials for `physical-agency`, `physical-brand`, and `digital-products`; it exposes bounded, owner-triggered GET-only product/order reads and a read-only connection test. It minimizes order fields to omit customer PII, rejects non-HTTPS/IP/local hosts and nonstandard ports, blocks redirects, caps response size and pagination, and audits connection/read events. No store has been connected or live-tested.
 
 ### Required to complete
 
@@ -50,7 +50,7 @@ All connectors must have a per-business connection identity, least-privilege sco
 
 | Integration | First safe milestone | Later owner-approved capability |
 |---|---|---|
-| WooCommerce / owned store | Connect and read products, orders, stock, refunds and statuses | Draft product sync; owner-approved publish/update; approved fulfilment status updates |
+| WooCommerce / owned store | **Implemented in code, not live-verified:** save per-business encrypted credentials; owner-triggered read-only test; bounded product/order reads (including stock fields and minimized order summaries) | Import/reconcile records, then draft product sync; owner-approved publish/update; approved fulfilment status updates |
 | Marketplaces | Research/list supported channels and import read-only listing/order data where API access exists | Owner-approved listing submission and permitted order/fulfilment actions |
 | Social channels | Read account/page metadata and prepare content drafts | Owner-approved scheduled publishing and analytics sync |
 | Email / customer support | Read-only inbox import, classification and response drafts | Owner-approved message send; never autonomous commitments |
@@ -59,7 +59,7 @@ All connectors must have a per-business connection identity, least-privilege sco
 
 Do not promise a connector until the provider's supported API, account eligibility, regional availability, scopes, terms, pricing, and current authentication flow have been verified. A generic API connector is not a substitute for a secure provider-specific adapter.
 
-**Acceptance evidence:** separate credentials and records for each business; mocked contract tests; provider sandbox/read-only acceptance; retry/idempotency; revoked-token behavior; audit trail; no write side effects during read-only tests.
+**Acceptance evidence:** separate credentials and records for each business; mocked contract tests; provider sandbox/read-only acceptance; retry/idempotency; revoked-token behavior; audit trail; no write side effects during read-only tests. WooCommerce now has static adapter/route coverage added, but those tests are deliberately unexecuted until the owner's testing pause ends; no live connection, provider response, credential revocation, or real-store reconciliation is claimed.
 
 ## 3. Revenue operations
 
