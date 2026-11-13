@@ -45,6 +45,11 @@ PRODUCT_RD_JS = r'''
                 await request("/work-items/"+item.id+"/enqueue",{method:"POST",body:"{}"});
                 await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});
               });
+            }else if(item.state==="ready"){
+              actionButton("Enqueue & run agent once",async()=>{
+                await request("/work-items/"+item.id+"/enqueue",{method:"POST",body:"{}"});
+                await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});
+              });
             }else if(item.state==="queued"){
               actionButton("Run agent once",async()=>{await request("/workers/"+item.assigned_agent_id+"/run-once",{method:"POST",body:"{}"});});
             }else if(item.state==="review"){
