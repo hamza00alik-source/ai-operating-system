@@ -217,8 +217,12 @@ def generate_product_pilot(workflow_id: UUID,
     artifact_refs = [item["download_url"] for item in generated["artifacts"]]
     after_generation = _call(repo.complete_stage, workflow_id, "artifact_generation",
         output="Generated a deterministic original 30-icon SVG prototype, contact sheet, manifest, README, draft license notice, and ZIP archive.",
-        evidence=[f"Generated {len(generated['artifacts'])} artifact files.",
-                  "Generation used deterministic local code; no model call or external service was used."],
+        evidence=[
+            f"Generated {len(generated['artifacts'])} artifact files.",
+            "Generation used deterministic local code; no model call or external service was used.",
+            *[f"artifact:{entry['name']};sha256:{entry['sha256']};size_bytes:{entry['size_bytes']}"
+              for entry in generated["artifacts"]],
+        ],
         artifact_refs=artifact_refs)
     qa = generated["qa"]
     after_qa = _call(repo.complete_stage, workflow_id, "automated_qa",
