@@ -28,6 +28,13 @@ PRODUCT_RD_JS = r'''
       const blocked=workflow.stages.find(s=>s.status==="blocked");
       const stageLine=document.createElement("p");stageLine.textContent=active?"Active stage: "+active.key:(blocked?"Blocked at: "+blocked.key:"No active stage");card.append(stageLine);
       const stageList=document.createElement("p");stageList.className="muted";stageList.textContent=workflow.stages.map(s=>s.key.replaceAll("_"," ")+": "+s.status).join("  ·  ");card.append(stageList);
+      const qaStage=workflow.stages.find(s=>s.key==="automated_qa"&&s.qa_result);
+      if(qaStage){
+        const qaText=document.createElement("p");qaText.textContent="Automated QA passed: "+qaStage.qa_result.passed_checks.length+" · failed: "+qaStage.qa_result.failed_checks.length;card.append(qaText);
+        if(qaStage.qa_result.untested_claims&&qaStage.qa_result.untested_claims.length){
+          const untested=document.createElement("p");untested.className="warn";untested.textContent="Still untested: "+qaStage.qa_result.untested_claims.join("; ");card.append(untested);
+        }
+      }
       const actions=document.createElement("div");actions.className="auth";
       const actionButton=(label,fn)=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.addEventListener("click",async()=>{b.disabled=true;try{await fn();await loadProductRD();setMessage("Product & R&D workflow updated. No external action was performed.","success");}catch(e){setMessage(e.message,"error");b.disabled=false;try{await loadProductRD();}catch{}}});actions.append(b);return b;};
       const addLink=(label,url)=>{const a=document.createElement("a");a.href=url;a.textContent=label;a.target="_blank";a.rel="noopener noreferrer";a.style.color="#9cc7ff";a.style.marginRight="12px";card.append(a);};
@@ -94,7 +101,11 @@ PRODUCT_RD_JS = r'''
             }
           }
         }else if(active.key==="artifact_generation"){
-          actionButton("Generate OUTPOST prototype & run QA",async()=>{await request("/product-rd/workflows/"+workflow.id+"/generate-pilot",{method:"POST",body:"{}"});});
+          if(workflow.business_id==="digital-products"&&workflow.title.toLowerCase().includes("outpost")){
+            actionButton("Generate OUTPOST prototype & run QA",async()=>{await request("/product-rd/workflows/"+workflow.id+"/generate-pilot",{method:"POST",body:"{}"});});
+          }else{
+            const unavailable=document.createElement("p");unavailable.className="warn";unavailable.textContent="No deterministic artifact generator is configured for this product yet. The OUTPOST prototype generator is the only current pilot.";card.append(unavailable);
+          }
         }else if(active.key==="human_preview"){
           actionButton("Confirm human preview review",async()=>{await request("/product-rd/workflows/"+workflow.id+"/stages/human_preview/complete",{method:"POST",body:JSON.stringify({output:"Owner reviewed the generated SVG contact sheet. This is a human visual checkpoint, not engine or legal approval.",evidence:["Owner visually inspected the preview contact sheet."]})});});
           addLink("Open SVG preview","/product-rd/workflows/"+workflow.id+"/artifacts/preview.svg");
