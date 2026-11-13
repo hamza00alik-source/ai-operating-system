@@ -16,7 +16,7 @@ def _complete(repo, workflow_id, stage):
     return repo.complete_stage(
         workflow_id, stage, output=f"Recorded {stage}",
         evidence=[f"Evidence captured for {stage}"],
-        artifact_refs=[], qa_result=qa,
+        artifact_refs=[f"test-artifact:{stage}"], qa_result=qa,
     )
 
 
@@ -78,6 +78,7 @@ def test_product_rd_qa_failure_blocks_and_rework_resets_downstream_stages(tmp_pa
         failed = repo.complete_stage(
             workflow["id"], "automated_qa", output="QA found a missing required file.",
             evidence=["Required-file check failed"],
+            artifact_refs=["test-artifact:qa-failure"],
             qa_result={"passed_checks": [], "failed_checks": ["missing README"],
                        "untested_claims": ["visual quality"]},
         )
@@ -91,6 +92,23 @@ def test_product_rd_qa_failure_blocks_and_rework_resets_downstream_stages(tmp_pa
         assert repaired["stages"][3]["status"] == "in_progress"
         assert repaired["stages"][4]["status"] == "pending"
         assert repaired["stages"][5]["status"] == "pending"
+    finally:
+        store.close()
+
+
+def test_product_rd_cannot_complete_stage_without_artifact_reference(tmp_path):
+    store, repo = _repo(tmp_path)
+    try:
+        workflow = repo.create(title="Missing artifact", brief="Artifact references are mandatory.")
+        try:
+            repo.complete_stage(
+                workflow["id"], "opportunity_brief",
+                output="A stage without an artifact must not complete.",
+                evidence=["No artifact was attached."],
+            )
+            assert False, "missing artifact references must block completion"
+        except ProductRDError:
+            pass
     finally:
         store.close()
 
