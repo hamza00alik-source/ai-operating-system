@@ -220,7 +220,6 @@ class SchemaInitializationMixin:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")
                     raise
-                return
             if version == 7:
                 try:
                     self._connection.executescript("""
