@@ -40,6 +40,28 @@ def worker_queue_status(
     }
 
 
+@router.get("/work-items/{work_item_id}/execution-history", dependencies=[Depends(require_owner_key)])
+def work_item_execution_history(
+    work_item_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Return secret-free queue and attempt history for one owner-visible work item."""
+    item = runtime.store.get_work_item(work_item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    queue_entry = runtime.queue.get_entry(work_item_id)
+    attempts = runtime.queue.list_attempts(work_item_id)
+    return {
+        "work_item_id": str(work_item_id),
+        "business_id": item.business_id,
+        "task_state": item.state.value,
+        "queue": queue_entry,
+        "attempt_count": len(attempts),
+        "attempts": list(attempts),
+        "checkpoints": list(runtime.queue.list_checkpoints(work_item_id)),
+    }
+
+
 @router.get("/workers/status", dependencies=[Depends(require_owner_key)])
 def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     status = runtime.fleet.status()
