@@ -157,6 +157,7 @@ def create_ai_manager_proposal(
             )
             if (
                 profile is None
+                or profile.state != AgentState.ACTIVE
                 or profile.role_key != specialist.role_key
                 or profile.team_key != specialist.team_key
                 or profile.department != item.department
@@ -228,7 +229,7 @@ def create_work_item_delegation_proposal(
     profiles = store.list_agents(limit=1000)
     manager = next((agent for agent in profiles if agent.role_key == plan.manager_role_key and agent.department == item.department), None)
     if (
-        manager is None or manager.state in {AgentState.PAUSED, AgentState.RETIRED}
+        manager is None or manager.state != AgentState.ACTIVE
         or manager.role_key != plan.manager_role_key
         or manager.team_key != "management"
         or manager.department != item.department
