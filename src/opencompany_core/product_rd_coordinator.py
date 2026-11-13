@@ -1,9 +1,10 @@
 """Opt-in, approval-preserving Product & R&D background coordinator.
 
-The coordinator may create unassigned draft work items, synchronize deliverables
-that have already passed owner review, and run the local deterministic OUTPOST
-prototype generator. It never approves a delegation proposal, admits work to the
-worker queue, starts model inference, or performs external business actions.
+The coordinator may create unassigned draft work items, prepare zero-budget AI
+manager proposals when separately enabled, synchronize deliverables that have
+already passed owner review, and run the local deterministic OUTPOST prototype
+generator. It never approves proposals, admits work to the worker queue, starts
+child-task execution, or performs external business actions.
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ def _artifact_root() -> Path:
 
 
 class ProductRDCoordinator:
-    """Perform only deterministic or already-owner-approved internal transitions."""
+    """Perform bounded internal coordination while preserving every owner gate."""
 
     def __init__(self, store, *, artifact_root: Path | None = None, delegations=None,
                  gateway=None, auto_manager_proposals_enabled: bool = False) -> None:
