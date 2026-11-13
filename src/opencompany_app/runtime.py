@@ -231,7 +231,13 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
     product_rd_automation_enabled = os.environ.get(
         "OPENCOMPANY_PRODUCT_RD_AUTOMATION", "false"
     ).strip().casefold() in {"1", "true", "yes", "on"}
-    product_rd_coordinator = ProductRDCoordinator(store) if product_rd_automation_enabled else None
+    product_rd_auto_proposals_enabled = os.environ.get(
+        "OPENCOMPANY_PRODUCT_RD_AUTO_PROPOSALS", "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    product_rd_coordinator = ProductRDCoordinator(
+        store, delegations=delegations, gateway=gateway,
+        auto_manager_proposals_enabled=product_rd_auto_proposals_enabled,
+    ) if product_rd_automation_enabled else None
     fleet = WorkerFleet(
         worker, store,
         idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
