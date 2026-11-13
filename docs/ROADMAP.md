@@ -56,6 +56,8 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Free-only eligibility checks, all eligible free-model rotation, response identity checks, and non-zero-cost rejection.
 - [x] Durable, secret-free model-usage ledger.
 - [x] Read-only API Anything connector with bounded tier-1 operations.
+- [x] Owner-verified, append-only financial event ledger with model-specific revenue classification, source-reference deduplication, order/business scope checks, and per-business/per-currency summaries.
+- [ ] Provider-specific read-only commerce adapters and statement reconciliation.
 - [x] GitHub code-evolution proposals restricted to isolated draft pull requests.
 - [ ] WooCommerce account connection and read-only product/order sync.
 - [ ] Social account connections and draft/publish workflow with owner approval.
