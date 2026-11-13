@@ -118,6 +118,7 @@ class ProductRDRepository:
         for index, key in enumerate(PRODUCT_STAGES):
             stages.append({
                 "key": key,
+                "work_item_id": None,
                 "status": "in_progress" if index == 0 else "pending",
                 "owner_role": {
                     "opportunity_brief": "market_intelligence_analyst",
