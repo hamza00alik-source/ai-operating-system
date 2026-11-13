@@ -118,9 +118,12 @@ def test_auto_manager_proposal_is_opt_in_and_idempotent(monkeypatch):
     monkeypatch.setattr(coordinator_module, "recommend_department_plan",
                         lambda *args, **kwargs: recommendation)
     coordinator = object.__new__(coordinator_module.ProductRDCoordinator)
+    class Gateway:
+        def eligible_providers(self, request_budget_usd):
+            return ["unorouter-free"]
     coordinator.store = Store()
     coordinator.delegations = Delegations()
-    coordinator.gateway = object()
+    coordinator.gateway = Gateway()
     coordinator.auto_manager_proposals_enabled = False
     workflow = {"id": "workflow-1", "business_id": "digital-products"}
     stage = {"key": "opportunity_brief", "work_item_id": str(parent_id)}
