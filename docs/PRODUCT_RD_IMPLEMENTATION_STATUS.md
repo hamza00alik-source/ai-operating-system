@@ -108,3 +108,13 @@ Before merge or production use, run the approved test suite after the testing pa
 - The route cannot approve requests or execute actions. The separate agent key must be provisioned securely by an owner/operator before agents can call it; no environment secret was set or changed.
 - This is an authenticated submission API, not yet automatic tool integration in the model worker. Agent prompts/tool schemas and a safe runtime client still need implementation.
 - Added static boundary tests. Tests remain unexecuted under the testing pause through 2026-12-01.
+
+
+## Worker-originated approval requests — 2026-11-13
+
+- Connected the real specialist worker execution path to the existing external-action approval inbox. The specialist prompt defines one bounded `OPENCOMPANY_APPROVAL_REQUESTS` JSON block; the worker accepts only a single block containing 1–5 allowlisted requests and rejects unknown fields, invalid action types, oversized text, invalid currency/amount pairs, and malformed structures.
+- The model cannot supply agent ID, work-item ID, business-unit ID, API keys, credentials, payment instruments, or arbitrary execution payload. The worker derives identity and business scope from the validated active lease and assigned work item, then calls a server-side recorder directly. No secret is included in the model prompt or completion.
+- Approval request IDs are deterministic for the same work item/request content, so a worker retry does not create duplicate pending requests. Requests enter the same owner inbox and audit chain with actor type `agent` and `execution_performed=false`.
+- The original separately authenticated internal HTTP submission endpoint remains available; its accepted work-item states are QUEUED, IN_PROGRESS, and COMPLETED. The in-process worker recorder is restricted to the currently assigned ACTIVE agent and an IN_PROGRESS task.
+- No approval, external action, customer communication, publishing, purchase, payment, production change, deployment, or credential/account change is performed. Owner review remains mandatory. The worker's deliverable excludes a successfully parsed approval block so it is not mistaken for ordinary deliverable content.
+- Added static/unit test coverage for parsing, allowlists, trusted identity derivation, and retry idempotency. Tests and CI remain unexecuted under the testing pause through 2026-12-01; no runtime or deployment validation was performed.
