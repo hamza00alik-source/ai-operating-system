@@ -33,6 +33,9 @@ def worker_queue_status(
         "execution_requires_explicit_worker_process": not status.running,
         "worker_autostart_configured": os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true",
         "free_provider_ready": bool(runtime.gateway.eligible_providers(request_budget_usd=0.0)),
+        "product_rd_automation_enabled": status.maintenance_enabled,
+        "product_rd_automation_cycles": status.maintenance_cycles,
+        "product_rd_automation_failures": status.maintenance_failures,
     }
 
 
@@ -49,6 +52,9 @@ def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
             1 for agent in runtime.store.list_agents(limit=1000)
             if agent.state == AgentState.ACTIVE and agent.role_key
         ),
+        "product_rd_automation_enabled": status.maintenance_enabled,
+        "product_rd_automation_cycles": status.maintenance_cycles,
+        "product_rd_automation_failures": status.maintenance_failures,
     }
 
 
