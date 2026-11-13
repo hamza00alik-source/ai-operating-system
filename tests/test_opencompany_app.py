@@ -33,6 +33,18 @@ def owner_client(tmp_path, monkeypatch):
     app.dependency_overrides.clear()
     runtime.close()
 
+def _activate_department_profiles(owner_client, headers, department, *, include_specialists=True):
+    profiles = owner_client.get("/agents", headers=headers).json()["agents"]
+    for profile in profiles:
+        if profile["department"] != department or profile["state"] == "active":
+            continue
+        if not include_specialists and profile["team_key"] != "management":
+            continue
+        response = owner_client.post(
+            f"/agents/{profile['id']}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": profile["revision"]},
+        )
+        assert response.status_code == 200
 
 def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_headers():
     response = client.get("/owner")
@@ -542,7 +554,8 @@ def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_c
 def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
-    assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+    assert owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research").status_code == 200
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Assess market demand",
         "objective": "Prepare a sourced market-demand assessment",
@@ -604,21 +617,18 @@ def test_delegation_approval_rejects_inactive_specialist_profiles(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research", include_specialists=False)
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Assess market demand", "objective": "Prepare a sourced assessment",
         "department": "intelligence-research",
     }).json()
-    proposal = owner_client.post(
+    response = owner_client.post(
         f"/work-items/{created['item_id']}/delegation-proposals", headers=headers,
         json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
-    ).json()
-    response = owner_client.post(
-        f"/work-items/{created['item_id']}/delegation-proposals/{proposal['id']}/approve",
-        headers=headers,
     )
     assert response.status_code == 409
-    assert "explicitly active" in response.json()["detail"]
-    assert owner_client.get(f"/work-items/{created['item_id']}/delegation-proposals", headers=headers).json()["proposals"][0]["status"] == "draft"
+    assert "must be provisioned, ACTIVE" in response.json()["detail"]
+    assert owner_client.get(f"/work-items/{created['item_id']}/delegation-proposals", headers=headers).json()["proposals"] == []
 
 
 def test_deliverables_endpoint_requires_owner_and_returns_persisted_records(owner_client):
@@ -714,6 +724,7 @@ def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Research buyer demand",
         "objective": "Prepare a sourced buyer-demand report",
@@ -820,6 +831,7 @@ def test_active_department_manager_can_create_ai_proposal_without_execution(owne
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     runtime = app.dependency_overrides[get_runtime]()
     runtime.gateway = ModelGateway.configure(((
         ProviderPolicy(
@@ -1120,6 +1132,7 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     parent = owner_client.post("/work-items", headers=headers, json={
         "title": "Assess overseas market demand",
         "objective": "Prepare an evidence-backed internal market assessment",
@@ -1348,6 +1361,7 @@ def test_auto_queue_runs_only_after_owner_approval_and_zero_cost_provider_readin
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     parent = owner_client.post("/work-items", headers=headers, json={
         "title": "Automate manager-led market assessment",
         "objective": "Complete specialist research and consolidate it for owner review",
@@ -1707,6 +1721,7 @@ def test_stale_delegation_proposal_cannot_reopen_parent_work(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Prepare buyer research",
         "objective": "Prepare a sourced buyer-demand assessment",
@@ -1814,6 +1829,7 @@ def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Research international buyer demand",
         "objective": "Prepare a sourced buyer-demand assessment for the physical agency",
@@ -2041,7 +2057,8 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
     monkeypatch.setenv("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK", "false")
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
-    assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+    assert owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research").status_code == 200
 
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Research international demand",
