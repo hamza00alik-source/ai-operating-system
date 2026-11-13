@@ -15,7 +15,7 @@ APPROVAL_INBOX_JS = r'''
     host.replaceChildren();
     const business=byId("approval-inbox-business").value;
     const units=business==="all"?["core","physical-agency","physical-brand","digital-products"]:[business];
-    const pending=[];
+    const pending=[];\n    let proposalScans=0;
     const addText=(parent,tag,value,className)=>{const el=document.createElement(tag);if(className)el.className=className;el.textContent=value||"";parent.append(el);return el;};
     const action=(parent,label,fn)=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.addEventListener("click",async()=>{b.disabled=true;try{await fn();await loadCompanyApprovalInbox();setMessage("Approval inbox refreshed. The selected owner decision was recorded through its existing workflow.","success");}catch(e){setMessage(e.message,"error");b.disabled=false;}});parent.append(b);};
     try{
@@ -25,7 +25,7 @@ APPROVAL_INBOX_JS = r'''
           if(item.state==="review"){
             pending.push({kind:"deliverable",business:unit,title:item.title,summary:item.objective||"",created:item.created_at,id:item.id});
           }
-          if(item.state==="draft"){
+          if(item.state==="draft"&&proposalScans<100){\n            proposalScans++;
             try{
               const detail=await request("/work-items/"+item.id+"/workflow");
               for(const proposal of (detail.delegation_proposals||[])){
