@@ -32,6 +32,7 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [ ] Workflow-level artifact aggregation and specialist-specific machine-readable deliverable schemas.
 - [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
 - [x] Durable worker-attempt records with a secret-free, owner-authenticated per-work-item execution-history endpoint (attempt number, state, timestamps, bounded error code, queue metadata and checkpoint metadata).
+- [x] Owner-authenticated queue health endpoint with business-scoped counts, oldest queued age, expired leases, dead-letter count, worker fleet state, and zero-cost provider availability.
 - [ ] Richer per-attempt diagnostics (provider latency/usage correlation, heartbeat events, structured failure classification and workflow-level aggregation).
 - [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
 
