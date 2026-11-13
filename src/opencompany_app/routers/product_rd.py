@@ -126,10 +126,12 @@ def delegate_product_stage(workflow_id: UUID,
         "Do not create unsupported claims, contact customers, publish, purchase, spend, or change accounts. "
         "Use only confirmed zero-cost resources."
     )
+    direct_ceo_assignment = role_key == "chief_executive_orchestrator"
     item = WorkItem(
         id=uuid4(), title=f"Product R&D · {stage['key']} · {workflow['title']}",
         objective=objective, department=department, state=TaskState.DRAFT,
-        assigned_agent_id=agent.id, business_id=workflow["business_id"],
+        assigned_agent_id=agent.id if direct_ceo_assignment else None,
+        business_id=workflow["business_id"],
     )
     event = AuditRecord(
         id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
@@ -146,9 +148,11 @@ def delegate_product_stage(workflow_id: UUID,
         raise HTTPException(status_code=409, detail=f"Could not persist stage work item: {type(exc).__name__}") from exc
     updated = _call(repo.attach_work_item, workflow_id, stage["key"], str(item.id))
     return {
-        "workflow": updated, "work_item_id": str(item.id), "agent_id": str(agent.id),
+        "workflow": updated, "work_item_id": str(item.id),
+        "agent_id": str(agent.id) if direct_ceo_assignment else None,
         "role_key": role_key, "department": department, "work_item_state": "draft",
-        "owner_must_mark_ready_enqueue_and_review": True,
+        "manager_team_proposal_required": not direct_ceo_assignment,
+        "owner_must_approve_delegation_and_execution": True,
         "execution_started": False,
     }
 
