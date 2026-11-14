@@ -121,8 +121,8 @@ A track is **complete** only when its implementation, acceptance evidence, opera
 
 ## Current blockers and owner gates
 
-- Testing/CI is paused through 2026-12-01 by prior owner instruction.
+- Testing/CI was re-authorized by the owner on 2026-11-14. GitHub Actions may run for this development branch; tests remain unverified until the latest workflow succeeds.
 - No provider credentials or integration accounts are authorized/provisioned for these new connectors.
 - No live customer/order/payment data or sandbox credentials have been supplied.
-- No production deployment, merge, secret provisioning, spending, or external account mutation is authorized by this document.
+- The owner has separately said CI and deployment may be used if needed. This permits CI for the development branch; production deployment still requires a readiness check, confirmation of the target environment and rollback path, and no alteration of the existing Railway routing or secrets without explicit scope.
 - Existing PR #139 remains a draft and must not be merged merely because this delivery matrix exists.
