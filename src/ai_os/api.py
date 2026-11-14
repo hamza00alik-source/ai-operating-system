@@ -894,7 +894,7 @@ async def upload_video_source(request: Request, filename: str = Query(min_length
                 if len(prefix) < 32:
                     prefix.extend(chunk[:32 - len(prefix)])
                 output.write(chunk)
-        valid_signature = (suffix in {".mp4", ".mov"} and len(prefix) >= 12 and prefix[4:8] == b"ftyp") or (suffix == ".webm" and prefix[:4] == b"\\x1a\\x45\\xdf\\xa3")
+        valid_signature = (suffix in {".mp4", ".mov"} and len(prefix) >= 12 and prefix[4:8] == b"ftyp") or (suffix == ".webm" and prefix[:4] == bytes([0x1a, 0x45, 0xdf, 0xa3]))
         if size < 16 or not valid_signature:
             raise HTTPException(status_code=422, detail="Uploaded bytes do not match the selected video format.")
         temporary.replace(final_path)
