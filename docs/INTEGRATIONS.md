@@ -6,6 +6,12 @@ This document describes integration code available in the development branch. It
 
 The adapter is deliberately limited to the first safe milestone: a business-scoped connection record, an owner-triggered connection test, and bounded reads. It does not create/update products, publish listings, change stock, change order status, send messages, issue refunds, or initiate payments.
 
+### Owner dashboard
+
+The owner console includes a WooCommerce panel. After signing in, select the correct business unit, enter the store URL and a dedicated read-only consumer key/secret, and save. The credentials are submitted to the owner-authenticated API and cleared from the form after a successful save; they are not written to browser storage. The panel can then test read access, display bounded product/order reads, or disconnect that business. Saving does not contact WooCommerce; the explicit test and read buttons do.
+
+The same console shows a financial overview grouped by business and currency. It formats minor units using the currency's standard fraction digits, performs no FX conversion, and does not treat cash receipts as recognized revenue.
+
 ### Business isolation
 
 Connections are stored independently under:
