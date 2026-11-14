@@ -47,6 +47,7 @@ class OpenCompanyRuntime:
     secret_vault: ProviderSecretVault
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
+    automation_scheduler: DurableAutomationScheduler | None = None
     product_rd_auto_proposals_enabled: bool = False
     unorouter_tested_at: str | None = None
     github_evolution_tested_at: str | None = None
@@ -320,6 +321,7 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         secret_vault=secret_vault,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
+        automation_scheduler=automation_scheduler,
         product_rd_auto_proposals_enabled=product_rd_auto_proposals_enabled,
     )
     # Runtime construction stays inert. For dashboard-managed credentials,
