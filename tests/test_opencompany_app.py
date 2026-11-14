@@ -1288,9 +1288,8 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
     class Runtime:
         fleet = Fleet()
         gateway = Gateway()
-        unorouter_tested_at = None
-        def start_workers_if_ready(self):
-            if self.unorouter_tested_at is None or not self.gateway.eligible_providers(request_budget_usd=0.0):
+        def verify_free_provider_and_start(self):
+            if not self.gateway.eligible_providers(request_budget_usd=0.0):
                 return False
             return bool(self.fleet.start())
 
@@ -1303,7 +1302,6 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
     assert calls == []
 
     runtime.gateway.ready = True
-    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     api_module.initialize_autonomous_runtime()
     assert calls == ["started"]
 
