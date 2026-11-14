@@ -1,4 +1,17 @@
-import shutil\nimport subprocess\nfrom pathlib import Path\n\nimport pytest\n\nfrom ai_os.clipping import (ClipCandidate, TranscriptSegment, rank_clip_candidates,\n                            render_clip, score_text, validate_segments)
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from ai_os.clipping import (
+    ClipCandidate,
+    TranscriptSegment,
+    rank_clip_candidates,
+    render_clip,
+    score_text,
+    validate_segments,
+)
 
 def test_validate_segments_discards_invalid_and_sorts():
     items = [
