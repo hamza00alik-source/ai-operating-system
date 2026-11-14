@@ -121,6 +121,11 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       <div><h3>Proposals & quotations</h3><div id="commercial-quotes" class="list"><p class="muted">Connect to load quotations.</p></div></div>
       <div><h3>Orders · record only</h3><div id="commercial-orders" class="list"><p class="muted">Connect to load orders.</p></div></div>
     </div>
+    <div class="item">
+      <h3>Financial overview · owner-verified records</h3>
+      <p class="muted">Revenue and costs remain separated by business and currency. Agency revenue counts commissions only. This is an accounting view, not a bank balance or payment processor.</p>
+      <div id="commercial-financial-summary" class="list"><p class="muted">Connect to load financial summaries.</p></div>
+    </div>
   </section>
   <section class="panel">
     <h2 class="section-title">Supplier relationships · separate physical businesses</h2>
@@ -302,9 +307,10 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     finally{button.disabled=false;}
   }
   async function loadCommercial(){
-    const [opportunities,products,quotes,orders,suppliers]=await Promise.all([
+    const [opportunities,products,quotes,orders,suppliers,financial]=await Promise.all([
       request("/commercial/opportunities"),request("/commercial/products"),
-      request("/commercial/quotes"),request("/commercial/orders"),request("/commercial/suppliers")
+      request("/commercial/quotes"),request("/commercial/orders"),request("/commercial/suppliers"),
+      request("/commercial/financial-summary")
     ]);
     clear("commercial-opportunities","No customer opportunities recorded.");
     opportunities.opportunities.forEach(o=>{
@@ -352,7 +358,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
             items:[{product_id:selected.id,description:selected.name+" — "+selected.description,quantity:q,unit_price_minor:price}]
           })});
           await loadCommercial();
-      await loadWooCommerceStatus();setMessage("Draft quote saved under "+o.business_id+". It was not sent to the customer.","success");
+          setMessage("Draft quote saved under "+o.business_id+". It was not sent to the customer.","success");
         }catch(error){setMessage(error.message,"error");makeQuote.disabled=false;}
       });
       quoteForm.append(makeQuote);card.append(quoteForm);
@@ -414,6 +420,28 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       }
       byId("commercial-quotes").append(card);
     });
+    clear("commercial-financial-summary","No owner-verified financial events recorded yet.");
+    if(financial.summaries.length){
+      clear("commercial-financial-summary","");
+      financial.summaries.forEach(summary=>{
+        const card=document.createElement("article");card.className="item";
+        const heading=document.createElement("h3");heading.textContent=summary.business_id+" · "+summary.currency;card.append(heading);
+        const fractionDigits=new Intl.NumberFormat(undefined,{style:"currency",currency:summary.currency}).resolvedOptions().maximumFractionDigits;
+        const formatMinor=value=>new Intl.NumberFormat(undefined,{style:"currency",currency:summary.currency}).format(Number(value)/(10**fractionDigits));
+        const details=document.createElement("p");
+        details.textContent="Recognized revenue: "+formatMinor(summary.recognized_revenue_minor)
+          +" · Operating costs: "+formatMinor(summary.operating_costs_minor)
+          +" · Net contribution: "+formatMinor(summary.net_contribution_minor);
+        card.append(details);
+        const cash=document.createElement("p");
+        cash.textContent="Cash received: "+formatMinor(summary.cash_received_minor)
+          +" · Cash refunded: "+formatMinor(summary.cash_refunded_minor)
+          +" · "+summary.event_count+" evidence event(s)";
+        card.append(cash);
+        const basis=document.createElement("span");basis.className="pill";basis.textContent=summary.revenue_basis+" · no FX conversion";card.append(basis);
+        byId("commercial-financial-summary").append(card);
+      });
+    }
     clear("commercial-orders","No order records yet.");
     orders.orders.forEach(o=>{
       const card=document.createElement("article");card.className="item";
@@ -514,6 +542,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request(businessFilter?"/workers/queue?business_id="+encodeURIComponent(businessFilter):"/workers/queue"),request("/workers/status"),request(businessFilter?"/learning/proposals?business_id="+encodeURIComponent(businessFilter):"/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
       await loadCommercial();
+      await loadWooCommerceStatus();
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
       byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
