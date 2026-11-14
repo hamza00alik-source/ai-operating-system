@@ -51,7 +51,9 @@ def test_ffmpeg_renders_vertical_mp4_when_available(tmp_path):
         "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1",
         "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(source),
     ], check=True, capture_output=True)
-    subtitles = tmp_path / "captions.srt"\n    subtitles.write_text("1\\n00:00:00,000 --> 00:00:00,900\\nA test caption\\n", encoding="utf-8")\n    render_clip(source, ClipCandidate(0, 1, 1.0, "test clip"), output, subtitles_path=subtitles)
+    subtitles = tmp_path / "captions.srt"
+    subtitles.write_text("1\\n00:00:00,000 --> 00:00:00,900\\nA test caption\\n", encoding="utf-8")
+    render_clip(source, ClipCandidate(0, 1, 1.0, "test clip"), output, subtitles_path=subtitles)
     probe = subprocess.run([
         ffprobe, "-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=width,height", "-of", "json", str(output),
