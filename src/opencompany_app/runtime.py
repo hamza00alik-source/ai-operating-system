@@ -19,6 +19,7 @@ from opencompany_core.worker_runner import OpenCompanyWorker
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.owner_sessions import OwnerSessionStore
 from opencompany_core.worker_fleet import WorkerFleet
+from opencompany_core.autonomy_scheduler import DurableAutomationScheduler
 from opencompany_core.collaboration_store import HandoffRepository
 from opencompany_core.learning_store import LearningRepository
 from opencompany_core.github_evolution import GitHubEvolutionClient
@@ -243,14 +244,30 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         store, delegations=delegations, gateway=gateway,
         auto_manager_proposals_enabled=product_rd_auto_proposals_enabled,
     ) if product_rd_automation_enabled else None
+    # Persist scheduled automation due-times and leases in the company database.
+    # The scheduler is inert unless the owner separately enables Product & R&D
+    # automation and starts the verified worker fleet.
+    automation_scheduler = None
+    maintenance_callback = None
+    if product_rd_coordinator is not None:
+        automation_scheduler = DurableAutomationScheduler(
+            store._connection,
+            lock=store._lock,
+            lease_seconds=int(os.environ.get("OPENCOMPANY_AUTOMATION_LEASE_SECONDS", "300")),
+        )
+        automation_scheduler.register_interval_job(
+            "product_rd_maintenance",
+            int(os.environ.get("OPENCOMPANY_PRODUCT_RD_AUTOMATION_INTERVAL_SECONDS", "5")),
+            product_rd_coordinator.run_once,
+            enabled=True,
+        )
+        maintenance_callback = automation_scheduler.run_due
     fleet = WorkerFleet(
         worker, store,
         idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
         concurrency=worker_concurrency,
-        maintenance_callback=product_rd_coordinator.run_once if product_rd_coordinator else None,
-        maintenance_interval_seconds=float(
-            os.environ.get("OPENCOMPANY_PRODUCT_RD_AUTOMATION_INTERVAL_SECONDS", "5")
-        ),
+        maintenance_callback=maintenance_callback,
+        maintenance_interval_seconds=5.0,
     )
     runtime = OpenCompanyRuntime(
         store=store, queue=queue, worker=worker, delegations=delegations,
