@@ -25,9 +25,9 @@
 ### Required to complete
 
 1. Extend the existing durable attempt records and newly added owner-authenticated execution-history endpoint to cover heartbeat events, provider-call correlation/latency, cancellation detail, structured failure classes, and workflow-level aggregation. The current endpoint exposes ordered attempt number/status/timestamps/bounded error code, queue metadata and checkpoint metadata only.
-2. Added owner-authenticated `/workers/health` metrics for queue age, expired leases, dead-letter count, worker fleet state, failed cycles, free-provider availability and business-filtered counts. Metrics are observational; no worker start/stop or recovery action is triggered by the endpoint.
+2. Added owner-authenticated `/workers/health` metrics for queue age, expired leases, dead-letter count, worker fleet state, failed cycles, free-provider availability and business-filtered counts, plus `/automation/jobs` and `/automation/history` for persisted schedule/attempt observability. Metrics are observational; no worker start/stop or recovery action is triggered by these endpoints.
 3. Workflow-level orchestration that tracks parent/child tasks, parallel branches, dependencies, manager synthesis, rework, cancellation, pause/resume, and final outcome without relying on an operator to manually stitch each stage.
-4. Durable scheduled-job definitions and missed-run recovery. Queue lease recovery and owner-opted-in process restart recovery are implemented; the restart path repeats a strict USD 0 provider probe and fails closed. Persisted recurring schedules, missed scheduled-run replay, and per-job execution history remain unimplemented. Scheduling must be opt-in, bounded, auditable, and disabled by default until configured.
+4. Durable scheduled-job definitions and missed-run recovery. A SQLite-backed interval scheduler now persists due times, execution leases, per-attempt history, interrupted attempts, bounded retry backoff, and restart recovery. The Product & R&D maintenance job is registered only when `OPENCOMPANY_PRODUCT_RD_AUTOMATION=true`; the coordinator remains disabled by default. Owner-only `/automation/jobs` and `/automation/history` endpoints expose schedule and attempt metadata. This is one bounded internal schedule, not yet a general-purpose workflow scheduler; callback idempotency is required because a crash can occur after a callback side effect but before completion is recorded.
 5. Shared context/artifact references with business-scoped retrieval, provenance, access checks, retention, and explicit minimal cross-business handoffs.
 6. Worker supervision, alert delivery for the newly exposed queue-age/lease-expiry/dead-letter metrics, graceful shutdown, process restart recovery, and a single-host deployment guard. Multi-host support requires a different coordination store and is a separate design.
 7. Per-department operating procedures, machine-readable input/output contracts, manager quality gates, and evidence-based performance scorecards.
@@ -111,11 +111,11 @@ Business-model-specific rules:
 
 ## Delivery order and definition of complete
 
-1. Finish workforce orchestration and attempt/recovery observability.
+1. Extend durable scheduling and attempt/recovery observability into dependency-aware workflow orchestration, manager synthesis, pause/resume and cancellation.
 2. Build business-isolated connector framework; start with read-only WooCommerce and platform-neutral commerce records.
 3. Complete revenue lifecycle and accounting before enabling any writes or sales claims.
 4. Complete security, backup/restore, monitoring and staging readiness.
-5. Run tests after 2026-12-01 (or earlier only if the owner changes the existing pause), then owner-approved staging and production decisions.
+5. Run the authorized development-branch CI on the exact candidate SHA, then pursue separately approved staging and production decisions.
 
 A track is **complete** only when its implementation, acceptance evidence, operational limits, documentation, and recovery path all exist. A code commit, draft PR, role catalogue, connector stub, approval record, or successful deployment by itself is not completion.
 
