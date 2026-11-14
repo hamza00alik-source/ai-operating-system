@@ -71,15 +71,15 @@ def initialize_autonomous_runtime() -> None:
         bootstrap_executive_orchestrator(runtime.store)
     if activate_enabled:
         runtime.store.activate_all_draft_agents_with_audit()
-    # Autostart is an explicit owner-controlled deployment setting. The gateway
-    # still enforces the live strict-free catalogue and a zero-dollar request
-    # budget for every inference call; unavailable free models fail closed.
+    # Autostart is an explicit owner-controlled deployment setting. On every
+    # process start, re-check the configured provider with one bounded $0 probe;
+    # never trust a stale in-memory test result from a previous process.
     if autostart_enabled:
         try:
-            if runtime.start_workers_if_ready():
-                _LOGGER.info("Worker fleet started after owner-configured zero-cost provider verification.")
+            if runtime.verify_free_provider_and_start():
+                _LOGGER.info("Worker fleet started after fresh zero-cost provider verification.")
             else:
-                _LOGGER.info("Worker autostart remains stopped until a successful owner-triggered zero-cost provider test in this process.")
+                _LOGGER.info("Worker autostart remains stopped: owner opt-in, provider readiness, and zero-cost verification are required.")
         except Exception:
             _LOGGER.exception("Worker autostart could not initialize safely; workers remain stopped.")
 
