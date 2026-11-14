@@ -73,6 +73,13 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "discover all free models" in response.text.lower()
     assert "payload.detail" in response.text
     assert 'id="github-evolution-token"' in response.text
+    assert 'id="woo-business"' in response.text
+    assert 'id="woo-key"' in response.text and 'type="password"' in response.text
+    assert 'id="woo-secret"' in response.text
+    assert 'id="woo-save"' in response.text and 'id="woo-test"' in response.text
+    assert 'id="woo-products"' in response.text and 'id="woo-orders"' in response.text
+    assert 'id="commercial-financial-summary"' in response.text
+    assert 'request("/commercial/financial-summary")' in response.text
     assert "draft pull requests only" in response.text
     assert "loadGitHubEvolutionSettings" in response.text
     assert response.headers["cache-control"] == "no-store"
