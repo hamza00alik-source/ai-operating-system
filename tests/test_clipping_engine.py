@@ -1,4 +1,4 @@
-from ai_os.clipping import TranscriptSegment, rank_clip_candidates, score_text, validate_segments
+import shutil\nimport subprocess\nfrom pathlib import Path\n\nimport pytest\n\nfrom ai_os.clipping import (ClipCandidate, TranscriptSegment, rank_clip_candidates,\n                            render_clip, score_text, validate_segments)
 
 def test_validate_segments_discards_invalid_and_sorts():
     items = [
@@ -24,3 +24,26 @@ def test_rank_candidates_returns_non_overlapping_clips():
     assert len(result) >= 1
     for left, right in zip(result, result[1:]):
         assert left.end <= right.start or left.start >= right.end
+
+
+def test_ffmpeg_renders_vertical_mp4_when_available(tmp_path):
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        pytest.skip("FFmpeg and ffprobe are not installed")
+    source = tmp_path / "source.mp4"
+    output = tmp_path / "vertical.mp4"
+    subprocess.run([
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1",
+        "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(source),
+    ], check=True, capture_output=True)
+    render_clip(source, ClipCandidate(0, 1, 1.0, "test clip"), output)
+    probe = subprocess.run([
+        ffprobe, "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height", "-of", "json", str(output),
+    ], check=True, capture_output=True, text=True)
+    import json
+    stream = json.loads(probe.stdout)["streams"][0]
+    assert (stream["width"], stream["height"]) == (1080, 1920)
+    assert output.stat().st_size > 0
