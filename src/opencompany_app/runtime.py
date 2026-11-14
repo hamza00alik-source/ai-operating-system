@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from opencompany_core.execution import AgentExecutor
-from opencompany_core.model_gateway import ModelGateway
+from opencompany_core.model_gateway import ModelGateway, ModelRequest
 from opencompany_core.unorouter_adapter import UNOROUTER_AUTO_FREE_MODEL, configured_unorouter_gateway
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.worker_queue import DurableWorkerQueue
@@ -77,7 +77,7 @@ class OpenCompanyRuntime:
         self.secret_vault_errors.pop("unorouter", None)
 
     def start_workers_if_ready(self) -> bool:
-        """Start the fleet only after a successful owner test of a free provider."""
+        """Start the fleet only after a successful zero-cost provider verification."""
         enabled = os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
         if not enabled or not os.environ.get("OPENCOMPANY_OWNER_API_KEY", "").strip():
             return False
@@ -86,6 +86,50 @@ class OpenCompanyRuntime:
         if not self.gateway.eligible_providers(request_budget_usd=0.0):
             return False
         return bool(self.fleet.start())
+
+    def verify_free_provider_and_start(self) -> bool:
+        """Re-verify a configured free provider on each opted-in process start.
+
+        The bounded probe is attempted only when the owner explicitly enabled
+        worker autostart and configured owner authentication. Any provider
+        error, unexpected response, or non-zero reported cost leaves workers
+        stopped. Verification is deliberately process-local and repeats after
+        every restart rather than trusting a stale persisted test result.
+        """
+        enabled = os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        if not enabled or not os.environ.get("OPENCOMPANY_OWNER_API_KEY", "").strip():
+            return False
+        if "unorouter" not in self.gateway.eligible_providers(request_budget_usd=0.0):
+            return False
+        from uuid import uuid4
+        from datetime import datetime, timezone
+        from opencompany_core.model_gateway import CostPolicyViolation, NoEligibleProvider, ProviderUnavailable
+
+        try:
+            result = self.gateway.complete(
+                ModelRequest(
+                    prompt="Reply with exactly: OPENCOMPANY_STARTUP_FREE_CHECK",
+                    request_id=f"opencompany-startup-free-check-{uuid4()}",
+                    max_output_tokens=24,
+                    work_item_id="startup-provider-verification",
+                    role_key="system",
+                    business_id="core",
+                ),
+                request_budget_usd=0.0,
+                preferred_provider="unorouter",
+            )
+        except (CostPolicyViolation, NoEligibleProvider, ProviderUnavailable):
+            self.unorouter_tested_at = None
+            return False
+        if (
+            result.provider != "unorouter"
+            or result.cost_usd != 0.0
+            or result.text.strip() != "OPENCOMPANY_STARTUP_FREE_CHECK"
+        ):
+            self.unorouter_tested_at = None
+            return False
+        self.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
+        return self.start_workers_if_ready()
 
     def configure_github_evolution(self, token: str | None) -> None:
         if token is None:
