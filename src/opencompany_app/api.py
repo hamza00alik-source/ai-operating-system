@@ -26,6 +26,7 @@ from opencompany_app.routers.dashboard import router as dashboard_router
 from opencompany_app.routers.providers import router as providers_router, _worker_autostart_enabled
 from opencompany_app.routers.github_evolution import settings_router as github_settings_router, evolution_router as github_evolution_router
 from opencompany_app.routers.integrations import router as integrations_router
+from opencompany_app.routers.woocommerce import router as woocommerce_router
 from opencompany_app.routers.agents import router as agents_router
 from opencompany_app.routers.commercial import router as commercial_router, supplier_router as commercial_supplier_router
 from opencompany_app.routers.workers import router as workers_router
@@ -35,6 +36,8 @@ from opencompany_app.routers.orchestration import router as orchestration_router
 from opencompany_app.routers.lifecycle import router as lifecycle_router
 from opencompany_app.routers.learning import router as learning_router
 from opencompany_app.routers.portfolio import router as portfolio_router
+from opencompany_app.routers.product_rd import router as product_rd_router
+from opencompany_app.routers.external_approvals import router as external_approvals_router
 from opencompany_app.routers.auth import router as auth_router
 from opencompany_app.routers.operations import backup_router as operations_backup_router, diagnostics_router as operations_diagnostics_router
 from opencompany_app.routers.planning import planning_router, queue_router, delegation_router
@@ -68,15 +71,15 @@ def initialize_autonomous_runtime() -> None:
         bootstrap_executive_orchestrator(runtime.store)
     if activate_enabled:
         runtime.store.activate_all_draft_agents_with_audit()
-    # Autostart is an explicit owner-controlled deployment setting. The gateway
-    # still enforces the live strict-free catalogue and a zero-dollar request
-    # budget for every inference call; unavailable free models fail closed.
+    # Autostart is an explicit owner-controlled deployment setting. On every
+    # process start, re-check the configured provider with one bounded $0 probe;
+    # never trust a stale in-memory test result from a previous process.
     if autostart_enabled:
         try:
-            if runtime.start_workers_if_ready():
-                _LOGGER.info("Worker fleet started after owner-configured zero-cost provider verification.")
+            if runtime.verify_free_provider_and_start():
+                _LOGGER.info("Worker fleet started after fresh zero-cost provider verification.")
             else:
-                _LOGGER.info("Worker autostart remains stopped until a successful owner-triggered zero-cost provider test in this process.")
+                _LOGGER.info("Worker autostart remains stopped: owner opt-in, provider readiness, and zero-cost verification are required.")
         except Exception:
             _LOGGER.exception("Worker autostart could not initialize safely; workers remain stopped.")
 
@@ -122,6 +125,7 @@ app.include_router(delegation_router)
 
 
 app.include_router(integrations_router)
+app.include_router(woocommerce_router)
 
 
 app.include_router(github_evolution_router)
@@ -137,6 +141,8 @@ app.include_router(lifecycle_router)
 
 app.include_router(commercial_supplier_router)
 app.include_router(portfolio_router)
+app.include_router(product_rd_router)
+app.include_router(external_approvals_router)
 app.include_router(executive_portfolio_router)
 app.include_router(auth_router)
 app.include_router(operations_diagnostics_router)

@@ -9,16 +9,18 @@ from fastapi.responses import HTMLResponse
 
 from opencompany_app.dashboard import OWNER_DASHBOARD_HTML
 from opencompany_app.provider_settings_ui import OWNER_PROVIDER_SETTINGS_HTML, OWNER_PROVIDER_SETTINGS_JS
+from opencompany_app.product_rd_ui import PRODUCT_RD_HTML, PRODUCT_RD_JS
+from opencompany_app.approval_inbox_ui import APPROVAL_INBOX_HTML, APPROVAL_INBOX_JS
 
 router = APIRouter()
 
 
 @router.get("/owner", response_class=HTMLResponse)
 def owner_dashboard() -> HTMLResponse:
-    html = OWNER_DASHBOARD_HTML.replace("</main>", OWNER_PROVIDER_SETTINGS_HTML + "\n</main>")
+    html = OWNER_DASHBOARD_HTML.replace("</main>", OWNER_PROVIDER_SETTINGS_HTML + APPROVAL_INBOX_HTML + PRODUCT_RD_HTML + "\n</main>")
     before, marker, after = html.rpartition("})();")
     if marker:
-        html = before + OWNER_PROVIDER_SETTINGS_JS + "\n  const previousLoad=load; load=async function(){await previousLoad(); await loadUnoRouterSettings(); await loadGitHubEvolutionSettings(); await loadModelUsage();};\n})();" + after
+        html = before + OWNER_PROVIDER_SETTINGS_JS + APPROVAL_INBOX_JS + PRODUCT_RD_JS + "\n  const previousLoad=load; load=async function(){await previousLoad(); await loadUnoRouterSettings(); await loadGitHubEvolutionSettings(); await loadModelUsage(); await loadProductRD(); await loadCompanyApprovalInbox();};\n})();" + after
     # The dashboard currently embeds its scripts. Give every script element a
     # fresh nonce rather than allowing arbitrary inline script execution.
     nonce = secrets.token_urlsafe(18)

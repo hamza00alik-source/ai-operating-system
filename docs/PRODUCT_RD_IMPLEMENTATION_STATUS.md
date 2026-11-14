@@ -1,0 +1,120 @@
+# Product & R&D implementation status
+
+This document distinguishes committed implementation from runtime verification. The feature is on an isolated branch and is not production-deployed.
+
+## Implemented in the current feature branch
+
+- Owner-authenticated Product & R&D workflow endpoints for create, list, detail, stage delegation, stage synchronization, human preview confirmation, QA rework, and internal owner review.
+- Nine ordered stages: opportunity brief, product specification, production plan, artifact generation, automated QA, human preview, packaging, listing packet, and CEO review.
+- Workflow records are bound to one commercial business unit and have a database-enforced USD 0 ceiling and external-actions-disabled flag. Actual worker-reported inference costs are recorded per stage; any non-zero amount is rejected.
+- Product stages create normal OpenCompany work items in the same business scope. Opportunity research routes to Intelligence & Research, specification/production/packaging to Product & Innovation, listing preparation to Revenue & Partnerships, and final executive review to the CEO role.
+- Manager stages use the existing AI manager-planning and delegation-proposal flow. The owner must approve the proposal before child tasks are materialized. Specialist work is separately queued and reviewed through the existing lifecycle.
+- CEO review uses the existing CEO profile and owner-reviewed work-item deliverable path.
+- A stage can be synchronized only from a completed, owner-reviewed work item and its persisted deliverable.
+- The OUTPOST pilot generator creates 30 original geometric SVG prototype icons, a 6×5 SVG contact sheet, a manifest, README, draft-only license notice, and ZIP archive using deterministic local code.
+- ZIP generation uses fixed archive timestamps for reproducibility. QA checks ZIP CRC integrity, duplicate/path-traversal entries, required files, icon count, manifest inventory and hashes, and SVG XML parsing.
+- Generated artifact names, SHA-256 hashes, sizes, and download references are recorded in workflow stage evidence.
+- QA failures block the workflow. The owner can return the workflow to artifact generation; downstream stages are reset.
+- Artifacts are stored under a configurable local root and served through an allowlisted, owner-authenticated download route with path and symlink checks.
+- A mobile-friendly Product & R&D panel is injected into the existing owner dashboard. It exposes workflow creation, delegation, team-proposal approval, specialist/manager execution, owner review, artifact generation, preview review, rework, and internal workflow approval.
+
+## Explicitly not implemented or not verified
+
+- This pilot generator produces SVG only. It does not create PNG exports, multi-resolution raster assets, or target-engine import configurations.
+- The geometry is a procedural prototype, not a professionally art-directed finished game UI asset pack.
+- No independent visual-quality review has been completed. The owner preview checkpoint is still required.
+- No game-engine compatibility, accessibility, licensing/IP, or market-demand validation has been performed.
+- Product discovery research is only as strong as the evidence supplied to or retrieved by the research roles; the workflow does not manufacture market proof.
+- The system does not publish marketplace listings, contact buyers, purchase services, initiate payments, or make customer commitments.
+- Manager planning and specialist delegation use the existing free-provider-gated planner. A complete multi-agent round trip has not yet been executed in a live runtime.
+- Agent execution depends on correctly provisioned and explicitly ACTIVE profiles, an owner-tested zero-cost provider, and explicit owner queue admission. If those prerequisites are absent, the workflow stops with a blocker.
+- The current Product & R&D workflow does not claim 511 agents are continuously running. It uses the existing role contracts and the existing durable worker system.
+
+## Verification boundary
+
+Tests have been added for workflow state, audit, business isolation, QA failure/rework, deterministic archive generation, and path validation. They have deliberately not been run under the owner's testing pause through 2026-12-01. No claim of runtime or integration-test success is made.
+
+Before merge or production use, run the approved test suite after the testing pause, inspect the actual generated preview, validate the worker/manager/specialist round trip, inspect artifact storage on the intended persistent volume, and complete a security review of the new endpoints and storage paths.
+
+
+## Follow-up static review — 2026-11-13
+
+- Tightened delegation proposal validation so both AI-generated and deterministic manager proposals require the department manager profile to be explicitly ACTIVE.
+- Tightened both specialist-selection paths so every proposed specialist profile must be explicitly ACTIVE before a proposal can be created. The approval endpoint continues to re-check profile state and identity before materializing tasks, protecting against state changes between planning and approval.
+- Corrected Product & R&D stage delegation to validate each role against its canonical team: department managers use the management team, the CEO uses executive, and specialist roles use their workforce-catalogue team. This avoids incorrectly requiring every non-CEO role to belong to management.
+- Corrected stage synchronization for specialist-owned work: the completed stage parent may be authored by the canonical department manager after owner-approved specialist prerequisites, and sync now revalidates those same-business completed prerequisites and persisted deliverables. Direct assignment to the stage owner remains valid.
+- This is a static code correction only. The test pause remains in force; no tests or runtime execution were performed.
+
+
+## Opt-in background coordinator — 2026-11-13
+
+- Added `ProductRDCoordinator`, invoked by one worker-fleet thread at a bounded interval when `OPENCOMPANY_PRODUCT_RD_AUTOMATION=true`. The default is disabled.
+- The coordinator can create the next stage's internal DRAFT work item when its canonical role profile is explicitly ACTIVE and correctly assigned. It never approves the manager's delegation proposal, changes the work item to READY, admits it to the queue, or starts inference.
+- It can synchronize a stage only after its attached work item is COMPLETED through the existing owner-review lifecycle, with a persisted deliverable and validated business, role, team, manager-synthesis dependencies, and zero actual cost.
+- It can generate the OUTPOST local SVG prototype and run deterministic QA automatically when that exact pilot reaches artifact generation. This uses local deterministic code only; failed QA blocks the workflow as before. Human preview remains a hard owner checkpoint.
+- Automated stage/work-item audit events identify the system coordinator rather than impersonating the owner.
+- Worker status exposes whether maintenance is configured and the number of successful/failed maintenance cycles.
+- This is opt-in and inactive by default. It only runs while the owner-started worker fleet is running (which still requires a successful owner-triggered zero-cost provider test). No paid calls, automatic delegation approval, queue admission, owner deliverable approval, external actions, or publishing were added.
+- Added unexecuted coordinator tests for local OUTPOST generation/QA progression and the absence of draft creation when no ACTIVE role profile exists.
+- Static implementation only: no tests or runtime execution were performed under the testing pause.
+
+
+## Opt-in AI manager-proposal preparation — 2026-11-13
+
+- Added a separate `OPENCOMPANY_PRODUCT_RD_AUTO_PROPOSALS` switch, defaulting to false and subordinate to `OPENCOMPANY_PRODUCT_RD_AUTOMATION=true`.
+- When enabled, the background coordinator may ask the existing department-manager planner to prepare one proposal for an unassigned DRAFT stage work item. The existing model gateway is called with a USD 0 request budget and the confirmed-free provider route; provider/cost failures remain fail-closed.
+- Manager and specialist profiles are revalidated as explicitly ACTIVE and correctly assigned before proposal persistence. Existing proposals for the same parent prevent repeat planning on later ticks.
+- The proposal and child tasks remain DRAFT. This feature does not approve proposals, materialize READY work, enqueue work, start inference for the child tasks, approve deliverables, or perform external actions. Owner approval remains required before the existing delegation-approval endpoint can materialize READY tasks.
+- `/workers/queue` reports whether this additional automation is enabled.
+- Added a static unit test for default-off behavior and proposal idempotency. Tests remain unexecuted during the owner's testing pause through 2026-12-01.
+
+
+## Manager proposal review dashboard — 2026-11-13
+
+- Expanded the Product & R&D owner dashboard's pending manager-proposal card to show proposal status and mode, manager profile ID, selected team, planner provider/model, manager rationale, required capabilities, and creation time.
+- Shows each proposed child task's title, canonical role, team, DRAFT state, assigned profile, and objective so the owner can inspect the complete proposed work breakdown before approval.
+- Owner-review/empty-team proposals are shown as clarification blockers and cannot be approved through the dashboard. The approval action is shown only when a concrete child-task proposal exists.
+- The UI explicitly explains that approval materializes READY delegation tasks but does not run agents or publish anything. Existing API approval-time profile checks remain authoritative.
+- Added static UI assertions. Tests remain unexecuted during the owner's testing pause through 2026-12-01; no browser/runtime validation was performed.
+
+
+## Company-wide owner approval inbox — 2026-11-13
+
+- Added a mobile-friendly approval inbox to the owner dashboard with an all-business view and per-business filter.
+- Aggregates pending manager delegation proposals, work-item deliverable reviews, Product & R&D human-preview checkpoints, and Product & R&D CEO-review checkpoints from the existing owner-authenticated read routes.
+- Concrete manager proposals can be approved from the inbox through the existing delegation-proposal approval endpoint. Owner-review/empty-team proposals remain blocked and are not offered an approval action.
+- Deliverables can be opened and approved or returned for revision through the existing work-item deliverable and review endpoints. The inbox does not introduce a parallel approval implementation.
+- Product & R&D checkpoints link back to the existing studio controls; the studio remains the place to inspect artifacts/evidence and complete its established owner review.
+- Payment, purchasing, customer-message, publishing, production-change, credential-change, and other external-action requests are explicitly marked as not yet connected. The inbox does not create or execute those actions.
+- Added static UI safeguard tests. Tests remain unexecuted under the owner's testing pause through 2026-12-01; no browser/runtime validation was performed.
+
+
+## External-action approval registry — 2026-11-13
+
+- Added owner-authenticated API records for publishing, customer messages/commitments, purchases, payments, production changes, credential/account changes, production deployments, customer-data deletion, and other explicitly scoped requests.
+- Requests are isolated by one business-unit ID, have bounded title/description/reference fields, and intentionally do not accept credentials, payment instruments, or arbitrary execution payloads.
+- The owner can authorize (requires the explicit `AUTHORIZE` confirmation phrase), reject, or cancel a pending request. Decisions are recorded in the existing tamper-evident audit chain.
+- An approval is recorded as `authorized_not_executed`, with a 24-hour expiry timestamp. No generic executor, payment client, publisher, messaging client, deployment adapter, or account mutation is connected. Authorization therefore does not execute or imply that an action has occurred.
+- The company-wide inbox now lists pending external-action requests and provides explicit authorize/reject controls. The owner can also register a request from the dashboard; this only creates a pending record.
+- Action-specific execution adapters, expiry enforcement before execution, one-time execution receipts, provider/account-specific risk controls, and authenticated AI-agent request submission remain future work. No external action was performed by this implementation.
+- Added static tests for the action catalogue, owner-gated routes, and the no-executor boundary. Tests remain unexecuted under the owner's testing pause through 2026-12-01.
+
+
+## Authenticated agent approval submission — 2026-11-13
+
+- Added `POST /internal/agent-approval-requests`, protected by a separate `OPENCOMPANY_AGENT_APPROVAL_API_KEY` secret. It is disabled by default when the secret is absent and is not exposed through the owner dashboard.
+- Each request must identify an existing ACTIVE agent and an originating work item in the same business unit. The agent must be the assigned owner, and the task must be QUEUED, RUNNING, or COMPLETED.
+- Agent identity, role, originating work-item ID, business unit, and action type are written to the audit chain. Agent submissions enter the same pending owner inbox as owner-created requests.
+- The route cannot approve requests or execute actions. The separate agent key must be provisioned securely by an owner/operator before agents can call it; no environment secret was set or changed.
+- This is an authenticated submission API, not yet automatic tool integration in the model worker. Agent prompts/tool schemas and a safe runtime client still need implementation.
+- Added static boundary tests. Tests remain unexecuted under the testing pause through 2026-12-01.
+
+
+## Worker-originated approval requests — 2026-11-13
+
+- Connected the real specialist worker execution path to the existing external-action approval inbox. The specialist prompt defines one bounded `OPENCOMPANY_APPROVAL_REQUESTS` JSON block; the worker accepts only a single block containing 1–5 allowlisted requests and rejects unknown fields, invalid action types, oversized text, invalid currency/amount pairs, and malformed structures.
+- The model cannot supply agent ID, work-item ID, business-unit ID, API keys, credentials, payment instruments, or arbitrary execution payload. The worker derives identity and business scope from the validated active lease and assigned work item, then calls a server-side recorder directly. No secret is included in the model prompt or completion.
+- Approval request IDs are deterministic for the same work item/request content, so a worker retry does not create duplicate pending requests. Requests enter the same owner inbox and audit chain with actor type `agent` and `execution_performed=false`.
+- The original separately authenticated internal HTTP submission endpoint remains available; its accepted work-item states are QUEUED, IN_PROGRESS, and COMPLETED. The in-process worker recorder is restricted to the currently assigned ACTIVE agent and an IN_PROGRESS task.
+- No approval, external action, customer communication, publishing, purchase, payment, production change, deployment, or credential/account change is performed. Owner review remains mandatory. The worker's deliverable excludes a successfully parsed approval block so it is not mistaken for ordinary deliverable content.
+- Added static/unit test coverage for parsing, allowlists, trusted identity derivation, and retry idempotency. Tests and CI remain unexecuted under the testing pause through 2026-12-01; no runtime or deployment validation was performed.

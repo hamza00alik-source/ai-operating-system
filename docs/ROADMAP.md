@@ -31,7 +31,9 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [x] Owner-authenticated workflow inspection endpoint for prerequisites, dependents, delegation proposals, handoffs, deliverables, queue state, and next action.
 - [ ] Workflow-level artifact aggregation and specialist-specific machine-readable deliverable schemas.
 - [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
-- [ ] Durable per-attempt execution history and richer failure diagnostics.
+- [x] Durable worker-attempt records with a secret-free, owner-authenticated per-work-item execution-history endpoint (attempt number, state, timestamps, bounded error code, queue metadata and checkpoint metadata).
+- [x] Owner-authenticated queue health endpoint with business-scoped counts, oldest queued age, expired leases, dead-letter count, worker fleet state, and zero-cost provider availability.
+- [ ] Richer per-attempt diagnostics (provider latency/usage correlation, heartbeat events, structured failure classification and workflow-level aggregation).
 - [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
 
 ### Queue re-admission change
@@ -56,6 +58,8 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Free-only eligibility checks, all eligible free-model rotation, response identity checks, and non-zero-cost rejection.
 - [x] Durable, secret-free model-usage ledger.
 - [x] Read-only API Anything connector with bounded tier-1 operations.
+- [x] Owner-verified, append-only financial event ledger with model-specific revenue classification, source-reference deduplication, order/business scope checks, and per-business/per-currency summaries.
+- [ ] Provider-specific read-only commerce adapters and statement reconciliation.
 - [x] GitHub code-evolution proposals restricted to isolated draft pull requests.
 - [ ] WooCommerce account connection and read-only product/order sync.
 - [ ] Social account connections and draft/publish workflow with owner approval.
@@ -71,6 +75,7 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Provider catalogue/configuration and usage visibility.
 - [x] Workflow details view backed by live API data.
 - [x] Owner-triggered consistent SQLite backup export with integrity check.
+- [x] Owner-authenticated production-readiness evidence snapshot; explicitly reports unverified external gates and never authorizes cutover.
 - [ ] Automated encrypted off-host backups and retention.
 - [ ] Restore rehearsal and documented recovery-point/recovery-time objectives.
 - [ ] Production monitoring, alerting, and incident runbooks.

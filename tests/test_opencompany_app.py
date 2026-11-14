@@ -33,6 +33,18 @@ def owner_client(tmp_path, monkeypatch):
     app.dependency_overrides.clear()
     runtime.close()
 
+def _activate_department_profiles(owner_client, headers, department, *, include_specialists=True):
+    profiles = owner_client.get("/agents", headers=headers).json()["agents"]
+    for profile in profiles:
+        if profile["department"] != department or profile["state"] == "active":
+            continue
+        if not include_specialists and profile["team_key"] != "management":
+            continue
+        response = owner_client.post(
+            f"/agents/{profile['id']}/state", headers=headers,
+            json={"target_state": "active", "expected_revision": profile["revision"]},
+        )
+        assert response.status_code == 200
 
 def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_headers():
     response = client.get("/owner")
@@ -61,6 +73,15 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "discover all free models" in response.text.lower()
     assert "payload.detail" in response.text
     assert 'id="github-evolution-token"' in response.text
+    assert 'id="woo-business"' in response.text
+    assert 'id="woo-key"' in response.text and 'type="password"' in response.text
+    assert 'id="woo-secret"' in response.text
+    assert 'id="woo-save"' in response.text and 'id="woo-test"' in response.text
+    assert 'id="woo-products"' in response.text and 'id="woo-orders"' in response.text
+    assert 'id="commercial-financial-summary"' in response.text
+    assert 'byId("woo-url").value="";byId("woo-key").value="";byId("woo-secret").value="";' in response.text
+    assert 'minor units' in response.text
+    assert 'request("/commercial/financial-summary")' in response.text
     assert "draft pull requests only" in response.text
     assert "loadGitHubEvolutionSettings" in response.text
     assert response.headers["cache-control"] == "no-store"
@@ -543,6 +564,7 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
     assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Assess market demand",
         "objective": "Prepare a sourced market-demand assessment",
@@ -603,22 +625,19 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
 def test_delegation_approval_rejects_inactive_specialist_profiles(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
-    owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+    _activate_department_profiles(owner_client, headers, "intelligence-research", include_specialists=False)
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Assess market demand", "objective": "Prepare a sourced assessment",
         "department": "intelligence-research",
     }).json()
-    proposal = owner_client.post(
+    response = owner_client.post(
         f"/work-items/{created['item_id']}/delegation-proposals", headers=headers,
         json={"required_capabilities": ["market", "researcher"], "max_specialists": 5},
-    ).json()
-    response = owner_client.post(
-        f"/work-items/{created['item_id']}/delegation-proposals/{proposal['id']}/approve",
-        headers=headers,
     )
     assert response.status_code == 409
-    assert "explicitly active" in response.json()["detail"]
-    assert owner_client.get(f"/work-items/{created['item_id']}/delegation-proposals", headers=headers).json()["proposals"][0]["status"] == "draft"
+    assert "must be provisioned, ACTIVE" in response.json()["detail"]
+    assert owner_client.get(f"/work-items/{created['item_id']}/delegation-proposals", headers=headers).json()["proposals"] == []
 
 
 def test_deliverables_endpoint_requires_owner_and_returns_persisted_records(owner_client):
@@ -714,6 +733,7 @@ def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Research buyer demand",
         "objective": "Prepare a sourced buyer-demand report",
@@ -820,6 +840,7 @@ def test_active_department_manager_can_create_ai_proposal_without_execution(owne
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     runtime = app.dependency_overrides[get_runtime]()
     runtime.gateway = ModelGateway.configure(((
         ProviderPolicy(
@@ -1120,6 +1141,7 @@ def test_end_to_end_owner_approved_task_runs_to_review_and_learning(owner_client
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     parent = owner_client.post("/work-items", headers=headers, json={
         "title": "Assess overseas market demand",
         "objective": "Prepare an evidence-backed internal market assessment",
@@ -1266,9 +1288,8 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
     class Runtime:
         fleet = Fleet()
         gateway = Gateway()
-        unorouter_tested_at = None
-        def start_workers_if_ready(self):
-            if self.unorouter_tested_at is None or not self.gateway.eligible_providers(request_budget_usd=0.0):
+        def verify_free_provider_and_start(self):
+            if not self.gateway.eligible_providers(request_budget_usd=0.0):
                 return False
             return bool(self.fleet.start())
 
@@ -1281,7 +1302,6 @@ def test_worker_autostart_flag_starts_fleet_during_api_startup(monkeypatch):
     assert calls == []
 
     runtime.gateway.ready = True
-    runtime.unorouter_tested_at = "2026-11-11T00:00:00+00:00"
     api_module.initialize_autonomous_runtime()
     assert calls == ["started"]
 
@@ -1348,6 +1368,7 @@ def test_auto_queue_runs_only_after_owner_approval_and_zero_cost_provider_readin
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     parent = owner_client.post("/work-items", headers=headers, json={
         "title": "Automate manager-led market assessment",
         "objective": "Complete specialist research and consolidate it for owner review",
@@ -1707,6 +1728,7 @@ def test_stale_delegation_proposal_cannot_reopen_parent_work(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Prepare buyer research",
         "objective": "Prepare a sourced buyer-demand assessment",
@@ -1814,6 +1836,7 @@ def test_workflow_read_model_tracks_manager_and_child_work(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)
     owner_client.post("/agents/bootstrap-specialists", headers=headers)
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Research international buyer demand",
         "objective": "Prepare a sourced buyer-demand assessment for the physical agency",
@@ -2042,6 +2065,7 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     assert owner_client.post("/agents/bootstrap", headers=headers).status_code == 200
     assert owner_client.post("/agents/bootstrap-specialists", headers=headers).status_code == 200
+    _activate_department_profiles(owner_client, headers, "intelligence-research")
 
     created = owner_client.post("/work-items", headers=headers, json={
         "title": "Research international demand",
@@ -2186,3 +2210,139 @@ def test_workflow_reconciliation_recovers_approved_multi_child_synthesis_idempot
     assert repeated.json()["queued_work_item_ids"] == []
     assert repeated.json()["errors"] == []
     assert runtime.queue.get_entry(parent_id)["state"] == "queued"
+
+def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to_commission(owner_client):
+    unauthorized = client.post("/commercial/financial-events", json={})
+    assert unauthorized.status_code in {401, 403}
+
+    payload = {
+        "business_id": "physical-agency",
+        "event_type": "agency_commission",
+        "amount_minor": 2500,
+        "currency": "USD",
+        "source_reference": "synthetic-agency-invoice-001",
+        "evidence_reference": "synthetic-owner-reviewed-statement-line-4",
+        "note": "synthetic test record",
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "owner_verified": True,
+    }
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    recorded = owner_client.post("/commercial/financial-events", headers=headers, json=payload)
+    assert recorded.status_code == 200
+    assert recorded.json()["payment_initiated"] is False
+
+    summary = owner_client.get("/commercial/financial-summary?business_id=physical-agency", headers=headers)
+    assert summary.status_code == 200
+    row = summary.json()["summaries"][0]
+    assert row["recognized_revenue_minor"] == 2500
+    assert row["revenue_basis"] == "agency commission only"
+
+    invalid_model = dict(payload, event_type="sales_revenue",
+                         source_reference="synthetic-invalid-gross-sale")
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=invalid_model)
+    assert rejected.status_code == 422
+
+    unverified = dict(payload, source_reference="synthetic-unverified-event",
+                      owner_verified=False)
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=unverified)
+    assert rejected.status_code == 422
+
+    blank_evidence = dict(payload, source_reference="synthetic-blank-evidence",
+                          evidence_reference="   ")
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=blank_evidence)
+    assert rejected.status_code == 422
+
+def test_production_readiness_endpoint_is_owner_only_and_never_authorizes_cutover(owner_client):
+    unauthorized = client.get("/owner/production-readiness")
+    assert unauthorized.status_code in {401, 403}
+    response = owner_client.get("/owner/production-readiness", headers={"X-OpenCompany-API-Key": "test-owner-key"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "evidence_snapshot_only"
+    assert body["production_cutover_authorized"] is False
+    assert body["tests_and_ci"] == "not_verified_by_this_endpoint"
+    assert body["independent_security_review"] == "not_verified"
+    assert body["backup_restore_rehearsal"] == "not_verified"
+    assert body["staging_acceptance"] == "not_verified"
+    assert "database_path" not in body
+
+
+
+def test_woocommerce_connection_is_owner_only_encrypted_and_business_scoped(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    unauthorized = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection", json=payload
+    )
+    assert unauthorized.status_code == 401
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200
+    assert saved.json()["network_request_made"] is False
+    assert saved.json()["writes_enabled"] is False
+    runtime = app.dependency_overrides[get_runtime]()
+    row = runtime.store._connection.execute(
+        "SELECT provider,ciphertext FROM provider_secrets WHERE provider=?",
+        ("woocommerce:physical-brand",),
+    ).fetchone()
+    assert row is not None
+    assert b"brandprivate" not in bytes(row["ciphertext"])
+    brand_status = owner_client.get(
+        "/integrations/woocommerce/physical-brand/status", headers=headers
+    ).json()
+    agency_status = owner_client.get(
+        "/integrations/woocommerce/physical-agency/status", headers=headers
+    ).json()
+    assert brand_status["configured"] is True
+    assert brand_status["credentials_encrypted"] is True
+    assert agency_status["configured"] is False
+    assert brand_status["writes_enabled"] is False
+
+
+def test_woocommerce_read_endpoint_uses_minimized_read_only_adapter(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200
+    from opencompany_core.woocommerce_readonly import WooCommerceReadOnlyClient
+    monkeypatch.setattr(
+        WooCommerceReadOnlyClient, "products",
+        lambda self, page=1, per_page=20: {
+            "page": page, "per_page": per_page, "count": 1,
+            "products": [{"id": 1, "name": "Test product"}],
+        },
+    )
+    response = owner_client.get(
+        "/integrations/woocommerce/physical-brand/products?page=1&per_page=5",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["read_only"] is True
+    assert response.json()["products"] == [{"id": 1, "name": "Test product"}]
+
+
+def test_automation_diagnostics_are_owner_only_and_fail_closed_when_disabled(owner_client):
+    unauthorized = client.get("/automation/jobs")
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    jobs = owner_client.get("/automation/jobs", headers=headers)
+    history = owner_client.get("/automation/history", headers=headers)
+    assert jobs.status_code == 200
+    assert history.status_code == 200
+    assert jobs.json() == {"enabled": False, "jobs": []}
+    assert history.json() == {"enabled": False, "runs": []}

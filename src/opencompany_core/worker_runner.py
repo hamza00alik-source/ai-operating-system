@@ -6,11 +6,13 @@ and remain review-required; a missing sink fails closed.
 """
 from __future__ import annotations
 
+import json
 import math
+import re
 from dataclasses import replace
 from datetime import datetime, timezone
 from threading import Event, Thread
-from typing import Protocol
+from typing import Protocol, Callable
 from uuid import NAMESPACE_URL, UUID, uuid5, uuid4
 
 from .domain import AuditRecord, TaskState
@@ -42,6 +44,7 @@ class OpenCompanyWorker:
         *,
         request_budget_usd: float = 0.0,
         preferred_provider: str | None = None,
+        approval_request_sink: Callable[[UUID, object, list[dict]], object] | None = None,
     ) -> None:
         if artifact_sink is None:
             raise WorkerConfigurationError("a durable artifact sink is required")
@@ -53,6 +56,7 @@ class OpenCompanyWorker:
         self.artifact_sink = artifact_sink
         self.request_budget_usd = request_budget_usd
         self.preferred_provider = preferred_provider
+        self.approval_request_sink = approval_request_sink
 
     def available_agent_ids(self) -> tuple[UUID, ...]:
         """Return only assignees with queued work or expired leases."""
@@ -118,6 +122,12 @@ class OpenCompanyWorker:
                     raise WorkerConfigurationError("stored checkpoint does not match the current work assignment")
             else:
                 deliverable = self._execute_lease(lease, role_key, item=validated_item)
+                # Model output is untrusted. Only a strict, bounded JSON block is
+                # accepted; identity and business scope come from the validated lease.
+                approval_requests, cleaned_content = self._extract_approval_requests(deliverable.content)
+                if approval_requests and self.approval_request_sink is not None:
+                    self.approval_request_sink(lease.agent_id, validated_item, approval_requests)
+                    deliverable = replace(deliverable, content=cleaned_content)
                 # Stable artifact identity makes a resumed checkpoint and any
                 # idempotent sink retry address the same draft record.
                 stable_id = uuid5(
@@ -219,6 +229,66 @@ class OpenCompanyWorker:
         finally:
             heartbeat_stop.set()
             heartbeat.join(timeout=max(1.0, heartbeat_interval * 2))
+
+    @staticmethod
+    def _extract_approval_requests(content: str) -> tuple[list[dict], str]:
+        """Extract at most five allowlisted approval intents from one exact block."""
+        pattern = re.compile(
+            r"<OPENCOMPANY_APPROVAL_REQUESTS>(?:\\[nrt]|\s)*(\[.*?\])(?:\\[nrt]|\s)*</OPENCOMPANY_APPROVAL_REQUESTS>",
+            re.DOTALL,
+        )
+        matches = list(pattern.finditer(content))
+        if len(matches) != 1:
+            return [], content
+        try:
+            decoded = json.loads(matches[0].group(1))
+        except (TypeError, ValueError):
+            return [], content
+        if not isinstance(decoded, list) or not 1 <= len(decoded) <= 5:
+            return [], content
+        allowed = {
+            "publish_listing", "send_customer_message", "make_customer_commitment",
+            "purchase", "payment", "production_change", "credential_change",
+            "account_change", "deploy_production", "delete_customer_data", "other",
+        }
+        accepted = []
+        for value in decoded:
+            if not isinstance(value, dict) or set(value) - {
+                "action_type", "title", "description", "target_reference",
+                "estimated_amount_minor", "currency",
+            }:
+                return [], content
+            action = value.get("action_type")
+            title = value.get("title")
+            description = value.get("description")
+            if (action not in allowed or not isinstance(title, str) or not title.strip()
+                    or len(title) > 200 or not isinstance(description, str)
+                    or not description.strip() or len(description) > 4000):
+                return [], content
+            target = value.get("target_reference")
+            if target is not None and (not isinstance(target, str) or len(target) > 500):
+                return [], content
+            amount = value.get("estimated_amount_minor")
+            currency = value.get("currency")
+            if (amount is None) != (currency is None):
+                return [], content
+            if amount is not None and (isinstance(amount, bool) or not isinstance(amount, int)
+                                       or amount < 0 or amount > 9_000_000_000_000_000):
+                return [], content
+            if currency is not None and (not isinstance(currency, str)
+                                         or not re.fullmatch(r"[A-Za-z]{3}", currency)):
+                return [], content
+            accepted.append({
+                "action_type": action, "title": title.strip(),
+                "description": description.strip(), "target_reference": target,
+                "estimated_amount_minor": amount,
+                "currency": currency.upper() if currency else None,
+            })
+        cleaned = (content[:matches[0].start()] + content[matches[0].end():]).strip()
+        cleaned = re.sub(r"(?:\\[nrt])+$", "", cleaned).rstrip()
+        if not cleaned:
+            cleaned = "Draft deliverable contained only an external approval request; see owner approval inbox."
+        return accepted, cleaned
 
     def _validate_lease(self, lease: WorkerLease, role_key: str):
         item = self.store.get_work_item(lease.work_item_id)

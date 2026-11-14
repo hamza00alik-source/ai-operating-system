@@ -33,6 +33,60 @@ def worker_queue_status(
         "execution_requires_explicit_worker_process": not status.running,
         "worker_autostart_configured": os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").casefold() == "true",
         "free_provider_ready": bool(runtime.gateway.eligible_providers(request_budget_usd=0.0)),
+        "product_rd_automation_enabled": status.maintenance_enabled,
+        "product_rd_auto_proposals_enabled": runtime.product_rd_auto_proposals_enabled,
+        "product_rd_automation_cycles": status.maintenance_cycles,
+        "product_rd_automation_failures": status.maintenance_failures,
+    }
+
+
+@router.get("/work-items/{work_item_id}/execution-history", dependencies=[Depends(require_owner_key)])
+def work_item_execution_history(
+    work_item_id: UUID,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Return secret-free queue and attempt history for one owner-visible work item."""
+    item = runtime.store.get_work_item(work_item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+    queue_entry = runtime.queue.get_entry(work_item_id)
+    attempts = runtime.queue.list_attempts(work_item_id)
+    return {
+        "work_item_id": str(work_item_id),
+        "business_id": item.business_id,
+        "task_state": item.state.value,
+        "queue": queue_entry,
+        "attempt_count": len(attempts),
+        "attempts": list(attempts),
+        "checkpoints": list(runtime.queue.list_checkpoints(work_item_id)),
+    }
+
+
+@router.get("/workers/health", dependencies=[Depends(require_owner_key)])
+def worker_operational_health(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Expose queue pressure and worker supervision signals without secrets."""
+    try:
+        queue = runtime.queue.health_snapshot(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    fleet = runtime.fleet.status()
+    return {
+        **queue,
+        "fleet_running": fleet.running,
+        "configured_concurrency": fleet.concurrency,
+        "completed_cycles": fleet.completed_cycles,
+        "idle_cycles": fleet.idle_cycles,
+        "failed_cycles": fleet.failed_cycles,
+        "worker_autostart_enabled": os.environ.get(
+            "OPENCOMPANY_WORKER_AUTOSTART", "false"
+        ).casefold() == "true",
+        "free_provider_available": bool(
+            runtime.gateway.eligible_providers(request_budget_usd=0.0)
+        ),
+        "external_actions_enabled": False,
     }
 
 
@@ -49,6 +103,10 @@ def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
             1 for agent in runtime.store.list_agents(limit=1000)
             if agent.state == AgentState.ACTIVE and agent.role_key
         ),
+        "product_rd_automation_enabled": status.maintenance_enabled,
+        "product_rd_auto_proposals_enabled": runtime.product_rd_auto_proposals_enabled,
+        "product_rd_automation_cycles": status.maintenance_cycles,
+        "product_rd_automation_failures": status.maintenance_failures,
     }
 
 

@@ -717,6 +717,51 @@ class DurableWorkerQueue:
             ).fetchone()
         return dict(row) if row is not None else None
 
+    def health_snapshot(
+        self, *, business_id: str | None = None, now: datetime | None = None
+    ) -> dict:
+        """Return bounded queue-health metrics without exposing lease tokens or payloads."""
+        if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
+            raise ValueError("unknown business unit for worker queue health")
+        instant = now or datetime.now(timezone.utc)
+        if instant.tzinfo is None or instant.utcoffset() != timedelta(0):
+            raise ValueError("now must be timezone-aware UTC")
+        where = ""
+        values: tuple[str, ...] = ()
+        if business_id is not None:
+            where = " JOIN work_items w ON w.id=q.work_item_id WHERE w.business_id=? "
+            values = (business_id,)
+        else:
+            where = " WHERE 1=1 "
+        with self._lock:
+            counts = self._db.execute(
+                "SELECT q.state,COUNT(*) AS total FROM worker_queue q"
+                + where + "GROUP BY q.state", values
+            ).fetchall()
+            oldest = self._db.execute(
+                "SELECT MIN(q.created_at) AS oldest FROM worker_queue q"
+                + where + (" AND " if business_id is not None else " AND ")
+                + "q.state='queued'", values
+            ).fetchone()
+            expired = self._db.execute(
+                "SELECT COUNT(*) AS total FROM worker_queue q"
+                + where + (" AND " if business_id is not None else " AND ")
+                + "q.state='leased' AND q.lease_expires_at<=?",
+                values + (instant.isoformat(),)
+            ).fetchone()
+        oldest_at = datetime.fromisoformat(oldest["oldest"]) if oldest["oldest"] else None
+        age = max(0, int((instant - oldest_at).total_seconds())) if oldest_at else 0
+        state_counts = {row["state"]: int(row["total"]) for row in counts}
+        return {
+            "business_id": business_id or "all",
+            "counts": state_counts,
+            "queued_oldest_age_seconds": age,
+            "expired_leases": int(expired["total"]),
+            "dead_letter_count": state_counts.get("dead", 0),
+            "leased_count": state_counts.get("leased", 0),
+            "observed_at": instant.isoformat(),
+        }
+
     def counts(self, business_id: str | None = None) -> dict[str, int]:
         if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
             raise ValueError("unknown business unit for worker queue counts")
