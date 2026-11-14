@@ -886,6 +886,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     catch(error){setMessage(error.message,"error");byId("provision-specialists").disabled=false;}
   });
   byId("woo-business").addEventListener("change",async()=>{
+    // Never carry one business's unsaved credentials into another business scope.
+    byId("woo-url").value="";byId("woo-key").value="";byId("woo-secret").value="";
     byId("woo-status").textContent="Checking selected business connection…";
     byId("woo-results").textContent="No store data loaded.";
     try{await loadWooCommerceStatus();}catch(error){setMessage(error.message,"error");}
