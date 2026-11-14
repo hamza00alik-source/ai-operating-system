@@ -101,3 +101,58 @@ def test_creator_clipping_job_is_claimed_only_by_matching_worker(monkeypatch, tm
         assert clip_worker.status_code == 200
         assert clip_worker.json()["id"] == job["id"]
         assert clip_worker.json()["provider"] == "creator-clipping"
+
+
+def test_creator_video_source_upload_requires_owner_and_shared_storage(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    monkeypatch.setenv("CLIPPING_INPUT_DIR", str(tmp_path / "shared-input"))
+    headers = {"X-API-Key": "test-owner-key", "Content-Type": "video/mp4"}
+    video_bytes = b"\\x00\\x00\\x00\\x18ftypisom" + b"\\x00" * 32
+
+    with TestClient(app) as client:
+        denied = client.post(
+            "/video/sources?filename=sample.mp4",
+            content=video_bytes,
+            headers={"Content-Type": "video/mp4"},
+        )
+        assert denied.status_code == 401
+
+        uploaded = client.post(
+            "/video/sources?filename=sample.mp4",
+            content=video_bytes,
+            headers=headers,
+        )
+        assert uploaded.status_code == 201
+        result = uploaded.json()
+        assert result["filename"] == "sample.mp4"
+        assert result["size_bytes"] == len(video_bytes)
+        stored = tmp_path / "shared-input" / result["source_path"]
+        assert stored.read_bytes() == video_bytes
+
+
+def test_creator_video_source_upload_rejects_mismatched_format(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    monkeypatch.setenv("CLIPPING_INPUT_DIR", str(tmp_path / "shared-input"))
+    with TestClient(app) as client:
+        response = client.post(
+            "/video/sources?filename=not-a-video.mp4",
+            content=b"not a video file at all",
+            headers={"X-API-Key": "test-owner-key", "Content-Type": "video/mp4"},
+        )
+        assert response.status_code == 422
+        assert list((tmp_path / "shared-input").iterdir()) == []
+
+
+def test_creator_video_source_upload_fails_closed_without_shared_storage(monkeypatch):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    monkeypatch.delenv("CLIPPING_INPUT_DIR", raising=False)
+    with TestClient(app) as client:
+        response = client.post(
+            "/video/sources?filename=sample.mp4",
+            content=b"\\x00\\x00\\x00\\x18ftypisom" + b"\\x00" * 32,
+            headers={"X-API-Key": "test-owner-key", "Content-Type": "video/mp4"},
+        )
+        assert response.status_code == 503
