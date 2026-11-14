@@ -426,8 +426,14 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       financial.summaries.forEach(summary=>{
         const card=document.createElement("article");card.className="item";
         const heading=document.createElement("h3");heading.textContent=summary.business_id+" · "+summary.currency;card.append(heading);
-        const fractionDigits=new Intl.NumberFormat(undefined,{style:"currency",currency:summary.currency}).resolvedOptions().maximumFractionDigits;
-        const formatMinor=value=>new Intl.NumberFormat(undefined,{style:"currency",currency:summary.currency}).format(Number(value)/(10**fractionDigits));
+        let currencyFormatter=null,fractionDigits=2;
+        try{
+          currencyFormatter=new Intl.NumberFormat(undefined,{style:"currency",currency:summary.currency});
+          fractionDigits=currencyFormatter.resolvedOptions().maximumFractionDigits;
+        }catch{}
+        const formatMinor=value=>currencyFormatter
+          ? currencyFormatter.format(Number(value)/(10**fractionDigits))
+          : Number(value)+" "+summary.currency+" minor units";
         const details=document.createElement("p");
         details.textContent="Recognized revenue: "+formatMinor(summary.recognized_revenue_minor)
           +" · Operating costs: "+formatMinor(summary.operating_costs_minor)
