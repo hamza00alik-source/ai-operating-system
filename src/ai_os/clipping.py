@@ -103,15 +103,27 @@ def write_srt(segments: list[TranscriptSegment], start: float, end: float, path:
         index += 1
     path.write_text("\n".join(rows), encoding="utf-8")
 
-def render_clip(source: Path, candidate: ClipCandidate, output: Path, fps: int = 30) -> None:
+def render_clip(
+    source: Path, candidate: ClipCandidate, output: Path, fps: int = 30,
+    subtitles_path: Path | None = None,
+) -> None:
     ffmpeg = require_binary("ffmpeg")
     output.parent.mkdir(parents=True, exist_ok=True)
     duration = candidate.end - candidate.start
-    vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
-    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-        "-ss", f"{candidate.start:.3f}", "-i", str(source), "-t", f"{duration:.3f}",
-        "-vf", vf, "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast",
-        "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(output)]
+    filters = ["scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"]
+    if subtitles_path is not None:
+        if not subtitles_path.is_file():
+            raise FileNotFoundError(f"Subtitle file not found: {subtitles_path}")
+        subtitle_file = str(subtitles_path.resolve()).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+        style = "FontName=DejaVu Sans,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=150"
+        filters.append(f"subtitles='{subtitle_file}':force_style='{style}'")
+    command = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-ss", f"{candidate.start:.3f}", "-i", str(source),
+        "-t", f"{duration:.3f}", "-vf", ",".join(filters), "-r", str(fps),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(output),
+    ]
     subprocess.run(command, check=True, capture_output=True, text=True)
 
 def process_video(source: Path, output_dir: Path, segments: list[TranscriptSegment] | None = None,
@@ -130,8 +142,8 @@ def process_video(source: Path, output_dir: Path, segments: list[TranscriptSegme
     for index, candidate in enumerate(candidates, 1):
         stem = f"clip_{index:02}"
         video_path, srt_path = output_dir / f"{stem}.mp4", output_dir / f"{stem}.srt"
-        render_clip(source, candidate, video_path)
         write_srt(segments, candidate.start, candidate.end, srt_path)
+        render_clip(source, candidate, video_path, subtitles_path=srt_path)
         manifest.append({"video": video_path.name, "subtitles": srt_path.name,
             "start": round(candidate.start, 3), "end": round(candidate.end, 3),
             "score": candidate.score, "selection_method": "transparent_transcript_heuristic",
