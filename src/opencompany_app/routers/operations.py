@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
@@ -54,6 +54,30 @@ def model_usage_summary(
     if business_id is not None and business_id not in BUSINESS_UNIT_IDS:
         raise HTTPException(status_code=422, detail="Unknown business unit.")
     return runtime.usage.summary(limit=100, business_id=business_id)
+
+
+@diagnostics_router.get("/automation/jobs", dependencies=[Depends(require_owner_key)])
+def automation_jobs(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
+    """Owner-only status for persisted automation schedules."""
+    scheduler = runtime.automation_scheduler
+    return {
+        "enabled": scheduler is not None,
+        "jobs": list(scheduler.status()) if scheduler is not None else [],
+    }
+
+
+@diagnostics_router.get("/automation/history", dependencies=[Depends(require_owner_key)])
+def automation_history(
+    job_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Owner-only bounded execution history; never exposes callback payloads."""
+    scheduler = runtime.automation_scheduler
+    return {
+        "enabled": scheduler is not None,
+        "runs": list(scheduler.history(job_id=job_id, limit=limit)) if scheduler is not None else [],
+    }
 
 
 @diagnostics_router.get("/audit/verify", dependencies=[Depends(require_owner_key)])
