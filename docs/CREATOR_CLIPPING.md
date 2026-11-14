@@ -49,3 +49,43 @@ Outputs include vertical MP4s, SRT subtitle sidecars and manifest.json.
 ## Safety
 
 Only process footage you own or have explicit permission to edit and distribute. Campaign-specific rules override this general workflow. Do not publish automatically.
+
+
+## Durable queue worker integration
+
+The API supports a separate `creator-clipping` provider on the existing
+owner-approved video job queue. This worker claims only that provider; it does
+not consume LongCat generation jobs.
+
+Configure the worker host:
+
+- `OPENCOMPANY_API_URL`: deployed OpenCompany API base URL.
+- `VIDEO_WORKER_TOKEN`: same worker secret configured on the API.
+- `CLIPPING_INPUT_DIR`: directory containing owner-uploaded/licensed source
+  files, mounted on the worker host.
+- `CLIPPING_OUTPUT_DIR`: persistent output directory (optional).
+- `VIDEO_WORKER_ID`: unique worker identifier (optional).
+
+Install the project and optional transcription dependency, and install FFmpeg
+and ffprobe on the worker host. Run:
+
+    python workers/creator_clipping_worker.py
+
+Create a video job with provider `creator-clipping`, a prompt describing the
+task, explicit cost estimate/budget/cost basis, and parameters such as:
+
+    {
+      "source_path": "campaign-source.mp4",
+      "clip_seconds": 35,
+      "whisper_model": "small"
+    }
+
+The source_path is resolved under CLIPPING_INPUT_DIR; path traversal outside
+that directory is rejected. The worker produces and uploads one highest-ranked
+candidate MP4 per approved job. SRT and manifest sidecars remain on the worker
+output volume for now. The API stores the uploaded MP4 as the job artifact.
+
+This is a CPU-capable worker, but Whisper model inference and FFmpeg rendering
+can be slow. The first Whisper run downloads a model. Do not treat a free-tier
+cloud host as guaranteed to provide enough RAM, disk, CPU time or persistent
+storage. No cloud worker has been deployed or connected automatically.
