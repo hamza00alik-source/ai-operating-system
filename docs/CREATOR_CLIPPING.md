@@ -37,6 +37,14 @@ Example segments.json:
 
 Outputs include vertical MP4s, SRT subtitle sidecars and manifest.json.
 
+## Owner dashboard source upload
+
+The Social & Video section now includes an owner-authenticated source upload and clipping-job review panel. It accepts MP4, MOV and WebM files up to 250 MiB and posts the raw file body to the API; no multipart parser or browser API key is required.
+
+Configure `CLIPPING_INPUT_DIR` on both the API and clipping worker to the same mounted shared directory. The API saves the upload using a generated safe filename and returns the relative `source_path`; the dashboard creates an `awaiting_approval` job using that path. The owner must explicitly approve the job before it enters the queue.
+
+Important deployment constraint: separate API and worker containers must mount the same persistent volume at this directory. Setting the same path string on two containers does not share files. If the hosting platform cannot provide a shared volume, use a future private object-storage adapter; do not use public file URLs or silently assume local disk is shared. No cloud storage or paid compute is provisioned by this feature.
+
 ## Queue worker
 
 The API supports a separate creator-clipping provider on the existing owner-approved video job queue. The worker claims only this provider; it does not consume LongCat generation jobs.
