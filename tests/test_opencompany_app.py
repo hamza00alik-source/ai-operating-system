@@ -2334,3 +2334,15 @@ def test_woocommerce_read_endpoint_uses_minimized_read_only_adapter(owner_client
     assert response.status_code == 200
     assert response.json()["read_only"] is True
     assert response.json()["products"] == [{"id": 1, "name": "Test product"}]
+
+
+def test_automation_diagnostics_are_owner_only_and_fail_closed_when_disabled(owner_client):
+    unauthorized = client.get("/automation/jobs")
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    jobs = owner_client.get("/automation/jobs", headers=headers)
+    history = owner_client.get("/automation/history", headers=headers)
+    assert jobs.status_code == 200
+    assert history.status_code == 200
+    assert jobs.json() == {"enabled": False, "jobs": []}
+    assert history.json() == {"enabled": False, "runs": []}
