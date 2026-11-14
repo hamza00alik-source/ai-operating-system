@@ -115,7 +115,7 @@ def render_clip(
         if not subtitles_path.is_file():
             raise FileNotFoundError(f"Subtitle file not found: {subtitles_path}")
         subtitle_file = str(subtitles_path.resolve()).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-        style = "FontName=DejaVu Sans,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=150"
+        style = "FontName=DejaVu Sans\,FontSize=18\,PrimaryColour=&H00FFFFFF\,OutlineColour=&H00000000\,BorderStyle=1\,Outline=3\,Shadow=1\,Alignment=2\,MarginV=150"
         filters.append(f"subtitles='{subtitle_file}':force_style='{style}'")
     command = [
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
