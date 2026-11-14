@@ -1,13 +1,13 @@
 """Restart-safe, zero-dependency scheduler for bounded internal automations.
 
-Jobs are persisted in the same SQLite database as OpenCompany. A due job is
-claimed with a lease before execution; expired leases make interrupted work
-eligible again after a process restart. Callbacks must be idempotent because a
-process can stop after its side effect but before recording completion.
+Jobs and individual execution attempts are persisted in the company SQLite
+store. A due job is claimed with a lease before execution; expired leases make
+interrupted work eligible again after a process restart. Callbacks must be
+idempotent because a process can stop after its side effect but before
+recording completion.
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from threading import RLock
@@ -61,9 +61,26 @@ class DurableAutomationScheduler:
                     updated_at TEXT NOT NULL
                 )
             """)
+            self._db.execute("""
+                CREATE TABLE IF NOT EXISTS automation_job_runs (
+                    run_id TEXT PRIMARY KEY,
+                    job_id TEXT NOT NULL,
+                    lease_token TEXT NOT NULL UNIQUE,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    status TEXT NOT NULL
+                        CHECK(status IN ('running','succeeded','failed','interrupted')),
+                    error_code TEXT,
+                    FOREIGN KEY(job_id) REFERENCES automation_jobs(job_id)
+                )
+            """)
             self._db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_automation_jobs_due "
                 "ON automation_jobs(enabled,next_run_at,lease_expires_at)"
+            )
+            self._db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_automation_job_runs_job "
+                "ON automation_job_runs(job_id,started_at DESC)"
             )
 
     def register_interval_job(
@@ -108,7 +125,7 @@ class DurableAutomationScheduler:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 rows = self._db.execute(
-                    """SELECT job_id FROM automation_jobs
+                    """SELECT job_id,lease_token FROM automation_jobs
                        WHERE enabled=1 AND next_run_at<=?
                          AND (lease_token IS NULL OR lease_expires_at<=?)
                        ORDER BY next_run_at,job_id LIMIT ?""",
@@ -117,7 +134,17 @@ class DurableAutomationScheduler:
                 claims = []
                 for row in rows:
                     job_id = row["job_id"]
+                    previous_token = row["lease_token"]
+                    if previous_token:
+                        self._db.execute(
+                            """UPDATE automation_job_runs
+                               SET status='interrupted',finished_at=?,
+                                   error_code='lease_expired'
+                               WHERE lease_token=? AND status='running'""",
+                            (now_text, previous_token),
+                        )
                     token = str(uuid4())
+                    run_id = str(uuid4())
                     expires = _stamp(now + timedelta(seconds=self.lease_seconds))
                     cursor = self._db.execute(
                         """UPDATE automation_jobs SET lease_token=?,lease_expires_at=?,
@@ -127,53 +154,80 @@ class DurableAutomationScheduler:
                         (token, expires, now_text, now_text, job_id, now_text),
                     )
                     if cursor.rowcount == 1:
-                        claims.append((job_id, token))
+                        self._db.execute(
+                            """INSERT INTO automation_job_runs
+                               (run_id,job_id,lease_token,started_at,status)
+                               VALUES(?,?,?,?, 'running')""",
+                            (run_id, job_id, token, now_text),
+                        )
+                        claims.append((job_id, token, run_id))
                 self._db.execute("COMMIT")
             except Exception:
                 if self._db.in_transaction:
                     self._db.execute("ROLLBACK")
                 raise
 
-        for job_id, token in claims:
+        for job_id, token, run_id in claims:
             stats["claimed"] += 1
             callback = self._callbacks.get(job_id)
             if callback is None:
                 stats["unregistered"] += 1
-                self._finish(job_id, token, succeeded=False, error_code="callback_unavailable")
+                self._finish(job_id, token, run_id, succeeded=False, error_code="callback_unavailable")
                 stats["failed"] += 1
                 continue
             try:
                 callback()
             except Exception as exc:
-                self._finish(job_id, token, succeeded=False, error_code=type(exc).__name__[:80])
+                self._finish(job_id, token, run_id, succeeded=False, error_code=type(exc).__name__[:80])
                 stats["failed"] += 1
             else:
-                self._finish(job_id, token, succeeded=True)
+                self._finish(job_id, token, run_id, succeeded=True)
                 stats["succeeded"] += 1
         return stats
 
-    def _finish(self, job_id: str, token: str, *, succeeded: bool, error_code: str | None = None) -> None:
-        now = _now()
-        now_text = _stamp(now)
+    def _finish(
+        self, job_id: str, token: str, run_id: str, *,
+        succeeded: bool, error_code: str | None = None,
+    ) -> None:
+        now_text = _stamp(_now())
         with self._lock:
-            row = self._db.execute(
-                "SELECT interval_seconds,consecutive_failures FROM automation_jobs "
-                "WHERE job_id=? AND lease_token=?",
-                (job_id, token),
-            ).fetchone()
-            if row is None:
-                return
-            failures = 0 if succeeded else int(row["consecutive_failures"]) + 1
-            backoff = min(self.max_backoff_seconds, max(1, int(row["interval_seconds"])) * (2 ** min(failures, 10)))
-            next_run = now + timedelta(seconds=int(row["interval_seconds"]) if succeeded else backoff)
-            self._db.execute(
-                """UPDATE automation_jobs SET lease_token=NULL,lease_expires_at=NULL,
-                   last_finished_at=?,last_status=?,last_error_code=?,
-                   consecutive_failures=?,next_run_at=?,updated_at=?
-                   WHERE job_id=? AND lease_token=?""",
-                (now_text, "succeeded" if succeeded else "failed", error_code,
-                 failures, _stamp(next_run), now_text, job_id, token),
-            )
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._db.execute(
+                    "SELECT interval_seconds,consecutive_failures FROM automation_jobs "
+                    "WHERE job_id=? AND lease_token=?",
+                    (job_id, token),
+                ).fetchone()
+                if row is None:
+                    self._db.execute("ROLLBACK")
+                    return
+                failures = 0 if succeeded else int(row["consecutive_failures"]) + 1
+                backoff = min(
+                    self.max_backoff_seconds,
+                    max(1, int(row["interval_seconds"])) * (2 ** min(failures, 10)),
+                )
+                next_run = _now() + timedelta(
+                    seconds=int(row["interval_seconds"]) if succeeded else backoff
+                )
+                status = "succeeded" if succeeded else "failed"
+                self._db.execute(
+                    """UPDATE automation_jobs SET lease_token=NULL,lease_expires_at=NULL,
+                       last_finished_at=?,last_status=?,last_error_code=?,
+                       consecutive_failures=?,next_run_at=?,updated_at=?
+                       WHERE job_id=? AND lease_token=?""",
+                    (now_text, status, error_code, failures, _stamp(next_run),
+                     now_text, job_id, token),
+                )
+                self._db.execute(
+                    """UPDATE automation_job_runs SET finished_at=?,status=?,error_code=?
+                       WHERE run_id=? AND lease_token=? AND status='running'""",
+                    (now_text, status, error_code, run_id, token),
+                )
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
 
     def status(self) -> tuple[dict, ...]:
         """Return operational metadata only; never expose callback payloads."""
@@ -183,4 +237,24 @@ class DurableAutomationScheduler:
                    last_started_at,last_finished_at,last_status,last_error_code,
                    consecutive_failures FROM automation_jobs ORDER BY job_id"""
             ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def history(self, *, job_id: str | None = None, limit: int = 100) -> tuple[dict, ...]:
+        """Return bounded, secret-free execution history, newest first."""
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        with self._lock:
+            if job_id is None:
+                rows = self._db.execute(
+                    """SELECT run_id,job_id,started_at,finished_at,status,error_code
+                       FROM automation_job_runs ORDER BY started_at DESC,run_id DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = self._db.execute(
+                    """SELECT run_id,job_id,started_at,finished_at,status,error_code
+                       FROM automation_job_runs WHERE job_id=?
+                       ORDER BY started_at DESC,run_id DESC LIMIT ?""",
+                    (job_id, limit),
+                ).fetchall()
         return tuple(dict(row) for row in rows)
