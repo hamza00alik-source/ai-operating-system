@@ -59,7 +59,7 @@ Supported business IDs: `physical-agency`, `physical-brand`, and `digital-produc
 
 ### Current verification status
 
-The adapter, API routes, credential encryption scope, and mocked safety tests are present in the development branch. The owner authorized CI on 2026-11-14. The last verified candidate (`ffffc17`) passed 423 tests, including the mocked WooCommerce suite; newer scheduler/observability changes require their own exact-commit CI result before being called verified. No live WooCommerce store has been connected or contacted. Provider account eligibility, store REST API configuration, revoked-key behavior, real-world response compatibility, and deployment behavior remain unverified.
+The adapter, API routes, credential encryption scope, and mocked safety tests are present in the development branch. The owner authorized CI on 2026-11-14. Exact current PR head `936796e022f75655ff416169ab0ec8d62c290836` passed 424 tests (5 warnings), including the mocked WooCommerce suite and scheduler recovery/diagnostics tests. Its container build and non-root smoke test also passed. No live WooCommerce store has been connected or contacted. No live WooCommerce store has been connected or contacted. Provider account eligibility, store REST API configuration, revoked-key behavior, real-world response compatibility, and deployment behavior remain unverified.
 
 ## Next integration milestones
 
