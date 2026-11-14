@@ -108,7 +108,7 @@ def test_creator_video_source_upload_requires_owner_and_shared_storage(monkeypat
     monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
     monkeypatch.setenv("CLIPPING_INPUT_DIR", str(tmp_path / "shared-input"))
     headers = {"X-API-Key": "test-owner-key", "Content-Type": "video/mp4"}
-    video_bytes = b"\\x00\\x00\\x00\\x18ftypisom" + b"\\x00" * 32
+    video_bytes = bytes([0, 0, 0, 24]) + b"ftypisom" + bytes(32)
 
     with TestClient(app) as client:
         denied = client.post(
