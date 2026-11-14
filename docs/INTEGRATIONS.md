@@ -53,7 +53,7 @@ Supported business IDs: `physical-agency`, `physical-brand`, and `digital-produc
 
 ### Current verification status
 
-The adapter, API routes, credential encryption scope, and mocked safety tests are present in the development branch. Tests have **not** been executed because the owner's test/CI pause remains in effect through 2026-12-01. No live WooCommerce store has been connected or contacted. Provider account eligibility, store REST API configuration, revoked-key behavior, real-world response compatibility, and deployment behavior remain unverified.
+The adapter, API routes, credential encryption scope, and mocked safety tests are present in the development branch. The owner subsequently authorized CI on 2026-11-14. GitHub Actions is now the permitted test/build verification path; the latest run status must be checked before calling this verified. No live WooCommerce store has been connected or contacted. Provider account eligibility, store REST API configuration, revoked-key behavior, real-world response compatibility, and deployment behavior remain unverified.
 
 ## Next integration milestones
 
