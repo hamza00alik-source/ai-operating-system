@@ -936,10 +936,18 @@ class VideoWorkerFailure(BaseModel):
     retryable: bool = True
 
 
-def require_video_worker(x_video_worker_token: str | None = Header(default=None, alias="X-Video-Worker-Token")):
-    expected = os.getenv("VIDEO_WORKER_TOKEN", "").strip()
+def require_video_worker(
+    x_video_worker_token: str | None = Header(default=None, alias="X-Video-Worker-Token"),
+    x_video_provider: str | None = Header(default=None, alias="X-Video-Provider"),
+):
+    # Separate credentials prevent a LongCat worker from impersonating Cinecode
+    # (or vice versa) by changing the provider field in a claim request.
+    if x_video_provider not in {"longcat-video", "cinecode"}:
+        raise HTTPException(status_code=401, detail="A valid X-Video-Provider header is required.")
+    variable = "VIDEO_CINECODE_WORKER_TOKEN" if x_video_provider == "cinecode" else "VIDEO_WORKER_TOKEN"
+    expected = os.getenv(variable, "").strip()
     if not expected or not x_video_worker_token or not hmac.compare_digest(expected, x_video_worker_token.strip()):
-        raise HTTPException(status_code=401, detail="Valid video worker credential required.")
+        raise HTTPException(status_code=401, detail="Valid provider-specific video worker credential required.")
 
 
 @app.get("/video/jobs/{job_id}/events", dependencies=[Depends(require_api_key)])
@@ -961,7 +969,12 @@ def post_video_job_cancel(job_id: str):
 
 
 @app.post("/video/worker/claim", dependencies=[Depends(require_video_worker)])
-def post_video_worker_claim(payload: VideoWorkerClaim):
+def post_video_worker_claim(
+    payload: VideoWorkerClaim,
+    x_video_provider: str | None = Header(default=None, alias="X-Video-Provider"),
+):
+    if payload.provider != x_video_provider:
+        raise HTTPException(status_code=403, detail="Claim provider must match the authenticated worker provider.")
     try:
         return video_jobs.claim_job(payload.worker_id, payload.lease_seconds, payload.provider)
     except ValueError as exc:
