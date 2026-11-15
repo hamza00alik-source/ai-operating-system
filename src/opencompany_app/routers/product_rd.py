@@ -64,6 +64,25 @@ def _call(action, *args, **kwargs):
                             detail=message) from exc
 
 
+@router.get("/automation/status")
+def product_rd_automation_status(
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    fleet = runtime.fleet.status()
+    scheduler = runtime.automation_scheduler
+    return {
+        "enabled": scheduler is not None,
+        "manager_proposals_enabled": runtime.product_rd_auto_proposals_enabled,
+        "worker_fleet_running": fleet.running,
+        "maintenance_enabled": fleet.maintenance_enabled,
+        "maintenance_cycles": fleet.maintenance_cycles,
+        "maintenance_failures": fleet.maintenance_failures,
+        "jobs": list(scheduler.status()) if scheduler is not None else [],
+        "external_actions_enabled": False,
+        "scheduler_approves_or_queues_work": False,
+    }
+
+
 @router.post("/workflows")
 def create_product_workflow(payload: ProductRDCreateInput,
                             runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
