@@ -1,7 +1,7 @@
 """SQLite schema creation and sequential migrations for OpenCompany."""
 from __future__ import annotations
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 
 class SchemaInitializationMixin:
@@ -216,6 +216,33 @@ class SchemaInitializationMixin:
                         COMMIT;
                     """)
                     version = 7
+                except Exception:
+                    if self._connection.in_transaction:
+                        self._connection.execute("ROLLBACK")
+                    raise
+            if version == 7:
+                try:
+                    self._connection.executescript("""
+                        BEGIN IMMEDIATE;
+                        CREATE TABLE IF NOT EXISTS storefront_listing_drafts (
+                            id TEXT PRIMARY KEY,
+                            canonical_product_id TEXT NOT NULL REFERENCES commercial_products(id),
+                            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+                            channel_id TEXT NOT NULL,
+                            title TEXT NOT NULL,
+                            payload_json TEXT NOT NULL,
+                            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','archived')),
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_storefront_listing_drafts_scope
+                            ON storefront_listing_drafts(business_id, channel_id, status, created_at);
+                        CREATE INDEX IF NOT EXISTS idx_storefront_listing_drafts_product
+                            ON storefront_listing_drafts(canonical_product_id, channel_id, created_at);
+                        PRAGMA user_version = 8;
+                        COMMIT;
+                    """)
+                    version = 8
                 except Exception:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")
