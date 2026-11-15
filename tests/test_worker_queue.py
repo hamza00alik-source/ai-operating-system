@@ -30,7 +30,8 @@ def test_stale_lease_cannot_complete(tmp_path):
     first = queue.claim(agent)
     assert first is not None
     future = datetime.now(timezone.utc) + timedelta(seconds=20)
-    second = queue.claim(agent, now=future + timedelta(seconds=10))
+    assert queue.claim(agent, now=future + timedelta(seconds=10)) is None
+    second = queue.claim(agent, now=future + timedelta(seconds=20))
     assert second is not None and second.attempt == 2
     with pytest.raises(QueueError):
         queue.complete(first)
@@ -275,6 +276,7 @@ def test_live_lease_can_be_renewed_but_expired_or_replaced_lease_cannot(tmp_path
     assert queue.claim(agent, now=start + timedelta(seconds=11)) is None
     assert queue.renew(first, now=start + timedelta(seconds=20)) is False
 
+    assert queue.claim(agent, now=start + timedelta(seconds=20)) is None
     replacement = queue.claim(agent, now=start + timedelta(seconds=30))
     assert replacement is not None and replacement.attempt == 2
     assert queue.renew(first, now=start + timedelta(seconds=21)) is False
