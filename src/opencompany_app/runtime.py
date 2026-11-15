@@ -28,6 +28,7 @@ from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
 from opencompany_core.autonomy_scheduler import DurableAutomationScheduler
 from opencompany_core.product_rd_coordinator import ProductRDCoordinator
+from opencompany_core.external_approval_service import record_agent_approval_requests
 
 
 @dataclass(slots=True)
@@ -221,6 +222,9 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         artifact_sink=store,
         request_budget_usd=0.0,
         preferred_provider="unorouter",
+        approval_request_sink=lambda agent_id, item, requests: record_agent_approval_requests(
+            store, agent_id, item, requests
+        ),
     )
     worker_concurrency = int(os.environ.get("OPENCOMPANY_WORKER_CONCURRENCY", "2"))
     # Product & R&D background coordination is strictly opt-in. It can prepare
