@@ -14,6 +14,8 @@ from opencompany_core.orchestration import (
 
 
 def candidate(provider, model, **kwargs):
+    kwargs.setdefault("max_context_tokens", 32768)
+    kwargs.setdefault("reasoning_effort", ReasoningEffort.STANDARD)
     return ModelCandidate(provider=provider, model=model, billing_mode=BillingMode.FREE_CONFIRMED, **kwargs)
 
 
@@ -108,3 +110,20 @@ def test_team_plan_rejects_invalid_business_scope_and_parallelism():
         OpenCompanyOrchestrator.create_plan("other-company", (task,))
     with pytest.raises(ValueError, match="max_parallel_agents"):
         OpenCompanyOrchestrator.create_plan("digital-products", (task,), max_parallel_agents=0)
+
+
+
+def test_unknown_context_and_reasoning_metadata_are_not_assumed():
+    unknown_context = candidate("free", "unknown-context", max_context_tokens=None)
+    unknown_reasoning = candidate("free", "unknown-reasoning", reasoning_effort=None)
+    request = RoutingRequest(TaskKind.RESEARCH, TaskComplexity.ROUTINE, 100)
+    with pytest.raises(NoEligibleRoute, match="No paid fallback was attempted"):
+        OpenCompanyOrchestrator.route(request, [unknown_context, unknown_reasoning])
+
+
+def test_unknown_quality_and_latency_are_ranked_below_measured_values():
+    unknown = candidate("free-a", "unknown-performance", quality_tier=None, latency_tier=None)
+    measured = candidate("free-b", "measured", quality_tier=1, latency_tier=1)
+    request = RoutingRequest(TaskKind.RESEARCH, TaskComplexity.ROUTINE, 100)
+    decision = OpenCompanyOrchestrator.route(request, [unknown, measured])
+    assert decision.model == "measured"
