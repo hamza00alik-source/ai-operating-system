@@ -919,6 +919,7 @@ class VideoWorkerClaim(BaseModel):
     worker_id: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="longcat-video", pattern="^(longcat-video|cinecode)$")
     lease_seconds: int = Field(default=120, ge=30, le=900)
+    capabilities: dict = Field(default_factory=dict)
 
 
 class VideoWorkerHeartbeat(BaseModel):
@@ -976,7 +977,10 @@ def post_video_worker_claim(
     if payload.provider != x_video_provider:
         raise HTTPException(status_code=403, detail="Claim provider must match the authenticated worker provider.")
     try:
-        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds, payload.provider)
+        return video_jobs.claim_job(
+            payload.worker_id, payload.lease_seconds, payload.provider,
+            capabilities=payload.capabilities,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
