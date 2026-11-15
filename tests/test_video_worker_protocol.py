@@ -101,7 +101,7 @@ def test_worker_http_routes_require_shared_secret(monkeypatch, tmp_path):
         assert denied.status_code == 401
         accepted = client.post(
             "/video/worker/claim",
-            headers={"X-Video-Worker-Token": "worker-test-secret"},
+            headers={"X-Video-Worker-Token": "worker-test-secret", "X-Video-Provider": "longcat-video"},
             json={"worker_id": "test-worker", "lease_seconds": 60},
         )
         assert accepted.status_code == 200
