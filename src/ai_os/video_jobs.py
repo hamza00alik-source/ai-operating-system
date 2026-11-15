@@ -167,14 +167,28 @@ def cancel_job(job_id):
     return get_job(job_id)
 
 
-def claim_job(worker_id, lease_seconds=120, provider="longcat-video"):
+def claim_job(worker_id, lease_seconds=120, provider="longcat-video", capabilities=None):
     if provider not in {"longcat-video", "cinecode"}: raise ValueError("Unsupported video provider.")
     if not worker_id or len(worker_id)>100: raise ValueError("worker_id must contain 1–100 characters.")
     if not 30<=lease_seconds<=900: raise ValueError("lease_seconds must be between 30 and 900.")
+    allowed_capabilities = {
+        "agent", "agent_version", "node_version", "python_version", "ffmpeg_version",
+        "ffprobe_version", "browser", "browser_version", "gpu", "disk_free_bytes",
+        "source_commit", "platform",
+    }
+    supplied = capabilities if isinstance(capabilities, dict) else {}
+    safe_capabilities = {key: value for key, value in supplied.items()
+                         if key in allowed_capabilities and isinstance(value, (str, int, float, bool))}
+    capabilities_json = json.dumps(safe_capabilities, ensure_ascii=False, sort_keys=True)
+    if len(capabilities_json) > 4096:
+        raise ValueError("Worker capabilities exceed the 4096-byte limit.")
     initialize(); now=_now(); now_s=now.isoformat(); expires=(now+timedelta(seconds=lease_seconds)).isoformat()
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        db.execute("INSERT INTO video_worker_presence(worker_id,last_seen_at,provider) VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,provider=excluded.provider",(worker_id,now_s,provider))
+        db.execute("""INSERT INTO video_worker_presence(worker_id,last_seen_at,capabilities_json,provider)
+            VALUES(?,?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,
+            capabilities_json=excluded.capabilities_json,provider=excluded.provider""",
+            (worker_id,now_s,capabilities_json,provider))
         expired=db.execute("SELECT * FROM video_generation_jobs WHERE status='running' AND provider=? AND lease_expires_at<=? ORDER BY created_at LIMIT 20",(provider,now_s)).fetchall()
         for row in expired:
             if row["cancel_requested"]:
@@ -256,6 +270,7 @@ def worker_status(provider="longcat-video"):
     cutoff = (_now() - timedelta(seconds=90)).isoformat()
     with connect() as db:
         count = db.execute("SELECT COUNT(*) AS n FROM video_worker_presence WHERE last_seen_at>=? AND provider=?", (cutoff,provider)).fetchone()["n"]
+        latest = db.execute("SELECT last_seen_at,capabilities_json FROM video_worker_presence WHERE last_seen_at>=? AND provider=? ORDER BY last_seen_at DESC LIMIT 1", (cutoff,provider)).fetchone()
     secret_name = "VIDEO_CINECODE_WORKER_TOKEN" if provider == "cinecode" else "VIDEO_WORKER_TOKEN"
     configured = bool(os.getenv(secret_name, "").strip())
     return {
@@ -265,6 +280,8 @@ def worker_status(provider="longcat-video"):
         "worker_connected": count > 0,
         "active_workers": count,
         "generation_enabled": count > 0,
+        "last_seen_at": latest["last_seen_at"] if latest else None,
+        "worker_capabilities": json.loads(latest["capabilities_json"] or "{}") if latest else {},
         "note": "The API remains fully available when no provider worker is connected.",
     }
 
