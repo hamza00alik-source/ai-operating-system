@@ -58,10 +58,10 @@ class ModelCandidate:
     max_cost_per_request_usd: float = 0.0
     supported_tasks: frozenset[TaskKind] = frozenset()
     capabilities: frozenset[str] = frozenset()
-    max_context_tokens: int = 32768
-    reasoning_effort: ReasoningEffort = ReasoningEffort.STANDARD
-    quality_tier: int = 1
-    latency_tier: int = 2
+    max_context_tokens: int | None = None
+    reasoning_effort: ReasoningEffort | None = None
+    quality_tier: int | None = None
+    latency_tier: int | None = None
     priority: int = 100
 
     def __post_init__(self) -> None:
@@ -69,10 +69,12 @@ class ModelCandidate:
             raise ValueError("provider and model are required")
         if not math.isfinite(self.max_cost_per_request_usd) or self.max_cost_per_request_usd < 0:
             raise ValueError("model cost ceiling must be finite and non-negative")
-        if self.max_context_tokens < 1:
-            raise ValueError("model context capacity must be positive")
-        if not 1 <= self.quality_tier <= 5 or not 1 <= self.latency_tier <= 5:
-            raise ValueError("quality and latency tiers must be between 1 and 5")
+        if self.max_context_tokens is not None and self.max_context_tokens < 1:
+            raise ValueError("model context capacity must be positive when known")
+        if self.quality_tier is not None and not 1 <= self.quality_tier <= 5:
+            raise ValueError("quality tier must be between 1 and 5 when known")
+        if self.latency_tier is not None and not 1 <= self.latency_tier <= 5:
+            raise ValueError("latency tier must be between 1 and 5 when known")
         if self.billing_mode == BillingMode.FREE_CONFIRMED and self.max_cost_per_request_usd != 0:
             raise ValueError("confirmed-free models must have a zero cost ceiling")
 
@@ -125,9 +127,11 @@ def route_model(
             continue
         if candidate.max_cost_per_request_usd != 0:
             continue
-        if candidate.max_context_tokens < request.estimated_context_tokens:
+        # Unknown provider metadata is not evidence of sufficient capacity or
+        # reasoning. Keep such candidates out rather than inheriting optimistic defaults.
+        if candidate.max_context_tokens is None or candidate.max_context_tokens < request.estimated_context_tokens:
             continue
-        if candidate.reasoning_effort < minimum_effort:
+        if candidate.reasoning_effort is None or candidate.reasoning_effort < minimum_effort:
             continue
         if candidate.supported_tasks and request.task_kind not in candidate.supported_tasks:
             continue
@@ -141,13 +145,17 @@ def route_model(
         )
     if request.complexity <= TaskComplexity.STANDARD:
         eligible.sort(key=lambda item: (
-            item.latency_tier, -item.quality_tier, item.priority, item.provider, item.model
+            item.latency_tier if item.latency_tier is not None else 6,
+            -(item.quality_tier if item.quality_tier is not None else 0),
+            item.priority, item.provider, item.model
         ))
         reason = "routine-task route: latency first, then quality and configured priority"
     else:
         eligible.sort(key=lambda item: (
-            -item.quality_tier, -int(item.reasoning_effort), item.priority,
-            item.latency_tier, item.provider, item.model
+            -(item.quality_tier if item.quality_tier is not None else 0),
+            -int(item.reasoning_effort), item.priority,
+            item.latency_tier if item.latency_tier is not None else 6,
+            item.provider, item.model
         ))
         reason = "complex-task route: quality and reasoning first, then configured priority"
     selected = eligible[0]
