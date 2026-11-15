@@ -567,3 +567,30 @@ def test_reassignment_recovers_unleased_in_progress_retry_to_queued(tmp_path):
     assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
     assert store.verify_audit_chain()
     store.close()
+
+
+def test_queue_health_snapshot_reports_age_expired_leases_and_dead_letters_without_secrets(tmp_path):
+    queue = DurableWorkerQueue(
+        tmp_path / "health.sqlite3", lease_seconds=10, max_attempts=1
+    )
+    queued_agent, active_agent, dead_agent = uuid4(), uuid4(), uuid4()
+    queue.enqueue(uuid4(), queued_agent, {"private": "never-return-this"})
+    queue.enqueue(uuid4(), active_agent, {})
+    active_lease = queue.claim(active_agent)
+    assert active_lease is not None
+    queue.enqueue(uuid4(), dead_agent, {})
+    dead_lease = queue.claim(dead_agent)
+    assert dead_lease is not None
+    assert queue.fail(dead_lease, "provider_timeout") == "dead"
+
+    observed = datetime.now(timezone.utc) + timedelta(seconds=20)
+    snapshot = queue.health_snapshot(now=observed)
+    assert snapshot["counts"]["queued"] == 1
+    assert snapshot["counts"]["leased"] == 1
+    assert snapshot["dead_letter_count"] == 1
+    assert snapshot["expired_leases"] == 1
+    assert snapshot["queued_oldest_age_seconds"] >= 20
+    assert "lease_token" not in str(snapshot)
+    assert "payload_json" not in str(snapshot)
+    assert "never-return-this" not in str(snapshot)
+    queue.close()
