@@ -191,12 +191,18 @@ class OpenCompanyWorker:
                     ):
                         return "cancelled"
                     raise QueueError("worker lease was lost before cancellation could be committed")
-                self.artifact_sink.save(deliverable)
+                current_agent = self.store.get_agent(lease.agent_id)
+                if current_agent is None or current_agent.state.value != "active":
+                    raise WorkerConfigurationError("assigned agent profile is no longer active")
+                if self.artifact_sink is not self.store:
+                    self.artifact_sink.save(deliverable)
                 if lease_lost.is_set():
                     raise QueueError("worker lease was lost before deliverable persistence")
-                saved = self.store.save_deliverable_with_audit(deliverable, audit_record)
+                saved = self.store.save_deliverable_with_audit(
+                    deliverable, audit_record, expected_agent_id=lease.agent_id
+                )
                 if not saved:
-                    raise WorkerConfigurationError("work item is no longer in progress")
+                    raise WorkerConfigurationError("work item or assigned agent is no longer eligible")
                 if lease_lost.is_set():
                     raise QueueError("worker lease was lost before queue acknowledgement")
                 self.queue.complete(lease)
