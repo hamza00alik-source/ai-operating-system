@@ -162,3 +162,10 @@ Code head `9d20c17fe7b6c72b393dc332401c80900f7ebce3`:
 - Python compileall: passed.
 
 The regression suite now explicitly verifies that a completed specialist-output checkpoint prevents a second provider execution after a sink failure, and that leased-task cancellation remains cooperative, audited and finalized under the live lease.
+
+
+## Owner-verified payout reconciliation preview
+
+`POST /commercial/payout-reconciliation/preview` accepts a bounded statement-line list (maximum 500), a business unit, currency, payout reference and explicit owner verification. It compares each line to exactly one financial-ledger source reference in the same business and currency. Results distinguish exact matches, amount mismatches, missing references, ambiguous ledger references and duplicate statement references.
+
+This is a read-only preview: it does not import or persist the statement, mark ledger rows as reconciled, connect to a payment provider, fetch bank data, initiate or verify a payout, or perform a financial action. A fully matched preview means only that the supplied lines match existing ledger references and amounts; it is not proof that a bank or marketplace actually settled the payout. Persistent statement ingestion, settlement evidence and payment-status adapters remain separate work.
