@@ -105,3 +105,21 @@ The mobile-friendly owner console includes:
 - All dynamic result text is inserted as text, not HTML. Order views contain only the minimized, non-PII fields returned by the read-only adapter.
 
 Owner-only Product & R&D automation status endpoint: `GET /product-rd/automation/status`. It reports whether the scheduler is configured, whether the worker fleet is running, manager-proposal opt-in, maintenance counters and job metadata. It cannot start or authorize any external action.
+
+
+## Company-wide owner approval inbox
+
+The owner console now combines manager delegation proposals, review-required deliverables, Product & R&D preview/CEO checkpoints, and external-action approval requests in one business-filterable inbox.
+
+Agent-originated approval intents are extracted only from one bounded, strict JSON block in a worker deliverable. Unknown fields, unsupported action types, oversized strings, invalid amounts/currencies, multiple blocks and malformed JSON are rejected. The server derives the requesting agent, work item and business from the validated worker lease; model text cannot supply or override those identities.
+
+Owner-only endpoints:
+- `POST /external-approvals` — create an owner-originated pending request.
+- `GET /external-approvals` — list requests by business/status.
+- `POST /external-approvals/{request_id}/decision` — record an owner decision.
+- `POST /external-approvals/{request_id}/cancel` — cancel a pending request.
+- `POST /internal/agent-approval-requests` — separately authenticated internal agent submission endpoint; the worker runtime currently uses the trusted in-process recorder.
+
+An approval decision of `approve` requires the owner to type `AUTHORIZE`. It changes the record to `authorized_not_executed` with a 24-hour expiry. Rejection and cancellation are also audited. The inbox explicitly states that authorization is not execution.
+
+There is deliberately no executor, marketplace publisher, payment client, purchase flow, customer messaging client, production mutator or deletion handler in this feature. An approved record cannot trigger an external action. Each future action requires a separately reviewed, narrowly scoped executor and a second execution record.
