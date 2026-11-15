@@ -40,8 +40,9 @@ Owner-authenticated endpoints:
 - `POST /integrations/woocommerce/{business_id}/test`
 - `GET /integrations/woocommerce/{business_id}/products`
 - `GET /integrations/woocommerce/{business_id}/orders`
+- `GET /integrations/woocommerce/{business_id}/payment-status`
 
-Connection credentials are stored in the existing encrypted provider secret vault. Saving credentials validates their shape locally and does not contact the store. A separate explicit test performs a bounded GET request. Only product and order reads are implemented; order responses omit customer personal data. No product write, listing publication, order status change, refund, fulfilment or customer communication is enabled.
+Connection credentials are stored in the existing encrypted provider secret vault. Saving credentials validates their shape locally and does not contact the store. A separate explicit test performs a bounded GET request. Product, order and WooCommerce-recorded payment-status reads are implemented; order responses omit customer personal data. The payment-status view uses WooCommerce's `date_paid` field and order status only: it reports a platform-recorded paid signal, not bank settlement or independently verified receipt. No product write, listing publication, order status change, refund, fulfilment or customer communication is enabled.
 
 The adapter uses strict HTTPS URL validation, bounded pagination and response size, a read-only HTTP method surface, and does not follow redirects. Account-specific connection is not verified until the owner supplies credentials, the encryption key is configured, and the test succeeds.
 
