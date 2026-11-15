@@ -474,42 +474,45 @@ class DurableWorkerQueue:
                              AND status='running'""",
                         (instant.isoformat(), cancelled["work_item_id"]),
                     )
-                    self._db.execute(
-                        "UPDATE work_items SET state=? WHERE id=? AND state IN (?,?)",
-                        (TaskState.CANCELLED.value, cancelled["work_item_id"],
-                         TaskState.QUEUED.value, TaskState.IN_PROGRESS.value),
-                    )
+                    if not self._owns_connection:
+                        self._db.execute(
+                            "UPDATE work_items SET state=? WHERE id=? AND state IN (?,?)",
+                            (TaskState.CANCELLED.value, cancelled["work_item_id"],
+                             TaskState.QUEUED.value, TaskState.IN_PROGRESS.value),
+                        )
                     self._db.execute(
                         """UPDATE worker_queue SET state='dead',lease_token=NULL,
                            lease_expires_at=NULL,last_error='owner_cancelled',updated_at=?
                            WHERE work_item_id=? AND state='leased' AND cancel_requested=1""",
                         (instant.isoformat(), cancelled["work_item_id"]),
                     )
-                    self._append_audit(AuditRecord(
-                        id=uuid4(), occurred_at=instant, actor_type="worker",
-                        actor_id=cancelled["agent_id"], action="worker.cancellation_recovered",
-                        subject_type="work_item", subject_id=cancelled["work_item_id"],
-                        outcome="recorded", correlation_id=str(uuid4()),
-                        details={"reason": "owner_cancelled_after_worker_interruption"},
-                    ), self._db)
+                    if not self._owns_connection:
+                        self._append_audit(AuditRecord(
+                            id=uuid4(), occurred_at=instant, actor_type="worker",
+                            actor_id=cancelled["agent_id"], action="worker.cancellation_recovered",
+                            subject_type="work_item", subject_id=cancelled["work_item_id"],
+                            outcome="recorded", correlation_id=str(uuid4()),
+                            details={"reason": "owner_cancelled_after_worker_interruption"},
+                        ), self._db)
                 expired_dead = self._db.execute(
                     "SELECT work_item_id,agent_id FROM worker_queue "
                     "WHERE state='leased' AND lease_expires_at<=? AND attempts>=?",
                     (instant.isoformat(), self.max_attempts),
                 ).fetchall()
                 for expired in expired_dead:
-                    cursor = self._db.execute(
-                        "UPDATE work_items SET state=? WHERE id=? AND state=?",
-                        (TaskState.FAILED.value, expired["work_item_id"], TaskState.IN_PROGRESS.value),
-                    )
-                    if cursor.rowcount == 1:
-                        self._append_audit(AuditRecord(
-                            id=uuid4(), occurred_at=instant, actor_type="worker",
-                            actor_id=expired["agent_id"], action="worker.lease_dead_lettered",
-                            subject_type="work_item", subject_id=expired["work_item_id"],
-                            outcome="failed", correlation_id=str(uuid4()),
-                            details={"reason": "lease_expired_retry_limit"},
-                        ), self._db)
+                    if not self._owns_connection:
+                        cursor = self._db.execute(
+                            "UPDATE work_items SET state=? WHERE id=? AND state=?",
+                            (TaskState.FAILED.value, expired["work_item_id"], TaskState.IN_PROGRESS.value),
+                        )
+                        if cursor.rowcount == 1:
+                            self._append_audit(AuditRecord(
+                                id=uuid4(), occurred_at=instant, actor_type="worker",
+                                actor_id=expired["agent_id"], action="worker.lease_dead_lettered",
+                                subject_type="work_item", subject_id=expired["work_item_id"],
+                                outcome="failed", correlation_id=str(uuid4()),
+                                details={"reason": "lease_expired_retry_limit"},
+                            ), self._db)
                 self._db.execute(
                     """UPDATE worker_attempts SET status='interrupted',finished_at=?
                        WHERE status='running' AND lease_token IN (
@@ -548,6 +551,12 @@ class DurableWorkerQueue:
                     self._db.execute("COMMIT")
                     return None
                 if not self._owns_connection:
+                    profile = self._db.execute(
+                        "SELECT state FROM agent_profiles WHERE id=?", (str(agent_id),)
+                    ).fetchone()
+                    if profile is None or profile["state"] != AgentState.ACTIVE.value:
+                        self._db.execute("COMMIT")
+                        return None
                     task = self._db.execute(
                         "SELECT state,assigned_agent_id FROM work_items WHERE id=?",
                         (row["work_item_id"],),
@@ -751,10 +760,11 @@ class DurableWorkerQueue:
             cursor = self._db.execute(
                 """UPDATE worker_queue SET state=?,lease_token=NULL,lease_expires_at=NULL,
                    next_attempt_at=?,last_error=?,updated_at=?
-                   WHERE work_item_id=? AND state='leased' AND lease_token=?""",
+                   WHERE work_item_id=? AND state='leased' AND lease_token=?
+                     AND lease_expires_at>?""",
                 (state, next_attempt_at.isoformat() if next_attempt_at else None,
                  error, instant.isoformat(),
-                 str(lease.work_item_id), str(lease.lease_token)),
+                 str(lease.work_item_id), str(lease.lease_token), instant.isoformat()),
             )
             if cursor.rowcount != 1:
                 raise QueueError("lease is stale or no longer owned by this worker")
