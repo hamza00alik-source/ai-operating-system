@@ -71,6 +71,8 @@ Cinecode and LongCat must remain separate providers. A Cinecode failure must nev
 - If cost or licensing cannot be established, stop that component and report the uncertainty.
 
 ## Security and privacy
+- AIOS authenticates workers with provider-specific secrets: `VIDEO_WORKER_TOKEN` for LongCat and `VIDEO_CINECODE_WORKER_TOKEN` for Cinecode. Send the matching `X-Video-Provider` header on every worker request. Never reuse the same secret across providers.
+- The claim request's provider must match the authenticated `X-Video-Provider` identity; changing the request body cannot switch a worker's authority.
 - Use a dedicated OS account or container/VM for the worker, not the API process.
 - Do not mount the AIOS repository, deployment secrets, home directory, or unrelated customer files into the render workspace.
 - Allow only explicit input assets for each job.
