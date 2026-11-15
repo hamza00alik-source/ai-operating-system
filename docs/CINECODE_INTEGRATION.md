@@ -109,5 +109,7 @@ Consider only after isolation, cost estimation, provider terms, persistent stora
 - Upstream repository and documentation inspected.
 - Existing AIOS video queue, owner approval, budget gate, authenticated worker lease protocol, and private MP4 artifact path inspected.
 - Existing AIOS LongCat worker remains a separate optional provider.
-- Cinecode execution adapter, worker, provider routing, capability panel, and end-to-end render are **not implemented or verified yet**.
-- Next engineering step: implement the provider extension and a sandboxed local worker only after selecting and validating the supported agent CLI execution contract. Until then, expose Cinecode as researched/unavailable rather than claiming it can render.
+- Provider-scoped job claims and provider-specific worker heartbeat status now accept `cinecode` separately from `longcat-video`.
+- A routing test has been added to verify that each provider worker can claim only its own queued jobs.
+- The Cinecode execution adapter, worker, capability panel, and end-to-end render are **not implemented or verified yet**.
+- Until the sandboxed agent-CLI worker exists, Cinecode jobs have no worker to execute them and must remain visibly unavailable; do not claim that Cinecode can render from AIOS yet.
