@@ -1,4 +1,4 @@
-"""Enzonic-compatible ASGI process entry point."""
+"""OpenCompany ASGI process entry point."""
 import os
 import sys
 from pathlib import Path
@@ -11,7 +11,7 @@ import uvicorn  # noqa: E402
 
 if __name__ == "__main__":
     uvicorn.run(
-        "ai_os.api:app",
+        "opencompany_app.api:app",
         host="0.0.0.0",
         port=int(os.getenv("PORT", "8000")),
         proxy_headers=True,

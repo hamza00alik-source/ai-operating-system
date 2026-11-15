@@ -151,7 +151,6 @@ def session_status(request: Request):
 class ModelRunRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=8000)
-    approve_paid_request: bool = False
 
 
 class ResearchSourceRequest(BaseModel):
@@ -235,7 +234,7 @@ def get_unorouter_catalog():
 def post_unorouter_personal_test(payload: ModelRunRequest):
     """Owner-only consumer-account experiment; deliberately outside company routing."""
     try:
-        return test_unorouter_personal(payload.prompt, payload.approve_paid_request)
+        return test_unorouter_personal(payload.prompt)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -244,7 +243,7 @@ def post_unorouter_personal_test(payload: ModelRunRequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/llm/test", dependencies=[Depends(require_api_key)])
+@app.post("/llm/test", dependencies=[Depends(require_owner_key)])
 def post_llm_test(payload: ModelRunRequest):
     try:
         if payload.provider == "auto":
@@ -260,7 +259,7 @@ def post_llm_test(payload: ModelRunRequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.post("/llm/run", dependencies=[Depends(require_api_key)])
+@app.post("/llm/run", dependencies=[Depends(require_owner_key)])
 def post_llm_run(payload: ModelRunRequest):
     try:
         return generate_with_fallback(payload.prompt) if payload.provider == "auto" else generate(payload.provider, payload.prompt)
@@ -291,7 +290,7 @@ def get_company_departments():
             "specialist_count": specialist_count,
             "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
             "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
-            "workflow_status": item.get("workflow_state", "catalogue-only"),
+            "workflow_status": "catalogue-only",
         })
     return {
         "department_count": len(departments),
@@ -569,7 +568,7 @@ def get_tasks():
     return list_tasks()
 
 
-@app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_api_key)])
+@app.post("/tasks/{task_id}/execute", status_code=202, dependencies=[Depends(require_owner_key)])
 def execute_task(task_id: str):
     try:
         if not task_is_runnable(task_id):
@@ -581,7 +580,7 @@ def execute_task(task_id: str):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.post("/agent-runs/{run_id}/retry", status_code=202, dependencies=[Depends(require_api_key)])
+@app.post("/agent-runs/{run_id}/retry", status_code=202, dependencies=[Depends(require_owner_key)])
 def retry_agent_run(run_id: str):
     try:
         return retry_run(run_id)
@@ -656,7 +655,8 @@ def get_approvals():
 @app.post(
     "/approvals/{approval_id}/decision",
     response_model=ApprovalOut,
-    dependencies=[Depends(require_api_key)],
+    # Approval decisions must never inherit the development-mode auth bypass.
+    dependencies=[Depends(require_owner_key)],
 )
 def post_approval_decision(approval_id: str, payload: ApprovalDecision):
     try:
@@ -693,7 +693,7 @@ def post_free_api_catalog_sync():
         raise HTTPException(status_code=502, detail=f"Free API catalog sync failed: {exc}") from exc
 
 
-@app.post("/discovery/scans", status_code=202, dependencies=[Depends(require_api_key)])
+@app.post("/discovery/scans", status_code=202, dependencies=[Depends(require_owner_key)])
 def post_discovery_scan(payload: DiscoveryScanCreate):
     try:
         return create_scan(payload.categories)
