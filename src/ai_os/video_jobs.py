@@ -165,13 +165,13 @@ def cancel_job(job_id):
 
 
 def claim_job(worker_id, lease_seconds=120, provider="longcat-video"):
-    if provider != "longcat-video": raise ValueError("This worker protocol instance only serves the longcat-video provider.")
+    if provider not in {"longcat-video", "cinecode"}: raise ValueError("Unsupported video provider.")
     if not worker_id or len(worker_id)>100: raise ValueError("worker_id must contain 1–100 characters.")
     if not 30<=lease_seconds<=900: raise ValueError("lease_seconds must be between 30 and 900.")
     initialize(); now=_now(); now_s=now.isoformat(); expires=(now+timedelta(seconds=lease_seconds)).isoformat()
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        db.execute("INSERT INTO video_worker_presence(worker_id,last_seen_at) VALUES(?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at",(worker_id,now_s))
+        db.execute("INSERT INTO video_worker_presence(worker_id,last_seen_at,provider) VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,provider=excluded.provider",(worker_id,now_s,provider))
         expired=db.execute("SELECT * FROM video_generation_jobs WHERE status='running' AND lease_expires_at<=? ORDER BY created_at LIMIT 20",(now_s,)).fetchall()
         for row in expired:
             if row["cancel_requested"]:
@@ -247,20 +247,21 @@ def fail_job(job_id,token,*,error,retryable=True):
     return get_job(job_id)
 
 
-def worker_status():
+def worker_status(provider="longcat-video"):
+    if provider not in {"longcat-video", "cinecode"}: raise ValueError("Unsupported video provider.")
     initialize()
     cutoff = (_now() - timedelta(seconds=90)).isoformat()
     with connect() as db:
-        count = db.execute("SELECT COUNT(*) AS n FROM video_worker_presence WHERE last_seen_at>=?", (cutoff,)).fetchone()["n"]
+        count = db.execute("SELECT COUNT(*) AS n FROM video_worker_presence WHERE last_seen_at>=? AND provider=?", (cutoff,provider)).fetchone()["n"]
     configured = bool(os.getenv("VIDEO_WORKER_TOKEN", "").strip())
     return {
         "worker_secret_configured": configured,
         "worker_protocol": "lease-v1",
-        "provider": "longcat-video",
+        "provider": provider,
         "worker_connected": count > 0,
         "active_workers": count,
         "generation_enabled": count > 0,
-        "note": "The API remains fully available when no GPU worker is connected.",
+        "note": "The API remains fully available when no provider worker is connected.",
     }
 
 def _serialize(row):
