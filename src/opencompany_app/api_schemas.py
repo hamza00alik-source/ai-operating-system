@@ -118,7 +118,7 @@ class StorefrontListingDraftInput(BaseModel):
     business_id: str
     channel_id: str = Field(min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9-]+$")
     title: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=8000)
+    description: str = Field(min_length=1, max_length=8000)
     tags: list[str] = Field(default_factory=list, max_length=30)
     price_amount: str | None = Field(default=None, max_length=32)
     currency: str | None = Field(default=None, min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
