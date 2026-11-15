@@ -22,6 +22,10 @@ Set these as private environment variables in the hosting panel. Never put real 
 | `AI_OS_ENV` | `production` |
 | `AI_OS_API_KEY` | A long, randomly generated secret; keep it private |
 | `AI_OS_DATABASE_URL` | `sqlite:////absolute/path/on/persistent-storage/ai_os.db` |
+| `VIDEO_WORKER_TOKEN` | A unique random secret for the LongCat worker only; optional until that worker is deployed |
+| `VIDEO_CINECODE_WORKER_TOKEN` | A different unique random secret for the Cinecode worker only; optional until a sandboxed Cinecode worker is deployed |
+| `PUBLIC_API_BASE_URL` | Public HTTPS API origin; required only when workers upload MP4 artifacts |
+| `VIDEO_ARTIFACT_DIR` | Persistent private artifact directory; required for durable MP4 storage |
 
 The database path above is a template, not a confirmed Enzonic mount path. Replace it with the actual persistent writable directory documented or displayed by Enzonic. Do not deploy with SQLite on an ephemeral working directory if records must survive restarts/redeploys.
 
