@@ -88,13 +88,6 @@ def automation_history(
     }
 
 
-@diagnostics_router.get("/audit/verify", dependencies=[Depends(require_owner_key)])
-def verify_audit(store: SQLiteStore = Depends(get_store)) -> dict:
-    return {
-        "event_count": store.audit_event_count(),
-        "chain_valid": store.verify_audit_chain(),
-    }
-
 @diagnostics_router.get("/owner/production-readiness", dependencies=[Depends(require_owner_key)])
 def production_readiness_snapshot(
     runtime: OpenCompanyRuntime = Depends(get_runtime),
