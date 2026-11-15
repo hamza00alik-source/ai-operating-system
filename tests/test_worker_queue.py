@@ -45,7 +45,7 @@ def test_retry_limit_moves_item_to_dead_letter_state(tmp_path):
     first = queue.claim(agent)
     assert first is not None
     assert queue.fail(first, "provider_timeout") == "queued"
-    second = queue.claim(agent)
+    second = queue.claim(agent, now=datetime.now(timezone.utc) + timedelta(seconds=10))
     assert second is not None and second.attempt == 2
     assert queue.fail(second, "provider_timeout") == "dead"
     assert queue.claim(agent) is None
