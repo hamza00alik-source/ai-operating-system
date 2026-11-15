@@ -51,7 +51,7 @@ def test_orders_omit_customer_personal_data():
     client = _client([{
         "id": 12, "status": "processing", "currency": "USD",
         "total": "30.00", "date_created": "2026-01-01T00:00:00",
-        "billing": {"email": "private@example.com", "first_name": "Private"},
+        "date_paid": "2026-01-01T00:02:00",\n        "billing": {"email": "private@example.com", "first_name": "Private"},
         "line_items": [{"name": "Item", "quantity": 2}],
     }], captured)
     result = client.orders()
@@ -100,3 +100,25 @@ def test_rejects_response_over_limit():
     )
     with pytest.raises(WooCommerceReadError, match="size limit"):
         client.products()
+
+
+def test_payment_status_signals_use_only_woocommerce_paid_at_and_do_not_claim_settlement():
+    captured = []
+    client = _client([
+        {"id": 1, "status": "processing", "currency": "USD", "total": "10.00",
+         "date_paid": "2026-01-01T00:02:00", "billing": {"email": "secret@example.com"}},
+        {"id": 2, "status": "pending", "currency": "USD", "total": "20.00",
+         "date_paid": None},
+        {"id": 3, "status": "processing", "currency": "USD", "total": "30.00",
+         "date_paid": None},
+        {"id": 4, "status": "refunded", "currency": "USD", "total": "40.00",
+         "date_paid": None},
+    ], captured)
+    result = client.payment_statuses()
+    assert [row["payment_status"] for row in result["payment_statuses"]] == [
+        "paid_recorded_by_woocommerce", "not_confirmed_paid", "unknown",
+        "refunded_status_recorded_by_woocommerce",
+    ]
+    assert result["settlement_verified"] is False
+    assert "secret@example.com" not in str(result)
+    assert captured[0][0].get_method() == "GET"
