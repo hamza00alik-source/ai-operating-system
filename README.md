@@ -178,3 +178,8 @@ The LongCat-Video fork is tracked as an optional upstream video engine, not as O
 ## Optional LongCat GPU worker
 
 OpenCompany's video queue remains operational without a GPU worker. The optional separate LongCat worker uses authenticated claims, per-job leases, heartbeats, bounded retries, cancellation signals, and private MP4 artifact reporting. The first adapter supports single-GPU text-to-video; no hosted GPU is provisioned automatically. See [worker deployment instructions](workers/README_LONGCAT.md) and the [integration design](docs/LONGCAT_VIDEO_INTEGRATION.md). Configure a persistent artifact volume and HTTPS API origin before accepting generated videos.
+
+
+### Cinecode filmmaking engine evaluation
+
+Cinecode (MIT-licensed upstream: [sarpstar/cinecode](https://github.com/sarpstar/cinecode)) is being evaluated as a separate, local agent-operated filmmaking engine alongside the optional LongCat GPU worker. It can create coded animation/films, product videos, explainers, music videos and longer documentaries through an AI coding agent with local tools. It is not a hosted API and cannot run inside the current text-only AIOS agent runtime. It requires a separate workstation/worker with a supported coding-agent CLI, Node.js 22+, Python 3.9+, FFmpeg, Chrome/Chromium/Edge, GPU-capable browser rendering and sufficient disk. See [docs/CINECODE_INTEGRATION.md](docs/CINECODE_INTEGRATION.md). No Cinecode worker or end-to-end render is currently implemented or verified; the existing AIOS queue remains safe and usable without it.
