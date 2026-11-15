@@ -207,7 +207,7 @@ def _run_agent(workspace: Path, job: dict[str, Any], codex_bin: str,
     command = [
         codex_bin, "exec", "--cd", str(workspace),
         "--sandbox", "workspace-write", "--ask-for-approval", "never",
-        "--json", prompt,
+        "--ignore-user-config", "--ephemeral", "--json", prompt,
     ]
     process = subprocess.Popen(
         command, cwd=workspace, env=_agent_env(),
