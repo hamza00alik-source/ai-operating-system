@@ -367,6 +367,7 @@ th{background:#101b2c}
  <button type="submit">Save video brief</button></form></div>
 </div>
 <div class="panel"><h3>Integration readiness</h3><div id="socialIntegrations" class="grid">Loading integration status…</div><p class="small">A configured credential is not proof of free usage or a working integration. No credentials are accepted in this browser form.</p></div>
+<div class="panel"><h3>Video engine readiness</h3><div id="videoEngineStatus" class="grid">Loading engine status…</div><button type="button" id="refreshVideoEngines" class="secondary">Refresh video status</button><h4>Video job queue</h4><div class="scroll"><table><thead><tr><th>Provider</th><th>Brief</th><th>Status</th><th>Progress</th><th>Artifact</th></tr></thead><tbody id="videoJobRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div><p class="small">This panel is read-only. It does not start generation, allocate compute, spend money, or publish videos.</p></div>
 <div id="socialMessage" class="status" role="status"></div>
 <h3>Content workspace</h3><div class="scroll"><table><thead><tr><th>Title</th><th>Type</th><th>Channels</th><th>Status</th><th>Actions</th></tr></thead><tbody id="socialContentRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <p class="small">Approval means “approved for scheduling” only. It does not publish or schedule content. Every actual external action requires a separately implemented and tested connector.</p>
@@ -792,10 +793,27 @@ fallback.style.display="none";
  $("assetForm").addEventListener("submit",async e=>{e.preventDefault();const data=formData(e.currentTarget);data.token_estimate=data.token_estimate?Number(data.token_estimate):null;try{await send("/code-assets",data);e.currentTarget.reset();$("assetMessage").textContent="Asset registered. Ownership and dependency checks remain explicit.";await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
  $("licenseForm").addEventListener("submit",async e=>{e.preventDefault();try{const result=await send("/code-assets/license-offers",formData(e.currentTarget));$("assetMessage").textContent="Draft created. Owner approval request "+result.approval_id+" is pending. No code was shared.";e.currentTarget.reset();await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
 
+ async function loadVideoEngines(){
+  try{
+   const [longcat,cinecode,jobs]=await Promise.all([
+    api("/video/status?provider=longcat-video"),
+    api("/video/status?provider=cinecode"),
+    api("/video/jobs")
+   ]);
+   const providers=[["LongCat",longcat],["Cinecode",cinecode]];
+   $("videoEngineStatus").innerHTML=providers.map(([name,status])=>'<div class="metric"><strong>'+esc(name)+' · '+(status.worker_connected?'worker online':'worker offline')+'</strong><span>Worker secret: '+(status.worker_secret_configured?'configured':'not configured')+' · Active workers: '+Number(status.active_workers||0)+' · Generation: '+(status.generation_enabled?'available':'unavailable')+'</span><span>'+esc(status.note||"")+'</span></div>').join("");
+   $("videoJobRows").innerHTML=jobs.map(job=>'<tr><td>'+esc(job.provider)+'</td><td>'+esc(job.prompt.length>140?job.prompt.slice(0,137)+"…":job.prompt)+'</td><td>'+esc(job.status)+'</td><td>'+esc(String(job.progress||0))+'% · '+esc(job.progress_message||"")+'</td><td>'+(job.status==="succeeded"?'<a href="/video/artifacts/'+encodeURIComponent(job.id)+'">Open MP4</a>':"—")+'</td></tr>').join("")||'<tr><td colspan="5">No video jobs yet.</td></tr>';
+  }catch(e){
+   $("videoEngineStatus").textContent="Unable to load video engine status: "+e.message;
+   $("videoJobRows").innerHTML='<tr><td colspan="5">Video job status unavailable.</td></tr>';
+  }
+ }
+ $("refreshVideoEngines").addEventListener("click",loadVideoEngines);
  async function loadSocial(){
   try{
    const [status,items]=await Promise.all([api("/social/status"),api("/social/content")]);
    $("socialIntegrations").innerHTML=Object.entries(status.integrations).map(([name,value])=>'<div class="metric"><strong>'+esc(name)+' · '+(value.configured?'credentials detected':'not configured')+'</strong><span>'+esc(value.note)+'</span></div>').join("");
+   await loadVideoEngines();
    $("socialContentRows").innerHTML=items.map(x=>'<tr><td>'+esc(x.title)+'</td><td>'+esc(x.kind==='video_brief'?'Video brief':x.content_type)+'</td><td>'+esc(x.channels.join(", ")||"—")+'</td><td>'+esc(x.status)+'</td><td>'+(x.status==="draft"?'<button data-id="'+esc(x.id)+'" class="social-review">Request approval</button>':x.status==="awaiting_approval"?'<button data-id="'+esc(x.id)+'" data-decision="approved" class="social-decision">Approve</button> <button data-id="'+esc(x.id)+'" data-decision="rejected" class="social-decision secondary">Reject</button>':x.status==="approved_for_scheduling"?'Approved · not scheduled':'—')+'</td></tr>').join("")||'<tr><td colspan="5">No content drafts yet.</td></tr>';
    document.querySelectorAll(".social-review").forEach(btn=>btn.addEventListener("click",async()=>{try{await api("/social/content/"+btn.dataset.id+"/request-approval",{method:"POST"});$("socialMessage").textContent="Approval request created. No content was published.";await loadSocial()}catch(e){$("socialMessage").textContent=e.message}}));
    document.querySelectorAll(".social-decision").forEach(btn=>btn.addEventListener("click",async()=>{try{await api("/social/content/"+encodeURIComponent(btn.dataset.id)+"/decision",{method:"POST",body:JSON.stringify({decision:btn.dataset.decision})});$("socialMessage").textContent="Owner decision saved. No content was published.";await loadSocial()}catch(e){$("socialMessage").textContent=e.message}}));
