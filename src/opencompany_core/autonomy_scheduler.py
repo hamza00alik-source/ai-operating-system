@@ -1,16 +1,16 @@
 """Restart-safe, zero-dependency scheduler for bounded internal automations.
 
 Jobs and individual execution attempts are persisted in the company SQLite
-store. A due job is claimed with a lease before execution; expired leases make
-interrupted work eligible again after a process restart. Callbacks must be
-idempotent because a process can stop after its side effect but before
+store. A due job is claimed with a renewable lease before execution; expired
+leases make interrupted work eligible again after a process restart. Callbacks
+must be idempotent because a process can stop after its side effect but before
 recording completion.
 """
 from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from threading import RLock
+from threading import Event, RLock, Thread
 from uuid import uuid4
 
 
@@ -114,8 +114,31 @@ class DurableAutomationScheduler:
             )
             return cursor.rowcount == 1
 
+    def _renew_lease(self, job_id: str, token: str) -> bool:
+        """Extend only the lease still owned by this execution attempt."""
+        now = _now()
+        with self._lock:
+            cursor = self._db.execute(
+                """UPDATE automation_jobs SET lease_expires_at=?,updated_at=?
+                   WHERE job_id=? AND lease_token=? AND enabled=1""",
+                (_stamp(now + timedelta(seconds=self.lease_seconds)),
+                 _stamp(now), job_id, token),
+            )
+            return cursor.rowcount == 1
+
+    def _lease_heartbeat(self, job_id: str, token: str, stop: Event) -> None:
+        interval = max(1.0, self.lease_seconds / 3)
+        while not stop.wait(interval):
+            try:
+                if not self._renew_lease(job_id, token):
+                    return
+            except sqlite3.Error:
+                # The persisted lease will expire and the normal recovery path
+                # will mark the attempt interrupted rather than assume ownership.
+                return
+
     def run_due(self, *, limit: int = 10) -> dict[str, int]:
-        """Claim and run due jobs; expired leases recover interrupted executions."""
+        """Claim and run due jobs; renew leases while callbacks are active."""
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
         stats = {"claimed": 0, "succeeded": 0, "failed": 0, "unregistered": 0}
@@ -175,12 +198,24 @@ class DurableAutomationScheduler:
                 self._finish(job_id, token, run_id, succeeded=False, error_code="callback_unavailable")
                 stats["failed"] += 1
                 continue
+            stop_heartbeat = Event()
+            heartbeat = Thread(
+                target=self._lease_heartbeat,
+                args=(job_id, token, stop_heartbeat),
+                name=f"opencompany-lease-{job_id[:48]}",
+                daemon=True,
+            )
+            heartbeat.start()
             try:
                 callback()
             except Exception as exc:
+                stop_heartbeat.set()
+                heartbeat.join(timeout=max(1.0, self.lease_seconds / 3 + 0.5))
                 self._finish(job_id, token, run_id, succeeded=False, error_code=type(exc).__name__[:80])
                 stats["failed"] += 1
             else:
+                stop_heartbeat.set()
+                heartbeat.join(timeout=max(1.0, self.lease_seconds / 3 + 0.5))
                 self._finish(job_id, token, run_id, succeeded=True)
                 stats["succeeded"] += 1
         return stats
