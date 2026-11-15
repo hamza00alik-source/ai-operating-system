@@ -2165,3 +2165,25 @@ def test_external_approval_authorization_records_only_and_never_executes(owner_c
     assert authorized.json()["status"] == "authorized_not_executed"
     assert authorized.json()["execution_performed"] is False
     assert "no external action was executed" in authorized.json()["message"].lower()
+
+
+def test_owner_operational_diagnostics_are_observational_and_never_authorize_release(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    health = owner_client.get("/workers/health", headers=headers)
+    assert health.status_code == 200
+    assert health.json()["external_actions_enabled"] is False
+    assert "queued_oldest_age_seconds" in health.json()
+    assert "expired_leases" in health.json()
+
+    jobs = owner_client.get("/automation/jobs", headers=headers)
+    history = owner_client.get("/automation/history", headers=headers)
+    assert jobs.status_code == 200 and isinstance(jobs.json()["jobs"], list)
+    assert history.status_code == 200 and isinstance(history.json()["runs"], list)
+
+    readiness = owner_client.get("/owner/production-readiness", headers=headers)
+    assert readiness.status_code == 200
+    body = readiness.json()
+    assert body["status"] == "evidence_snapshot_only"
+    assert body["checks"]["schema_version_current"] is True
+    assert body["production_cutover_authorized"] is False
+    assert body["backup_restore_rehearsal"] == "not_verified"
