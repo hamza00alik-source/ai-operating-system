@@ -123,3 +123,14 @@ Owner-only endpoints:
 An approval decision of `approve` requires the owner to type `AUTHORIZE`. It changes the record to `authorized_not_executed` with a 24-hour expiry. Rejection and cancellation are also audited. The inbox explicitly states that authorization is not execution.
 
 There is deliberately no executor, marketplace publisher, payment client, purchase flow, customer messaging client, production mutator or deletion handler in this feature. An approved record cannot trigger an external action. Each future action requires a separately reviewed, narrowly scoped executor and a second execution record.
+
+
+## Operations and production evidence
+
+Owner-authenticated diagnostics now include:
+- `GET /workers/health` — queue counts, oldest queued age, expired leases, dead-letter count, fleet state, maintenance cycles/failures and free-provider availability. No queue payloads, lease tokens or credentials are returned.
+- `GET /automation/jobs` — persisted schedule configuration and job status.
+- `GET /automation/history` — bounded execution history without callback payloads.
+- `GET /owner/production-readiness` — evidence snapshot of database path/mount, SQLite quick-check, schema v9, audit-chain validity, required configuration presence and worker state.
+
+The production-readiness endpoint always reports CI, independent security review, backup/restore rehearsal and staging acceptance as unverified by the endpoint, and always returns `production_cutover_authorized=false`. It is not a certification or deployment control. The current worker queue health snapshot does not yet provide durable per-attempt provider/checkpoint history; that remains a separate workforce-reliability milestone.
