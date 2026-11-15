@@ -848,7 +848,7 @@ def decide_social_content(content_id: str, payload: SocialDecisionRequest):
 # provider, allocates compute, incurs cost, or publishes generated media.
 class VideoJobCreate(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
-    provider: str = Field(default="longcat-video", pattern="^longcat-video$")
+    provider: str = Field(default="longcat-video", pattern="^(longcat-video|cinecode)$")
     idempotency_key: str = Field(min_length=1, max_length=128)
     parameters: dict = Field(default_factory=dict)
     estimated_cost_minor: int = Field(ge=0)
@@ -864,11 +864,11 @@ class VideoJobDecision(BaseModel):
 
 
 @app.get("/video/status", dependencies=[Depends(require_api_key)])
-def get_video_status():
+def get_video_status(provider: str = Query(default="longcat-video", pattern="^(longcat-video|cinecode)$")):
     video_jobs.initialize()
     return {
         "queue": "sqlite-durable",
-        **video_jobs.worker_status(),
+        **video_jobs.worker_status(provider),
         "publishing_enabled": False,
     }
 
@@ -917,6 +917,7 @@ def decide_video_job(job_id: str, payload: VideoJobDecision):
 
 class VideoWorkerClaim(BaseModel):
     worker_id: str = Field(min_length=1, max_length=100)
+    provider: str = Field(default="longcat-video", pattern="^(longcat-video|cinecode)$")
     lease_seconds: int = Field(default=120, ge=30, le=900)
 
 
@@ -962,7 +963,7 @@ def post_video_job_cancel(job_id: str):
 @app.post("/video/worker/claim", dependencies=[Depends(require_video_worker)])
 def post_video_worker_claim(payload: VideoWorkerClaim):
     try:
-        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds)
+        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds, payload.provider)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
