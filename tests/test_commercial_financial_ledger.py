@@ -85,3 +85,54 @@ def test_financial_ledger_rejects_duplicate_source_reference_and_cross_business_
     with pytest.raises(ValueError, match="does not belong"):
         store.record_financial_event(mismatched, _audit(mismatched["id"]))
     store.close()
+
+
+def test_payout_reconciliation_preview_matches_exact_lines_without_persisting(tmp_path):
+    store = SQLiteStore(tmp_path / "payout-preview.sqlite3")
+    first = _event("digital-products", "sales_revenue", "platform-order-100", 1200)
+    second = _event("digital-products", "platform_fee", "platform-fee-100", 200)
+    store.record_financial_event(first, _audit(first["id"]))
+    store.record_financial_event(second, _audit(second["id"]))
+
+    result = store.preview_payout_reconciliation(
+        business_id="digital-products", currency="USD",
+        payout_reference="payout-batch-9",
+        lines=[
+            {"source_reference": "platform-order-100", "amount_minor": 1200},
+            {"source_reference": "platform-fee-100", "amount_minor": 200},
+            {"source_reference": "missing-order", "amount_minor": 500},
+            {"source_reference": "platform-order-100", "amount_minor": 1200},
+        ],
+    )
+    assert result["matched_count"] == 2
+    assert result["unmatched_count"] == 2
+    assert result["fully_matched"] is False
+    assert result["statement_lines_total_minor"] == 3100
+    assert result["matched_lines_total_minor"] == 1400
+    assert result["lines"][2]["status"] == "unmatched"
+    assert result["lines"][3]["status"] == "duplicate_statement_reference"
+    assert result["persisted"] is False
+    assert result["payment_or_payout_action_performed"] is False
+    assert len(store.list_financial_events(business_id="digital-products")) == 2
+    store.close()
+
+
+def test_payout_reconciliation_preview_flags_amount_mismatch_and_business_isolation(tmp_path):
+    store = SQLiteStore(tmp_path / "payout-mismatch.sqlite3")
+    event = _event("physical-brand", "sales_revenue", "brand-order-7", 999)
+    store.record_financial_event(event, _audit(event["id"]))
+    result = store.preview_payout_reconciliation(
+        business_id="physical-brand", currency="USD", payout_reference="brand-payout-7",
+        lines=[{"source_reference": "brand-order-7", "amount_minor": 1000}],
+    )
+    assert result["lines"][0]["status"] == "amount_mismatch"
+    assert result["fully_matched"] is False
+    assert store.preview_payout_reconciliation(
+        business_id="digital-products", currency="USD", payout_reference="other-payout",
+        lines=[{"source_reference": "brand-order-7", "amount_minor": 999}],
+    )["lines"][0]["status"] == "unmatched"
+    with pytest.raises(ValueError, match="between 1 and 500"):
+        store.preview_payout_reconciliation(
+            business_id="physical-brand", currency="USD", payout_reference="empty", lines=[]
+        )
+    store.close()
