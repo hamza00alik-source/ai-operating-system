@@ -26,6 +26,9 @@ from opencompany_core.api_anything import ApiAnythingClient
 from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
+from opencompany_core.autonomy_scheduler import DurableAutomationScheduler
+from opencompany_core.product_rd_coordinator import ProductRDCoordinator
+from opencompany_core.external_approval_service import record_agent_approval_requests
 
 
 @dataclass(slots=True)
@@ -46,6 +49,8 @@ class OpenCompanyRuntime:
     secret_vault_errors: dict[str, str]
     unorouter_tested_at: str | None = None
     github_evolution_tested_at: str | None = None
+    automation_scheduler: DurableAutomationScheduler | None = None
+    product_rd_auto_proposals_enabled: bool = False
 
     def stop_workers_for_provider_change(self) -> None:
         """Stop inference before changing provider credentials or routing."""
@@ -217,12 +222,45 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         artifact_sink=store,
         request_budget_usd=0.0,
         preferred_provider="unorouter",
+        approval_request_sink=lambda agent_id, item, requests: record_agent_approval_requests(
+            store, agent_id, item, requests
+        ),
     )
     worker_concurrency = int(os.environ.get("OPENCOMPANY_WORKER_CONCURRENCY", "2"))
+    # Product & R&D background coordination is strictly opt-in. It can prepare
+    # internal drafts and deterministic local assets, but never approves,
+    # queues, executes, publishes, contacts customers or spends.
+    product_rd_automation_enabled = os.environ.get(
+        "OPENCOMPANY_PRODUCT_RD_AUTOMATION", "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    product_rd_auto_proposals_enabled = product_rd_automation_enabled and os.environ.get(
+        "OPENCOMPANY_PRODUCT_RD_AUTO_PROPOSALS", "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    product_rd_coordinator = ProductRDCoordinator(
+        store, delegations=delegations, gateway=gateway,
+        auto_manager_proposals_enabled=product_rd_auto_proposals_enabled,
+    ) if product_rd_automation_enabled else None
+    automation_scheduler = None
+    maintenance_callback = None
+    if product_rd_coordinator is not None:
+        automation_scheduler = DurableAutomationScheduler(
+            store._connection,
+            lock=store._lock,
+            lease_seconds=int(os.environ.get("OPENCOMPANY_AUTOMATION_LEASE_SECONDS", "300")),
+        )
+        automation_scheduler.register_interval_job(
+            "product_rd_maintenance",
+            int(os.environ.get("OPENCOMPANY_PRODUCT_RD_AUTOMATION_INTERVAL_SECONDS", "5")),
+            product_rd_coordinator.run_once,
+            enabled=True,
+        )
+        maintenance_callback = automation_scheduler.run_due
     fleet = WorkerFleet(
         worker, store,
         idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
         concurrency=worker_concurrency,
+        maintenance_callback=maintenance_callback,
+        maintenance_interval_seconds=5.0,
     )
     runtime = OpenCompanyRuntime(
         store=store, queue=queue, worker=worker, delegations=delegations,
@@ -231,6 +269,8 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         secret_vault=secret_vault,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
+        automation_scheduler=automation_scheduler,
+        product_rd_auto_proposals_enabled=product_rd_auto_proposals_enabled,
     )
     # Runtime construction stays inert. For dashboard-managed credentials,
     # workers start only after the owner runs a successful provider test in

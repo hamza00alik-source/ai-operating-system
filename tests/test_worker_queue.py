@@ -30,7 +30,8 @@ def test_stale_lease_cannot_complete(tmp_path):
     first = queue.claim(agent)
     assert first is not None
     future = datetime.now(timezone.utc) + timedelta(seconds=20)
-    second = queue.claim(agent, now=future)
+    assert queue.claim(agent, now=future + timedelta(seconds=10)) is None
+    second = queue.claim(agent, now=future + timedelta(seconds=20))
     assert second is not None and second.attempt == 2
     with pytest.raises(QueueError):
         queue.complete(first)
@@ -45,7 +46,7 @@ def test_retry_limit_moves_item_to_dead_letter_state(tmp_path):
     first = queue.claim(agent)
     assert first is not None
     assert queue.fail(first, "provider_timeout") == "queued"
-    second = queue.claim(agent)
+    second = queue.claim(agent, now=datetime.now(timezone.utc) + timedelta(seconds=10))
     assert second is not None and second.attempt == 2
     assert queue.fail(second, "provider_timeout") == "dead"
     assert queue.claim(agent) is None
@@ -275,10 +276,11 @@ def test_live_lease_can_be_renewed_but_expired_or_replaced_lease_cannot(tmp_path
     assert queue.claim(agent, now=start + timedelta(seconds=11)) is None
     assert queue.renew(first, now=start + timedelta(seconds=20)) is False
 
-    replacement = queue.claim(agent, now=start + timedelta(seconds=20))
+    assert queue.claim(agent, now=start + timedelta(seconds=20)) is None
+    replacement = queue.claim(agent, now=start + timedelta(seconds=30))
     assert replacement is not None and replacement.attempt == 2
     assert queue.renew(first, now=start + timedelta(seconds=21)) is False
-    assert queue.renew(replacement, now=start + timedelta(seconds=21)) is True
+    assert queue.renew(replacement, now=start + timedelta(seconds=31)) is True
     queue.close()
 
 
@@ -565,5 +567,226 @@ def test_reassignment_recovers_unleased_in_progress_retry_to_queued(tmp_path):
     lease = queue.claim(new_id)
     assert lease is not None and lease.work_item_id == item.id
     assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+    assert store.verify_audit_chain()
+    store.close()
+
+
+def test_queue_health_snapshot_reports_age_expired_leases_and_dead_letters_without_secrets(tmp_path):
+    queue = DurableWorkerQueue(
+        tmp_path / "health.sqlite3", lease_seconds=10, max_attempts=1
+    )
+    queued_agent, active_agent, dead_agent = uuid4(), uuid4(), uuid4()
+    queue.enqueue(uuid4(), queued_agent, {"private": "never-return-this"})
+    queue.enqueue(uuid4(), active_agent, {})
+    active_lease = queue.claim(active_agent)
+    assert active_lease is not None
+    queue.enqueue(uuid4(), dead_agent, {})
+    dead_lease = queue.claim(dead_agent)
+    assert dead_lease is not None
+    assert queue.fail(dead_lease, "provider_timeout") == "dead"
+
+    observed = datetime.now(timezone.utc) + timedelta(seconds=20)
+    snapshot = queue.health_snapshot(now=observed)
+    assert snapshot["counts"]["queued"] == 1
+    assert snapshot["counts"]["leased"] == 1
+    assert snapshot["dead_letter_count"] == 1
+    assert snapshot["expired_leases"] == 1
+    assert snapshot["queued_oldest_age_seconds"] >= 20
+    assert "lease_token" not in str(snapshot)
+    assert "payload_json" not in str(snapshot)
+    assert "never-return-this" not in str(snapshot)
+    queue.close()
+
+
+# Durable retry, interrupted-attempt, and checkpoint observability regressions.
+
+def test_execution_attempt_history_records_retry_and_success(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "attempt-history.sqlite3", lease_seconds=10)
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {})
+    first = queue.claim(agent)
+    assert first is not None
+    assert queue.list_attempts(work)[0]["status"] == "running"
+    failed_at = datetime.now(timezone.utc)
+    assert queue.fail(first, "TemporaryError", now=failed_at) == "queued"
+    second = queue.claim(agent, now=failed_at + timedelta(seconds=5))
+    assert second is not None and second.attempt == 2
+    queue.complete(second)
+    history = queue.list_attempts(work)
+    assert [row["status"] for row in history] == ["retryable_failed", "succeeded"]
+    assert history[0]["error_code"] == "TemporaryError"
+    assert history[0]["finished_at"] is not None
+    assert history[1]["finished_at"] is not None
+    queue.close()
+
+def test_expired_lease_is_recorded_as_interrupted_before_reclaim(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "attempt-recovery.sqlite3", lease_seconds=10)
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {})
+    start = datetime.now(timezone.utc)
+    first = queue.claim(agent, now=start)
+    assert first is not None
+    expired_at = start + timedelta(seconds=11)
+    assert queue.claim(agent, now=expired_at) is None
+    second = queue.claim(agent, now=expired_at + timedelta(seconds=5))
+    assert second is not None and second.attempt == 2
+    history = queue.list_attempts(work)
+    assert [row["status"] for row in history] == ["interrupted", "running"]
+    assert history[0]["finished_at"] is not None
+    queue.close()
+
+def test_retry_backoff_grows_exponentially_and_is_capped(tmp_path):
+    queue = DurableWorkerQueue(
+        tmp_path / "retry-backoff.sqlite3", max_attempts=5,
+        retry_base_seconds=3, retry_max_seconds=10,
+    )
+    work, agent = uuid4(), uuid4()
+    start = datetime.now(timezone.utc) + timedelta(seconds=30)
+    queue.enqueue(work, agent, {})
+    first = queue.claim(agent, now=start)
+    assert first is not None
+    assert queue.fail(first, "temporary", now=start) == "queued"
+    assert queue.claim(agent, now=start + timedelta(seconds=2)) is None
+    second = queue.claim(agent, now=start + timedelta(seconds=3))
+    assert second is not None and second.attempt == 2
+    second_failed_at = start + timedelta(seconds=3)
+    assert queue.fail(second, "temporary", now=second_failed_at) == "queued"
+    assert queue.claim(agent, now=second_failed_at + timedelta(seconds=5)) is None
+    third = queue.claim(agent, now=second_failed_at + timedelta(seconds=6))
+    assert third is not None and third.attempt == 3
+    third_failed_at = second_failed_at + timedelta(seconds=6)
+    assert queue.fail(third, "temporary", now=third_failed_at) == "queued"
+    # The nominal 12-second delay is capped at 10 seconds.
+    assert queue.claim(agent, now=third_failed_at + timedelta(seconds=9)) is None
+    fourth = queue.claim(agent, now=third_failed_at + timedelta(seconds=10))
+    assert fourth is not None and fourth.attempt == 4
+    queue.close()
+
+def test_legacy_queue_database_adds_retry_column_without_losing_rows(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "legacy-queue.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.execute("""
+        CREATE TABLE worker_queue (
+            work_item_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('queued','leased','done','dead')),
+            attempts INTEGER NOT NULL DEFAULT 0, lease_token TEXT,
+            lease_expires_at TEXT, last_error TEXT,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )
+    """)
+    work, agent = uuid4(), uuid4()
+    stamp = datetime.now(timezone.utc).isoformat()
+    connection.execute(
+        "INSERT INTO worker_queue (work_item_id,agent_id,payload_json,state,created_at,updated_at) "
+        "VALUES(?,?,?,'queued',?,?)",
+        (str(work), str(agent), "{}", stamp, stamp),
+    )
+    connection.commit()
+    connection.close()
+
+    queue = DurableWorkerQueue(database)
+    entry = queue.get_entry(work)
+    assert entry is not None and entry["state"] == "queued"
+    assert entry["next_attempt_at"] is None
+    lease = queue.claim(agent)
+    assert lease is not None and lease.work_item_id == work
+    queue.close()
+
+def test_execution_history_is_secret_free_and_ordered(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "history.sqlite3")
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {"role_key": "researcher"})
+    first = queue.claim(agent)
+    assert first is not None
+    assert queue.fail(first, "provider_timeout") == "queued"
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+    second = queue.claim(agent, now=retry_at)
+    assert second is not None and second.attempt == 2
+    queue.complete(second)
+
+    history = queue.list_attempts(work)
+    assert [row["attempt"] for row in history] == [1, 2]
+    assert [row["status"] for row in history] == ["retryable_failed", "succeeded"]
+    assert history[0]["error_code"] == "provider_timeout"
+    assert "lease_token" not in history[0]
+    assert "payload_json" not in history[0]
+    queue.close()
+
+def test_queue_health_reports_age_expired_leases_and_dead_letters_without_secrets(tmp_path):
+    queue = DurableWorkerQueue(
+        tmp_path / "queue-health.sqlite3", lease_seconds=10, max_attempts=1
+    )
+    agent = uuid4()
+    leased_work, queued_work, pending_work = uuid4(), uuid4(), uuid4()
+    queue.enqueue(leased_work, agent, {"private": "never-return-this"})
+    queue.enqueue(queued_work, agent, {})
+    queue.enqueue(pending_work, agent, {})
+    lease = queue.claim(agent)
+    assert lease is not None
+    queue.fail(lease, "provider_timeout")
+    # Exhaust the first task to create a dead-letter entry.
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+    second_lease = queue.claim(agent, now=retry_at)
+    assert second_lease is not None
+    queue.fail(second_lease, "provider_timeout")
+    expired_agent, expired_work = uuid4(), uuid4()
+    queue.enqueue(expired_work, expired_agent, {})
+    expired_lease = queue.claim(
+        expired_agent, now=retry_at + timedelta(seconds=11)
+    )
+    assert expired_lease is not None
+
+    snapshot = queue.health_snapshot(now=retry_at + timedelta(seconds=22))
+    assert snapshot["dead_letter_count"] == 2
+    assert snapshot["expired_leases"] == 1
+    assert snapshot["queued_oldest_age_seconds"] >= 10
+    assert "lease_token" not in snapshot
+    assert "payload_json" not in snapshot
+    queue.close()
+
+
+def test_leased_work_cancellation_is_cooperative_audited_and_finalized_under_live_lease(tmp_path):
+    store = SQLiteStore(tmp_path / "cooperative-cancel.sqlite3")
+    agent_id = uuid4()
+    store.save_agent(AgentProfile(
+        id=agent_id, name="Research Specialist", department="intelligence-research",
+        purpose="Prepare evidence", capabilities=("research",), state=AgentState.ACTIVE,
+        role_key="market_intelligence_analyst", team_key="intelligence-research__team_1",
+    ))
+    item = WorkItem(
+        id=uuid4(), title="Long research", objective="Prepare an internal draft",
+        department="intelligence-research", state=TaskState.QUEUED,
+        assigned_agent_id=agent_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock, lease_seconds=30)
+    queue.enqueue(item.id, agent_id, {})
+    lease = queue.claim(agent_id)
+    assert lease is not None
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+
+    requested = queue.request_cancel(item.id, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.cancellation_requested",
+        subject_type="work_item", subject_id=str(item.id), outcome="requested",
+        correlation_id=str(uuid4()),
+    ))
+    assert requested == "cancellation_requested"
+    assert queue.is_cancel_requested(lease) is True
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+
+    finalized = queue.finalize_cancel(lease, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="worker",
+        actor_id=str(agent_id), action="worker.execution_cancelled",
+        subject_type="work_item", subject_id=str(item.id), outcome="cancelled",
+        correlation_id=str(uuid4()),
+    ))
+    assert finalized is True
+    assert store.get_work_item(item.id).state == TaskState.CANCELLED
+    assert queue.counts() == {"dead": 1}
+    assert queue.list_attempts(item.id)[0]["status"] == "cancelled"
     assert store.verify_audit_chain()
     store.close()

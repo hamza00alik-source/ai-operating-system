@@ -113,3 +113,205 @@ class OrderPersistenceMixin:
         with self._lock:
             rows = self._connection.execute(sql, values).fetchall()
         return tuple(dict(row) for row in rows)
+
+    def record_financial_event(self, event: dict[str, Any], audit: AuditRecord) -> dict[str, Any]:
+        """Append an owner-verified financial reference; never initiates a payment."""
+        allowed = {"physical-agency", "physical-brand", "digital-products"}
+        if event.get("business_id") not in allowed:
+            raise ValueError("financial events require one commercial business unit")
+        if int(event.get("amount_minor", 0)) <= 0:
+            raise ValueError("financial event amount must be positive minor units")
+        event_type = event.get("event_type")
+        allowed_by_business = {
+            "physical-agency": {"agency_commission", "supplier_payable", "platform_fee", "tax",
+                                "refund", "chargeback", "fulfillment_cost", "payment_received", "payment_refund"},
+            "physical-brand": {"sales_revenue", "cost_of_goods", "platform_fee", "tax",
+                               "refund", "chargeback", "fulfillment_cost", "payment_received", "payment_refund"},
+            "digital-products": {"sales_revenue", "platform_fee", "tax", "refund",
+                                 "chargeback", "fulfillment_cost", "payment_received", "payment_refund"},
+        }
+        if event_type not in allowed_by_business[event["business_id"]]:
+            raise ValueError("financial event type is not valid for the selected business revenue model")
+        if not str(event.get("source_reference", "")).strip():
+            raise ValueError("financial event source reference is required")
+        if not str(event.get("evidence_reference", "")).strip():
+            raise ValueError("financial event evidence reference is required")
+        if len(str(event.get("currency", ""))) != 3:
+            raise ValueError("financial event currency must be a three-letter code")
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                order_id = event.get("order_id")
+                if order_id:
+                    order = self._connection.execute(
+                        "SELECT business_id FROM commercial_orders WHERE id=?", (order_id,)
+                    ).fetchone()
+                    if order is None or order["business_id"] != event["business_id"]:
+                        raise ValueError("financial event order does not belong to the selected business")
+                self._connection.execute(
+                    """INSERT INTO commercial_financial_events
+                       (id,business_id,order_id,event_type,amount_minor,currency,source_reference,
+                        evidence_reference,note,occurred_at,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                    (event["id"], event["business_id"], order_id, event["event_type"],
+                     int(event["amount_minor"]), event["currency"], event["source_reference"],
+                     event["evidence_reference"], event.get("note", ""),
+                     event["occurred_at"], datetime.now(timezone.utc).isoformat()),
+                )
+                previous = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = previous["event_hash"] if previous else _ZERO_HASH
+                payload = _audit_payload(audit, previous_hash)
+                self._connection.execute(
+                    "INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)",
+                    (str(audit.id), audit.occurred_at.isoformat(), _json(payload),
+                     previous_hash, _digest(payload)),
+                )
+                self._connection.execute("COMMIT")
+                return {"id": event["id"], "business_id": event["business_id"],
+                        "event_type": event["event_type"], "recorded": True,
+                        "payment_initiated": False}
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
+    def list_financial_events(
+        self, *, business_id: str | None = None, currency: str | None = None
+    ) -> tuple[dict[str, Any], ...]:
+        if business_id is not None and business_id not in {
+            "physical-agency", "physical-brand", "digital-products"
+        }:
+            raise ValueError("unknown commercial business unit")
+        sql = "SELECT * FROM commercial_financial_events WHERE 1=1"
+        values: list[str] = []
+        if business_id is not None:
+            sql += " AND business_id=?"
+            values.append(business_id)
+        if currency is not None:
+            sql += " AND currency=?"
+            values.append(currency.upper())
+        sql += " ORDER BY occurred_at DESC,id"
+        with self._lock:
+            rows = self._connection.execute(sql, tuple(values)).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def preview_payout_reconciliation(
+        self, *, business_id: str, currency: str, payout_reference: str,
+        lines: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compare owner-supplied statement lines with ledger references without writing data."""
+        allowed = {"physical-agency", "physical-brand", "digital-products"}
+        if business_id not in allowed:
+            raise ValueError("payout reconciliation requires one commercial business unit")
+        currency = str(currency).upper()
+        if len(currency) != 3 or not currency.isascii() or not currency.isalpha():
+            raise ValueError("currency must be a three-letter code")
+        if not str(payout_reference).strip():
+            raise ValueError("payout statement reference is required")
+        if not lines or len(lines) > 500:
+            raise ValueError("payout reconciliation requires between 1 and 500 statement lines")
+
+        seen: set[str] = set()
+        results: list[dict[str, Any]] = []
+        statement_total = 0
+        matched_total = 0
+        # Hold the lock throughout the preview to avoid a mixed-time ledger snapshot.
+        with self._lock:
+            for index, line in enumerate(lines, start=1):
+                source = str(line.get("source_reference", "")).strip()
+                amount = int(line.get("amount_minor", 0))
+                if not source or amount <= 0 or amount > 9_000_000_000_000_000:
+                    raise ValueError("each statement line requires a source reference and positive supported amount")
+                statement_total += amount
+                if source in seen:
+                    results.append({
+                        "line_number": index, "source_reference": source,
+                        "statement_amount_minor": amount, "status": "duplicate_statement_reference",
+                        "ledger_event_id": None,
+                    })
+                    continue
+                seen.add(source)
+                rows = self._connection.execute(
+                    "SELECT id, event_type, amount_minor FROM commercial_financial_events WHERE business_id=? AND currency=? AND source_reference=?",
+                    (business_id, currency, source),
+                ).fetchall()
+                if not rows:
+                    status = "unmatched"
+                    event_id = None
+                elif len(rows) != 1:
+                    status = "ambiguous_ledger_reference"
+                    event_id = None
+                elif int(rows[0]["amount_minor"]) != amount:
+                    status = "amount_mismatch"
+                    event_id = rows[0]["id"]
+                else:
+                    status = "matched"
+                    event_id = rows[0]["id"]
+                    matched_total += amount
+                results.append({
+                    "line_number": index, "source_reference": source,
+                    "statement_amount_minor": amount, "status": status,
+                    "ledger_event_id": event_id,
+                    "ledger_event_type": rows[0]["event_type"] if len(rows) == 1 else None,
+                })
+        matched_count = sum(1 for row in results if row["status"] == "matched")
+        return {
+            "business_id": business_id, "currency": currency,
+            "payout_reference": str(payout_reference).strip(),
+            "line_count": len(results), "matched_count": matched_count,
+            "unmatched_count": len(results) - matched_count,
+            "statement_lines_total_minor": statement_total,
+            "matched_lines_total_minor": matched_total,
+            "fully_matched": matched_count == len(results),
+            "persisted": False, "external_account_read": False,
+            "payment_or_payout_action_performed": False,
+            "lines": results,
+        }
+
+    def financial_summary(self, *, business_id: str | None = None) -> tuple[dict[str, Any], ...]:
+        """Aggregate only same-currency amounts; no FX conversion is implied."""
+        rows = self.list_financial_events(business_id=business_id)
+        totals: dict[tuple[str, str], dict[str, int]] = {}
+        revenue_types = {
+            "physical-agency": {"agency_commission"},
+            "physical-brand": {"sales_revenue"},
+            "digital-products": {"sales_revenue"},
+        }
+        cost_types = {"supplier_payable", "cost_of_goods", "platform_fee",
+                      "tax", "fulfillment_cost", "refund", "chargeback"}
+        for row in rows:
+            key = (row["business_id"], row["currency"])
+            bucket = totals.setdefault(key, {
+                "recognized_revenue_minor": 0, "operating_costs_minor": 0,
+                "cash_received_minor": 0, "cash_refunded_minor": 0,
+                "event_count": 0,
+            })
+            amount = int(row["amount_minor"])
+            kind = row["event_type"]
+            if kind in revenue_types[row["business_id"]]:
+                bucket["recognized_revenue_minor"] += amount
+            if kind in cost_types:
+                bucket["operating_costs_minor"] += amount
+            if kind == "payment_received":
+                bucket["cash_received_minor"] += amount
+            if kind == "payment_refund":
+                bucket["cash_refunded_minor"] += amount
+            bucket["event_count"] += 1
+        result = []
+        for (unit, currency), bucket in sorted(totals.items()):
+            result.append({
+                "business_id": unit, "currency": currency, **bucket,
+                "net_contribution_minor": (
+                    bucket["recognized_revenue_minor"] - bucket["operating_costs_minor"]
+                ),
+                "revenue_basis": (
+                    "agency commission only" if unit == "physical-agency"
+                    else "own-brand sales" if unit == "physical-brand"
+                    else "digital-product sales"
+                ),
+                "fx_conversion_performed": False,
+            })
+        return tuple(result)
+

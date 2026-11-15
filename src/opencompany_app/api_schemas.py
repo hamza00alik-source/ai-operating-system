@@ -5,6 +5,7 @@ stable request contracts without coupling to the API composition root.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -113,6 +114,20 @@ class CommercialOrderInput(BaseModel):
     quote_id: UUID
     confirm_owner_order_record: bool
 
+class StorefrontListingDraftInput(BaseModel):
+    canonical_product_id: UUID
+    business_id: str
+    channel_id: str = Field(min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9-]+$")
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=8000)
+    tags: list[str] = Field(default_factory=list, max_length=30)
+    price_amount: str | None = Field(default=None, max_length=32)
+    currency: str | None = Field(default=None, min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
+    license_text: str | None = Field(default=None, max_length=4000)
+    media_refs: list[str] = Field(default_factory=list, max_length=20)
+    package_ref: str | None = Field(default=None, max_length=2000)
+
+
 class DelegationPreviewInput(BaseModel):
     required_capabilities: list[str] = Field(min_length=1, max_length=20)
     max_specialists: int = Field(default=15, ge=1, le=50)
@@ -201,3 +216,37 @@ class CommercialSupplierInput(BaseModel):
 class CommercialSupplierStatusInput(BaseModel):
     status: str
     confirm_owner_decision: bool
+
+
+class WooCommerceConnectionInput(BaseModel):
+    store_url: str = Field(min_length=12, max_length=500)
+    consumer_key: str = Field(min_length=8, max_length=256, pattern=r"^ck_[A-Za-z0-9]+$")
+    consumer_secret: str = Field(min_length=8, max_length=256, pattern=r"^cs_[A-Za-z0-9]+$")
+
+
+
+class CommercialFinancialEventInput(BaseModel):
+    business_id: str
+    order_id: UUID | None = None
+    event_type: str = Field(min_length=1, max_length=40)
+    amount_minor: int = Field(gt=0, le=9_000_000_000_000_000)
+    currency: str = Field(min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+    source_reference: str = Field(min_length=1, max_length=200)
+    evidence_reference: str = Field(min_length=1, max_length=500)
+    note: str = Field(default="", max_length=2000)
+    occurred_at: datetime
+    owner_verified: bool
+
+
+
+class PayoutStatementLineInput(BaseModel):
+    source_reference: str = Field(min_length=1, max_length=200)
+    amount_minor: int = Field(gt=0, le=9_000_000_000_000_000)
+
+
+class PayoutReconciliationPreviewInput(BaseModel):
+    business_id: str
+    currency: str = Field(min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+    payout_reference: str = Field(min_length=1, max_length=200)
+    lines: list[PayoutStatementLineInput] = Field(min_length=1, max_length=500)
+    owner_verified: bool

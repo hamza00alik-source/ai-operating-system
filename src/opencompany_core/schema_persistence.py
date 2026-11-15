@@ -1,7 +1,7 @@
 """SQLite schema creation and sequential migrations for OpenCompany."""
 from __future__ import annotations
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 9
 
 
 class SchemaInitializationMixin:
@@ -216,6 +216,65 @@ class SchemaInitializationMixin:
                         COMMIT;
                     """)
                     version = 7
+                except Exception:
+                    if self._connection.in_transaction:
+                        self._connection.execute("ROLLBACK")
+                    raise
+            if version == 7:
+                try:
+                    self._connection.executescript("""
+                        BEGIN IMMEDIATE;
+                        CREATE TABLE IF NOT EXISTS storefront_listing_drafts (
+                            id TEXT PRIMARY KEY,
+                            canonical_product_id TEXT NOT NULL REFERENCES commercial_products(id),
+                            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+                            channel_id TEXT NOT NULL,
+                            title TEXT NOT NULL,
+                            payload_json TEXT NOT NULL,
+                            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','archived')),
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_storefront_listing_drafts_scope
+                            ON storefront_listing_drafts(business_id, channel_id, status, created_at);
+                        CREATE INDEX IF NOT EXISTS idx_storefront_listing_drafts_product
+                            ON storefront_listing_drafts(canonical_product_id, channel_id, created_at);
+                        PRAGMA user_version = 8;
+                        COMMIT;
+                    """)
+                    version = 8
+                except Exception:
+                    if self._connection.in_transaction:
+                        self._connection.execute("ROLLBACK")
+                    raise
+            if version == 8:
+                try:
+                    self._connection.executescript("""
+                        BEGIN IMMEDIATE;
+                        CREATE TABLE IF NOT EXISTS commercial_financial_events (
+                            id TEXT PRIMARY KEY,
+                            business_id TEXT NOT NULL CHECK(business_id IN ('physical-agency','physical-brand','digital-products')),
+                            order_id TEXT REFERENCES commercial_orders(id),
+                            event_type TEXT NOT NULL CHECK(event_type IN (
+                                'agency_commission','sales_revenue','supplier_payable','cost_of_goods',
+                                'platform_fee','tax','refund','chargeback','fulfillment_cost',
+                                'payment_received','payment_refund'
+                            )),
+                            amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+                            currency TEXT NOT NULL CHECK(length(currency)=3),
+                            source_reference TEXT NOT NULL,
+                            evidence_reference TEXT NOT NULL,
+                            note TEXT NOT NULL DEFAULT '',
+                            occurred_at TEXT NOT NULL,
+                            created_at TEXT NOT NULL,
+                            UNIQUE(business_id,event_type,source_reference)
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_financial_events_scope
+                            ON commercial_financial_events(business_id,currency,occurred_at);
+                        PRAGMA user_version = 9;
+                        COMMIT;
+                    """)
+                    version = 9
                 except Exception:
                     if self._connection.in_transaction:
                         self._connection.execute("ROLLBACK")

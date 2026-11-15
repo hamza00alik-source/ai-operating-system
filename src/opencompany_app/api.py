@@ -28,10 +28,15 @@ from opencompany_app.routers.github_evolution import settings_router as github_s
 from opencompany_app.routers.integrations import router as integrations_router
 from opencompany_app.routers.agents import router as agents_router
 from opencompany_app.routers.commercial import router as commercial_router, supplier_router as commercial_supplier_router
+from opencompany_app.routers.storefronts import router as storefronts_router
+from opencompany_app.routers.product_rd import router as product_rd_router
+from opencompany_app.routers.woocommerce import router as woocommerce_router
+from opencompany_app.routers.external_approvals import router as external_approvals_router
 from opencompany_app.routers.workers import router as workers_router
 from opencompany_app.routers.work_items import router as work_items_router
 from opencompany_app.routers.handoffs import router as handoffs_router
 from opencompany_app.routers.orchestration import router as orchestration_router
+from opencompany_app.routers.brain import router as brain_router
 from opencompany_app.routers.lifecycle import router as lifecycle_router
 from opencompany_app.routers.learning import router as learning_router
 from opencompany_app.routers.portfolio import router as portfolio_router
@@ -111,6 +116,10 @@ app.include_router(provider_candidates_router)
 app.include_router(planning_router)
 app.include_router(agents_router)
 app.include_router(commercial_router)
+app.include_router(storefronts_router)
+app.include_router(product_rd_router)
+app.include_router(woocommerce_router)
+app.include_router(external_approvals_router)
 
 
 app.include_router(work_items_router)
@@ -132,6 +141,7 @@ app.include_router(handoffs_router)
 
 
 app.include_router(orchestration_router)
+app.include_router(brain_router)
 app.include_router(lifecycle_router)
 
 

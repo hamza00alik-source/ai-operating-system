@@ -204,3 +204,35 @@ def test_gateway_globally_blocks_paid_provider_even_with_positive_budget():
     assert gateway.eligible_providers(request_budget_usd=100.0) == ()
     with pytest.raises(NoEligibleProvider):
         gateway.complete(ModelRequest("test", "paid-block-test"), request_budget_usd=100.0)
+
+
+
+def test_catalog_imports_verified_key_model_limits_without_inference(monkeypatch):
+    responses = iter([
+        {"models": [
+            {"model_name": "verified:free", "vendor": "A", "type": "text", "chat": True,
+             "is_free": True, "online": True, "input_price": 0, "output_price": 0,
+             "fixed_price": 0, "supported_endpoint_types": ["openai"]},
+            {"model_name": "missing:free", "vendor": "B", "type": "text", "chat": True,
+             "is_free": True, "online": True, "input_price": 0, "output_price": 0,
+             "fixed_price": 0, "supported_endpoint_types": ["openai"]},
+            {"model_name": "invalid:free", "vendor": "C", "type": "text", "chat": True,
+             "is_free": True, "online": True, "input_price": 0, "output_price": 0,
+             "fixed_price": 0, "supported_endpoint_types": ["openai"]},
+        ]},
+        {"data": [
+            {"id": "verified:free", "context_length": 32768, "max_output_tokens": 8192},
+            {"id": "missing:free"},
+            {"id": "invalid:free", "context_length": -1, "max_output_tokens": True},
+        ]},
+    ])
+    monkeypatch.setattr(unorouter_adapter, "_read_json", lambda *a, **k: next(responses))
+    catalog = unorouter_adapter.discover_model_catalog("test-api-key")
+    by_id = {item["model_id"]: item for item in catalog}
+    assert by_id["verified:free"]["context_length"] == 32768
+    assert by_id["verified:free"]["max_output_tokens"] == 8192
+    assert by_id["missing:free"]["context_length"] is None
+    assert by_id["missing:free"]["max_output_tokens"] is None
+    assert by_id["invalid:free"]["context_length"] is None
+    assert by_id["invalid:free"]["max_output_tokens"] is None
+    assert by_id["verified:free"]["allowed_for_inference"] is True

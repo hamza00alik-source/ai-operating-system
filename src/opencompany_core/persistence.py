@@ -23,6 +23,7 @@ from .product_persistence import ProductPersistenceMixin
 from .opportunity_persistence import OpportunityPersistenceMixin
 from .quote_persistence import QuotePersistenceMixin
 from .order_persistence import OrderPersistenceMixin
+from .storefront_persistence import StorefrontPersistenceMixin
 from .persistence_utils import _ZERO_HASH, _audit_payload, _digest, _json
 
 
@@ -39,6 +40,7 @@ class SQLiteStore(
     OpportunityPersistenceMixin,
     QuotePersistenceMixin,
     OrderPersistenceMixin,
+    StorefrontPersistenceMixin,
 ):
     """Thread-safe repository for core records and append-only audit evidence."""
 

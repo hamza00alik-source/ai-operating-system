@@ -30,13 +30,19 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [x] Persisted inter-agent handoffs with identity, artifact, and audit checks.
 - [x] Owner-authenticated workflow inspection endpoint for prerequisites, dependents, delegation proposals, handoffs, deliverables, queue state, and next action.
 - [ ] Workflow-level artifact aggregation and specialist-specific machine-readable deliverable schemas.
+- [x] Unified owner approval inbox for manager proposals, deliverable reviews, Product & R&D checkpoints, and external-action authorization requests (authorization records never execute actions).
+- [x] Owner cancellation for queued/leased work with cooperative worker cancellation and audited finalization.
 - [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
-- [ ] Durable per-attempt execution history and richer failure diagnostics.
+- [x] Durable per-attempt execution history, interrupted-lease recovery, bounded error codes, and secret-free execution-history API.
+- [x] Completed-output checkpoints to avoid repeating provider calls after a post-generation persistence failure.
+- [x] Owner-authenticated worker health snapshot for queue age, expired leases, dead-letter count and fleet/provider status (per-attempt/checkpoint detail remains pending).
 - [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
+- [x] Restart-safe durable Product & R&D maintenance scheduler with persisted leases, attempt history, interruption recovery and failure backoff; opt-in and draft-only.
+- [x] Structured worker-originated external-action approval intents with trusted lease identity, strict allowlist validation, audit records and owner-only authorization registry; no executor exists.
 
 ### Queue re-admission change
 
-The implementation branch now allows an owner-reviewed READY task to reuse its terminal queue row after a completed review cycle or exhausted failure. Re-admission resets the attempt counter and stale lease/error fields, while refusing to overwrite queued or leased work. Regression tests have been added but remain unexecuted under the owner's instruction to defer CI/testing until 1 December 2026.
+The implementation branch now allows an owner-reviewed READY task to reuse its terminal queue row after a completed review cycle or exhausted failure. Re-admission resets the attempt counter and stale lease/error fields, while refusing to overwrite queued or leased work. Regression tests were executed after the owner re-authorized development-branch CI/testing on 14 November 2026; the latest verified feature-branch suite is recorded below.
 
 ## 3. Memory, research, and learning
 
@@ -57,11 +63,12 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Durable, secret-free model-usage ledger.
 - [x] Read-only API Anything connector with bounded tier-1 operations.
 - [x] GitHub code-evolution proposals restricted to isolated draft pull requests.
-- [ ] WooCommerce account connection and read-only product/order sync.
+- [x] Owner-controlled encrypted WooCommerce credential storage, explicit connection test, and strictly read-only product/order/payment-status API + mobile console (real account connection still awaits owner credentials and acceptance test).
 - [ ] Social account connections and draft/publish workflow with owner approval.
 - [ ] Email and customer-support adapters with approval-gated external messages.
-- [ ] Payment-status verification adapter; no payment initiation.
-- [ ] Marketplace integrations and fulfillment status sync.
+- [x] Read-only WooCommerce payment-status signal from the platform-recorded paid-at field; no payment initiation and no bank-settlement claim.
+- [ ] Bank and marketplace settlement verification adapters.
+- [x] Provider-neutral storefront registry and private listing-draft persistence for seven channels; external marketplace adapters and fulfillment sync remain pending.
 
 ## 5. Owner console and operations
 
@@ -72,10 +79,23 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Workflow details view backed by live API data.
 - [x] Owner-triggered consistent SQLite backup export with integrity check.
 - [ ] Automated encrypted off-host backups and retention.
-- [ ] Restore rehearsal and documented recovery-point/recovery-time objectives.
+- [x] Automated SQLite backup snapshot reopen/restore integrity and audit-chain regression test.
+- [ ] Production restore rehearsal, documented recovery-point/recovery-time objectives, and off-host retention.
+- [x] Owner-authenticated production-evidence snapshot and persisted automation job/history diagnostics (not a production certification).
 - [ ] Production monitoring, alerting, and incident runbooks.
-- [ ] Beginner-friendly setup and recovery guide.
+- [x] Production operations runbook for backup, isolated restore rehearsal, incident and rollback controls.
+- [x] Beginner-friendly first-run setup guide for local development and safe owner setup.
+- [ ] Measured production recovery-point/recovery-time objectives and production restore rehearsal.
+- [x] Product & R&D workflow studio, pilot-artifact preview/download, automation status and owner-controlled WooCommerce panel.
 - [ ] Full authenticated mobile-browser acceptance pass.
+
+## 6. Revenue operations
+
+- [x] Audited financial event ledger with owner-verified evidence references and duplicate-source protection.
+- [x] Revenue semantics separated across agency commission, own-brand sales and digital-product sales.
+- [x] Same-currency summaries with no implied foreign-exchange conversion.
+- [x] Owner-verified, read-only payout statement line reconciliation preview against exact business/currency/source references; mismatches, duplicates and missing lines are explicit, and previews are not persisted.
+- [ ] Persisted payout statements, bank/marketplace settlement adapters and automated marketplace fee reconciliation.
 
 ## Release and safety gates
 
@@ -84,8 +104,8 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - AI-generated code remains in isolated draft PRs. No automatic merge or production deployment.
 - Keep the legacy AIOS branch unchanged and reference-only.
 - Do not change production service routing, database targets, persistent volumes, or secrets as part of branch implementation without explicit owner authorization.
-- CI/testing remains deferred until 1 December 2026 under the owner's existing instruction. Newly added tests must be reported as unrun until that date or until the owner changes that instruction.
+- Development-branch CI/testing was re-authorized on 14 November 2026 and is now running on feature branches. Production acceptance, security review, backup/restore rehearsal and release approval remain separate gates.
 
 ## Current implementation status
 
-The new application has a working internal CEO-to-manager-to-specialist execution path in code, including durable queueing, model-cost gates, review, handoffs, learning, and audit records. External commerce, social, email, and payment integrations are not yet connected. A successful source commit or Railway deployment alone does not prove those workflows work live; each requires an authenticated, owner-authorized acceptance test.
+The new application has a working internal CEO-to-manager-to-specialist execution path in code, including durable queueing, model-cost gates, review, handoffs, learning, and audit records. The Product & R&D studio, deterministic local pilot generator, approval-preserving opt-in scheduler, encrypted WooCommerce connection path, read-only product/order adapter, private multi-storefront listing drafts, audited revenue ledger, unified owner approval inbox with non-executing external authorization records, worker health metrics, automation history and production-evidence diagnostics are implemented on draft PR #141. The branch also adds a read-only payout reconciliation preview, read-only WooCommerce payment-status signals, automated SQLite backup-reopen/audit-chain test, production operations runbook and beginner setup guide. Exact code head cb1a50f2f3a80127bc3bfa72e0c774529d36ce70 passed 492 tests with 5 warnings; OpenCompany Core Tests, container build/non-root smoke test and Python compileall also passed. WooCommerce is not yet connected to the owner's live store; marketplace accounts, social, email, payment-status and fulfilment integrations remain unconnected. A successful source commit or Railway deployment alone does not prove those workflows work live; each requires an authenticated, owner-authorized acceptance test.

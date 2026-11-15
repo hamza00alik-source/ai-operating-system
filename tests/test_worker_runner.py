@@ -136,11 +136,14 @@ def test_worker_rejects_wrong_agent_assignment(tmp_path):
 
 def test_worker_retry_uses_stable_artifact_id_after_sink_failure(tmp_path):
     agent, item, store, queue = setup(tmp_path)
+    queue.retry_base_seconds = 1
+    queue.retry_max_seconds = 1
     sink = FailOnceSink()
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), sink)
     with pytest.raises(OSError, match="temporary sink failure"):
         worker.run_once(agent, "marketplace_operations_analyst")
     assert queue.counts() == {"queued": 1}
+    sleep(1.1)
     assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
     assert len(sink.items) == 1
     assert queue.counts() == {"done": 1}
@@ -288,5 +291,34 @@ def test_agent_deactivated_during_execution_cannot_persist_deliverable(tmp_path)
     assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
     assert queue.counts() == {"queued": 1}
     assert store.verify_audit_chain()
+    queue.close()
+    store.close()
+
+
+def test_completed_output_checkpoint_prevents_repeating_provider_call_after_sink_failure(tmp_path):
+    agent, item, store, queue = setup(tmp_path)
+    queue.retry_base_seconds = 1
+    queue.retry_max_seconds = 1
+
+    class CountingExecutor(FakeExecutor):
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, role_key, work_item, **kwargs):
+            self.calls += 1
+            return super().execute(role_key, work_item, **kwargs)
+
+    executor = CountingExecutor()
+    sink = FailOnceSink()
+    worker = OpenCompanyWorker(queue, store, executor, sink)
+    with pytest.raises(OSError, match="temporary sink failure"):
+        worker.run_once(agent, "marketplace_operations_analyst")
+    assert queue.list_checkpoints(item.id)
+    sleep(1.1)
+    assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
+    assert executor.calls == 1
+    assert queue.list_attempts(item.id)[0]["status"] == "retryable_failed"
+    assert queue.list_attempts(item.id)[1]["status"] == "succeeded"
+    assert queue.list_checkpoints(item.id) == ()
     queue.close()
     store.close()

@@ -1,7 +1,7 @@
 """Work-item and deliverable persistence operations for SQLiteStore."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Any
 from uuid import UUID
@@ -203,6 +203,97 @@ class WorkItemPersistenceMixin:
                 payload = _audit_payload(record, previous_hash)
                 event_hash = _digest(payload)
                 self._connection.execute("INSERT INTO audit_events (event_id,occurred_at,payload_json,previous_hash,event_hash) VALUES(?,?,?,?,?)", (str(record.id), record.occurred_at.isoformat(), _json(payload), previous_hash, event_hash))
+                self._connection.execute("COMMIT")
+                return True
+            except Exception:
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
+                raise
+
+    def save_deliverable_with_audit_and_lease(
+        self, deliverable: Any, record: AuditRecord, lease: Any
+    ) -> bool:
+        """Atomically fence a live worker lease, persist its deliverable, audit, and queue completion."""
+        if not deliverable.review_required:
+            raise ValueError("worker deliverables must require review")
+        if deliverable.work_item_id != lease.work_item_id:
+            raise ValueError("deliverable work item does not match the worker lease")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                owned = self._connection.execute(
+                    """SELECT 1 FROM worker_queue q
+                       JOIN work_items w ON w.id=q.work_item_id
+                       JOIN agent_profiles a ON a.id=w.assigned_agent_id
+                       WHERE q.work_item_id=? AND q.agent_id=? AND q.state='leased'
+                         AND q.lease_token=? AND q.lease_expires_at>? AND q.cancel_requested=0
+                         AND w.state=? AND w.assigned_agent_id=? AND a.state='active'""",
+                    (str(lease.work_item_id), str(lease.agent_id), str(lease.lease_token),
+                     now, TaskState.IN_PROGRESS.value, str(lease.agent_id)),
+                ).fetchone()
+                if owned is None:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                values = (
+                    str(deliverable.work_item_id), deliverable.role_key, deliverable.content,
+                    deliverable.provider, deliverable.model, float(deliverable.cost_usd),
+                    deliverable.created_at.isoformat(), 1,
+                )
+                existing = self._connection.execute(
+                    "SELECT * FROM deliverables WHERE id=?", (str(deliverable.id),)
+                ).fetchone()
+                if existing is not None:
+                    old = (
+                        existing["work_item_id"], existing["role_key"], existing["content"],
+                        existing["provider"], existing["model"], float(existing["cost_usd"]),
+                        existing["created_at"], int(existing["review_required"]),
+                    )
+                    if old != values:
+                        raise ValueError("deliverable ID already exists with different content")
+                else:
+                    self._connection.execute(
+                        """INSERT INTO deliverables
+                           (id,work_item_id,role_key,content,provider,model,cost_usd,created_at,review_required)
+                           VALUES(?,?,?,?,?,?,?,?,?)""",
+                        (str(deliverable.id), *values),
+                    )
+                cursor = self._connection.execute(
+                    "UPDATE work_items SET state=? WHERE id=? AND state=? AND assigned_agent_id=?",
+                    (TaskState.REVIEW.value, str(deliverable.work_item_id),
+                     TaskState.IN_PROGRESS.value, str(lease.agent_id)),
+                )
+                if cursor.rowcount != 1:
+                    self._connection.execute("ROLLBACK")
+                    return False
+                row = self._connection.execute(
+                    "SELECT event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = row["event_hash"] if row else _ZERO_HASH
+                payload = _audit_payload(record, previous_hash)
+                self._connection.execute(
+                    """INSERT INTO audit_events
+                       (event_id,occurred_at,payload_json,previous_hash,event_hash)
+                       VALUES(?,?,?,?,?)""",
+                    (str(record.id), record.occurred_at.isoformat(), _json(payload),
+                     previous_hash, _digest(payload)),
+                )
+                cursor = self._connection.execute(
+                    """UPDATE worker_queue SET state='done',lease_token=NULL,
+                       lease_expires_at=NULL,next_attempt_at=NULL,cancel_requested=0,
+                       last_error=NULL,updated_at=?
+                       WHERE work_item_id=? AND agent_id=? AND state='leased'
+                         AND lease_token=? AND lease_expires_at>? AND cancel_requested=0""",
+                    (now, str(lease.work_item_id), str(lease.agent_id),
+                     str(lease.lease_token), now),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("worker lease changed before atomic completion")
+                self._connection.execute(
+                    """UPDATE worker_attempts SET status='succeeded',finished_at=?,error_code=NULL
+                       WHERE lease_token=? AND status='running'""",
+                    (now, str(lease.lease_token)),
+                )
                 self._connection.execute("COMMIT")
                 return True
             except Exception:

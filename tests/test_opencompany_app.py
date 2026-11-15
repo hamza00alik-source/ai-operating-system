@@ -1954,3 +1954,296 @@ def test_reassignment_rejects_stale_expected_assignee(tmp_path):
     assert queue.get_entry(item.id)["agent_id"] == str(second_id)
     assert store.verify_audit_chain()
     store.close()
+
+
+# Focused integration tests for the commerce and revenue features ported in PR #141.
+
+def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to_commission(owner_client):
+    unauthorized = client.post("/commercial/financial-events", json={})
+    assert unauthorized.status_code in {401, 403}
+
+    payload = {
+        "business_id": "physical-agency",
+        "event_type": "agency_commission",
+        "amount_minor": 2500,
+        "currency": "USD",
+        "source_reference": "synthetic-agency-invoice-001",
+        "evidence_reference": "synthetic-owner-reviewed-statement-line-4",
+        "note": "synthetic test record",
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "owner_verified": True,
+    }
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    recorded = owner_client.post("/commercial/financial-events", headers=headers, json=payload)
+    assert recorded.status_code == 200
+    assert recorded.json()["payment_initiated"] is False
+
+    summary = owner_client.get("/commercial/financial-summary?business_id=physical-agency", headers=headers)
+    assert summary.status_code == 200
+    row = summary.json()["summaries"][0]
+    assert row["recognized_revenue_minor"] == 2500
+    assert row["revenue_basis"] == "agency commission only"
+
+    invalid_model = dict(payload, event_type="sales_revenue",
+                         source_reference="synthetic-invalid-gross-sale")
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=invalid_model)
+    assert rejected.status_code == 422
+
+    unverified = dict(payload, source_reference="synthetic-unverified-event",
+                      owner_verified=False)
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=unverified)
+    assert rejected.status_code == 422
+
+    blank_evidence = dict(payload, source_reference="synthetic-blank-evidence",
+                          evidence_reference="   ")
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=blank_evidence)
+    assert rejected.status_code == 422
+
+def test_woocommerce_connection_is_owner_only_encrypted_and_business_scoped(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    unauthorized = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection", json=payload
+    )
+    assert unauthorized.status_code == 401
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["network_request_made"] is False
+    assert saved.json()["writes_enabled"] is False
+    runtime = app.dependency_overrides[get_runtime]()
+    row = runtime.store._connection.execute(
+        "SELECT provider,ciphertext FROM provider_secrets WHERE provider=?",
+        ("woocommerce:physical-brand",),
+    ).fetchone()
+    assert row is not None
+    assert b"brandprivate" not in bytes(row["ciphertext"])
+    brand_status = owner_client.get(
+        "/integrations/woocommerce/physical-brand/status", headers=headers
+    ).json()
+    agency_status = owner_client.get(
+        "/integrations/woocommerce/physical-agency/status", headers=headers
+    ).json()
+    assert brand_status["configured"] is True
+    assert brand_status["credentials_encrypted"] is True
+    assert agency_status["configured"] is False
+    assert brand_status["writes_enabled"] is False
+
+def test_woocommerce_read_endpoint_uses_minimized_read_only_adapter(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200, saved.text
+    from opencompany_core.woocommerce_readonly import WooCommerceReadOnlyClient
+    monkeypatch.setattr(
+        WooCommerceReadOnlyClient, "products",
+        lambda self, page=1, per_page=20: {
+            "page": page, "per_page": per_page, "count": 1,
+            "products": [{"id": 1, "name": "Test product"}],
+        },
+    )
+    response = owner_client.get(
+        "/integrations/woocommerce/physical-brand/products?page=1&per_page=5",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["read_only"] is True
+    assert response.json()["products"] == [{"id": 1, "name": "Test product"}]
+
+
+def test_product_rd_owner_workflow_and_zero_cost_pilot_generation(owner_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_PRODUCT_ARTIFACT_ROOT", str(tmp_path / "product-artifacts"))
+    unauthorized = client.post("/product-rd/workflows", json={
+        "title": "OUTPOST Sci-Fi Survival UI Icon Pack",
+        "brief": "Create an original downloadable 30-icon SVG game UI pack.",
+        "business_id": "digital-products",
+    })
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/product-rd/workflows", headers=headers, json={
+        "title": "OUTPOST Sci-Fi Survival UI Icon Pack",
+        "brief": "Create an original downloadable 30-icon SVG game UI pack.",
+        "business_id": "digital-products",
+    })
+    assert created.status_code == 200
+    workflow = created.json()["workflow"]
+    assert workflow["cost_ceiling_usd"] == 0
+    assert workflow["external_actions_enabled"] is False
+
+    from opencompany_core.product_rd import ProductRDRepository, PRODUCT_STAGES
+    runtime = app.dependency_overrides[get_runtime]()
+    repository = ProductRDRepository(runtime.store._connection, runtime.store._lock)
+    for stage in PRODUCT_STAGES[:3]:
+        workflow = repository.complete_stage(
+            workflow["id"], stage, output=f"Completed {stage}.",
+            evidence=[f"Verified test evidence for {stage}."],
+            artifact_refs=[f"test-artifact:{stage}"],
+        )
+
+    generated = owner_client.post(
+        f"/product-rd/workflows/{workflow['id']}/generate-pilot",
+        headers=headers,
+    )
+    assert generated.status_code == 200
+    body = generated.json()
+    assert body["qa"]["failed_checks"] == []
+    assert body["external_actions_performed"] is False
+    assert body["human_preview_required"] is True
+    assert body["workflow"]["stages"][5]["status"] == "in_progress"
+
+    package = owner_client.get(
+        f"/product-rd/workflows/{workflow['id']}/artifacts/package.zip",
+        headers=headers,
+    )
+    assert package.status_code == 200
+    assert package.headers["content-type"].startswith("application/zip")
+
+    # Product files and listing packets are private company assets.
+    public_download = client.get(
+        f"/product-rd/workflows/{workflow['id']}/artifacts/package.zip"
+    )
+    assert public_download.status_code in {401, 403}
+
+
+def test_product_rd_automation_status_is_owner_only_and_never_authorizes_external_actions(owner_client):
+    unauthorized = client.get("/product-rd/automation/status")
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    response = owner_client.get("/product-rd/automation/status", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["external_actions_enabled"] is False
+    assert body["scheduler_approves_or_queues_work"] is False
+    assert isinstance(body["jobs"], list)
+
+
+def test_external_approval_authorization_records_only_and_never_executes(owner_client):
+    payload = {
+        "business_id": "digital-products",
+        "action_type": "publish_listing",
+        "title": "Publish approved digital download",
+        "description": "Request to publish the reviewed draft listing after final human checks.",
+        "target_reference": "storefront-draft:sample-1",
+        "requested_by": "owner",
+    }
+    unauthorized = client.post("/external-approvals", json=payload)
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/external-approvals", headers=headers, json=payload)
+    assert created.status_code == 200
+    assert created.json()["status"] == "pending"
+    assert created.json()["execution_performed"] is False
+    request_id = created.json()["request_id"]
+
+    listed = owner_client.get(
+        "/external-approvals?business_id=digital-products&status=pending",
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+
+    missing_confirmation = owner_client.post(
+        f"/external-approvals/{request_id}/decision", headers=headers,
+        json={"decision": "approve", "rationale": "Reviewed.", "confirm_action": ""},
+    )
+    assert missing_confirmation.status_code == 422
+
+    authorized = owner_client.post(
+        f"/external-approvals/{request_id}/decision", headers=headers,
+        json={"decision": "approve", "rationale": "Reviewed exact scope.", "confirm_action": "AUTHORIZE"},
+    )
+    assert authorized.status_code == 200
+    assert authorized.json()["status"] == "authorized_not_executed"
+    assert authorized.json()["execution_performed"] is False
+    assert "no external action was executed" in authorized.json()["message"].lower()
+
+
+def test_owner_operational_diagnostics_are_observational_and_never_authorize_release(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    health = owner_client.get("/workers/health", headers=headers)
+    assert health.status_code == 200
+    assert health.json()["external_actions_enabled"] is False
+    assert "queued_oldest_age_seconds" in health.json()
+    assert "expired_leases" in health.json()
+
+    jobs = owner_client.get("/automation/jobs", headers=headers)
+    history = owner_client.get("/automation/history", headers=headers)
+    assert jobs.status_code == 200 and isinstance(jobs.json()["jobs"], list)
+    assert history.status_code == 200 and isinstance(history.json()["runs"], list)
+
+    readiness = owner_client.get("/owner/production-readiness", headers=headers)
+    assert readiness.status_code == 200
+    body = readiness.json()
+    assert body["status"] == "evidence_snapshot_only"
+    assert body["checks"]["schema_version_current"] is True
+    assert body["production_cutover_authorized"] is False
+    assert body["backup_restore_rehearsal"] == "not_verified"
+
+
+def test_owner_can_cancel_queued_work_and_inspect_secret_free_execution_history(owner_client):
+    from uuid import uuid4
+    from opencompany_core.domain import TaskState, WorkItem
+    from opencompany_app.api_dependencies import get_runtime
+
+    runtime = app.dependency_overrides[get_runtime]()
+    agent_id = uuid4()
+    item = WorkItem(
+        id=uuid4(), title="Cancel queued internal draft",
+        objective="Prepare an internal-only research draft",
+        department="intelligence-research", state=TaskState.QUEUED,
+        assigned_agent_id=agent_id, business_id="digital-products",
+    )
+    runtime.store.save_work_item(item)
+    runtime.queue.enqueue(item.id, agent_id, {"private": "do-not-return"})
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+
+    unauthorized = client.post(f"/work-items/{item.id}/cancel")
+    assert unauthorized.status_code in {401, 403}
+    cancelled = owner_client.post(f"/work-items/{item.id}/cancel", headers=headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["result"] == "cancelled"
+    assert cancelled.json()["task_state"] == "cancelled"
+
+    history = owner_client.get(f"/work-items/{item.id}/execution-history", headers=headers)
+    assert history.status_code == 200
+    body = history.json()
+    assert body["task_state"] == "cancelled"
+    assert body["queue"]["state"] == "dead"
+    assert body["attempt_count"] == 0
+    assert body["checkpoints"] == []
+    assert "do-not-return" not in str(body)
+    assert "lease_token" not in str(body)
+
+
+
+def test_storefront_listing_draft_registry_and_private_records_are_owner_only(owner_client):
+    unauthorized_list = client.get("/storefronts/listing-drafts")
+    unauthorized_create = client.post("/storefronts/listing-drafts", json={})
+    assert unauthorized_list.status_code in {401, 403}
+    assert unauthorized_create.status_code in {401, 403}
+
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    channels = owner_client.get("/storefronts/channels?business_id=digital-products", headers=headers)
+    assert channels.status_code == 200
+    assert channels.json()["external_writes_enabled"] is False
+    assert all(channel["connection_state"] == "not_connected" for channel in channels.json()["channels"])
+
+    drafts = owner_client.get("/storefronts/listing-drafts?business_id=digital-products", headers=headers)
+    assert drafts.status_code == 200
+    assert drafts.json()["external_writes_enabled"] is False
+    assert isinstance(drafts.json()["listing_drafts"], list)

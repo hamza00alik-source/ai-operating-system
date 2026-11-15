@@ -71,10 +71,22 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
     key_models = available.get("data")
     if not isinstance(catalog_models, list) or not isinstance(key_models, list):
         raise ProviderUnavailable("UnoRouter did not return the expected pricing catalogue or key-access model-list format.")
-    key_ids = {
-        item["id"].strip() for item in key_models
+    def positive_metadata_int(value: object) -> int | None:
+        # /models metadata is advisory. Reject booleans, strings, zero, negatives,
+        # and implausibly large values rather than coercing untrusted input.
+        if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 10_000_000:
+            return value
+        return None
+
+    key_model_metadata = {
+        item["id"].strip(): {
+            "context_length": positive_metadata_int(item.get("context_length")),
+            "max_output_tokens": positive_metadata_int(item.get("max_output_tokens")),
+        }
+        for item in key_models
         if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"].strip()
     }
+    key_ids = set(key_model_metadata)
     imported = []
     for item in catalog_models:
         if not isinstance(item, dict):
@@ -118,6 +130,10 @@ def discover_model_catalog(api_key: str) -> tuple[dict[str, object], ...]:
         # Keep a safe, useful subset; do not persist credentials or arbitrary upstream fields.
         imported.append({
             "model_id": route_model_id,
+            # These limits come only from the authenticated /models response;
+            # absence remains unknown and must not be inferred from model names.
+            "context_length": key_model_metadata.get(route_model_id, {}).get("context_length"),
+            "max_output_tokens": key_model_metadata.get(route_model_id, {}).get("max_output_tokens"),
             "vendor": str(item.get("vendor") or "Unknown"),
             "vendor_id": item.get("vendor_id") if isinstance(item.get("vendor_id"), int) else None,
             "icon": str(item.get("icon") or ""),
