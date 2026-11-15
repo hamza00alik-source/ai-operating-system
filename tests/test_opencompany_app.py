@@ -2124,3 +2124,44 @@ def test_product_rd_automation_status_is_owner_only_and_never_authorizes_externa
     assert body["external_actions_enabled"] is False
     assert body["scheduler_approves_or_queues_work"] is False
     assert isinstance(body["jobs"], list)
+
+
+def test_external_approval_authorization_records_only_and_never_executes(owner_client):
+    payload = {
+        "business_id": "digital-products",
+        "action_type": "publish_listing",
+        "title": "Publish approved digital download",
+        "description": "Request to publish the reviewed draft listing after final human checks.",
+        "target_reference": "storefront-draft:sample-1",
+        "requested_by": "owner",
+    }
+    unauthorized = client.post("/external-approvals", json=payload)
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/external-approvals", headers=headers, json=payload)
+    assert created.status_code == 200
+    assert created.json()["status"] == "pending"
+    assert created.json()["execution_performed"] is False
+    request_id = created.json()["request_id"]
+
+    listed = owner_client.get(
+        "/external-approvals?business_id=digital-products&status=pending",
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+
+    missing_confirmation = owner_client.post(
+        f"/external-approvals/{request_id}/decision", headers=headers,
+        json={"decision": "approve", "rationale": "Reviewed.", "confirm_action": ""},
+    )
+    assert missing_confirmation.status_code == 422
+
+    authorized = owner_client.post(
+        f"/external-approvals/{request_id}/decision", headers=headers,
+        json={"decision": "approve", "rationale": "Reviewed exact scope.", "confirm_action": "AUTHORIZE"},
+    )
+    assert authorized.status_code == 200
+    assert authorized.json()["status"] == "authorized_not_executed"
+    assert authorized.json()["execution_performed"] is False
+    assert "no external action was executed" in authorized.json()["message"].lower()
