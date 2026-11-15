@@ -83,3 +83,27 @@ def test_provider_worker_cannot_recover_another_providers_expired_lease(monkeypa
     )
     assert reclaimed_longcat["id"] == longcat["id"]
     assert reclaimed_longcat["attempts"] == 2
+
+
+
+def test_worker_capabilities_are_sanitized_and_visible(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'capabilities.db'}")
+    video_jobs.claim_job(
+        "cinecode-worker",
+        provider="cinecode",
+        capabilities={
+            "agent": "codex",
+            "source_commit": "c8a3e7552699360a2b0142c9620882af2069eedb",
+            "disk_free_bytes": 123456,
+            "api_key": "must-not-be-stored",
+            "arbitrary": "untrusted",
+        },
+    )
+    status = video_jobs.worker_status("cinecode")
+    assert status["worker_connected"] is True
+    assert status["worker_capabilities"] == {
+        "agent": "codex",
+        "source_commit": "c8a3e7552699360a2b0142c9620882af2069eedb",
+        "disk_free_bytes": 123456,
+    }
+    assert "api_key" not in str(status)
