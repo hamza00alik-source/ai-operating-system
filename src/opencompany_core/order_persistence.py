@@ -206,7 +206,7 @@ class OrderPersistenceMixin:
         if business_id not in allowed:
             raise ValueError("payout reconciliation requires one commercial business unit")
         currency = str(currency).upper()
-        if len(currency) != 3 or not currency.isalpha():
+        if len(currency) != 3 or not currency.isascii() or not currency.isalpha():
             raise ValueError("currency must be a three-letter code")
         if not str(payout_reference).strip():
             raise ValueError("payout statement reference is required")
@@ -217,45 +217,45 @@ class OrderPersistenceMixin:
         results: list[dict[str, Any]] = []
         statement_total = 0
         matched_total = 0
-        for index, line in enumerate(lines, start=1):
-            source = str(line.get("source_reference", "")).strip()
-            amount = int(line.get("amount_minor", 0))
-            if not source or amount <= 0:
-                raise ValueError("each statement line requires a source reference and positive amount")
-            statement_total += amount
-            if source in seen:
-                results.append({
-                    "line_number": index, "source_reference": source,
-                    "statement_amount_minor": amount, "status": "duplicate_statement_reference",
-                    "ledger_event_id": None,
-                })
-                continue
-            seen.add(source)
-            with self._lock:
+        # Hold the lock throughout the preview to avoid a mixed-time ledger snapshot.
+        with self._lock:
+            for index, line in enumerate(lines, start=1):
+                source = str(line.get("source_reference", "")).strip()
+                amount = int(line.get("amount_minor", 0))
+                if not source or amount <= 0 or amount > 9_000_000_000_000_000:
+                    raise ValueError("each statement line requires a source reference and positive supported amount")
+                statement_total += amount
+                if source in seen:
+                    results.append({
+                        "line_number": index, "source_reference": source,
+                        "statement_amount_minor": amount, "status": "duplicate_statement_reference",
+                        "ledger_event_id": None,
+                    })
+                    continue
+                seen.add(source)
                 rows = self._connection.execute(
-                    """SELECT id, event_type, amount_minor FROM commercial_financial_events
-                       WHERE business_id=? AND currency=? AND source_reference=?""",
+                    "SELECT id, event_type, amount_minor FROM commercial_financial_events WHERE business_id=? AND currency=? AND source_reference=?",
                     (business_id, currency, source),
                 ).fetchall()
-            if not rows:
-                status = "unmatched"
-                event_id = None
-            elif len(rows) != 1:
-                status = "ambiguous_ledger_reference"
-                event_id = None
-            elif int(rows[0]["amount_minor"]) != amount:
-                status = "amount_mismatch"
-                event_id = rows[0]["id"]
-            else:
-                status = "matched"
-                event_id = rows[0]["id"]
-                matched_total += amount
-            results.append({
-                "line_number": index, "source_reference": source,
-                "statement_amount_minor": amount, "status": status,
-                "ledger_event_id": event_id,
-                "ledger_event_type": rows[0]["event_type"] if len(rows) == 1 else None,
-            })
+                if not rows:
+                    status = "unmatched"
+                    event_id = None
+                elif len(rows) != 1:
+                    status = "ambiguous_ledger_reference"
+                    event_id = None
+                elif int(rows[0]["amount_minor"]) != amount:
+                    status = "amount_mismatch"
+                    event_id = rows[0]["id"]
+                else:
+                    status = "matched"
+                    event_id = rows[0]["id"]
+                    matched_total += amount
+                results.append({
+                    "line_number": index, "source_reference": source,
+                    "statement_amount_minor": amount, "status": status,
+                    "ledger_event_id": event_id,
+                    "ledger_event_type": rows[0]["event_type"] if len(rows) == 1 else None,
+                })
         matched_count = sum(1 for row in results if row["status"] == "matched")
         return {
             "business_id": business_id, "currency": currency,
