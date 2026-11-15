@@ -95,3 +95,13 @@ Coordinator actions are limited to:
 - Synchronize only completed deliverables already approved through the normal owner review path.
 
 It does not approve manager proposals, admit draft work to the queue, start child tasks, execute customer work, publish listings, send messages, change accounts or initiate payments. The owner still controls worker startup, model-provider verification, task approval and queue admission.
+
+
+## Owner-console integration
+
+The mobile-friendly owner console includes:
+- Product & R&D workflow creation, stage status, manager proposal review controls, artifact links and automation status.
+- WooCommerce business selector, encrypted credential save, explicit read-only connection test, and product/order read views. Credential inputs are cleared after a successful save; they are not written to browser storage.
+- All dynamic result text is inserted as text, not HTML. Order views contain only the minimized, non-PII fields returned by the read-only adapter.
+
+Owner-only Product & R&D automation status endpoint: `GET /product-rd/automation/status`. It reports whether the scheduler is configured, whether the worker fleet is running, manager-proposal opt-in, maintenance counters and job metadata. It cannot start or authorize any external action.
