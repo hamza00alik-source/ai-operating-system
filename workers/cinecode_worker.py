@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import os
+import http.client
+import ssl
 import queue
 import threading
 import shutil
@@ -18,6 +20,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 PROVIDER = "cinecode"
 TERMINAL = {"succeeded", "failed", "cancelled", "rejected"}
@@ -93,10 +96,44 @@ class AIOSClient:
         size = path.stat().st_size
         if size <= 0 or size > max_bytes:
             raise WorkerError(f"MP4 size {size} is outside the allowed 1..{max_bytes} bytes")
-        return self.request(
-            "PUT", f"/video/worker/jobs/{job_id}/artifact",
-            body=path.read_bytes(), content_type="video/mp4", lease=lease,
-        )
+        parsed = urlsplit(self.base_url)
+        if parsed.scheme not in {"https", "http"} or not parsed.hostname:
+            raise WorkerError("AIOS_API_URL must be an HTTP(S) origin")
+        route = (parsed.path.rstrip("/") + f"/video/worker/jobs/{job_id}/artifact")
+        headers = {
+            "X-Video-Provider": PROVIDER,
+            "X-Video-Worker-Token": self.token,
+            "X-Job-Lease": lease,
+            "Content-Type": "video/mp4",
+            "Content-Length": str(size),
+            "Accept": "application/json",
+        }
+        if parsed.scheme == "https":
+            connection = http.client.HTTPSConnection(
+                parsed.hostname, parsed.port, timeout=self.timeout,
+                context=ssl.create_default_context(),
+            )
+        else:
+            if os.getenv("AIOS_ALLOW_INSECURE_HTTP", "").lower() != "true":
+                raise WorkerError("HTTP artifact upload is disabled; use HTTPS")
+            connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=self.timeout)
+        try:
+            connection.putrequest("PUT", route)
+            for name, value in headers.items():
+                connection.putheader(name, value)
+            connection.endheaders()
+            with path.open("rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    connection.send(chunk)
+            response = connection.getresponse()
+            payload = response.read(4096)
+            if response.status < 200 or response.status >= 300:
+                raise WorkerError(f"AIOS artifact upload failed with HTTP {response.status}")
+            return json.loads(payload.decode("utf-8")) if payload else None
+        except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
+            raise WorkerError(f"Streaming MP4 upload failed: {exc}") from exc
+        finally:
+            connection.close()
 
 
 def _safe_workspace(root: Path, job_id: str) -> Path:
@@ -126,8 +163,12 @@ def _copy_cinecode(source: Path, workspace: Path) -> None:
         if item.is_symlink():
             continue
         if item.is_dir():
-            shutil.copytree(item, target, symlinks=False,
-                            ignore=shutil.ignore_patterns(".git", "__pycache__", "node_modules"))
+            def ignore_unsafe(directory: str, names: list[str]) -> set[str]:
+                ignored = {name for name in names
+                           if name in {".git", "__pycache__", "node_modules"}
+                           or (Path(directory) / name).is_symlink()}
+                return ignored
+            shutil.copytree(item, target, symlinks=False, ignore=ignore_unsafe)
         elif item.is_file():
             shutil.copy2(item, target)
 
@@ -330,7 +371,8 @@ def main() -> None:
     client = AIOSClient(base_url, token)
     if not source.is_dir() or not (source / ".git").is_dir():
         raise WorkerError("CINECODE_SOURCE_DIR must be a Git checkout of the pinned upstream project")
-    for executable in (codex_bin, ffprobe_bin, "git", "node", "python3", "ffmpeg"):
+    python_bin = os.getenv("PYTHON_BIN") or ("python" if os.name == "nt" else "python3")
+    for executable in (codex_bin, ffprobe_bin, "git", "node", python_bin, "ffmpeg"):
         if not shutil.which(executable):
             raise WorkerError(f"Required executable is not installed: {executable}")
     chrome_bin = os.getenv("CHROME_BIN") or next(
