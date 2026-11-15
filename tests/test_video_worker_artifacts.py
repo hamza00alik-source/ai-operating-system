@@ -81,7 +81,7 @@ def test_worker_cannot_upload_after_owner_cancellation(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'worker-cancel.db'}")
 
     owner_headers = {"X-API-Key": "test-owner-key"}
-    worker_headers = {"X-Video-Worker-Token": "test-video-worker-token"}
+    worker_headers = {"X-Video-Worker-Token": "test-video-worker-token", "X-Video-Provider": "longcat-video"}
 
     with TestClient(app) as client:
         created = client.post("/video/jobs", headers=owner_headers, json={
