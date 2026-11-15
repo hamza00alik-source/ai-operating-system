@@ -30,10 +30,12 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [x] Persisted inter-agent handoffs with identity, artifact, and audit checks.
 - [x] Owner-authenticated workflow inspection endpoint for prerequisites, dependents, delegation proposals, handoffs, deliverables, queue state, and next action.
 - [ ] Workflow-level artifact aggregation and specialist-specific machine-readable deliverable schemas.
+- [x] Unified owner approval inbox for manager proposals, deliverable reviews, Product & R&D checkpoints, and external-action authorization requests (authorization records never execute actions).
 - [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
 - [ ] Durable per-attempt execution history and richer failure diagnostics.
 - [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
 - [x] Restart-safe durable Product & R&D maintenance scheduler with persisted leases, attempt history, interruption recovery and failure backoff; opt-in and draft-only.
+- [x] Structured worker-originated external-action approval intents with trusted lease identity, strict allowlist validation, audit records and owner-only authorization registry; no executor exists.
 
 ### Queue re-admission change
 
@@ -97,4 +99,4 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 
 ## Current implementation status
 
-The new application has a working internal CEO-to-manager-to-specialist execution path in code, including durable queueing, model-cost gates, review, handoffs, learning, and audit records. The Product & R&D studio, deterministic local pilot generator, approval-preserving opt-in scheduler, encrypted WooCommerce connection path, read-only product/order adapter, private multi-storefront listing drafts, and audited revenue ledger are implemented on draft PR #141. WooCommerce is not yet connected to the owner's live store; marketplace accounts, social, email, payment-status and fulfilment integrations remain unconnected. Latest development-branch verification for code head ff9cc4b: 457 tests passed, 5 warnings; OpenCompany Core Tests passed; container build and non-root smoke test passed. A successful source commit or Railway deployment alone does not prove those workflows work live; each requires an authenticated, owner-authorized acceptance test.
+The new application has a working internal CEO-to-manager-to-specialist execution path in code, including durable queueing, model-cost gates, review, handoffs, learning, and audit records. The Product & R&D studio, deterministic local pilot generator, approval-preserving opt-in scheduler, encrypted WooCommerce connection path, read-only product/order adapter, private multi-storefront listing drafts, audited revenue ledger, and unified owner approval inbox with non-executing external authorization records are implemented on draft PR #141. WooCommerce is not yet connected to the owner's live store; marketplace accounts, social, email, payment-status and fulfilment integrations remain unconnected. Latest development-branch verification for code head ff9cc4b: 457 tests passed, 5 warnings; OpenCompany Core Tests passed; container build and non-root smoke test passed. A successful source commit or Railway deployment alone does not prove those workflows work live; each requires an authenticated, owner-authorized acceptance test.
