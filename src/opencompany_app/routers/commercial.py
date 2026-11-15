@@ -19,6 +19,7 @@ from opencompany_app.api_schemas import (
     CommercialOrderStatusInput,
     CommercialOrderInput,
     CommercialFinancialEventInput,
+    PayoutReconciliationPreviewInput,
 )
 from opencompany_app.api_dependencies import get_store, require_owner_key
 
@@ -445,6 +446,28 @@ def record_commercial_financial_event(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {**result, "payment_initiated": False}
+
+
+
+
+
+@router.post("/commercial/payout-reconciliation/preview", dependencies=[Depends(require_owner_key)])
+def preview_commercial_payout_reconciliation(
+    payload: PayoutReconciliationPreviewInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if payload.owner_verified is not True:
+        raise HTTPException(status_code=422, detail="Owner verification of the statement evidence is required.")
+    if payload.business_id not in {"physical-agency", "physical-brand", "digital-products"}:
+        raise HTTPException(status_code=422, detail="Payout reconciliation must belong to one commercial business unit.")
+    try:
+        result = store.preview_payout_reconciliation(
+            business_id=payload.business_id, currency=payload.currency,
+            payout_reference=payload.payout_reference,
+            lines=[line.model_dump() for line in payload.lines],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result
 
 
 @router.get("/commercial/financial-events", dependencies=[Depends(require_owner_key)])
