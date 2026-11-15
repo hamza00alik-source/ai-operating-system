@@ -78,10 +78,12 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Workflow details view backed by live API data.
 - [x] Owner-triggered consistent SQLite backup export with integrity check.
 - [ ] Automated encrypted off-host backups and retention.
-- [x] Automated SQLite backup snapshot reopen/restore integrity and audit-chain regression test.\n- [ ] Production restore rehearsal, documented recovery-point/recovery-time objectives, and off-host retention.
+- [x] Automated SQLite backup snapshot reopen/restore integrity and audit-chain regression test.
+- [ ] Production restore rehearsal, documented recovery-point/recovery-time objectives, and off-host retention.
 - [x] Owner-authenticated production-evidence snapshot and persisted automation job/history diagnostics (not a production certification).
 - [ ] Production monitoring, alerting, and incident runbooks.
-- [x] Production operations runbook for backup, isolated restore rehearsal, incident and rollback controls.\n- [ ] Beginner-friendly first-run setup guide and measured production recovery-point/recovery-time objectives.
+- [x] Production operations runbook for backup, isolated restore rehearsal, incident and rollback controls.
+- [ ] Beginner-friendly first-run setup guide and measured production recovery-point/recovery-time objectives.
 - [x] Product & R&D workflow studio, pilot-artifact preview/download, automation status and owner-controlled WooCommerce panel.
 - [ ] Full authenticated mobile-browser acceptance pass.
 
@@ -90,7 +92,8 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Audited financial event ledger with owner-verified evidence references and duplicate-source protection.
 - [x] Revenue semantics separated across agency commission, own-brand sales and digital-product sales.
 - [x] Same-currency summaries with no implied foreign-exchange conversion.
-- [x] Owner-verified, read-only payout statement line reconciliation preview against exact business/currency/source references; mismatches, duplicates and missing lines are explicit, and previews are not persisted.\n- [ ] Persisted payout statements, payment-status adapter and automated marketplace fee reconciliation.
+- [x] Owner-verified, read-only payout statement line reconciliation preview against exact business/currency/source references; mismatches, duplicates and missing lines are explicit, and previews are not persisted.
+- [ ] Persisted payout statements, payment-status adapter and automated marketplace fee reconciliation.
 
 ## Release and safety gates
 
