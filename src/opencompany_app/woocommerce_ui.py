@@ -77,7 +77,7 @@ WOOCOMMERCE_JS = r'''
       summary.textContent=rows.length+" "+resource+" returned · read-only · customer personal data omitted";host.append(summary);
       for(const row of rows.slice(0,20)){
         const card=document.createElement("article");card.className="item";
-        const title=document.createElement("h3");title.textContent=(row.name||("Order "+row.id||"Record"))+"";
+        const title=document.createElement("h3");title.textContent=resource==="orders"?"Order #"+row.id:(row.name||("Product #"+row.id));
         card.append(title);
         const detail=document.createElement("p");detail.textContent=resource==="orders"
           ?"Order #"+row.id+" · "+(row.status||"unknown")+" · "+(row.currency||"")+" "+(row.total||"")
