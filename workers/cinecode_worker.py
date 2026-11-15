@@ -157,7 +157,8 @@ def _copy_cinecode(source: Path, workspace: Path) -> None:
         raise WorkerError("CINECODE_SOURCE_DIR must be a real, pre-provisioned directory")
     # Never follow source symlinks into unrelated host files.
     for item in source.iterdir():
-        if item.name in {".git", "node_modules", "__pycache__"}:
+        if (item.name in {".git", "node_modules", "__pycache__", ".codex", "secrets"}
+                or item.name == ".env" or item.name.startswith(".env.")):
             continue
         target = workspace / item.name
         if item.is_symlink():
@@ -165,8 +166,9 @@ def _copy_cinecode(source: Path, workspace: Path) -> None:
         if item.is_dir():
             def ignore_unsafe(directory: str, names: list[str]) -> set[str]:
                 ignored = {name for name in names
-                           if name in {".git", "__pycache__", "node_modules"}
-                           or (Path(directory) / name).is_symlink()}
+                           if (name in {".git", "__pycache__", "node_modules", ".codex", "secrets"}
+                               or name == ".env" or name.startswith(".env.")
+                               or (Path(directory) / name).is_symlink())}
                 return ignored
             shutil.copytree(item, target, symlinks=False, ignore=ignore_unsafe)
         elif item.is_file():
@@ -388,6 +390,14 @@ def main() -> None:
     )
     if revision.returncode or revision.stdout.strip() != expected_commit:
         raise WorkerError("Cinecode checkout does not match CINECODE_EXPECTED_COMMIT")
+    clean = subprocess.run(
+        ["git", "-C", str(source), "status", "--porcelain"],
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    if clean.returncode or clean.stdout.strip():
+        raise WorkerError("Pinned Cinecode source checkout must be clean before worker startup")
+    if source == work_root or work_root in source.parents or source in work_root.parents:
+        raise WorkerError("Cinecode source and job workspace roots must be separate")
     work_root.mkdir(parents=True, exist_ok=True)
     while True:
         try:
