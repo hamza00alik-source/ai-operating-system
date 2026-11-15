@@ -66,7 +66,8 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Owner-controlled encrypted WooCommerce credential storage, explicit connection test, and strictly read-only product/order/payment-status API + mobile console (real account connection still awaits owner credentials and acceptance test).
 - [ ] Social account connections and draft/publish workflow with owner approval.
 - [ ] Email and customer-support adapters with approval-gated external messages.
-- [x] Read-only WooCommerce payment-status signal from the platform-recorded paid-at field; no payment initiation and no bank-settlement claim.\n- [ ] Bank and marketplace settlement verification adapters.
+- [x] Read-only WooCommerce payment-status signal from the platform-recorded paid-at field; no payment initiation and no bank-settlement claim.
+- [ ] Bank and marketplace settlement verification adapters.
 - [x] Provider-neutral storefront registry and private listing-draft persistence for seven channels; external marketplace adapters and fulfillment sync remain pending.
 
 ## 5. Owner console and operations
@@ -83,7 +84,8 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Owner-authenticated production-evidence snapshot and persisted automation job/history diagnostics (not a production certification).
 - [ ] Production monitoring, alerting, and incident runbooks.
 - [x] Production operations runbook for backup, isolated restore rehearsal, incident and rollback controls.
-- [x] Beginner-friendly first-run setup guide for local development and safe owner setup.\n- [ ] Measured production recovery-point/recovery-time objectives and production restore rehearsal.
+- [x] Beginner-friendly first-run setup guide for local development and safe owner setup.
+- [ ] Measured production recovery-point/recovery-time objectives and production restore rehearsal.
 - [x] Product & R&D workflow studio, pilot-artifact preview/download, automation status and owner-controlled WooCommerce panel.
 - [ ] Full authenticated mobile-browser acceptance pass.
 
