@@ -134,3 +134,20 @@ Owner-authenticated diagnostics now include:
 - `GET /owner/production-readiness` — evidence snapshot of database path/mount, SQLite quick-check, schema v9, audit-chain validity, required configuration presence and worker state.
 
 The production-readiness endpoint always reports CI, independent security review, backup/restore rehearsal and staging acceptance as unverified by the endpoint, and always returns `production_cutover_authorized=false`. It is not a certification or deployment control. The current worker queue health snapshot does not yet provide durable per-attempt provider/checkpoint history; that remains a separate workforce-reliability milestone.
+
+
+## Durable worker execution history and cancellation
+
+The queue now maintains:
+- One `worker_attempts` row per lease attempt, with started/finished timestamps, status and bounded error code.
+- One `worker_checkpoints` record for a completed specialist output before final persistence, allowing a retry to reuse the same deliverable rather than invoke the model again.
+- Exponential retry backoff with a configured cap.
+- Recovery of expired leases into retryable or dead-letter states, with interrupted attempts recorded.
+- Owner cancellation: queued work is cancelled immediately; leased work receives a cooperative cancellation request and is finalized by the worker under its live lease.
+- Atomic shared-database deliverable persistence that checks the lease token, lease expiry, cancellation flag, assigned agent and active agent state before moving the task to review and completing the queue row.
+
+Owner-authenticated endpoints:
+- `POST /work-items/{work_item_id}/cancel`
+- `GET /work-items/{work_item_id}/execution-history`
+
+Execution history returns attempt status/timing/error codes and checkpoint metadata only; it does not expose lease tokens, queue payloads, credentials or checkpoint content. The checkpoint currently represents a completed specialist output, not streaming intermediate reasoning. Cancellation is cooperative and cannot forcibly interrupt an arbitrary provider call while it is blocked.
