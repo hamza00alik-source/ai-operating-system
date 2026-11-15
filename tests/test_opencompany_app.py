@@ -1954,3 +1954,113 @@ def test_reassignment_rejects_stale_expected_assignee(tmp_path):
     assert queue.get_entry(item.id)["agent_id"] == str(second_id)
     assert store.verify_audit_chain()
     store.close()
+
+
+# Focused integration tests for the commerce and revenue features ported in PR #141.
+
+def test_financial_event_api_requires_owner_evidence_and_keeps_agency_revenue_to_commission(owner_client):
+    unauthorized = client.post("/commercial/financial-events", json={})
+    assert unauthorized.status_code in {401, 403}
+
+    payload = {
+        "business_id": "physical-agency",
+        "event_type": "agency_commission",
+        "amount_minor": 2500,
+        "currency": "USD",
+        "source_reference": "synthetic-agency-invoice-001",
+        "evidence_reference": "synthetic-owner-reviewed-statement-line-4",
+        "note": "synthetic test record",
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "owner_verified": True,
+    }
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    recorded = owner_client.post("/commercial/financial-events", headers=headers, json=payload)
+    assert recorded.status_code == 200
+    assert recorded.json()["payment_initiated"] is False
+
+    summary = owner_client.get("/commercial/financial-summary?business_id=physical-agency", headers=headers)
+    assert summary.status_code == 200
+    row = summary.json()["summaries"][0]
+    assert row["recognized_revenue_minor"] == 2500
+    assert row["revenue_basis"] == "agency commission only"
+
+    invalid_model = dict(payload, event_type="sales_revenue",
+                         source_reference="synthetic-invalid-gross-sale")
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=invalid_model)
+    assert rejected.status_code == 422
+
+    unverified = dict(payload, source_reference="synthetic-unverified-event",
+                      owner_verified=False)
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=unverified)
+    assert rejected.status_code == 422
+
+    blank_evidence = dict(payload, source_reference="synthetic-blank-evidence",
+                          evidence_reference="   ")
+    rejected = owner_client.post("/commercial/financial-events", headers=headers, json=blank_evidence)
+    assert rejected.status_code == 422
+
+def test_woocommerce_connection_is_owner_only_encrypted_and_business_scoped(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    unauthorized = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection", json=payload
+    )
+    assert unauthorized.status_code == 401
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200
+    assert saved.json()["network_request_made"] is False
+    assert saved.json()["writes_enabled"] is False
+    runtime = app.dependency_overrides[get_runtime]()
+    row = runtime.store._connection.execute(
+        "SELECT provider,ciphertext FROM provider_secrets WHERE provider=?",
+        ("woocommerce:physical-brand",),
+    ).fetchone()
+    assert row is not None
+    assert b"brandprivate" not in bytes(row["ciphertext"])
+    brand_status = owner_client.get(
+        "/integrations/woocommerce/physical-brand/status", headers=headers
+    ).json()
+    agency_status = owner_client.get(
+        "/integrations/woocommerce/physical-agency/status", headers=headers
+    ).json()
+    assert brand_status["configured"] is True
+    assert brand_status["credentials_encrypted"] is True
+    assert agency_status["configured"] is False
+    assert brand_status["writes_enabled"] is False
+
+def test_woocommerce_read_endpoint_uses_minimized_read_only_adapter(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "woocommerce-test-encryption-key-at-least-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    payload = {
+        "store_url": "https://brand.example.com",
+        "consumer_key": "ck_brandprivate123",
+        "consumer_secret": "cs_brandprivate123",
+    }
+    saved = owner_client.put(
+        "/integrations/woocommerce/physical-brand/connection",
+        headers=headers, json=payload,
+    )
+    assert saved.status_code == 200
+    from opencompany_core.woocommerce_readonly import WooCommerceReadOnlyClient
+    monkeypatch.setattr(
+        WooCommerceReadOnlyClient, "products",
+        lambda self, page=1, per_page=20: {
+            "page": page, "per_page": per_page, "count": 1,
+            "products": [{"id": 1, "name": "Test product"}],
+        },
+    )
+    response = owner_client.get(
+        "/integrations/woocommerce/physical-brand/products?page=1&per_page=5",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["read_only"] is True
+    assert response.json()["products"] == [{"id": 1, "name": "Test product"}]
