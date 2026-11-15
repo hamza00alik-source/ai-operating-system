@@ -2187,3 +2187,38 @@ def test_owner_operational_diagnostics_are_observational_and_never_authorize_rel
     assert body["checks"]["schema_version_current"] is True
     assert body["production_cutover_authorized"] is False
     assert body["backup_restore_rehearsal"] == "not_verified"
+
+
+def test_owner_can_cancel_queued_work_and_inspect_secret_free_execution_history(owner_client):
+    from uuid import uuid4
+    from opencompany_core.domain import TaskState, WorkItem
+    from opencompany_app.api_dependencies import get_runtime
+
+    runtime = app.dependency_overrides[get_runtime]()
+    agent_id = uuid4()
+    item = WorkItem(
+        id=uuid4(), title="Cancel queued internal draft",
+        objective="Prepare an internal-only research draft",
+        department="intelligence-research", state=TaskState.QUEUED,
+        assigned_agent_id=agent_id, business_id="digital-products",
+    )
+    runtime.store.save_work_item(item)
+    runtime.queue.enqueue(item.id, agent_id, {"private": "do-not-return"})
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+
+    unauthorized = client.post(f"/work-items/{item.id}/cancel")
+    assert unauthorized.status_code in {401, 403}
+    cancelled = owner_client.post(f"/work-items/{item.id}/cancel", headers=headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["result"] == "cancelled"
+    assert cancelled.json()["task_state"] == "cancelled"
+
+    history = owner_client.get(f"/work-items/{item.id}/execution-history", headers=headers)
+    assert history.status_code == 200
+    body = history.json()
+    assert body["task_state"] == "cancelled"
+    assert body["queue"]["state"] == "dead"
+    assert body["attempt_count"] == 0
+    assert body["checkpoints"] == []
+    assert "do-not-return" not in str(body)
+    assert "lease_token" not in str(body)
