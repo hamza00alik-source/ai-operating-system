@@ -61,7 +61,7 @@ From the AIOS repository root:
 
 `python workers/cinecode_worker.py`
 
-The worker claims only owner-approved Cinecode jobs, creates a fresh UUID-named
+The worker reports sanitized runtime capabilities (agent/runtime/browser versions, free disk space, and pinned source revision) on each poll. GPU is deliberately reported as unverified until a real render succeeds. It claims only owner-approved Cinecode jobs, creates a fresh UUID-named
 workspace, copies the pinned Cinecode source without Git metadata or symlinks,
 runs Codex with workspace-write sandboxing, sends lease heartbeats, checks the
 result with ffprobe, and streams the MP4 to AIOS private artifact storage.
