@@ -86,6 +86,10 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setu
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
+### Experimental Cinecode worker
+
+An optional local Cinecode worker implementation is available in [workers/README_CINECODE.md](workers/README_CINECODE.md). It uses a pinned upstream checkout and the Codex CLI, requires a dedicated isolated host, and remains disabled until its execution and billing gates are explicitly configured. A real render and host-level isolation test are still required before production use.
+
 
 ## Private provider credential vault
 
