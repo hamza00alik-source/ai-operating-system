@@ -72,10 +72,11 @@ class AIOSClient:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise WorkerError("AIOS returned a non-JSON response") from exc
 
-    def claim(self, worker_id: str, lease_seconds: int) -> Any:
+    def claim(self, worker_id: str, lease_seconds: int,
+              capabilities: dict[str, Any]) -> Any:
         return self.request("POST", "/video/worker/claim", body=json.dumps({
             "worker_id": worker_id, "provider": PROVIDER,
-            "lease_seconds": lease_seconds,
+            "lease_seconds": lease_seconds, "capabilities": capabilities,
         }).encode())
 
     def heartbeat(self, job_id: str, lease: str, progress: int, message: str) -> Any:
@@ -349,6 +350,15 @@ def process_job(client: AIOSClient, job: dict[str, Any], source: Path,
             shutil.rmtree(workspace, ignore_errors=True)
 
 
+def _version(executable: str, *args: str) -> str:
+    result = subprocess.run(
+        [executable, *args], capture_output=True, text=True, timeout=15, check=False,
+    )
+    if result.returncode:
+        return "unavailable"
+    return (result.stdout or result.stderr).strip().splitlines()[0][:160]
+
+
 def main() -> None:
     if os.getenv("CINECODE_EXECUTION_ENABLED", "").lower() != "true":
         raise WorkerError("Set CINECODE_EXECUTION_ENABLED=true only after reviewing the isolated worker host")
@@ -399,9 +409,23 @@ def main() -> None:
     if source == work_root or work_root in source.parents or source in work_root.parents:
         raise WorkerError("Cinecode source and job workspace roots must be separate")
     work_root.mkdir(parents=True, exist_ok=True)
+    capabilities = {
+        "agent": "codex",
+        "agent_version": _version(codex_bin, "--version"),
+        "node_version": _version("node", "--version"),
+        "python_version": _version(python_bin, "--version"),
+        "ffmpeg_version": _version("ffmpeg", "-version"),
+        "ffprobe_version": _version(ffprobe_bin, "-version"),
+        "browser": chrome_bin,
+        "browser_version": _version(chrome_bin, "--version"),
+        "gpu": "not-probed; requires render validation",
+        "disk_free_bytes": shutil.disk_usage(work_root).free,
+        "source_commit": expected_commit,
+        "platform": os.name,
+    }
     while True:
         try:
-            job = client.claim(worker_id, lease_seconds)
+            job = client.claim(worker_id, lease_seconds, capabilities)
             if job:
                 try:
                     process_job(client, job, source, work_root, codex_bin, ffprobe_bin,
