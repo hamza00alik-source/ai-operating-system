@@ -307,6 +307,10 @@ def process_job(client: AIOSClient, job: dict[str, Any], source: Path,
 
 
 def main() -> None:
+    if os.getenv("CINECODE_EXECUTION_ENABLED", "").lower() != "true":
+        raise WorkerError("Set CINECODE_EXECUTION_ENABLED=true only after reviewing the isolated worker host")
+    if os.getenv("CINECODE_BILLING_CONFIRMED", "").lower() != "true":
+        raise WorkerError("Confirm the Codex account's billing/usage terms before enabling execution")
     base_url = required("AIOS_API_URL")
     token = required("VIDEO_CINECODE_WORKER_TOKEN")
     source_input = Path(required("CINECODE_SOURCE_DIR"))
@@ -326,6 +330,15 @@ def main() -> None:
     client = AIOSClient(base_url, token)
     if not source.is_dir() or not (source / ".git").is_dir():
         raise WorkerError("CINECODE_SOURCE_DIR must be a Git checkout of the pinned upstream project")
+    for executable in (codex_bin, ffprobe_bin, "git", "node", "python3", "ffmpeg"):
+        if not shutil.which(executable):
+            raise WorkerError(f"Required executable is not installed: {executable}")
+    chrome_bin = os.getenv("CHROME_BIN") or next(
+        (candidate for candidate in ("google-chrome", "chromium", "chromium-browser", "chrome", "msedge")
+         if shutil.which(candidate)), None
+    )
+    if not chrome_bin:
+        raise WorkerError("Chrome/Chromium/Edge is required; set CHROME_BIN if it is installed under a custom name")
     expected_commit = required("CINECODE_EXPECTED_COMMIT")
     revision = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
