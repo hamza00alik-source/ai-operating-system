@@ -9,12 +9,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from opencompany_core.domain import BUSINESS_UNIT_IDS
-from opencompany_core.model_gateway import NoEligibleProvider
 from opencompany_core.orchestration import (
     AgentTaskSpec,
     OpenCompanyOrchestrator,
-    TaskComplexity,
-    TaskKind,
 )
 from opencompany_app.api_dependencies import get_runtime, require_owner_key
 from opencompany_app.runtime import OpenCompanyRuntime
