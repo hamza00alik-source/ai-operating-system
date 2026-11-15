@@ -128,13 +128,43 @@ class WooCommerceReadOnlyClient:
             )} for row in rows
         ]}
 
+
+    def payment_statuses(self, *, page: int = 1, per_page: int = 20) -> dict:
+        """Return WooCommerce-recorded payment signals, not bank settlement verification."""
+        result = self.orders(page=page, per_page=per_page)
+        statuses = []
+        for order in result["orders"]:
+            order_status = str(order.get("status") or "").casefold()
+            paid_at = order.get("date_paid")
+            if paid_at:
+                payment_status = "paid_recorded_by_woocommerce"
+            elif order_status == "refunded":
+                payment_status = "refunded_status_recorded_by_woocommerce"
+            elif order_status in {"pending", "failed", "cancelled"}:
+                payment_status = "not_confirmed_paid"
+            else:
+                payment_status = "unknown"
+            statuses.append({
+                "order_id": order.get("id"),
+                "order_status": order_status,
+                "payment_status": payment_status,
+                "paid_at": paid_at,
+                "currency": order.get("currency"),
+                "total": order.get("total"),
+            })
+        return {
+            "page": result["page"], "per_page": result["per_page"],
+            "count": len(statuses), "payment_statuses": statuses,
+            "settlement_verified": False,
+        }
+
     def orders(self, *, page: int = 1, per_page: int = 20) -> dict:
         rows = self._get("orders", page=page, per_page=per_page)
         return {"page": page, "per_page": per_page, "count": len(rows), "orders": [
             {
                 "id": row.get("id"), "status": row.get("status"),
                 "currency": row.get("currency"), "total": row.get("total"),
-                "date_created": row.get("date_created"),
+                "date_created": row.get("date_created"), "date_paid": row.get("date_paid"),
                 "line_items": [
                     {"name": item.get("name"), "quantity": item.get("quantity")}
                     for item in (row.get("line_items") or [])[:30]
