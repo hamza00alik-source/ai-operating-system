@@ -67,8 +67,11 @@ def initialize():
         db.execute("CREATE INDEX IF NOT EXISTS idx_video_events_job ON video_generation_events(job_id,id)")
         db.execute("""CREATE TABLE IF NOT EXISTS video_worker_presence (
             worker_id TEXT PRIMARY KEY, last_seen_at TEXT NOT NULL,
-            capabilities_json TEXT NOT NULL DEFAULT '{}'
+            capabilities_json TEXT NOT NULL DEFAULT '{}', provider TEXT NOT NULL DEFAULT 'longcat-video'
         )""")
+        presence_columns = {r["name"] for r in db.execute("PRAGMA table_info(video_worker_presence)")}
+        if "provider" not in presence_columns:
+            db.execute("ALTER TABLE video_worker_presence ADD COLUMN provider TEXT NOT NULL DEFAULT 'longcat-video'")
 
 
 def _event(db, job_id, event, details=None):
