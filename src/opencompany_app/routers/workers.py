@@ -34,6 +34,37 @@ def worker_queue_status(
     }
 
 
+@router.get("/workers/health", dependencies=[Depends(require_owner_key)])
+def worker_operational_health(
+    business_id: str | None = None,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Expose queue pressure and supervision signals without secrets."""
+    try:
+        queue = runtime.queue.health_snapshot(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    fleet = runtime.fleet.status()
+    return {
+        **queue,
+        "fleet_running": fleet.running,
+        "configured_concurrency": fleet.concurrency,
+        "completed_cycles": fleet.completed_cycles,
+        "idle_cycles": fleet.idle_cycles,
+        "failed_cycles": fleet.failed_cycles,
+        "worker_autostart_enabled": os.environ.get(
+            "OPENCOMPANY_WORKER_AUTOSTART", "false"
+        ).casefold() == "true",
+        "free_provider_available": bool(
+            runtime.gateway.eligible_providers(request_budget_usd=0.0)
+        ),
+        "product_rd_maintenance_enabled": fleet.maintenance_enabled,
+        "product_rd_maintenance_cycles": fleet.maintenance_cycles,
+        "product_rd_maintenance_failures": fleet.maintenance_failures,
+        "external_actions_enabled": False,
+    }
+
+
 @router.get("/workers/status", dependencies=[Depends(require_owner_key)])
 def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> dict:
     status = runtime.fleet.status()
@@ -47,6 +78,9 @@ def worker_fleet_status(runtime: OpenCompanyRuntime = Depends(get_runtime)) -> d
             1 for agent in runtime.store.list_agents(limit=1000)
             if agent.state == AgentState.ACTIVE and agent.role_key
         ),
+        "maintenance_enabled": status.maintenance_enabled,
+        "maintenance_cycles": status.maintenance_cycles,
+        "maintenance_failures": status.maintenance_failures,
     }
 
 
