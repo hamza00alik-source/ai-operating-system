@@ -81,7 +81,7 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Automated SQLite backup snapshot reopen/restore integrity and audit-chain regression test.\n- [ ] Production restore rehearsal, documented recovery-point/recovery-time objectives, and off-host retention.
 - [x] Owner-authenticated production-evidence snapshot and persisted automation job/history diagnostics (not a production certification).
 - [ ] Production monitoring, alerting, and incident runbooks.
-- [ ] Beginner-friendly setup and recovery guide.
+- [x] Production operations runbook for backup, isolated restore rehearsal, incident and rollback controls.\n- [ ] Beginner-friendly first-run setup guide and measured production recovery-point/recovery-time objectives.
 - [x] Product & R&D workflow studio, pilot-artifact preview/download, automation status and owner-controlled WooCommerce panel.
 - [ ] Full authenticated mobile-browser acceptance pass.
 
