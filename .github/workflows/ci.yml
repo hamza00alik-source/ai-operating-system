@@ -42,4 +42,5 @@ jobs:
           tests/test_video_worker_auth.py
           tests/test_video_worker_artifacts.py
           tests/test_video_worker_protocol.py
+          tests/test_cinecode_worker.py
           tests/test_owner_session_auth.py
