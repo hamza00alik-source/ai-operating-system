@@ -2112,3 +2112,15 @@ def test_product_rd_owner_workflow_and_zero_cost_pilot_generation(owner_client, 
     )
     assert package.status_code == 200
     assert package.headers["content-type"].startswith("application/zip")
+
+
+def test_product_rd_automation_status_is_owner_only_and_never_authorizes_external_actions(owner_client):
+    unauthorized = client.get("/product-rd/automation/status")
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    response = owner_client.get("/product-rd/automation/status", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["external_actions_enabled"] is False
+    assert body["scheduler_approves_or_queues_work"] is False
+    assert isinstance(body["jobs"], list)
