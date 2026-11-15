@@ -165,6 +165,8 @@ def list_commercial_products(
 def create_commercial_quote(
     payload: CommercialQuoteInput, store: SQLiteStore = Depends(get_store)
 ) -> dict:
+    if not payload.source_reference.strip() or not payload.evidence_reference.strip():
+        raise HTTPException(status_code=422, detail="Source and evidence references must not be blank.")
     currency = payload.currency.upper()
     if not re.fullmatch(r"[A-Z]{3}", currency):
         raise HTTPException(status_code=422, detail="Currency must be a three-letter ISO code.")
@@ -466,5 +468,5 @@ def commercial_financial_summary(
         summary = store.financial_summary(business_id=business_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"count": len(summary), "summary": list(summary),
+    return {"count": len(summary), "summaries": list(summary),
             "fx_conversion_performed": False, "payment_actions_performed": False}
