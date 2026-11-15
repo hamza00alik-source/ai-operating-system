@@ -31,6 +31,7 @@ from opencompany_app.routers.commercial import router as commercial_router, supp
 from opencompany_app.routers.storefronts import router as storefronts_router
 from opencompany_app.routers.product_rd import router as product_rd_router
 from opencompany_app.routers.woocommerce import router as woocommerce_router
+from opencompany_app.routers.external_approvals import router as external_approvals_router
 from opencompany_app.routers.workers import router as workers_router
 from opencompany_app.routers.work_items import router as work_items_router
 from opencompany_app.routers.handoffs import router as handoffs_router
@@ -117,6 +118,7 @@ app.include_router(commercial_router)
 app.include_router(storefronts_router)
 app.include_router(product_rd_router)
 app.include_router(woocommerce_router)
+app.include_router(external_approvals_router)
 
 
 app.include_router(work_items_router)
