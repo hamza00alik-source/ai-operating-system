@@ -111,3 +111,25 @@ def test_worker_fleet_concurrency_is_bounded():
         WorkerFleet(worker, store, concurrency=0)
     with pytest.raises(ValueError):
         WorkerFleet(worker, store, concurrency=17)
+
+
+def test_worker_fleet_runs_maintenance_callback_only_on_designated_loop():
+    calls = []
+    agent_id = uuid4()
+    worker = QueueAwareWorker(agent_id)
+    store = DirectAgentStore(SimpleNamespace(
+        id=agent_id, state=SimpleNamespace(value="active"), role_key="research_specialist",
+    ))
+    fleet = WorkerFleet(
+        worker, store, idle_poll_seconds=0.1,
+        maintenance_callback=lambda: (calls.append("maintenance"), fleet._stop.set()),
+    )
+    worker.fleet = fleet
+
+    fleet._run(run_maintenance=True)
+
+    status = fleet.status()
+    assert calls == ["maintenance"]
+    assert status.maintenance_enabled is True
+    assert status.maintenance_cycles == 1
+    assert status.maintenance_failures == 0
