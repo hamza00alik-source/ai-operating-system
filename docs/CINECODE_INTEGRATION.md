@@ -40,17 +40,22 @@ Cinecode remains responsible for the local filmmaking workflow and render pipeli
 ## Agent execution design
 Cinecode's core dependency is an agent that can operate local tools. AIOS's current bounded agent runtime is text-only and has no shell, filesystem, browser, or MCP tools. Therefore a Cinecode worker cannot be implemented safely by merely passing a Cinecode prompt to the existing LLM gateway.
 
-The worker needs an explicit agent adapter with:
-- A supported CLI executable and version check.
-- Non-interactive execution mode and machine-readable progress/result handling where supported.
-- A strict per-job working directory and filesystem boundary.
-- An allowlisted tool policy; no arbitrary user-provided shell commands.
-- Network policy for research and asset downloads.
-- Secret isolation: keys are passed only to approved local tools through environment/secret files and never printed, logged, or uploaded.
-- Process timeouts, cancellation handling, output limits, and lease heartbeats.
-- A pinned Cinecode commit/release and dependency lock/checksum strategy.
+An experimental adapter now exists at `workers/cinecode_worker.py`. It invokes the installed Codex CLI with fixed arguments (`codex exec`, `workspace-write`, `--ask-for-approval never`, `--ignore-user-config`, `--ephemeral`, and JSONL output), a per-job workspace, and a pinned clean Cinecode checkout. It does not accept a user-supplied executable or shell command. The creative brief is still untrusted input and the agent can execute commands inside its workspace; the Codex sandbox is not a complete security boundary.
 
-Do not claim this adapter exists until the actual CLI invocation, isolation, cancellation, and artifact flow have integration tests.
+Implemented worker controls:
+- Non-interactive Codex CLI invocation with machine-readable JSONL output.
+- Fresh UUID-named workspaces, with Git metadata, symlinks, local environment files, and secret/config directories excluded from the copy.
+- AIOS owner and worker credentials filtered out of the Codex subprocess environment.
+- Lease heartbeats, owner-cancellation checks, process timeout, bounded retry reporting, and cleanup.
+- MP4 validation with ffprobe and streamed upload to the private AIOS artifact endpoint.
+- A pinned upstream commit check and clean working-tree check before the worker starts.
+
+Still required before production:
+- Dedicated OS account/container/VM with no access to unrelated files or application secrets. Workspace-write alone is not a substitute for this.
+- Host firewall/network policy and review of all installed Codex CLI/MCP configuration.
+- Real CLI authentication/usage verification, Chrome/GPU compatibility, and end-to-end render and artifact-delivery tests on the actual worker host.
+
+The worker is disabled by default and requires explicit execution and billing-confirmation environment gates. Do not enable it while the cost of the selected Codex account or other optional services is unknown.
 
 ## Provider contract
 The existing provider-neutral video queue should expose a Cinecode provider with the same lifecycle as other engines:
@@ -115,5 +120,7 @@ Consider only after isolation, cost estimation, provider terms, persistent stora
 - Provider-specific worker credentials now prevent a LongCat worker from authenticating as Cinecode and vice versa; expired lease recovery is provider-scoped.
 - The Owner Console now has read-only readiness, queue, progress, and completed MP4 artifact links for both providers.
 - Focused video integration tests have passed on the CI branch; the full repository suite still has unrelated failures in `tests/test_opencompany_app.py`.
-- The Cinecode execution adapter, worker, capability panel, and end-to-end render are **not implemented or verified yet**.
-- Until the sandboxed agent-CLI worker exists, Cinecode jobs have no worker to execute them and must remain visibly unavailable; do not claim that Cinecode can render from AIOS yet.
+- The experimental local Codex worker implementation and setup guide are now in the branch. Focused CI passed for the worker's unit tests on the implementation commit; later hardening commits still need a fresh CI run.
+- The worker is not deployed, and no intended workstation/VM has been provisioned or authenticated. A real Cinecode render and end-to-end MP4 delivery remain unverified.
+- The full repository suite currently has 30 failures in the separate `tests/test_opencompany_app.py` suite (165 passed). These failures are outside the Cinecode files but prevent a green full-suite result.
+- Cinecode remains unavailable for production until the host isolation, billing, actual rendering, and latest CI gates are verified.
