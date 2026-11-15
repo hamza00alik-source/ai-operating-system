@@ -12,7 +12,7 @@ def test_authenticated_worker_can_upload_private_mp4_artifact(monkeypatch, tmp_p
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'worker-artifact.db'}")
 
     owner_headers = {"X-API-Key": "test-owner-key"}
-    worker_headers = {"X-Video-Worker-Token": "test-video-worker-token"}
+    worker_headers = {"X-Video-Worker-Token": "test-video-worker-token", "X-Video-Provider": "longcat-video"}
 
     with TestClient(app) as client:
         created = client.post("/video/jobs", headers=owner_headers, json={
