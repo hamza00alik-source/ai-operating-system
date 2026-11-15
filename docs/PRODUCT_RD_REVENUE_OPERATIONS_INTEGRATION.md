@@ -73,3 +73,25 @@ Still required before production:
 8. Obtain explicit owner approval before any marketplace publication, customer commitment or financial operation.
 
 This branch has not been merged to main or deployed.
+
+
+## Opt-in autonomous Product & R&D maintenance
+
+The durable scheduler and ProductRDCoordinator are now wired to the existing worker fleet's maintenance loop.
+
+Default behavior is disabled. To opt in at deployment time:
+- `OPENCOMPANY_PRODUCT_RD_AUTOMATION=true` enables the persisted maintenance job.
+- `OPENCOMPANY_WORKER_AUTOSTART=true` and a successfully owner-tested zero-cost model provider are still required to start the worker fleet; without the running fleet, scheduled maintenance does not run.
+- `OPENCOMPANY_PRODUCT_RD_AUTO_PROPOSALS=true` separately permits zero-budget manager planning proposals. It defaults to false and is effective only when Product & R&D automation is enabled.
+- `OPENCOMPANY_PRODUCT_RD_AUTOMATION_INTERVAL_SECONDS` sets the persisted job interval (default 5 seconds).
+- `OPENCOMPANY_AUTOMATION_LEASE_SECONDS` controls the restart-safe lease (default 300 seconds).
+
+The scheduler persists job state, execution history and lease tokens in the same SQLite database. Expired leases are recorded as interrupted and become eligible for retry. Failures are recorded by exception type and backed off; raw exception messages are not persisted.
+
+Coordinator actions are limited to:
+- Create unassigned/manager-routed draft work items for eligible workflow stages.
+- Optionally prepare a manager proposal through the zero-budget gateway; the proposal remains draft and requires owner approval.
+- Generate the local OUTPOST SVG pilot and run structural QA.
+- Synchronize only completed deliverables already approved through the normal owner review path.
+
+It does not approve manager proposals, admit draft work to the queue, start child tasks, execute customer work, publish listings, send messages, change accounts or initiate payments. The owner still controls worker startup, model-provider verification, task approval and queue admission.
