@@ -66,3 +66,16 @@ def test_owner_dashboard_office_uses_live_twelve_department_data():
     assert "on-demand" in html
     assert "Drag to rotate" in html or "Drag to rotate" in html
 
+
+
+def test_owner_dashboard_exposes_read_only_video_engine_and_job_status():
+    response = TestClient(app).get("/owner")
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="videoEngineStatus"' in html
+    assert 'id="videoJobRows"' in html
+    assert 'id="refreshVideoEngines"' in html
+    assert '"/video/status?provider=cinecode"' in html
+    assert '"/video/status?provider=longcat-video"' in html
+    assert '"/video/jobs"' in html
+    assert "This panel is read-only" in html
