@@ -175,7 +175,7 @@ def claim_job(worker_id, lease_seconds=120, provider="longcat-video"):
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         db.execute("INSERT INTO video_worker_presence(worker_id,last_seen_at,provider) VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,provider=excluded.provider",(worker_id,now_s,provider))
-        expired=db.execute("SELECT * FROM video_generation_jobs WHERE status='running' AND lease_expires_at<=? ORDER BY created_at LIMIT 20",(now_s,)).fetchall()
+        expired=db.execute("SELECT * FROM video_generation_jobs WHERE status='running' AND provider=? AND lease_expires_at<=? ORDER BY created_at LIMIT 20",(provider,now_s)).fetchall()
         for row in expired:
             if row["cancel_requested"]:
                 db.execute("UPDATE video_generation_jobs SET status='cancelled',finished_at=?,updated_at=?,lease_token_hash=NULL,lease_expires_at=NULL WHERE id=?",(now_s,now_s,row["id"]))
