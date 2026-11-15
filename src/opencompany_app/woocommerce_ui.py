@@ -88,3 +88,5 @@ WOOCOMMERCE_JS = r'''
   }
   byId("woo-products").addEventListener("click",()=>readWooCommerce("products"));
   byId("woo-orders").addEventListener("click",()=>readWooCommerce("orders"));
+
+'''
