@@ -48,8 +48,11 @@ A routing request identifies:
 - the request budget.
 
 A model candidate must be explicitly marked `FREE_CONFIRMED`, have a zero-dollar
-per-request ceiling, satisfy the task/capability requirements, have enough
-context capacity, and meet the minimum reasoning-effort threshold.
+per-request ceiling, satisfy the task/capability requirements, have a verified
+context capacity, and meet the minimum reasoning-effort threshold. Unknown
+context or reasoning metadata is ineligible; the router does not substitute
+optimistic defaults. Unknown quality/latency tiers rank below candidates with
+measured tiers.
 
 Selection is deterministic:
 - routine and standard work prioritizes latency, then quality;
