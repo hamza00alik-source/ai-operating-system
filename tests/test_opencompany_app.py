@@ -2113,6 +2113,12 @@ def test_product_rd_owner_workflow_and_zero_cost_pilot_generation(owner_client, 
     assert package.status_code == 200
     assert package.headers["content-type"].startswith("application/zip")
 
+    # Product files and listing packets are private company assets.
+    public_download = client.get(
+        f"/product-rd/workflows/{workflow['id']}/artifacts/package.zip"
+    )
+    assert public_download.status_code in {401, 403}
+
 
 def test_product_rd_automation_status_is_owner_only_and_never_authorizes_external_actions(owner_client):
     unauthorized = client.get("/product-rd/automation/status")
@@ -2222,3 +2228,22 @@ def test_owner_can_cancel_queued_work_and_inspect_secret_free_execution_history(
     assert body["checkpoints"] == []
     assert "do-not-return" not in str(body)
     assert "lease_token" not in str(body)
+
+
+
+def test_storefront_listing_draft_registry_and_private_records_are_owner_only(owner_client):
+    unauthorized_list = client.get("/storefronts/listing-drafts")
+    unauthorized_create = client.post("/storefronts/listing-drafts", json={})
+    assert unauthorized_list.status_code in {401, 403}
+    assert unauthorized_create.status_code in {401, 403}
+
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    channels = owner_client.get("/storefronts/channels?business_id=digital-products", headers=headers)
+    assert channels.status_code == 200
+    assert channels.json()["external_writes_enabled"] is False
+    assert all(channel["connection_state"] == "not_connected" for channel in channels.json()["channels"])
+
+    drafts = owner_client.get("/storefronts/listing-drafts?business_id=digital-products", headers=headers)
+    assert drafts.status_code == 200
+    assert drafts.json()["external_writes_enabled"] is False
+    assert isinstance(drafts.json()["listing_drafts"], list)
