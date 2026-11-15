@@ -136,11 +136,14 @@ def test_worker_rejects_wrong_agent_assignment(tmp_path):
 
 def test_worker_retry_uses_stable_artifact_id_after_sink_failure(tmp_path):
     agent, item, store, queue = setup(tmp_path)
+    queue.retry_base_seconds = 1
+    queue.retry_max_seconds = 1
     sink = FailOnceSink()
     worker = OpenCompanyWorker(queue, store, FakeExecutor(), sink)
     with pytest.raises(OSError, match="temporary sink failure"):
         worker.run_once(agent, "marketplace_operations_analyst")
     assert queue.counts() == {"queued": 1}
+    sleep(1.1)
     assert worker.run_once(agent, "marketplace_operations_analyst") == "completed_review_required"
     assert len(sink.items) == 1
     assert queue.counts() == {"done": 1}
