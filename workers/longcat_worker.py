@@ -30,7 +30,7 @@ MAX_UPLOAD_BYTES = 300 * 1024 * 1024
 
 def request_json(path, payload=None, lease=None):
     data = None if payload is None else json.dumps(payload).encode()
-    headers = {"X-Video-Worker-Token": WORKER_TOKEN, "Content-Type": "application/json"}
+    headers = {"X-Video-Worker-Token": WORKER_TOKEN, "X-Video-Provider": "longcat-video", "Content-Type": "application/json"}
     if lease:
         headers["X-Job-Lease"] = lease
     req = urllib.request.Request(API + path, data=data, headers=headers, method="POST")
@@ -59,6 +59,7 @@ def upload_artifact(job_id, lease, path):
         endpoint += "?" + target.query
     headers = {
         "X-Video-Worker-Token": WORKER_TOKEN,
+        "X-Video-Provider": "longcat-video",
         "X-Job-Lease": lease,
         "Content-Type": "video/mp4",
         "Content-Length": str(size),
