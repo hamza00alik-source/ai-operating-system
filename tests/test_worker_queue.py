@@ -746,3 +746,47 @@ def test_queue_health_reports_age_expired_leases_and_dead_letters_without_secret
     assert "lease_token" not in snapshot
     assert "payload_json" not in snapshot
     queue.close()
+
+
+def test_leased_work_cancellation_is_cooperative_audited_and_finalized_under_live_lease(tmp_path):
+    store = SQLiteStore(tmp_path / "cooperative-cancel.sqlite3")
+    agent_id = uuid4()
+    store.save_agent(AgentProfile(
+        id=agent_id, name="Research Specialist", department="intelligence-research",
+        purpose="Prepare evidence", capabilities=("research",), state=AgentState.ACTIVE,
+        role_key="market_intelligence_analyst", team_key="intelligence-research__team_1",
+    ))
+    item = WorkItem(
+        id=uuid4(), title="Long research", objective="Prepare an internal draft",
+        department="intelligence-research", state=TaskState.QUEUED,
+        assigned_agent_id=agent_id,
+    )
+    store.save_work_item(item)
+    queue = DurableWorkerQueue(store._connection, lock=store._lock, lease_seconds=30)
+    queue.enqueue(item.id, agent_id, {})
+    lease = queue.claim(agent_id)
+    assert lease is not None
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+
+    requested = queue.request_cancel(item.id, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="work_item.cancellation_requested",
+        subject_type="work_item", subject_id=str(item.id), outcome="requested",
+        correlation_id=str(uuid4()),
+    ))
+    assert requested == "cancellation_requested"
+    assert queue.is_cancel_requested(lease) is True
+    assert store.get_work_item(item.id).state == TaskState.IN_PROGRESS
+
+    finalized = queue.finalize_cancel(lease, AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="worker",
+        actor_id=str(agent_id), action="worker.execution_cancelled",
+        subject_type="work_item", subject_id=str(item.id), outcome="cancelled",
+        correlation_id=str(uuid4()),
+    ))
+    assert finalized is True
+    assert store.get_work_item(item.id).state == TaskState.CANCELLED
+    assert queue.counts() == {"dead": 1}
+    assert queue.list_attempts(item.id)[0]["status"] == "cancelled"
+    assert store.verify_audit_chain()
+    store.close()
