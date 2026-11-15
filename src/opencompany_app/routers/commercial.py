@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -17,6 +18,7 @@ from opencompany_app.api_schemas import (
     CommercialQuoteDecisionInput,
     CommercialOrderStatusInput,
     CommercialOrderInput,
+    CommercialFinancialEventInput,
 )
 from opencompany_app.api_dependencies import get_store, require_owner_key
 
@@ -393,3 +395,76 @@ def update_commercial_supplier_status(
             "external_contact_made": False, "purchase_or_commitment_created": False}
 
 
+
+
+
+_FINANCIAL_EVENT_TYPES = {
+    "agency_commission", "sales_revenue", "supplier_payable", "cost_of_goods",
+    "platform_fee", "tax", "refund", "chargeback", "fulfillment_cost",
+    "payment_received", "payment_refund",
+}
+
+
+@router.post("/commercial/financial-events", dependencies=[Depends(require_owner_key)])
+def record_commercial_financial_event(
+    payload: CommercialFinancialEventInput, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    if payload.business_id not in {"physical-agency", "physical-brand", "digital-products"}:
+        raise HTTPException(status_code=422, detail="Financial events must belong to one commercial business unit.")
+    if payload.event_type not in _FINANCIAL_EVENT_TYPES:
+        raise HTTPException(status_code=422, detail="Unsupported financial event type.")
+    if payload.owner_verified is not True:
+        raise HTTPException(status_code=422, detail="Owner verification of the source evidence is required.")
+    currency = payload.currency.upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise HTTPException(status_code=422, detail="Currency must be a three-letter ISO code.")
+    event_id = str(uuid4())
+    event = {
+        "id": event_id, "business_id": payload.business_id,
+        "order_id": str(payload.order_id) if payload.order_id else None,
+        "event_type": payload.event_type, "amount_minor": payload.amount_minor,
+        "currency": currency, "source_reference": payload.source_reference.strip(),
+        "evidence_reference": payload.evidence_reference.strip(),
+        "note": payload.note.strip(), "occurred_at": payload.occurred_at.isoformat(),
+    }
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc),
+        actor_type="owner", actor_id="owner",
+        action="commercial.financial_event_recorded",
+        subject_type="commercial_financial_event", subject_id=event_id,
+        outcome="owner_verified_reference_recorded", correlation_id=str(uuid4()),
+        details={"business_id": payload.business_id, "event_type": payload.event_type,
+                 "owner_verified": True, "payment_initiated": False},
+    )
+    try:
+        result = store.record_financial_event(event, audit)
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="A financial event with this source reference already exists.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {**result, "payment_initiated": False}
+
+
+@router.get("/commercial/financial-events", dependencies=[Depends(require_owner_key)])
+def list_commercial_financial_events(
+    business_id: str | None = None, currency: str | None = None,
+    store: SQLiteStore = Depends(get_store),
+) -> dict:
+    try:
+        events = store.list_financial_events(business_id=business_id, currency=currency)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(events), "events": list(events),
+            "payment_actions_performed": False}
+
+
+@router.get("/commercial/financial-summary", dependencies=[Depends(require_owner_key)])
+def commercial_financial_summary(
+    business_id: str | None = None, store: SQLiteStore = Depends(get_store)
+) -> dict:
+    try:
+        summary = store.financial_summary(business_id=business_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"count": len(summary), "summary": list(summary),
+            "fx_conversion_performed": False, "payment_actions_performed": False}
