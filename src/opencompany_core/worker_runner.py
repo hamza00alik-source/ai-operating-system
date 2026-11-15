@@ -180,6 +180,9 @@ class OpenCompanyWorker:
                         lease, self._audit(lease, "worker.execution_cancelled", {"role_key": role_key})
                     ):
                         return "cancelled"
+                    current_agent = self.store.get_agent(lease.agent_id)
+                    if current_agent is None or current_agent.state.value != "active":
+                        raise WorkerConfigurationError("assigned agent profile is no longer active")
                     raise QueueError("worker lease is stale, cancelled, or work item is no longer in progress")
             else:
                 if cancellation_requested.is_set() or self.queue.is_cancel_requested(lease):
