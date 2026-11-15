@@ -1,0 +1,75 @@
+# Product & R&D, WooCommerce and revenue operations integration
+
+Status: development-branch integration; not deployed. This slice selectively ports reviewed modules from the older Product & R&D branch without merging its divergent history.
+
+## Product & R&D studio
+
+The owner dashboard now includes a Product & R&D workspace backed by SQLite workflow records and the existing OpenCompany work-item and approval system.
+
+Owner-authenticated endpoints:
+- `POST /product-rd/workflows`
+- `GET /product-rd/workflows?business_id=digital-products`
+- `GET /product-rd/workflows/{workflow_id}`
+- `POST /product-rd/workflows/{workflow_id}/delegate-stage`
+- `POST /product-rd/workflows/{workflow_id}/sync-stage`
+- `POST /product-rd/workflows/{workflow_id}/generate-pilot`
+- `GET /product-rd/workflows/{workflow_id}/artifacts/{artifact_name}`
+- `POST /product-rd/workflows/{workflow_id}/stages/{stage_key}/complete`
+- `POST /product-rd/workflows/{workflow_id}/return-to-production`
+- `POST /product-rd/workflows/{workflow_id}/owner-review`
+
+Workflow sequence: opportunity brief → product specification → production plan → artifact generation → automated QA → owner visual preview → packaging → listing packet → CEO review.
+
+Safety:
+- Every product workflow belongs to exactly one of the three commercial businesses.
+- USD 0 cost ceiling; any non-zero recorded cost is rejected.
+- Stage completion requires evidence and persisted artifact references.
+- QA failure blocks progression and supports a recorded return-to-production loop.
+- AI stage work is created as a draft work item. Department-manager proposals, task approval, queue admission and execution remain separate owner-governed actions.
+- A stage can be synchronized only from a completed work item with a persisted deliverable that has passed owner review.
+- Final approval is internal only. It does not publish, contact customers, purchase, spend or change accounts.
+
+The current deterministic pilot generator creates an original 30-icon SVG sci-fi survival UI pack, contact sheet, manifest, README, draft license notice and ZIP package. It is not a 3D character/model generator and its automated QA does not establish visual quality or engine compatibility.
+
+## WooCommerce read-only adapter
+
+Owner-authenticated endpoints:
+- `GET /integrations/woocommerce/{business_id}/status`
+- `PUT /integrations/woocommerce/{business_id}/connection`
+- `DELETE /integrations/woocommerce/{business_id}/connection`
+- `POST /integrations/woocommerce/{business_id}/test`
+- `GET /integrations/woocommerce/{business_id}/products`
+- `GET /integrations/woocommerce/{business_id}/orders`
+
+Connection credentials are stored in the existing encrypted provider secret vault. Saving credentials validates their shape locally and does not contact the store. A separate explicit test performs a bounded GET request. Only product and order reads are implemented; order responses omit customer personal data. No product write, listing publication, order status change, refund, fulfilment or customer communication is enabled.
+
+The adapter uses strict HTTPS URL validation, bounded pagination and response size, a read-only HTTP method surface, and does not follow redirects. Account-specific connection is not verified until the owner supplies credentials, the encryption key is configured, and the test succeeds.
+
+## Revenue operations ledger
+
+Schema migration sequence:
+- v7 → v8: persistent private storefront listing drafts.
+- v8 → v9: commercial financial events.
+
+Owner-authenticated endpoints:
+- `POST /commercial/financial-events`
+- `GET /commercial/financial-events`
+- `GET /commercial/financial-summary`
+
+Only owner-verified source references can be recorded. Duplicate source references are rejected. Totals are isolated by business unit and currency; no foreign-exchange conversion is implied. Physical-agency recognized revenue is agency commission only, not supplier sales value. The ledger is a recordkeeping layer: it never initiates payments, payouts, refunds or transfers.
+
+## Verification and remaining gates
+
+Automated tests cover workflow transitions, business isolation, audit integrity, failed-QA rework, deterministic package generation and structural QA, WooCommerce read-only request behavior, customer-data minimization, financial ledger idempotency and same-currency aggregation.
+
+Still required before production:
+1. Owner review of the product pilot and the legal/license suitability of its contents.
+2. Provision and activate the required canonical specialist/manager roles.
+3. Confirm a genuinely free model provider in the live environment before any AI work is queued.
+4. Owner configures the dedicated encryption key and WooCommerce credentials; verify the read-only connection.
+5. Add integration tests using a controlled WooCommerce sandbox.
+6. Add Gumroad/itch.io/CGTrader adapters only after owner account eligibility, permissions, payout and terms checks.
+7. Validate backup/restore, monitoring, deployment secrets, security review and recovery procedures.
+8. Obtain explicit owner approval before any marketplace publication, customer commitment or financial operation.
+
+This branch has not been merged to main or deployed.
