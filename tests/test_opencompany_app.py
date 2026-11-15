@@ -2064,3 +2064,51 @@ def test_woocommerce_read_endpoint_uses_minimized_read_only_adapter(owner_client
     assert response.status_code == 200
     assert response.json()["read_only"] is True
     assert response.json()["products"] == [{"id": 1, "name": "Test product"}]
+
+
+def test_product_rd_owner_workflow_and_zero_cost_pilot_generation(owner_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENCOMPANY_PRODUCT_ARTIFACT_ROOT", str(tmp_path / "product-artifacts"))
+    unauthorized = client.post("/product-rd/workflows", json={
+        "title": "OUTPOST Sci-Fi Survival UI Icon Pack",
+        "brief": "Create an original downloadable 30-icon SVG game UI pack.",
+        "business_id": "digital-products",
+    })
+    assert unauthorized.status_code in {401, 403}
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    created = owner_client.post("/product-rd/workflows", headers=headers, json={
+        "title": "OUTPOST Sci-Fi Survival UI Icon Pack",
+        "brief": "Create an original downloadable 30-icon SVG game UI pack.",
+        "business_id": "digital-products",
+    })
+    assert created.status_code == 200
+    workflow = created.json()["workflow"]
+    assert workflow["cost_ceiling_usd"] == 0
+    assert workflow["external_actions_enabled"] is False
+
+    from opencompany_core.product_rd import ProductRDRepository, PRODUCT_STAGES
+    runtime = app.dependency_overrides[get_runtime]()
+    repository = ProductRDRepository(runtime.store._connection, runtime.store._lock)
+    for stage in PRODUCT_STAGES[:3]:
+        workflow = repository.complete_stage(
+            workflow["id"], stage, output=f"Completed {stage}.",
+            evidence=[f"Verified test evidence for {stage}."],
+            artifact_refs=[f"test-artifact:{stage}"],
+        )
+
+    generated = owner_client.post(
+        f"/product-rd/workflows/{workflow['id']}/generate-pilot",
+        headers=headers,
+    )
+    assert generated.status_code == 200
+    body = generated.json()
+    assert body["qa"]["failed_checks"] == []
+    assert body["external_actions_performed"] is False
+    assert body["human_preview_required"] is True
+    assert body["workflow"]["stages"][5]["status"] == "in_progress"
+
+    package = owner_client.get(
+        f"/product-rd/workflows/{workflow['id']}/artifacts/package.zip",
+        headers=headers,
+    )
+    assert package.status_code == 200
+    assert package.headers["content-type"].startswith("application/zip")
