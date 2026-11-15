@@ -33,6 +33,7 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [x] Unified owner approval inbox for manager proposals, deliverable reviews, Product & R&D checkpoints, and external-action authorization requests (authorization records never execute actions).
 - [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
 - [ ] Durable per-attempt execution history and richer failure diagnostics.
+- [x] Owner-authenticated worker health snapshot for queue age, expired leases, dead-letter count and fleet/provider status (per-attempt/checkpoint detail remains pending).
 - [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
 - [x] Restart-safe durable Product & R&D maintenance scheduler with persisted leases, attempt history, interruption recovery and failure backoff; opt-in and draft-only.
 - [x] Structured worker-originated external-action approval intents with trusted lease identity, strict allowlist validation, audit records and owner-only authorization registry; no executor exists.
@@ -76,6 +77,7 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Owner-triggered consistent SQLite backup export with integrity check.
 - [ ] Automated encrypted off-host backups and retention.
 - [ ] Restore rehearsal and documented recovery-point/recovery-time objectives.
+- [x] Owner-authenticated production-evidence snapshot and persisted automation job/history diagnostics (not a production certification).
 - [ ] Production monitoring, alerting, and incident runbooks.
 - [ ] Beginner-friendly setup and recovery guide.
 - [x] Product & R&D workflow studio, pilot-artifact preview/download, automation status and owner-controlled WooCommerce panel.
