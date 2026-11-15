@@ -8,9 +8,17 @@ def test_video_worker_credentials_are_provider_scoped(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'provider-auth.db'}")
     monkeypatch.setenv("VIDEO_WORKER_TOKEN", "longcat-secret")
-    monkeypatch.setenv("VIDEO_CINECODE_WORKER_TOKEN", "cinecode-secret")
+    monkeypatch.delenv("VIDEO_CINECODE_WORKER_TOKEN", raising=False)
 
     with TestClient(app) as client:
+        # A LongCat secret must not make the Cinecode provider appear ready.
+        status = client.get("/video/status?provider=cinecode", headers={"X-API-Key": "test-owner-key"})
+        assert status.status_code == 200
+        assert status.json()["worker_secret_configured"] is False
+        monkeypatch.setenv("VIDEO_CINECODE_WORKER_TOKEN", "cinecode-secret")
+        status = client.get("/video/status?provider=cinecode", headers={"X-API-Key": "test-owner-key"})
+        assert status.json()["worker_secret_configured"] is True
+
         cinecode_headers = {
             "X-Video-Provider": "cinecode",
             "X-Video-Worker-Token": "cinecode-secret",
