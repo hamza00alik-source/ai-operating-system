@@ -28,6 +28,7 @@ from opencompany_app.routers.github_evolution import settings_router as github_s
 from opencompany_app.routers.integrations import router as integrations_router
 from opencompany_app.routers.agents import router as agents_router
 from opencompany_app.routers.commercial import router as commercial_router, supplier_router as commercial_supplier_router
+from opencompany_app.routers.storefronts import router as storefronts_router
 from opencompany_app.routers.workers import router as workers_router
 from opencompany_app.routers.work_items import router as work_items_router
 from opencompany_app.routers.handoffs import router as handoffs_router
@@ -111,6 +112,7 @@ app.include_router(provider_candidates_router)
 app.include_router(planning_router)
 app.include_router(agents_router)
 app.include_router(commercial_router)
+app.include_router(storefronts_router)
 
 
 app.include_router(work_items_router)
