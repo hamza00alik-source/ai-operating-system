@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import threading
 import shutil
 import signal
 import subprocess
@@ -174,11 +176,26 @@ def _run_agent(workspace: Path, job: dict[str, Any], codex_bin: str,
     started = time.monotonic()
     last_beat = 0.0
     progress = 5
-    try:
+    lines: queue.Queue[str | None] = queue.Queue()
+
+    def collect_output() -> None:
         assert process.stdout is not None
-        while process.poll() is None:
-            line = process.stdout.readline()
-            if line:
+        for output_line in process.stdout:
+            lines.put(output_line)
+        lines.put(None)
+
+    reader = threading.Thread(target=collect_output, name="cinecode-codex-output", daemon=True)
+    reader.start()
+    try:
+        output_closed = False
+        while process.poll() is None or not output_closed:
+            try:
+                line = lines.get(timeout=0.2)
+            except queue.Empty:
+                line = ""
+            if line is None:
+                output_closed = True
+            elif line:
                 try:
                     event = json.loads(line)
                     if event.get("type") in {"item.started", "item.completed"}:
@@ -196,7 +213,7 @@ def _run_agent(workspace: Path, job: dict[str, Any], codex_bin: str,
                 if beat.get("cancel_requested"):
                     raise WorkerError("Owner requested cancellation")
                 last_beat = now
-            time.sleep(0.2)
+        process.wait()
         if process.returncode != 0:
             raise WorkerError(f"Codex exited with status {process.returncode}")
     except Exception:
@@ -292,7 +309,10 @@ def process_job(client: AIOSClient, job: dict[str, Any], source: Path,
 def main() -> None:
     base_url = required("AIOS_API_URL")
     token = required("VIDEO_CINECODE_WORKER_TOKEN")
-    source = Path(required("CINECODE_SOURCE_DIR")).resolve()
+    source_input = Path(required("CINECODE_SOURCE_DIR"))
+    if source_input.is_symlink():
+        raise WorkerError("CINECODE_SOURCE_DIR must not be a symlink")
+    source = source_input.resolve()
     work_root = Path(required("CINECODE_WORK_ROOT")).resolve()
     worker_id = os.getenv("VIDEO_WORKER_ID", f"cinecode-{uuid.uuid4().hex[:12]}")
     codex_bin = os.getenv("CODEX_BIN", "codex")
@@ -304,9 +324,15 @@ def main() -> None:
     max_duration = max(1, int(os.getenv("CINECODE_MAX_DURATION_SECONDS", "900")))
     max_bytes = max(1_000_000, int(os.getenv("CINECODE_MAX_ARTIFACT_BYTES", str(2_000_000_000))))
     client = AIOSClient(base_url, token)
-    source.mkdir(parents=True, exist_ok=True) if False else None
-    if not source.is_dir():
-        raise WorkerError("CINECODE_SOURCE_DIR does not exist; provision the pinned upstream checkout first")
+    if not source.is_dir() or not (source / ".git").is_dir():
+        raise WorkerError("CINECODE_SOURCE_DIR must be a Git checkout of the pinned upstream project")
+    expected_commit = required("CINECODE_EXPECTED_COMMIT")
+    revision = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    if revision.returncode or revision.stdout.strip() != expected_commit:
+        raise WorkerError("Cinecode checkout does not match CINECODE_EXPECTED_COMMIT")
     work_root.mkdir(parents=True, exist_ok=True)
     while True:
         try:
