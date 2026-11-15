@@ -55,3 +55,17 @@ A feature is complete only when tested and its operating limits are documented.
 - [ ] Beginner-friendly setup guide
 
 No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases.
+
+
+## Cinecode video-engine integration
+- [x] Inspect upstream Cinecode repository, documented capabilities, license, and runtime requirements
+- [x] Inspect existing AIOS video queue, approval/budget gates, worker protocol, and LongCat boundary
+- [x] Document Cinecode integration architecture, isolation, cost controls, and acceptance tests
+- [ ] Generalize video provider routing for multiple isolated workers without cross-claiming jobs
+- [ ] Implement Cinecode worker capability/health reporting
+- [ ] Implement sandboxed local agent-CLI adapter with fixed commands and isolated per-job workspaces
+- [ ] Implement Cinecode job execution, heartbeat, cancellation, retries, and private MP4 upload
+- [ ] Add provider-routing, command-injection, isolation, secret-redaction, and lifecycle tests
+- [ ] Verify one end-to-end local Cinecode render on the intended worker hardware
+- [ ] Add owner-dashboard controls for Cinecode readiness, queue, progress, and artifact review
+- [ ] Keep publishing disabled until a separate platform adapter and owner approval exist
