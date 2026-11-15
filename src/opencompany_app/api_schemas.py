@@ -236,3 +236,17 @@ class CommercialFinancialEventInput(BaseModel):
     note: str = Field(default="", max_length=2000)
     occurred_at: datetime
     owner_verified: bool
+
+
+
+class PayoutStatementLineInput(BaseModel):
+    source_reference: str = Field(min_length=1, max_length=200)
+    amount_minor: int = Field(gt=0, le=9_000_000_000_000_000)
+
+
+class PayoutReconciliationPreviewInput(BaseModel):
+    business_id: str
+    currency: str = Field(min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$")
+    payout_reference: str = Field(min_length=1, max_length=200)
+    lines: list[PayoutStatementLineInput] = Field(min_length=1, max_length=500)
+    owner_verified: bool
