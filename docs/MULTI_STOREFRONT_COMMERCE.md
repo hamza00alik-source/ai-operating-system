@@ -55,3 +55,22 @@ All responses state that external writes are disabled.
 8. Run authenticated end-to-end acceptance tests before enabling any production connection.
 
 No marketplace is enabled by this foundation, and no account or live listing is changed.
+
+
+## Persistent private listing drafts — schema v8
+
+OpenCompany now stores internal listing-draft packets in SQLite. Each draft:
+- References an existing canonical product.
+- Must match the product's commercial business unit.
+- Is filtered by business unit and channel.
+- Is recorded as private and draft-only.
+- Requires owner approval before any future publication.
+- Records that no external write occurred.
+- Is committed atomically with a hash-chained audit event.
+
+Owner-authenticated endpoints:
+- `POST /storefronts/listing-drafts`
+- `GET /storefronts/listing-drafts`
+- `GET /storefronts/listing-drafts/{listing_id}`
+
+The v7 → v8 migration is sequential and preserves existing records. No marketplace credentials, live publication, customer messaging, payment, refund or remote order operation is implemented.
