@@ -197,6 +197,79 @@ class OrderPersistenceMixin:
             rows = self._connection.execute(sql, tuple(values)).fetchall()
         return tuple(dict(row) for row in rows)
 
+    def preview_payout_reconciliation(
+        self, *, business_id: str, currency: str, payout_reference: str,
+        lines: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compare owner-supplied statement lines with ledger references without writing data."""
+        allowed = {"physical-agency", "physical-brand", "digital-products"}
+        if business_id not in allowed:
+            raise ValueError("payout reconciliation requires one commercial business unit")
+        currency = str(currency).upper()
+        if len(currency) != 3 or not currency.isalpha():
+            raise ValueError("currency must be a three-letter code")
+        if not str(payout_reference).strip():
+            raise ValueError("payout statement reference is required")
+        if not lines or len(lines) > 500:
+            raise ValueError("payout reconciliation requires between 1 and 500 statement lines")
+
+        seen: set[str] = set()
+        results: list[dict[str, Any]] = []
+        statement_total = 0
+        matched_total = 0
+        for index, line in enumerate(lines, start=1):
+            source = str(line.get("source_reference", "")).strip()
+            amount = int(line.get("amount_minor", 0))
+            if not source or amount <= 0:
+                raise ValueError("each statement line requires a source reference and positive amount")
+            statement_total += amount
+            if source in seen:
+                results.append({
+                    "line_number": index, "source_reference": source,
+                    "statement_amount_minor": amount, "status": "duplicate_statement_reference",
+                    "ledger_event_id": None,
+                })
+                continue
+            seen.add(source)
+            with self._lock:
+                rows = self._connection.execute(
+                    """SELECT id, event_type, amount_minor FROM commercial_financial_events
+                       WHERE business_id=? AND currency=? AND source_reference=?""",
+                    (business_id, currency, source),
+                ).fetchall()
+            if not rows:
+                status = "unmatched"
+                event_id = None
+            elif len(rows) != 1:
+                status = "ambiguous_ledger_reference"
+                event_id = None
+            elif int(rows[0]["amount_minor"]) != amount:
+                status = "amount_mismatch"
+                event_id = rows[0]["id"]
+            else:
+                status = "matched"
+                event_id = rows[0]["id"]
+                matched_total += amount
+            results.append({
+                "line_number": index, "source_reference": source,
+                "statement_amount_minor": amount, "status": status,
+                "ledger_event_id": event_id,
+                "ledger_event_type": rows[0]["event_type"] if len(rows) == 1 else None,
+            })
+        matched_count = sum(1 for row in results if row["status"] == "matched")
+        return {
+            "business_id": business_id, "currency": currency,
+            "payout_reference": str(payout_reference).strip(),
+            "line_count": len(results), "matched_count": matched_count,
+            "unmatched_count": len(results) - matched_count,
+            "statement_lines_total_minor": statement_total,
+            "matched_lines_total_minor": matched_total,
+            "fully_matched": matched_count == len(results),
+            "persisted": False, "external_account_read": False,
+            "payment_or_payout_action_performed": False,
+            "lines": results,
+        }
+
     def financial_summary(self, *, business_id: str | None = None) -> tuple[dict[str, Any], ...]:
         """Aggregate only same-currency amounts; no FX conversion is implied."""
         rows = self.list_financial_events(business_id=business_id)
