@@ -8,6 +8,7 @@ PRODUCT_RD_HTML = r'''
   <label for="prd-brief">Product brief</label>
   <textarea id="prd-brief" rows="4" maxlength="12000" placeholder="Describe the target buyer, problem, product deliverables, formats, quality criteria, and constraints."></textarea>
   <button id="prd-create" disabled>Create Product &amp; R&amp;D workflow</button>
+  <div id="prd-automation-status" class="muted" aria-live="polite">Automation status loads after owner connection.</div>
   <div id="prd-workflows" class="list"><p class="muted">Connect to load Product &amp; R&amp;D workflows.</p></div>
 </section>
 '''
@@ -17,6 +18,10 @@ PRODUCT_RD_JS = r'''
   async function loadProductRD(){
     if(!csrfToken)return;
     const business=byId("prd-business").value;
+    const automation=await request("/product-rd/automation/status");
+    byId("prd-automation-status").textContent=automation.enabled
+      ?"Background maintenance opted in · worker fleet "+(automation.worker_fleet_running?"running":"stopped")+" · manager proposals "+(automation.manager_proposals_enabled?"enabled":"disabled")+" · external actions disabled"
+      :"Background maintenance disabled by default · no scheduled Product & R&D work is running";
     const result=await request("/product-rd/workflows?business_id="+encodeURIComponent(business));
     const host=byId("prd-workflows");host.replaceChildren();
     if(!result.count){const p=document.createElement("p");p.className="muted";p.textContent="No Product & R&D workflows for this business unit yet.";host.append(p);}
