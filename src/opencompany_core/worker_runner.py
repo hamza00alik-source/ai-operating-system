@@ -193,7 +193,7 @@ class OpenCompanyWorker:
                     raise QueueError("worker lease was lost before cancellation could be committed")
                 current_agent = self.store.get_agent(lease.agent_id)
                 if current_agent is None or current_agent.state.value != "active":
-                    raise WorkerConfigurationError("assigned agent profile is no longer active")
+                    raise WorkerConfigurationError("authorization changed: assigned agent profile is no longer active")
                 if self.artifact_sink is not self.store:
                     self.artifact_sink.save(deliverable)
                 if lease_lost.is_set():
