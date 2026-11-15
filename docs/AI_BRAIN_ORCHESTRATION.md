@@ -20,6 +20,21 @@ These components remain the execution and governance foundation. The new
 `opencompany_core.orchestration` module adds deterministic planning and routing
 primitives; it does not replace those components.
 
+## Owner API surface
+
+The planner is exposed through the owner-authenticated OpenCompany API:
+- `GET /orchestration/brain/status` reports whether the existing gateway currently
+  exposes any eligible zero-cost provider, without returning credentials.
+- `POST /orchestration/brain/plan-preview` validates a bounded team dependency
+  graph and returns deterministic parallel execution batches.
+
+The preview endpoint is intentionally non-executing: it does not call a model,
+create queue entries, materialize delegation, or activate agents. It is suitable
+for the owner console to inspect a plan before using the existing manager
+proposal and owner-approval workflow. API tests cover authentication, cycle and
+business-scope rejection, zero-cost status reporting, and the no-execution
+contract.
+
 ## New orchestration primitives
 
 ### Task-aware model routing
