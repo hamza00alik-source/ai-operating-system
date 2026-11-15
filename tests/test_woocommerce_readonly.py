@@ -51,7 +51,8 @@ def test_orders_omit_customer_personal_data():
     client = _client([{
         "id": 12, "status": "processing", "currency": "USD",
         "total": "30.00", "date_created": "2026-01-01T00:00:00",
-        "date_paid": "2026-01-01T00:02:00",\n        "billing": {"email": "private@example.com", "first_name": "Private"},
+        "date_paid": "2026-01-01T00:02:00",
+        "billing": {"email": "private@example.com", "first_name": "Private"},
         "line_items": [{"name": "Item", "quantity": 2}],
     }], captured)
     result = client.orders()
