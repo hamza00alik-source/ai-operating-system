@@ -639,7 +639,7 @@ def test_retry_backoff_grows_exponentially_and_is_capped(tmp_path):
         retry_base_seconds=3, retry_max_seconds=10,
     )
     work, agent = uuid4(), uuid4()
-    start = datetime(2026, 11, 12, 8, 0, tzinfo=timezone.utc)
+    start = datetime.now(timezone.utc) + timedelta(seconds=30)
     queue.enqueue(work, agent, {})
     first = queue.claim(agent, now=start)
     assert first is not None
