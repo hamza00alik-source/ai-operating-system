@@ -70,6 +70,6 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] Add provider-isolation tests for Cinecode and LongCat job claims
 - [x] Add API tests for provider-specific worker authentication and claim identity
 - [ ] Add command-injection, workspace-isolation, secret-redaction, and full lifecycle tests
-- [ ] Verify one end-to-end local Cinecode render on the intended worker hardware
+- [ ] Provision a dedicated OS account/container/VM and verify host-level filesystem/network isolation\n- [ ] Verify one end-to-end local Cinecode render on the intended worker hardware
 - [x] Add read-only owner-dashboard monitoring for Cinecode/LongCat readiness, queue, progress, and completed MP4 artifacts
 - [ ] Keep publishing disabled until a separate platform adapter and owner approval exist
