@@ -39,3 +39,47 @@ def test_unknown_video_provider_cannot_claim_jobs(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'invalid-provider.db'}")
     with pytest.raises(ValueError, match="Unsupported video provider"):
         video_jobs.claim_job("unknown-worker", provider="unknown")
+
+
+
+def test_provider_worker_cannot_recover_another_providers_expired_lease(monkeypatch, tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'lease-isolation.db'}")
+    monkeypatch.setenv("VIDEO_WORKER_TOKEN", "longcat-secret")
+    base = datetime(2026, 11, 15, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(video_jobs, "_now", lambda: base)
+
+    common = {
+        "prompt": "Provider isolation lease test",
+        "estimated_cost_minor": 0,
+        "approved_budget_minor": 0,
+        "currency": "USD",
+        "cost_basis": "Local protocol test; no external compute",
+    }
+    longcat = video_jobs.create_job(
+        **common, provider="longcat-video", idempotency_key="longcat-expiry-1"
+    )
+    cinecode = video_jobs.create_job(
+        **common, provider="cinecode", idempotency_key="cinecode-expiry-1"
+    )
+    video_jobs.decide_job(longcat["id"], "approved")
+    video_jobs.decide_job(cinecode["id"], "approved")
+
+    first_longcat_claim = video_jobs.claim_job(
+        "longcat-worker", lease_seconds=30, provider="longcat-video"
+    )
+    assert first_longcat_claim["id"] == longcat["id"]
+
+    monkeypatch.setattr(video_jobs, "_now", lambda: base + timedelta(seconds=31))
+    cine_claim = video_jobs.claim_job(
+        "cinecode-worker", lease_seconds=30, provider="cinecode"
+    )
+    assert cine_claim["id"] == cinecode["id"]
+    assert video_jobs.get_job(longcat["id"])["status"] == "running"
+
+    reclaimed_longcat = video_jobs.claim_job(
+        "longcat-worker", lease_seconds=30, provider="longcat-video"
+    )
+    assert reclaimed_longcat["id"] == longcat["id"]
+    assert reclaimed_longcat["attempts"] == 2
