@@ -15,12 +15,13 @@ The OpenCompany API and dashboard do **not** require this worker. Without it, br
 
 Set these server-side environment variables on the OpenCompany API service:
 
-- `VIDEO_WORKER_TOKEN`: a strong random secret shared with the GPU worker. Generate one with `openssl rand -hex 32`; never commit it.
+- `VIDEO_WORKER_TOKEN`: a strong random secret dedicated to the LongCat worker. Generate one with `openssl rand -hex 32`; never commit it.
+- The worker sends `X-Video-Provider: longcat-video` with every authenticated request. Cinecode must use a different secret in `VIDEO_CINECODE_WORKER_TOKEN` and `X-Video-Provider: cinecode`.
 - `PUBLIC_API_BASE_URL`: the public HTTPS origin of the API, e.g. your Railway API domain (no trailing slash).
 - `VIDEO_ARTIFACT_DIR`: a persistent mounted volume path, e.g. `/data/video-artifacts`. Mount a Railway volume there before relying on generated artifacts; the container filesystem may be ephemeral.
 - Keep the existing `AI_OS_DATABASE_URL` on persistent storage too, because job records and lease state live in SQLite.
 
-The API's worker routes reject requests without the worker secret and a valid per-job lease token. Owner-only routes still use the existing owner authentication.
+The API's worker routes reject requests without the provider-specific worker secret, matching provider header, and a valid per-job lease token. Owner-only routes still use the existing owner authentication.
 
 ## 2. Prepare a separate CUDA machine
 
