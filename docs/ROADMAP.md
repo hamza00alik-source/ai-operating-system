@@ -66,7 +66,7 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Owner-controlled encrypted WooCommerce credential storage, explicit connection test, and strictly read-only product/order API + mobile console (real account connection still awaits owner credentials and acceptance test).
 - [ ] Social account connections and draft/publish workflow with owner approval.
 - [ ] Email and customer-support adapters with approval-gated external messages.
-- [ ] Payment-status verification adapter; no payment initiation.
+- [x] Read-only WooCommerce payment-status signal from the platform-recorded paid-at field; no payment initiation and no bank-settlement claim.\n- [ ] Bank and marketplace settlement verification adapters.
 - [x] Provider-neutral storefront registry and private listing-draft persistence for seven channels; external marketplace adapters and fulfillment sync remain pending.
 
 ## 5. Owner console and operations
@@ -93,7 +93,7 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Revenue semantics separated across agency commission, own-brand sales and digital-product sales.
 - [x] Same-currency summaries with no implied foreign-exchange conversion.
 - [x] Owner-verified, read-only payout statement line reconciliation preview against exact business/currency/source references; mismatches, duplicates and missing lines are explicit, and previews are not persisted.
-- [ ] Persisted payout statements, payment-status adapter and automated marketplace fee reconciliation.
+- [ ] Persisted payout statements, bank/marketplace settlement adapters and automated marketplace fee reconciliation.
 
 ## Release and safety gates
 
