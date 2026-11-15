@@ -113,7 +113,7 @@ def test_payment_status_signals_use_only_woocommerce_paid_at_and_do_not_claim_se
         {"id": 3, "status": "processing", "currency": "USD", "total": "30.00",
          "date_paid": None},
         {"id": 4, "status": "refunded", "currency": "USD", "total": "40.00",
-         "date_paid": None},
+         "date_paid": "2026-01-01T00:04:00"},
     ], captured)
     result = client.payment_statuses()
     assert [row["payment_status"] for row in result["payment_statuses"]] == [
