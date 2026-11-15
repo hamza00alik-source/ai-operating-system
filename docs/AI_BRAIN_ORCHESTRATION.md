@@ -65,6 +65,14 @@ The module is provider-neutral. It does not invent model capabilities or
 automatically treat a provider as free; the application must supply trustworthy
 candidate metadata from an explicitly verified configuration.
 
+The UnoRouter catalogue import now also carries `context_length` and
+`max_output_tokens` only when those positive integer limits are present in the
+authenticated `/v1/models` response. Missing, malformed, boolean, zero, or
+negative values remain unknown. This metadata is diagnostic groundwork only:
+it is not yet wired into `ModelCandidate` construction or worker inference.
+Provider catalogue tags, model names, vendor names, and performance summaries
+are not treated as proof of reasoning effort, task capability, or quality tier.
+
 ### Bounded team plans
 
 An `AgentTeamPlan` is a deterministic dependency graph of specialist tasks.
