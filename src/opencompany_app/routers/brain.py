@@ -13,8 +13,6 @@ from opencompany_core.model_gateway import NoEligibleProvider
 from opencompany_core.orchestration import (
     AgentTaskSpec,
     OpenCompanyOrchestrator,
-    ReasoningEffort,
-    RoutingRequest,
     TaskComplexity,
     TaskKind,
 )
@@ -38,14 +36,6 @@ class BrainPlanPreviewInput(BaseModel):
     tasks: list[BrainTaskInput] = Field(min_length=1, max_length=50)
     max_parallel_agents: int = Field(default=3, ge=1, le=10)
     max_attempts_per_task: int = Field(default=2, ge=1, le=3)
-
-
-class BrainRoutePreviewInput(BaseModel):
-    task_kind: TaskKind
-    complexity: TaskComplexity
-    estimated_context_tokens: int = Field(ge=1, le=1_000_000)
-    required_capabilities: list[str] = Field(default_factory=list, max_length=30)
-    business_id: str = "core"
 
 
 @router.get("/orchestration/brain/status", dependencies=[Depends(require_owner_key)])
