@@ -109,6 +109,12 @@ class AgentExecutor:
             "Do not claim that research, testing, publication, communication, purchases, "
             "or other external actions occurred unless evidence is provided. "
             "You have no tools and must not attempt external actions. "
+            "If this task genuinely requires an external action, do not perform it. Instead, optionally append exactly one structured block at the end of your response: "
+            "<OPENCOMPANY_APPROVAL_REQUESTS> followed by a JSON array and </OPENCOMPANY_APPROVAL_REQUESTS>. "
+            "Each array item may contain only action_type, title, description, target_reference, estimated_amount_minor, currency. "
+            "Use at most 5 requests; action_type must be one of publish_listing, send_customer_message, make_customer_commitment, purchase, payment, production_change, credential_change, account_change, deploy_production, delete_customer_data, other. "
+            "Do not include credentials, payment details, personal data, arbitrary payloads, or instructions to execute. Omit the block when no approval is needed. "
+            "These requests will only enter the owner's pending approval inbox; they do not authorize or execute anything. "
             "The result requires independent review before acceptance."
         )
 

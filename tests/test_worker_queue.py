@@ -425,3 +425,56 @@ def test_legacy_queue_database_adds_retry_column_without_losing_rows(tmp_path):
     lease = queue.claim(agent)
     assert lease is not None and lease.work_item_id == work
     queue.close()
+
+def test_execution_history_is_secret_free_and_ordered(tmp_path):
+    queue = DurableWorkerQueue(tmp_path / "history.sqlite3")
+    work, agent = uuid4(), uuid4()
+    queue.enqueue(work, agent, {"role_key": "researcher"})
+    first = queue.claim(agent)
+    assert first is not None
+    assert queue.fail(first, "provider_timeout") == "queued"
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+    second = queue.claim(agent, now=retry_at)
+    assert second is not None and second.attempt == 2
+    queue.complete(second)
+
+    history = queue.list_attempts(work)
+    assert [row["attempt"] for row in history] == [1, 2]
+    assert [row["status"] for row in history] == ["retryable_failed", "succeeded"]
+    assert history[0]["error_code"] == "provider_timeout"
+    assert "lease_token" not in history[0]
+    assert "payload_json" not in history[0]
+    queue.close()
+
+def test_queue_health_reports_age_expired_leases_and_dead_letters_without_secrets(tmp_path):
+    queue = DurableWorkerQueue(
+        tmp_path / "queue-health.sqlite3", lease_seconds=10, max_attempts=1
+    )
+    agent = uuid4()
+    leased_work, queued_work, pending_work = uuid4(), uuid4(), uuid4()
+    queue.enqueue(leased_work, agent, {"private": "never-return-this"})
+    queue.enqueue(queued_work, agent, {})
+    queue.enqueue(pending_work, agent, {})
+    lease = queue.claim(agent)
+    assert lease is not None
+    queue.fail(lease, "provider_timeout")
+    # Exhaust the first task to create a dead-letter entry.
+    retry_at = datetime.now(timezone.utc) + timedelta(seconds=10)
+    second_lease = queue.claim(agent, now=retry_at)
+    assert second_lease is not None
+    queue.fail(second_lease, "provider_timeout")
+    expired_agent, expired_work = uuid4(), uuid4()
+    queue.enqueue(expired_work, expired_agent, {})
+    expired_lease = queue.claim(
+        expired_agent, now=retry_at + timedelta(seconds=11)
+    )
+    assert expired_lease is not None
+
+    snapshot = queue.health_snapshot(now=retry_at + timedelta(seconds=22))
+    assert snapshot["dead_letter_count"] == 2
+    assert snapshot["expired_leases"] == 1
+    assert snapshot["queued_oldest_age_seconds"] >= 10
+    assert "lease_token" not in snapshot
+    assert "payload_json" not in snapshot
+    queue.close()
+

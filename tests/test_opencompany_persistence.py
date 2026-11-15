@@ -112,7 +112,7 @@ def test_schema_v1_migrates_agent_role_identity_columns(tmp_path):
     assert {"role_key", "team_key"} <= columns
     work_item_columns = {row["name"] for row in store._connection.execute("PRAGMA table_info(work_items)").fetchall()}
     assert "business_id" in work_item_columns
-    assert version == 7
+    assert version == 8
     store.close()
 
 

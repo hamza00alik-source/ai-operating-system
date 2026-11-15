@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from opencompany_core.execution import AgentExecutor
-from opencompany_core.model_gateway import ModelGateway
+from opencompany_core.model_gateway import ModelGateway, ModelRequest
 from opencompany_core.unorouter_adapter import UNOROUTER_AUTO_FREE_MODEL, configured_unorouter_gateway
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.worker_queue import DurableWorkerQueue
@@ -19,6 +19,7 @@ from opencompany_core.worker_runner import OpenCompanyWorker
 from opencompany_core.delegation_records import DelegationRepository
 from opencompany_core.owner_sessions import OwnerSessionStore
 from opencompany_core.worker_fleet import WorkerFleet
+from opencompany_core.autonomy_scheduler import DurableAutomationScheduler
 from opencompany_core.collaboration_store import HandoffRepository
 from opencompany_core.learning_store import LearningRepository
 from opencompany_core.github_evolution import GitHubEvolutionClient
@@ -26,6 +27,8 @@ from opencompany_core.api_anything import ApiAnythingClient
 from opencompany_core.research_broker import ResearchBroker
 from opencompany_core.secret_vault import ProviderSecretVault, SecretVaultError
 from opencompany_core.model_usage import ModelUsageRepository
+from opencompany_core.product_rd_coordinator import ProductRDCoordinator
+from opencompany_core.external_approval_service import record_agent_approval_requests
 
 
 @dataclass(slots=True)
@@ -44,6 +47,8 @@ class OpenCompanyRuntime:
     secret_vault: ProviderSecretVault
     usage: ModelUsageRepository
     secret_vault_errors: dict[str, str]
+    automation_scheduler: DurableAutomationScheduler | None = None
+    product_rd_auto_proposals_enabled: bool = False
     unorouter_tested_at: str | None = None
     github_evolution_tested_at: str | None = None
 
@@ -73,7 +78,7 @@ class OpenCompanyRuntime:
         self.secret_vault_errors.pop("unorouter", None)
 
     def start_workers_if_ready(self) -> bool:
-        """Start the fleet only after a successful owner test of a free provider."""
+        """Start the fleet only after a successful zero-cost provider verification."""
         enabled = os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
         if not enabled or not os.environ.get("OPENCOMPANY_OWNER_API_KEY", "").strip():
             return False
@@ -82,6 +87,50 @@ class OpenCompanyRuntime:
         if not self.gateway.eligible_providers(request_budget_usd=0.0):
             return False
         return bool(self.fleet.start())
+
+    def verify_free_provider_and_start(self) -> bool:
+        """Re-verify a configured free provider on each opted-in process start.
+
+        The bounded probe is attempted only when the owner explicitly enabled
+        worker autostart and configured owner authentication. Any provider
+        error, unexpected response, or non-zero reported cost leaves workers
+        stopped. Verification is deliberately process-local and repeats after
+        every restart rather than trusting a stale persisted test result.
+        """
+        enabled = os.environ.get("OPENCOMPANY_WORKER_AUTOSTART", "false").strip().casefold() in {"1", "true", "yes", "on"}
+        if not enabled or not os.environ.get("OPENCOMPANY_OWNER_API_KEY", "").strip():
+            return False
+        if "unorouter" not in self.gateway.eligible_providers(request_budget_usd=0.0):
+            return False
+        from uuid import uuid4
+        from datetime import datetime, timezone
+        from opencompany_core.model_gateway import CostPolicyViolation, NoEligibleProvider, ProviderUnavailable
+
+        try:
+            result = self.gateway.complete(
+                ModelRequest(
+                    prompt="Reply with exactly: OPENCOMPANY_STARTUP_FREE_CHECK",
+                    request_id=f"opencompany-startup-free-check-{uuid4()}",
+                    max_output_tokens=24,
+                    work_item_id="startup-provider-verification",
+                    role_key="system",
+                    business_id="core",
+                ),
+                request_budget_usd=0.0,
+                preferred_provider="unorouter",
+            )
+        except (CostPolicyViolation, NoEligibleProvider, ProviderUnavailable):
+            self.unorouter_tested_at = None
+            return False
+        if (
+            result.provider != "unorouter"
+            or result.cost_usd != 0.0
+            or result.text.strip() != "OPENCOMPANY_STARTUP_FREE_CHECK"
+        ):
+            self.unorouter_tested_at = None
+            return False
+        self.unorouter_tested_at = datetime.now(timezone.utc).isoformat()
+        return self.start_workers_if_ready()
 
     def configure_github_evolution(self, token: str | None) -> None:
         if token is None:
@@ -224,13 +273,46 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         executor=executor,
         artifact_sink=store,
         request_budget_usd=0.0,
+        approval_request_sink=lambda agent_id, item, requests: record_agent_approval_requests(
+            store, agent_id, item, requests
+        ),
         preferred_provider="unorouter",
     )
     worker_concurrency = int(os.environ.get("OPENCOMPANY_WORKER_CONCURRENCY", "2"))
+    product_rd_automation_enabled = os.environ.get(
+        "OPENCOMPANY_PRODUCT_RD_AUTOMATION", "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    product_rd_auto_proposals_enabled = product_rd_automation_enabled and os.environ.get(
+        "OPENCOMPANY_PRODUCT_RD_AUTO_PROPOSALS", "false"
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+    product_rd_coordinator = ProductRDCoordinator(
+        store, delegations=delegations, gateway=gateway,
+        auto_manager_proposals_enabled=product_rd_auto_proposals_enabled,
+    ) if product_rd_automation_enabled else None
+    # Persist scheduled automation due-times and leases in the company database.
+    # The scheduler is inert unless the owner separately enables Product & R&D
+    # automation and starts the verified worker fleet.
+    automation_scheduler = None
+    maintenance_callback = None
+    if product_rd_coordinator is not None:
+        automation_scheduler = DurableAutomationScheduler(
+            store._connection,
+            lock=store._lock,
+            lease_seconds=int(os.environ.get("OPENCOMPANY_AUTOMATION_LEASE_SECONDS", "300")),
+        )
+        automation_scheduler.register_interval_job(
+            "product_rd_maintenance",
+            int(os.environ.get("OPENCOMPANY_PRODUCT_RD_AUTOMATION_INTERVAL_SECONDS", "5")),
+            product_rd_coordinator.run_once,
+            enabled=True,
+        )
+        maintenance_callback = automation_scheduler.run_due
     fleet = WorkerFleet(
         worker, store,
         idle_poll_seconds=float(os.environ.get("OPENCOMPANY_WORKER_IDLE_SECONDS", "2")),
         concurrency=worker_concurrency,
+        maintenance_callback=maintenance_callback,
+        maintenance_interval_seconds=5.0,
     )
     runtime = OpenCompanyRuntime(
         store=store, queue=queue, worker=worker, delegations=delegations,
@@ -239,6 +321,8 @@ def create_runtime(database_path: str | None = None) -> OpenCompanyRuntime:
         secret_vault=secret_vault,
         usage=usage,
         secret_vault_errors=secret_vault_errors,
+        automation_scheduler=automation_scheduler,
+        product_rd_auto_proposals_enabled=product_rd_auto_proposals_enabled,
     )
     # Runtime construction stays inert. For dashboard-managed credentials,
     # workers start only after the owner runs a successful provider test in

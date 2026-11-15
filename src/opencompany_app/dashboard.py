@@ -16,7 +16,7 @@ h1{font-size:clamp(1.5rem,4vw,2.1rem);margin:0}.muted{color:#9aa8c7}.panel{backg
 button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:700;padding:12px 16px;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}.metric{background:#0e172b;border:1px solid #293a5a;border-radius:12px;padding:14px}.metric strong{display:block;font-size:1.8rem;margin-top:5px}
 .list{display:grid;gap:10px;margin-top:12px}.item{background:#0e172b;border:1px solid #293a5a;border-radius:12px;padding:13px}.item h3{font-size:1rem;margin:0 0 7px}.item p{margin:5px 0;color:#b7c3dc;line-height:1.45;font-size:.92rem}
-.row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.pill{font-size:.75rem;border-radius:999px;background:#263653;color:#cfe0ff;padding:5px 9px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.approval-inbox-filter-row{margin-top:12px}.pill{font-size:.75rem;border-radius:999px;background:#263653;color:#cfe0ff;padding:5px 9px}
 .owner-connection-title{font-size:1.05rem;margin:0 0 10px}.provider-state{font-size:1.05rem}.section-title.compact{margin:0}.research-results{white-space:pre-wrap;overflow-wrap:anywhere}.worker-actions{margin-top:12px}.console-footer{font-size:.8rem;margin:18px 4px}.confirmation-label{display:flex;gap:10px;align-items:center;margin:12px 0}.warn{color:#ffd58a}.error{color:#ff9c9c}.success{color:#91e0bd}.section-title{margin:22px 0 8px;font-size:1.15rem}
 @media(max-width:520px){main{padding:16px 12px 32px}.panel{padding:13px}.auth{flex-direction:column}.auth button{width:100%}}
 </style>
@@ -121,6 +121,11 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       <div><h3>Proposals & quotations</h3><div id="commercial-quotes" class="list"><p class="muted">Connect to load quotations.</p></div></div>
       <div><h3>Orders · record only</h3><div id="commercial-orders" class="list"><p class="muted">Connect to load orders.</p></div></div>
     </div>
+    <div class="item">
+      <h3>Financial overview · owner-verified records</h3>
+      <p class="muted">Revenue and costs remain separated by business and currency. Agency revenue counts commissions only. This is an accounting view, not a bank balance or payment processor.</p>
+      <div id="commercial-financial-summary" class="list"><p class="muted">Connect to load financial summaries.</p></div>
+    </div>
   </section>
   <section class="panel">
     <h2 class="section-title">Supplier relationships · separate physical businesses</h2>
@@ -150,6 +155,39 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       </div>
       <div><h3>Supplier register</h3><div id="commercial-suppliers" class="list"><p class="muted">Connect to load supplier records.</p></div></div>
     </div>
+  </section>
+  <section class="panel">
+    <h2 class="section-title">Store integrations · WooCommerce</h2>
+    <p class="muted">Each business has its own encrypted store connection. Credentials are sent only to this owner-authenticated server, never shown again, and are not saved in browser storage. Saving credentials makes no network request. Test and read actions contact the selected store and are read-only.</p>
+    <div class="grid">
+      <div class="item">
+        <label for="woo-business">Business connection</label>
+        <select id="woo-business">
+          <option value="physical-agency">Physical-products agency</option>
+          <option value="physical-brand">Own physical-product brand</option>
+          <option value="digital-products">Digital products</option>
+        </select>
+        <p id="woo-status" class="muted">Connect to inspect this business's store status.</p>
+        <label for="woo-url">Store URL (HTTPS)</label>
+        <input id="woo-url" type="url" maxlength="500" placeholder="https://store.example.com" autocomplete="url">
+        <label for="woo-key">WooCommerce read-only consumer key</label>
+        <input id="woo-key" type="password" maxlength="256" autocomplete="off" placeholder="ck_…">
+        <label for="woo-secret">WooCommerce read-only consumer secret</label>
+        <input id="woo-secret" type="password" maxlength="256" autocomplete="new-password" placeholder="cs_…">
+        <button id="woo-save" disabled>Save encrypted connection</button>
+        <button id="woo-test" disabled>Test read-only access</button>
+        <button id="woo-disconnect" disabled>Disconnect store</button>
+      </div>
+      <div class="item">
+        <h3>Read-only store preview</h3>
+        <div class="row">
+          <button id="woo-products" disabled>Read products</button>
+          <button id="woo-orders" disabled>Read orders</button>
+        </div>
+        <pre id="woo-results" class="muted research-results">No store data loaded. Orders are minimized and exclude customer personal information.</pre>
+      </div>
+    </div>
+    <p class="muted">No product publishing, stock updates, order-status changes, customer messaging, refunds, payments, or fulfilment actions are available here.</p>
   </section>
   <section class="panel">
     <div class="row"><h2 class="section-title">External research connector</h2><span id="api-anything-status" class="pill">Not configured</span></div>
@@ -246,10 +284,33 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     }
     return response.json();
   };
+  async function loadWooCommerceStatus(){
+    const business=byId("woo-business").value;
+    const status=await request("/integrations/woocommerce/"+encodeURIComponent(business)+"/status");
+    byId("woo-status").textContent=status.configured
+      ? "Encrypted connection saved · "+status.mode+" · writes disabled"
+      : "No store connection saved for this business.";
+    byId("woo-test").disabled=!status.configured;
+    byId("woo-disconnect").disabled=!status.configured;
+    byId("woo-products").disabled=!status.configured;
+    byId("woo-orders").disabled=!status.configured;
+    byId("woo-save").disabled=false;
+  }
+  async function readWooCommerce(resource){
+    const business=byId("woo-business").value;
+    const button=byId("woo-"+resource);button.disabled=true;
+    try{
+      const result=await request("/integrations/woocommerce/"+encodeURIComponent(business)+"/"+resource+"?page=1&per_page=10");
+      byId("woo-results").textContent=JSON.stringify(result,null,2);
+      setMessage("Read "+result.count+" "+resource+" record(s). No store data was changed.","success");
+    }catch(error){setMessage(error.message,"error");}
+    finally{button.disabled=false;}
+  }
   async function loadCommercial(){
-    const [opportunities,products,quotes,orders,suppliers]=await Promise.all([
+    const [opportunities,products,quotes,orders,suppliers,financial]=await Promise.all([
       request("/commercial/opportunities"),request("/commercial/products"),
-      request("/commercial/quotes"),request("/commercial/orders"),request("/commercial/suppliers")
+      request("/commercial/quotes"),request("/commercial/orders"),request("/commercial/suppliers"),
+      request("/commercial/financial-summary")
     ]);
     clear("commercial-opportunities","No customer opportunities recorded.");
     opportunities.opportunities.forEach(o=>{
@@ -296,7 +357,8 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
             opportunity_id:o.id,title:quoteTitle.value.trim(),currency:currency.value.toUpperCase(),currency_exponent:Number(exponent.value),terms:terms.value.trim(),
             items:[{product_id:selected.id,description:selected.name+" — "+selected.description,quantity:q,unit_price_minor:price}]
           })});
-          await loadCommercial();setMessage("Draft quote saved under "+o.business_id+". It was not sent to the customer.","success");
+          await loadCommercial();
+          setMessage("Draft quote saved under "+o.business_id+". It was not sent to the customer.","success");
         }catch(error){setMessage(error.message,"error");makeQuote.disabled=false;}
       });
       quoteForm.append(makeQuote);card.append(quoteForm);
@@ -358,6 +420,34 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
       }
       byId("commercial-quotes").append(card);
     });
+    clear("commercial-financial-summary","No owner-verified financial events recorded yet.");
+    if(financial.summaries.length){
+      clear("commercial-financial-summary","");
+      financial.summaries.forEach(summary=>{
+        const card=document.createElement("article");card.className="item";
+        const heading=document.createElement("h3");heading.textContent=summary.business_id+" · "+summary.currency;card.append(heading);
+        let currencyFormatter=null,fractionDigits=2;
+        try{
+          currencyFormatter=new Intl.NumberFormat(undefined,{style:"currency",currency:summary.currency});
+          fractionDigits=currencyFormatter.resolvedOptions().maximumFractionDigits;
+        }catch{}
+        const formatMinor=value=>currencyFormatter
+          ? currencyFormatter.format(Number(value)/(10**fractionDigits))
+          : Number(value)+" "+summary.currency+" minor units";
+        const details=document.createElement("p");
+        details.textContent="Recognized revenue: "+formatMinor(summary.recognized_revenue_minor)
+          +" · Operating costs: "+formatMinor(summary.operating_costs_minor)
+          +" · Net contribution: "+formatMinor(summary.net_contribution_minor);
+        card.append(details);
+        const cash=document.createElement("p");
+        cash.textContent="Cash received: "+formatMinor(summary.cash_received_minor)
+          +" · Cash refunded: "+formatMinor(summary.cash_refunded_minor)
+          +" · "+summary.event_count+" evidence event(s)";
+        card.append(cash);
+        const basis=document.createElement("span");basis.className="pill";basis.textContent=summary.revenue_basis+" · no FX conversion";card.append(basis);
+        byId("commercial-financial-summary").append(card);
+      });
+    }
     clear("commercial-orders","No order records yet.");
     orders.orders.forEach(o=>{
       const card=document.createElement("article");card.className="item";
@@ -458,6 +548,7 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
         request("/providers/status"),request("/media/capabilities"),request("/workforce/roles"),request(businessFilter?"/workers/queue?business_id="+encodeURIComponent(businessFilter):"/workers/queue"),request("/workers/status"),request(businessFilter?"/learning/proposals?business_id="+encodeURIComponent(businessFilter):"/learning/proposals"),request("/code-evolution/config-status"),request("/integrations/api-anything/status")
       ]);
       await loadCommercial();
+      await loadWooCommerceStatus();
       byId("department-count").textContent=org.count;
       byId("agent-count").textContent=agents.count;
       byId("specialist-count").textContent=workforce.specialist_count+" · "+workforce.team_count+" teams";
@@ -799,6 +890,50 @@ button{border:0;border-radius:10px;background:#8ab4ff;color:#081326;font-weight:
     byId("provision-specialists").disabled=true;
     try{const result=await request("/agents/bootstrap-specialists",{method:"POST",body:"{}"});setMessage(result.count+" specialist profiles saved as drafts. No workers were started.","success");await load();}
     catch(error){setMessage(error.message,"error");byId("provision-specialists").disabled=false;}
+  });
+  byId("woo-business").addEventListener("change",async()=>{
+    // Never carry one business's unsaved credentials into another business scope.
+    byId("woo-url").value="";byId("woo-key").value="";byId("woo-secret").value="";
+    byId("woo-status").textContent="Checking selected business connection…";
+    byId("woo-results").textContent="No store data loaded.";
+    try{await loadWooCommerceStatus();}catch(error){setMessage(error.message,"error");}
+  });
+  byId("woo-save").addEventListener("click",async()=>{
+    const button=byId("woo-save");button.disabled=true;
+    try{
+      await request("/integrations/woocommerce/"+encodeURIComponent(byId("woo-business").value)+"/connection",{
+        method:"PUT",body:JSON.stringify({
+          store_url:byId("woo-url").value.trim(),
+          consumer_key:byId("woo-key").value.trim(),
+          consumer_secret:byId("woo-secret").value.trim()
+        })
+      });
+      byId("woo-key").value="";byId("woo-secret").value="";
+      await loadWooCommerceStatus();
+      setMessage("Credentials encrypted and saved. No request was made to the store yet.","success");
+    }catch(error){setMessage(error.message,"error");}
+    finally{button.disabled=false;}
+  });
+  byId("woo-test").addEventListener("click",async()=>{
+    const button=byId("woo-test");button.disabled=true;
+    try{
+      const result=await request("/integrations/woocommerce/"+encodeURIComponent(byId("woo-business").value)+"/test",{method:"POST"});
+      byId("woo-results").textContent=JSON.stringify(result,null,2);
+      setMessage("Read-only connection test succeeded.","success");
+    }catch(error){setMessage(error.message,"error");}
+    finally{button.disabled=false;}
+  });
+  byId("woo-products").addEventListener("click",()=>readWooCommerce("products"));
+  byId("woo-orders").addEventListener("click",()=>readWooCommerce("orders"));
+  byId("woo-disconnect").addEventListener("click",async()=>{
+    if(!confirm("Disconnect the WooCommerce connection for this business? This deletes its encrypted credentials from OpenCompany."))return;
+    const button=byId("woo-disconnect");button.disabled=true;
+    try{
+      await request("/integrations/woocommerce/"+encodeURIComponent(byId("woo-business").value)+"/connection",{method:"DELETE"});
+      byId("woo-results").textContent="Store disconnected.";
+      await loadWooCommerceStatus();
+      setMessage("This business's WooCommerce credentials were disconnected.","success");
+    }catch(error){setMessage(error.message,"error");button.disabled=false;}
   });
   byId("create-supplier").addEventListener("click",async()=>{
     const name=byId("supplier-name").value.trim();

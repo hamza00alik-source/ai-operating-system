@@ -21,6 +21,9 @@ class WorkerFleetStatus:
     completed_cycles: int
     idle_cycles: int
     failed_cycles: int
+    maintenance_enabled: bool
+    maintenance_cycles: int
+    maintenance_failures: int
 
 
 class WorkerFleet:
@@ -33,15 +36,23 @@ class WorkerFleet:
         *,
         idle_poll_seconds: float = 2.0,
         concurrency: int = 2,
+        maintenance_callback=None,
+        maintenance_interval_seconds: float = 5.0,
     ) -> None:
         if not 0.1 <= idle_poll_seconds <= 60:
             raise ValueError("idle_poll_seconds must be between 0.1 and 60")
         if not 1 <= concurrency <= 16:
             raise ValueError("worker concurrency must be between 1 and 16")
+        if not 1.0 <= maintenance_interval_seconds <= 300.0:
+            raise ValueError("maintenance_interval_seconds must be between 1 and 300")
         self.worker = worker
         self.store = store
         self.idle_poll_seconds = idle_poll_seconds
         self.concurrency = concurrency
+        self.maintenance_callback = maintenance_callback
+        self.maintenance_interval_seconds = maintenance_interval_seconds
+        self._maintenance_cycles = 0
+        self._maintenance_failures = 0
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
         self._lock = threading.RLock()
@@ -57,6 +68,7 @@ class WorkerFleet:
             self._threads = [
                 threading.Thread(
                     target=self._run,
+                    kwargs={"run_maintenance": index == 0},
                     name=f"opencompany-worker-{index + 1}",
                     daemon=True,
                 )
@@ -81,10 +93,29 @@ class WorkerFleet:
     def status(self) -> WorkerFleetStatus:
         with self._lock:
             running = any(thread.is_alive() for thread in self._threads)
-            return WorkerFleetStatus(running, self.concurrency, self._completed, self._idle, self._failed)
+            return WorkerFleetStatus(
+                running, self.concurrency, self._completed, self._idle, self._failed,
+                self.maintenance_callback is not None,
+                self._maintenance_cycles, self._maintenance_failures,
+            )
 
-    def _run(self) -> None:
+    def _run(self, *, run_maintenance: bool = False) -> None:
+        next_maintenance_at = 0.0
         while not self._stop.is_set():
+            if (run_maintenance and self.maintenance_callback is not None
+                    and time.monotonic() >= next_maintenance_at):
+                next_maintenance_at = time.monotonic() + self.maintenance_interval_seconds
+                try:
+                    self.maintenance_callback()
+                    with self._lock:
+                        self._maintenance_cycles += 1
+                except Exception as exc:
+                    with self._lock:
+                        self._maintenance_failures += 1
+                    logger.warning(
+                        "OpenCompany background maintenance cycle failed; error_type=%s",
+                        type(exc).__name__,
+                    )
             available_ids = set(self.worker.available_agent_ids())
             if not available_ids:
                 with self._lock:

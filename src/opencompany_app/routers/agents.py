@@ -49,6 +49,12 @@ def change_agent_state(
         raise HTTPException(status_code=404, detail="Agent profile not found.")
     if agent.revision != payload.expected_revision:
         raise HTTPException(status_code=409, detail="Agent profile revision is stale.")
+    if agent.state == payload.target_state:
+        return {
+            "agent_id": str(agent.id), "state": agent.state.value,
+            "revision": agent.revision, "worker_started": False,
+            "unchanged": True,
+        }
     allowed = {
         AgentState.DRAFT: {AgentState.ACTIVE, AgentState.RETIRED},
         AgentState.ACTIVE: {AgentState.PAUSED, AgentState.RETIRED},

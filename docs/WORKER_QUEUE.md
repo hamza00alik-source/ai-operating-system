@@ -17,3 +17,11 @@ Queue admission also verifies that every prerequisite belongs to the same busine
 A work item has one durable queue row across its lifecycle. After the owner rejects a review draft and returns the item to READY, or transitions a dead-lettered FAILED item back to READY, the same queue row may be reused. Re-admission resets the exhausted attempt counter and clears the previous lease/error fields. It is permitted only when the prior queue row is terminal (done or dead); an existing queued or leased row cannot be overwritten. The task-state change, queue re-admission, delegated-child state check, and owner audit event remain inside the same transaction.
 
 This supports controlled revision and retry without creating duplicate queue rows or bypassing the owner-controlled READY/approval gate. A completed work item remains terminal and cannot be re-admitted.
+
+## Restart-safe internal automation scheduler
+
+The opt-in runtime now uses `DurableAutomationScheduler` for periodic internal maintenance. Job identity, interval, enabled state, next due time, execution status, failure count, and lease expiry are stored in the same SQLite database as the company runtime. The fleet polls the scheduler; it does not create a second background process.
+
+A due job is claimed transactionally before its callback runs. A process crash leaves a lease that expires, after which a restarted process can reclaim the overdue job. Successful runs schedule the next interval from completion. Failed runs record only the exception type and use bounded exponential backoff. Callback payloads and exception messages are not persisted.
+
+This provides at-least-once scheduling, not exactly-once side effects. Every callback must be idempotent because a crash can occur after a callback's work but before its completion is recorded. The scheduler is not a permission system: external actions remain subject to the existing owner-approval controls. It is inert unless the corresponding automation is explicitly enabled and the owner starts the verified worker fleet. The default Product & R&D automation setting remains disabled.

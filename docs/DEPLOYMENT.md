@@ -71,6 +71,14 @@ not a guarantee about a provider's billing terms. Confirm current UnoRouter
 pricing/terms and monitor the provider account. Do not configure paid models or
 enable any paid fallback.
 
+## Owner operational diagnostics
+
+The development branch also exposes:
+- `GET /workers/health` — owner-authenticated queue pressure, queued-item age, expired leases, dead-letter count, worker fleet state and free-provider availability. It is observational and does not start or stop workers.
+- `GET /work-items/{id}/execution-history` — owner-authenticated, secret-free attempt and checkpoint metadata.
+- `GET /owner/production-readiness` — owner-authenticated evidence snapshot for database location/mount, writeability, SQLite integrity/schema, audit chain, required configuration presence and worker state. It always reports that CI, independent security review, backup/restore rehearsal and staging acceptance are unverified by the endpoint; it never authorizes production cutover.
+- `POST /commercial/financial-events`, `GET /commercial/financial-events`, and `GET /commercial/financial-summary` — owner-verified accounting evidence and separate business/currency summaries. These endpoints do not initiate payments or verify provider statements automatically.
+
 ## Initial staging smoke tests
 
 After a staging deployment, verify all of the following before considering

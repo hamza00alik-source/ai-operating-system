@@ -5,6 +5,7 @@ stable request contracts without coupling to the API composition root.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -196,3 +197,22 @@ class CommercialSupplierInput(BaseModel):
 class CommercialSupplierStatusInput(BaseModel):
     status: str
     confirm_owner_decision: bool
+
+class CommercialFinancialEventInput(BaseModel):
+    business_id: str
+    order_id: UUID | None = None
+    event_type: str = Field(min_length=1, max_length=40)
+    amount_minor: int = Field(gt=0, le=9_000_000_000_000_000)
+    currency: str = Field(min_length=3, max_length=3)
+    source_reference: str = Field(min_length=1, max_length=200)
+    evidence_reference: str = Field(min_length=1, max_length=500)
+    note: str = Field(default="", max_length=2000)
+    occurred_at: datetime
+    owner_verified: bool
+
+
+
+class WooCommerceConnectionInput(BaseModel):
+    store_url: str = Field(min_length=12, max_length=500)
+    consumer_key: str = Field(min_length=8, max_length=256, pattern=r"^ck_[A-Za-z0-9]+$")
+    consumer_secret: str = Field(min_length=8, max_length=256, pattern=r"^cs_[A-Za-z0-9]+$")
