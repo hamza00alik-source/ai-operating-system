@@ -2015,7 +2015,7 @@ def test_woocommerce_connection_is_owner_only_encrypted_and_business_scoped(owne
         "/integrations/woocommerce/physical-brand/connection",
         headers=headers, json=payload,
     )
-    assert saved.status_code == 200
+    assert saved.status_code == 200, saved.text
     assert saved.json()["network_request_made"] is False
     assert saved.json()["writes_enabled"] is False
     runtime = app.dependency_overrides[get_runtime]()
@@ -2048,7 +2048,7 @@ def test_woocommerce_read_endpoint_uses_minimized_read_only_adapter(owner_client
         "/integrations/woocommerce/physical-brand/connection",
         headers=headers, json=payload,
     )
-    assert saved.status_code == 200
+    assert saved.status_code == 200, saved.text
     from opencompany_core.woocommerce_readonly import WooCommerceReadOnlyClient
     monkeypatch.setattr(
         WooCommerceReadOnlyClient, "products",
