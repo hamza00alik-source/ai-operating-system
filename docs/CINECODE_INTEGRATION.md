@@ -112,6 +112,8 @@ Consider only after isolation, cost estimation, provider terms, persistent stora
 - Existing AIOS video queue, owner approval, budget gate, authenticated worker lease protocol, and private MP4 artifact path inspected.
 - Existing AIOS LongCat worker remains a separate optional provider.
 - Provider-scoped job claims and provider-specific worker heartbeat status now accept `cinecode` separately from `longcat-video`.
-- A routing test has been added to verify that each provider worker can claim only its own queued jobs.
+- Provider-specific worker credentials now prevent a LongCat worker from authenticating as Cinecode and vice versa; expired lease recovery is provider-scoped.
+- The Owner Console now has read-only readiness, queue, progress, and completed MP4 artifact links for both providers.
+- Focused video integration tests have passed on the CI branch; the full repository suite still has unrelated failures in `tests/test_opencompany_app.py`.
 - The Cinecode execution adapter, worker, capability panel, and end-to-end render are **not implemented or verified yet**.
 - Until the sandboxed agent-CLI worker exists, Cinecode jobs have no worker to execute them and must remain visibly unavailable; do not claim that Cinecode can render from AIOS yet.
