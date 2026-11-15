@@ -90,7 +90,7 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Audited financial event ledger with owner-verified evidence references and duplicate-source protection.
 - [x] Revenue semantics separated across agency commission, own-brand sales and digital-product sales.
 - [x] Same-currency summaries with no implied foreign-exchange conversion.
-- [ ] Payout reconciliation, payment-status adapter and marketplace fee reconciliation.
+- [x] Owner-verified, read-only payout statement line reconciliation preview against exact business/currency/source references; mismatches, duplicates and missing lines are explicit, and previews are not persisted.\n- [ ] Persisted payout statements, payment-status adapter and automated marketplace fee reconciliation.
 
 ## Release and safety gates
 
