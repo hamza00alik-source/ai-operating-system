@@ -153,3 +153,27 @@ def read_woo_orders(
         "customer_personal_data_returned": False,
     })
     return {"provider": "woocommerce", "business_id": business_id, **result, "read_only": True}
+
+
+@router.get("/integrations/woocommerce/{business_id}/payment-status", dependencies=[Depends(require_owner_key)])
+def read_woo_payment_statuses(
+    business_id: str, page: int = 1, per_page: int = 20,
+    runtime: OpenCompanyRuntime = Depends(get_runtime),
+) -> dict:
+    """Read WooCommerce's recorded paid-at signal; this is not bank settlement verification."""
+    client = _client(runtime, business_id)
+    try:
+        result = client.payment_statuses(page=page, per_page=per_page)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except WooCommerceReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    _audit(runtime, business_id, "integration.woocommerce_payment_status_read", "succeeded", {
+        "page": page, "per_page": per_page, "records_returned": result["count"],
+        "settlement_verified": False,
+    })
+    return {
+        "provider": "woocommerce", "business_id": business_id,
+        **result, "read_only": True, "settlement_verified": False,
+        "payment_actions_performed": False,
+    }
