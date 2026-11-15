@@ -5,7 +5,7 @@ from opencompany_app.api import app
 
 def test_brain_plan_preview_is_owner_authenticated_and_never_executes(monkeypatch):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "brain-test-owner-key")
-    headers = {"X-API-Key": "brain-test-owner-key"}
+    headers = {"X-OpenCompany-API-Key": "brain-test-owner-key"}
     payload = {
         "business_id": "core",
         "max_parallel_agents": 2,
@@ -36,7 +36,7 @@ def test_brain_plan_preview_is_owner_authenticated_and_never_executes(monkeypatc
 
 def test_brain_plan_preview_rejects_cycles_and_unknown_business(monkeypatch):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "brain-test-owner-key")
-    headers = {"X-API-Key": "brain-test-owner-key"}
+    headers = {"X-OpenCompany-API-Key": "brain-test-owner-key"}
     cyclic = {
         "business_id": "core",
         "tasks": [
@@ -81,7 +81,7 @@ def test_brain_status_reports_zero_cost_policy_without_credentials(monkeypatch):
             denied = client.get("/orchestration/brain/status")
             response = client.get(
                 "/orchestration/brain/status",
-                headers={"X-API-Key": "brain-test-owner-key"},
+                headers={"X-OpenCompany-API-Key": "brain-test-owner-key"},
             )
         assert denied.status_code == 401
         assert response.status_code == 200
