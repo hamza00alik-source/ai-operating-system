@@ -23,6 +23,14 @@ This is a research snapshot, not account verification. Country eligibility, KYC 
 | Fab | Publisher setup requires trader verification and third-party payout setup. Pakistan route not confirmed by the official material reviewed. | Publisher receives 88% of revenue. Payments approximately 30 days after month-end when at least $100 USD is due; lower balances roll over. | Official publisher workflow is portal-based: create listing, upload assets, submit for review, then publish. No public seller listing API was verified. | Later-stage/manual candidate; country payout and API status unverified |
 | Unity Asset Store | Payout profile supports monthly PayPal or quarterly bank transfer; payout currency is USD. Pakistan eligibility for the selected payout provider was not confirmed. | Exact publisher payout percentage/fees and Pakistan bank routing require account/publisher terms review. | Official workflow uses Unity Editor Asset Store Publishing Tools to validate/upload unitypackage files, then Publisher Portal submission/review. No public upload API was verified. | Later-stage/manual candidate; require payout-country check |
 
+### Gumroad MCP update
+
+Gumroad now also documents an official remote MCP connector for compatible AI assistants. Its public product page describes reading products, sales and payouts, preparing product drafts, and publishing them; the product files still need to be added in Gumroad before publication. This is separate from the standard v2 API limitation described above. It is not currently wired into the OpenCompany runtime, and it must not be treated as an enabled OpenCompany integration. Any future connection must use owner-authorized OAuth, least-privilege scopes, and an explicit per-action approval gate; publishing remains disabled by default.
+
+Official references:
+- Gumroad MCP capabilities: https://gumroad.com/mcp
+- Gumroad Help explanation of the MCP connector: https://gumroad.com/help/article/355-connect-ai-assistants-to-gumroad
+
 ## Official source links
 
 ### Gumroad
