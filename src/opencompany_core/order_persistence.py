@@ -121,6 +121,23 @@ class OrderPersistenceMixin:
             raise ValueError("financial events require one commercial business unit")
         if int(event.get("amount_minor", 0)) <= 0:
             raise ValueError("financial event amount must be positive minor units")
+        event_type = event.get("event_type")
+        allowed_by_business = {
+            "physical-agency": {"agency_commission", "supplier_payable", "platform_fee", "tax",
+                                "refund", "chargeback", "fulfillment_cost", "payment_received", "payment_refund"},
+            "physical-brand": {"sales_revenue", "cost_of_goods", "platform_fee", "tax",
+                               "refund", "chargeback", "fulfillment_cost", "payment_received", "payment_refund"},
+            "digital-products": {"sales_revenue", "platform_fee", "tax", "refund",
+                                 "chargeback", "fulfillment_cost", "payment_received", "payment_refund"},
+        }
+        if event_type not in allowed_by_business[event["business_id"]]:
+            raise ValueError("financial event type is not valid for the selected business revenue model")
+        if not str(event.get("source_reference", "")).strip():
+            raise ValueError("financial event source reference is required")
+        if not str(event.get("evidence_reference", "")).strip():
+            raise ValueError("financial event evidence reference is required")
+        if len(str(event.get("currency", ""))) != 3:
+            raise ValueError("financial event currency must be a three-letter code")
         with self._lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
