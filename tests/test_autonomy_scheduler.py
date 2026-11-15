@@ -94,3 +94,26 @@ def test_disabled_job_does_not_run_and_invalid_limits_fail_closed():
         scheduler.run_due(limit=0)
     with pytest.raises(ValueError):
         scheduler.history(limit=501)
+
+
+
+def test_lease_heartbeat_extends_only_the_current_enabled_claim():
+    db = sqlite3.connect(":memory:", isolation_level=None, check_same_thread=False)
+    scheduler = DurableAutomationScheduler(db, lease_seconds=30)
+    scheduler.register_interval_job("long_running", 60, lambda: None)
+    token = "current-lease-token"
+    old_expiry = (datetime.now(timezone.utc) + timedelta(seconds=2)).isoformat()
+    db.execute(
+        "UPDATE automation_jobs SET lease_token=?,lease_expires_at=? WHERE job_id=?",
+        (token, old_expiry, "long_running"),
+    )
+
+    assert scheduler._renew_lease("long_running", token) is True
+    renewed = scheduler.status()[0]["lease_expires_at"]
+    assert datetime.fromisoformat(renewed) > datetime.fromisoformat(old_expiry)
+    assert scheduler._renew_lease("long_running", "stale-token") is False
+
+    assert scheduler.set_enabled("long_running", False) is True
+    before = scheduler.status()[0]["lease_expires_at"]
+    assert scheduler._renew_lease("long_running", token) is False
+    assert scheduler.status()[0]["lease_expires_at"] == before
