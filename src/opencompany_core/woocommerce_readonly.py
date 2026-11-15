@@ -136,10 +136,10 @@ class WooCommerceReadOnlyClient:
         for order in result["orders"]:
             order_status = str(order.get("status") or "").casefold()
             paid_at = order.get("date_paid")
-            if paid_at:
-                payment_status = "paid_recorded_by_woocommerce"
-            elif order_status == "refunded":
+            if order_status == "refunded":
                 payment_status = "refunded_status_recorded_by_woocommerce"
+            elif paid_at:
+                payment_status = "paid_recorded_by_woocommerce"
             elif order_status in {"pending", "failed", "cancelled"}:
                 payment_status = "not_confirmed_paid"
             else:
