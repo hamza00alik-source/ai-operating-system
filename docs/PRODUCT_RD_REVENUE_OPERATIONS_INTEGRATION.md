@@ -151,3 +151,14 @@ Owner-authenticated endpoints:
 - `GET /work-items/{work_item_id}/execution-history`
 
 Execution history returns attempt status/timing/error codes and checkpoint metadata only; it does not expose lease tokens, queue payloads, credentials or checkpoint content. The checkpoint currently represents a completed specialist output, not streaming intermediate reasoning. Cancellation is cooperative and cannot forcibly interrupt an arbitrary provider call while it is blocked.
+
+
+## Latest development verification
+
+Code head `9d20c17fe7b6c72b393dc332401c80900f7ebce3`:
+- Full suite: 486 passed, 5 warnings.
+- OpenCompany Core Tests: passed.
+- Container build and non-root smoke test: passed.
+- Python compileall: passed.
+
+The regression suite now explicitly verifies that a completed specialist-output checkpoint prevents a second provider execution after a sink failure, and that leased-task cancellation remains cooperative, audited and finalized under the live lease.
