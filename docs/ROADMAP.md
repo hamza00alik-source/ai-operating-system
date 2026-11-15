@@ -33,6 +33,7 @@ A capability is complete only when its implementation, acceptance tests, operati
 - [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
 - [ ] Durable per-attempt execution history and richer failure diagnostics.
 - [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
+- [x] Restart-safe durable Product & R&D maintenance scheduler with persisted leases, attempt history, interruption recovery and failure backoff; opt-in and draft-only.
 
 ### Queue re-admission change
 
@@ -57,11 +58,11 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [x] Durable, secret-free model-usage ledger.
 - [x] Read-only API Anything connector with bounded tier-1 operations.
 - [x] GitHub code-evolution proposals restricted to isolated draft pull requests.
-- [ ] WooCommerce account connection and read-only product/order sync.
+- [x] Owner-controlled encrypted WooCommerce credential storage, explicit connection test, and strictly read-only product/order API + mobile console (real account connection still awaits owner credentials and acceptance test).
 - [ ] Social account connections and draft/publish workflow with owner approval.
 - [ ] Email and customer-support adapters with approval-gated external messages.
 - [ ] Payment-status verification adapter; no payment initiation.
-- [ ] Marketplace integrations and fulfillment status sync.
+- [x] Provider-neutral storefront registry and private listing-draft persistence for seven channels; external marketplace adapters and fulfillment sync remain pending.
 
 ## 5. Owner console and operations
 
@@ -75,7 +76,15 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - [ ] Restore rehearsal and documented recovery-point/recovery-time objectives.
 - [ ] Production monitoring, alerting, and incident runbooks.
 - [ ] Beginner-friendly setup and recovery guide.
+- [x] Product & R&D workflow studio, pilot-artifact preview/download, automation status and owner-controlled WooCommerce panel.
 - [ ] Full authenticated mobile-browser acceptance pass.
+
+## 6. Revenue operations
+
+- [x] Audited financial event ledger with owner-verified evidence references and duplicate-source protection.
+- [x] Revenue semantics separated across agency commission, own-brand sales and digital-product sales.
+- [x] Same-currency summaries with no implied foreign-exchange conversion.
+- [ ] Payout reconciliation, payment-status adapter and marketplace fee reconciliation.
 
 ## Release and safety gates
 
@@ -84,8 +93,8 @@ The implementation branch now allows an owner-reviewed READY task to reuse its t
 - AI-generated code remains in isolated draft PRs. No automatic merge or production deployment.
 - Keep the legacy AIOS branch unchanged and reference-only.
 - Do not change production service routing, database targets, persistent volumes, or secrets as part of branch implementation without explicit owner authorization.
-- CI/testing remains deferred until 1 December 2026 under the owner's existing instruction. Newly added tests must be reported as unrun until that date or until the owner changes that instruction.
+- Development-branch CI/testing was re-authorized on 14 November 2026 and is now running on feature branches. Production acceptance, security review, backup/restore rehearsal and release approval remain separate gates.
 
 ## Current implementation status
 
-The new application has a working internal CEO-to-manager-to-specialist execution path in code, including durable queueing, model-cost gates, review, handoffs, learning, and audit records. External commerce, social, email, and payment integrations are not yet connected. A successful source commit or Railway deployment alone does not prove those workflows work live; each requires an authenticated, owner-authorized acceptance test.
+The new application has a working internal CEO-to-manager-to-specialist execution path in code, including durable queueing, model-cost gates, review, handoffs, learning, and audit records. The Product & R&D studio, deterministic local pilot generator, approval-preserving opt-in scheduler, encrypted WooCommerce connection path, read-only product/order adapter, private multi-storefront listing drafts, and audited revenue ledger are implemented on draft PR #141. WooCommerce is not yet connected to the owner's live store; marketplace accounts, social, email, payment-status and fulfilment integrations remain unconnected. Latest development-branch verification for code head ff9cc4b: 457 tests passed, 5 warnings; OpenCompany Core Tests passed; container build and non-root smoke test passed. A successful source commit or Railway deployment alone does not prove those workflows work live; each requires an authenticated, owner-authorized acceptance test.
