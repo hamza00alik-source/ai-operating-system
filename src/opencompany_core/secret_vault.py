@@ -20,6 +20,15 @@ class ProviderSecretVault:
     """SQLite-backed encrypted secret storage; plaintext stays in process memory."""
     _SALT = b"opencompany-provider-secret-vault-v1"
     _INFO = b"opencompany/aes-256-gcm/provider-secrets"
+    _BUSINESS_UNITS = frozenset({"physical-agency", "physical-brand", "digital-products"})
+
+    @classmethod
+    def _validate_provider(cls, provider: str) -> None:
+        if provider in {"unorouter", "github_evolution"}:
+            return
+        if provider.startswith("woocommerce:") and provider.split(":", 1)[1] in cls._BUSINESS_UNITS:
+            return
+        raise ValueError("unsupported provider secret")
 
     def __init__(self, connection: sqlite3.Connection, lock: RLock) -> None:
         self._db, self._lock = connection, lock
@@ -43,9 +52,12 @@ class ProviderSecretVault:
         return AESGCM(key)
 
     def put(self, provider: str, value: dict[str, str]) -> int:
-        if provider not in {"unorouter", "github_evolution"}:
-            raise ValueError("unsupported provider secret")
-        required = ("api_key", "model") if provider == "unorouter" else ("token",)
+        self._validate_provider(provider)
+        required = (
+            ("api_key", "model") if provider == "unorouter"
+            else ("token",) if provider == "github_evolution"
+            else ("store_url", "consumer_key", "consumer_secret")
+        )
         if any(not isinstance(value.get(key), str) or not value[key].strip() for key in required):
             raise ValueError("provider secret payload is incomplete")
         nonce = secrets.token_bytes(12)
@@ -63,8 +75,7 @@ class ProviderSecretVault:
         return revision
 
     def get(self, provider: str) -> dict[str, str] | None:
-        if provider not in {"unorouter", "github_evolution"}:
-            raise ValueError("unsupported provider secret")
+        self._validate_provider(provider)
         with self._lock:
             row = self._db.execute("SELECT nonce,ciphertext FROM provider_secrets WHERE provider=?", (provider,)).fetchone()
         if row is None:
@@ -79,20 +90,25 @@ class ProviderSecretVault:
                 if not isinstance(value.get("api_key"), str) or not isinstance(value.get("model"), str):
                     raise ValueError("invalid UnoRouter secret payload")
                 return {"api_key": value["api_key"], "model": value["model"]}
-            if not isinstance(value.get("token"), str):
-                raise ValueError("invalid GitHub secret payload")
-            return {"token": value["token"]}
+            if provider == "github_evolution":
+                if not isinstance(value.get("token"), str):
+                    raise ValueError("invalid GitHub secret payload")
+                return {"token": value["token"]}
+            if any(not isinstance(value.get(key), str) or not value[key].strip()
+                   for key in ("store_url", "consumer_key", "consumer_secret")):
+                raise ValueError("invalid WooCommerce secret payload")
+            return {key: value[key] for key in ("store_url", "consumer_key", "consumer_secret")}
         except Exception as exc:
             raise SecretVaultError("Stored provider credentials could not be decrypted; verify the server encryption key.") from exc
 
     def delete(self, provider: str) -> bool:
-        if provider not in {"unorouter", "github_evolution"}:
-            raise ValueError("unsupported provider secret")
+        self._validate_provider(provider)
         with self._lock:
             cursor = self._db.execute("DELETE FROM provider_secrets WHERE provider=?", (provider,))
         return cursor.rowcount == 1
 
     def status(self, provider: str) -> dict[str, object]:
+        self._validate_provider(provider)
         with self._lock:
             row = self._db.execute("SELECT updated_at,revision FROM provider_secrets WHERE provider=?", (provider,)).fetchone()
         return {"configured": row is not None, "updated_at": row["updated_at"] if row else None,
