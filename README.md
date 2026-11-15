@@ -19,6 +19,12 @@ The system is an independent platform foundation, not yet a fully autonomous or 
 
 The active development line is `feature/opencompany-aios-unification`. It is not the production deployment. The current `vercel.json` routing still targets the legacy Railway service. Do not merge, change production routing, migrate production data or deploy this branch without a separate owner-approved cutover plan and verified rollback.
 
+## Operator guides
+
+- [Beginner setup guide](docs/BEGINNER_SETUP.md)
+- [Production operations runbook](docs/PRODUCTION_OPERATIONS_RUNBOOK.md)
+- [Implementation roadmap and release gates](docs/ROADMAP.md)
+
 ## Local setup
 
 Requires Python 3.11+.
