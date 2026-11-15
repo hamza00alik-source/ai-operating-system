@@ -801,7 +801,7 @@ fallback.style.display="none";
     api("/video/jobs")
    ]);
    const providers=[["LongCat",longcat],["Cinecode",cinecode]];
-   $("videoEngineStatus").innerHTML=providers.map(([name,status])=>'<div class="metric"><strong>'+esc(name)+' · '+(status.worker_connected?'worker online':'worker offline')+'</strong><span>Worker secret: '+(status.worker_secret_configured?'configured':'not configured')+' · Active workers: '+Number(status.active_workers||0)+' · Generation: '+(status.generation_enabled?'available':'unavailable')+'</span><span>'+esc(status.note||"")+'</span></div>').join("");
+   $("videoEngineStatus").innerHTML=providers.map(([name,status])=>'<div class="metric"><strong>'+esc(name)+' · '+(status.worker_connected?'worker online':'worker offline')+'</strong><span>Worker secret: '+(status.worker_secret_configured?'configured':'not configured')+' · Active workers: '+Number(status.active_workers||0)+' · Generation: '+(status.generation_enabled?'available':'unavailable')+'</span><span>Latest worker capabilities: '+esc(JSON.stringify(status.worker_capabilities||{}))+'</span><span>'+esc(status.note||"")+'</span></div>').join("");
    $("videoJobRows").innerHTML=jobs.map(job=>'<tr><td>'+esc(job.provider)+'</td><td>'+esc(job.prompt.length>140?job.prompt.slice(0,137)+"…":job.prompt)+'</td><td>'+esc(job.status)+'</td><td>'+esc(String(job.progress||0))+'% · '+esc(job.progress_message||"")+'</td><td>'+(job.status==="succeeded"?'<a href="/video/artifacts/'+encodeURIComponent(job.id)+'">Open MP4</a>':"—")+'</td></tr>').join("")||'<tr><td colspan="5">No video jobs yet.</td></tr>';
   }catch(e){
    $("videoEngineStatus").textContent="Unable to load video engine status: "+e.message;
