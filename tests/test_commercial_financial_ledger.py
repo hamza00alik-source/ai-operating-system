@@ -6,6 +6,9 @@ import pytest
 
 from opencompany_core.domain import AuditRecord
 from opencompany_core.persistence import SQLiteStore
+from fastapi.testclient import TestClient
+from opencompany_app.api import app, get_runtime, get_store, require_owner_key
+from opencompany_app.runtime import create_runtime
 
 
 def _event(business_id, event_type, source_reference, amount_minor=10000):
@@ -136,3 +139,31 @@ def test_payout_reconciliation_preview_flags_amount_mismatch_and_business_isolat
             business_id="physical-brand", currency="USD", payout_reference="empty", lines=[]
         )
     store.close()
+
+
+def test_payout_reconciliation_preview_api_requires_owner_verified_evidence(tmp_path):
+    runtime = create_runtime(str(tmp_path / "payout-api.sqlite3"))
+    event = _event("digital-products", "sales_revenue", "api-order-1", 875)
+    runtime.store.record_financial_event(event, _audit(event["id"]))
+    app.dependency_overrides[get_runtime] = lambda: runtime
+    app.dependency_overrides[get_store] = lambda: runtime.store
+    app.dependency_overrides[require_owner_key] = lambda: "owner"
+    try:
+        with TestClient(app) as client:
+            response = client.post("/commercial/payout-reconciliation/preview", json={
+                "business_id": "digital-products", "currency": "USD",
+                "payout_reference": "api-payout-1", "owner_verified": True,
+                "lines": [{"source_reference": "api-order-1", "amount_minor": 875}],
+            })
+            assert response.status_code == 200
+            assert response.json()["fully_matched"] is True
+            assert response.json()["persisted"] is False
+            rejected = client.post("/commercial/payout-reconciliation/preview", json={
+                "business_id": "digital-products", "currency": "USD",
+                "payout_reference": "api-payout-1", "owner_verified": False,
+                "lines": [{"source_reference": "api-order-1", "amount_minor": 875}],
+            })
+            assert rejected.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+        runtime.close()
