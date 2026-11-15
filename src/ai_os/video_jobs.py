@@ -256,7 +256,8 @@ def worker_status(provider="longcat-video"):
     cutoff = (_now() - timedelta(seconds=90)).isoformat()
     with connect() as db:
         count = db.execute("SELECT COUNT(*) AS n FROM video_worker_presence WHERE last_seen_at>=? AND provider=?", (cutoff,provider)).fetchone()["n"]
-    configured = bool(os.getenv("VIDEO_WORKER_TOKEN", "").strip())
+    secret_name = "VIDEO_CINECODE_WORKER_TOKEN" if provider == "cinecode" else "VIDEO_WORKER_TOKEN"
+    configured = bool(os.getenv(secret_name, "").strip())
     return {
         "worker_secret_configured": configured,
         "worker_protocol": "lease-v1",
