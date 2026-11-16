@@ -399,10 +399,10 @@ def process_job(client: AIOSClient, job: dict[str, Any], source: Path,
         artifact = workspace / "output" / "final.mp4"
         report = workspace / "output" / "report.md"
         _validate_report(report, workspace)
-        client.upload_report(job["id"], lease, report)
         metadata = _validate_mp4(
             artifact, workspace, ffprobe_bin, max_duration, max_bytes
         )
+        client.upload_report(job["id"], lease, report)
         client.heartbeat(job["id"], lease, 95, "Validated MP4; uploading privately")
         client.upload(job["id"], lease, artifact, max_bytes)
     except Exception as exc:
