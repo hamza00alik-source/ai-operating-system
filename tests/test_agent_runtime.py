@@ -53,7 +53,7 @@ def test_company_department_routes_to_opencompany_customer_operations_role():
         _load_opencompany_catalogue(),
     )
     assert selected["department"] == "customer-operations"
-    assert selected["id"] == "customer_operations_manager" or selected["id"].startswith("customer_operations_")
+    assert selected["id"] == "customer_support_analyst"
 
 
 def test_execution_catalogue_is_opencompany_owned_and_contains_511_roles():
