@@ -487,6 +487,7 @@ def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_
             raise HTTPException(409,"Every assigned specialist must be explicitly active before approval.")
         specialists.append(agent)
     materialized=[]
+    from dataclasses import replace
     for child,agent in zip(proposal["children"],specialists):
         work_item=WorkItem(
             uuid4(),child["title"],child["objective"],child["department"],TaskState.READY,
@@ -496,13 +497,6 @@ def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_
         child["state"]="approved"
         child["materialized_work_item_id"]=str(work_item.id)
         materialized.append(_item_dict(work_item))
-    proposal["status"]="approved"
-    proposal["queue_entries_created"]=False
-    proposal["execution_started"]=False
-    proposal["materialized_work_items"]=materialized
-    proposal["updated_at"]=datetime.now(timezone.utc).isoformat()
-    runtime.delegations.save_proposal(proposal)
-    from dataclasses import replace
     child_ids=tuple(UUID(task["id"]) for task in materialized)
     assigned_parent=replace(
         item,assigned_agent_id=UUID(manager["id"]),
@@ -512,7 +506,30 @@ def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_
     runtime.store.save_work_item_with_audit(
         assigned_parent,_audit("delegation.parent_assigned",item.id,"owner"),
     )
-    return proposal
+    auto_queue_enabled=os.getenv("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK","false").lower()=="true"
+    provider_ready=bool(runtime.gateway.eligible_providers(request_budget_usd=0.0)) if auto_queue_enabled else False
+    queued_ids=[]
+    if auto_queue_enabled and provider_ready:
+        for index,task in enumerate(materialized):
+            child_item=runtime.store.get_work_item(UUID(task["id"]))
+            agent=specialists[index]
+            if child_item and agent.get("state")=="active":
+                runtime.queue.admit(child_item.id,child_item.assigned_agent_id,child_item.assigned_role_key)
+                queued_item=replace(child_item,state=TaskState.QUEUED)
+                runtime.store.save_work_item_with_audit(queued_item,_audit("queue.auto_admitted",queued_item.id,"owner"))
+                task.update(_item_dict(queued_item))
+                queued_ids.append(str(queued_item.id))
+    proposal["status"]="approved"
+    proposal["queue_entries_created"]=bool(queued_ids)
+    proposal["execution_started"]=False
+    proposal["materialized_work_items"]=materialized
+    proposal["updated_at"]=datetime.now(timezone.utc).isoformat()
+    runtime.delegations.save_proposal(proposal)
+    return {
+        **proposal,
+        "queue_entries_created":bool(queued_ids),
+        "auto_queue":{"enabled":auto_queue_enabled,"provider_ready":provider_ready,"queued_work_item_ids":queued_ids},
+    }
 
 
 @app.post("/work-items/{item_id}/enqueue")
