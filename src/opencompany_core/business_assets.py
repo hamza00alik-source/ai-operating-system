@@ -92,7 +92,7 @@ class BusinessAssetRegistry:
             self.connection.execute("""INSERT INTO opencompany_business_assets
               (asset_id,business_id,asset_key,title,asset_type,filename,media_type,checksum_sha256,byte_size,source,
                storage_state,status,storage_key,asset_scope_id,file_bytes_received,created_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?, 'metadata_only','declared',NULL,?,0,?)""",
+              VALUES(?,?,?,?,?,?,?,?,?,?, 'metadata_only','pending_storage',NULL,?,0,?)""",
               (asset_id,business_id,asset_key,title.strip(),asset_type,filename,media_type,checksum_sha256,byte_size,source,scope,payload["occurred_at"]))
             self._event(business_id,asset_id,"declared",audit); self.connection.commit()
             result=self._get(business_id,asset_id)
