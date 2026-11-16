@@ -270,7 +270,7 @@ def _run_agent(workspace: Path, job: dict[str, Any], codex_bin: str,
     prompt = _prompt(job)
     command = [
         codex_bin, "exec", "--cd", str(workspace),
-        "--sandbox", "workspace-write", "--ask-for-approval", "never",
+        "--sandbox", "workspace-write",
         "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
         "--output-last-message", str(workspace / "output" / "codex-summary.md"),
         "--json", prompt,
