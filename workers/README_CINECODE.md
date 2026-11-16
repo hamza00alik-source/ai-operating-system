@@ -4,6 +4,8 @@ This worker is a local execution adapter for the AIOS Cinecode provider. It uses
 the installed Codex CLI in non-interactive mode and never accepts a shell command
 from a job. It is not enabled by default.
 
+Every Cinecode job must explicitly choose `music_source=none` or `music_source=code` in its parameters. The dashboard asks this before job creation; the worker rejects missing/unsupported values. User-supplied audio and open-licence recording search are not wired into this first integration, so do not select them or place tracks in a project by assumption.
+
 ## Safety and billing gates
 
 Run only inside a dedicated OS account, container, or VM with no access to the
