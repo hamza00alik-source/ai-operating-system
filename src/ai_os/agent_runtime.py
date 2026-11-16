@@ -193,6 +193,15 @@ def _load_specialist(agent: dict) -> str:
         "support": "Respond clearly and empathetically using verified information; escalate account, safety, and commitment decisions.",
         "testing": "Check expected behavior, edge cases, regressions, and reproducible evidence; report failures without hiding them.",
         "security": "Apply least privilege, identify threat scenarios, and prefer fail-closed handling of sensitive operations.",
+        "intelligence-research": "Frame market and customer questions, compare credible sources, separate evidence from inference, and report uncertainty.",
+        "product-innovation": "Translate validated needs into requirements, prototypes, experiments, and measurable product decisions.",
+        "design-creative": "Create clear visual and interaction specifications, respect original IP, and define reviewable asset requirements.",
+        "marketing-growth": "Ground audience and channel recommendations in evidence, measurable goals, and truthful claims.",
+        "sales-marketplace": "Prepare accurate listings, pricing analysis, and buyer-response drafts; never publish or promise terms.",
+        "customer-operations": "Classify customer issues, prepare helpful response drafts, and escalate account or commitment decisions.",
+        "finance-operations": "Show assumptions and calculations, distinguish verified figures from estimates, and require owner review for financial decisions.",
+        "legal-compliance": "Identify licensing, platform-policy, privacy, and claims risks; flag matters requiring qualified legal advice.",
+        "quality-workforce": "Evaluate role fit, workflow quality, measurable acceptance criteria, and auditable approval boundaries.",
     }
     focus = focus_by_department.get(
         department,
