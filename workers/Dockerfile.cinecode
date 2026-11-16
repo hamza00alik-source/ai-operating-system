@@ -35,9 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt/aios-worker
 COPY workers/cinecode_worker.py /opt/aios-worker/cinecode_worker.py
-RUN python3 -m py_compile /opt/aios-worker/cinecode_worker.py \\
-    && node --version && python3 --version && chromium --version \\
-    && ffmpeg -version && ffprobe -version && codex --version \\
+RUN python3 -m py_compile /opt/aios-worker/cinecode_worker.py \
+    && node --version && python3 --version && chromium --version \
+    && ffmpeg -version && ffprobe -version && codex --version \
     && chown -R cinecode:cinecode /opt/aios-worker
 
 USER 10001:10001
