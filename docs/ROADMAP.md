@@ -67,7 +67,8 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] Implement allowlisted Cinecode worker capability/health reporting (GPU remains unverified until a real render)
 - [x] Implement fixed-command Codex CLI adapter with workspace-write sandbox, ignored user config, ephemeral sessions, and non-Git workspace support
 - [x] Implement isolated per-job workspace layout with the Cinecode kit and generated film project as sibling folders
-- [x] Implement autonomous Quick-mode defaults for owner-approved jobs, final-render checks, production-report validation, heartbeats, cancellation, bounded retries, and private MP4 upload
+- [x] Implement autonomous Quick-mode defaults for owner-approved jobs, final-render checks, production-report validation/upload, heartbeats, cancellation, bounded retries, and private MP4 upload/download
+- [x] Enforce provider identity across every worker job action and apply private artifact aggregate quotas/free-space reserves sized for the existing 500 MB Railway volume
 - [x] Add provider-isolation tests for Cinecode and LongCat job claims
 - [x] Add API tests for provider-specific worker authentication, claim identity, Cinecode artifact upload, and private download
 - [x] Add worker tests for path traversal, symlink exclusion, environment-secret filtering, untrusted creative briefs, MP4 validation, and production-report validation
