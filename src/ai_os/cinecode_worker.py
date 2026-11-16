@@ -192,9 +192,10 @@ def _run_render(job: dict, source: Path, env: dict[str, str]) -> None:
                     _finish(job_id, status="failed", error="Render exceeded the one-hour worker limit.")
                     return
                 for key, _ in selector.select(timeout=0.5):
-                    chunk = key.fileobj.readline()
+                    chunk = os.read(key.fileobj.fileno(), 4096)
                     if chunk:
-                        output_lines.append(chunk.decode("utf-8", errors="replace").rstrip()[:2000])
+                        decoded = chunk.decode("utf-8", errors="replace")
+                        output_lines.extend(line[:2000] for line in decoded.splitlines())
                         if len(output_lines) > 500:
                             output_lines = output_lines[-500:]
         finally:
