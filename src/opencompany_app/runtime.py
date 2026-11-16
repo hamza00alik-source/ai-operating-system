@@ -266,6 +266,14 @@ class UsageRepository(SharedRepository):
               request_id TEXT PRIMARY KEY,work_item_id TEXT,role_key TEXT,provider TEXT,model TEXT,
               input_tokens INTEGER,output_tokens INTEGER,cost_usd REAL)""");db.commit()
     def record(self,event):
+        if not isinstance(event,dict):
+            event={
+                "request_id":str(uuid4()),"work_item_id":None,"role_key":None,
+                "provider":getattr(event,"provider",None),"model":getattr(event,"model",None),
+                "input_tokens":getattr(event,"input_tokens",0),
+                "output_tokens":getattr(event,"output_tokens",0),
+                "cost_usd":getattr(event,"cost_usd",0.0),
+            }
         with self._lock:
             self._db.execute("INSERT OR REPLACE INTO opencompany_usage VALUES(?,?,?,?,?,?,?,?)",
               tuple(event.get(k) for k in ("request_id","work_item_id","role_key","provider","model","input_tokens","output_tokens","cost_usd")))
