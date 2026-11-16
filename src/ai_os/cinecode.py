@@ -217,6 +217,22 @@ def download_cinecode_artifact(job_id: str):
                         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
+@router.get("/cinecode/jobs/{job_id}/report", dependencies=[Depends(require_owner_key)])
+def download_cinecode_report(job_id: str):
+    initialize_cinecode()
+    row = _get_job(job_id)
+    if row is None:
+        raise HTTPException(404, "Cinecode job not found.")
+    if row["status"] != "succeeded" or not row["report_path"]:
+        raise HTTPException(409, "A completed production report is not available.")
+    path = Path(row["report_path"]).resolve()
+    root = Path(os.getenv("AI_OS_CINECODE_STORAGE_DIR", "/data/cinecode")).resolve()
+    if root not in path.parents or not path.is_file():
+        raise HTTPException(404, "Private production report is unavailable.")
+    return FileResponse(path, media_type="text/markdown", filename=f"cinecode-{job_id}-report.md",
+                        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
 @router.get("/cinecode/status", dependencies=[Depends(require_owner_key)])
 def cinecode_status():
     initialize_cinecode()
