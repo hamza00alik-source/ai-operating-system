@@ -181,6 +181,23 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         assert claim.status_code == 200
         assert claim.json()["id"] == job_id
         lease = claim.json()["lease_token"]
+        longcat_headers = {
+            "X-Video-Worker-Token": "different-longcat-token",
+            "X-Video-Provider": "longcat-video",
+            "X-Job-Lease": lease,
+        }
+        wrong_heartbeat = client.post(
+            f"/video/worker/jobs/{job_id}/heartbeat",
+            headers=longcat_headers,
+            json={"progress": 10, "message": "cross-provider attempt"},
+        )
+        assert wrong_heartbeat.status_code == 403
+        wrong_report = client.put(
+            f"/video/worker/jobs/{job_id}/report",
+            content=b"not authorized for Cinecode",
+            headers={**longcat_headers, "Content-Type": "text/markdown"},
+        )
+        assert wrong_report.status_code == 403
 
         report_text = b"# Cinecode production report\n\nMode: Quick\nLicence: original generated assets\n"
         report_upload = client.put(
@@ -195,6 +212,15 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         assert report_upload.status_code == 200
 
         mp4 = b"\x00\x00\x00\x18ftypisom" + b"cinecode-test-payload"
+        wrong_artifact = client.put(
+            f"/video/worker/jobs/{job_id}/artifact",
+            content=mp4,
+            headers={
+                **longcat_headers,
+                "Content-Type": "video/mp4",
+            },
+        )
+        assert wrong_artifact.status_code == 403
         uploaded = client.put(
             f"/video/worker/jobs/{job_id}/artifact",
             content=mp4,
