@@ -1,0 +1,36 @@
+name: Cinecode native integration
+
+on:
+  push:
+    branches: ["feat/cinecode-native-aios"]
+  pull_request:
+    branches: ["feature/teamily-operating-system-integration"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cinecode-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: python -m compileall -q src/ai_os/cinecode.py src/ai_os/cinecode_worker.py
+      - run: pytest -q tests/test_cinecode.py
+
+  cinecode-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose profile
+        env:
+          AI_OS_DATABASE_URL: sqlite:///./ai_os.db
+          CINECODE_SOURCE_COMMIT: 0000000000000000000000000000000000000000
+        run: docker compose -f docker-compose.cinecode.yml --profile cinecode config --quiet
+      - name: Build pinned Cinecode worker image
+        run: docker build -f Dockerfile.cinecode-worker -t aios-cinecode-worker:ci .
