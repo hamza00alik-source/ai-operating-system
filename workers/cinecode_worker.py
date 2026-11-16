@@ -188,20 +188,20 @@ def _copy_cinecode(source: Path, workspace: Path) -> None:
         elif item.is_file():
             shutil.copy2(item, target)
     (workspace / "AGENTS.md").write_text(
-        "# AIOS Cinecode execution workspace\\n\\n"
+        "# AIOS Cinecode execution workspace\n\n"
         "The Cinecode kit is in cinecode-kit/; the film project must be a sibling "
         "directory named film-project/. Read cinecode-kit/AGENTS.md and "
         "cinecode-kit/SKILL.md and follow their craft, rendering, licensing, and "
-        "quality-control requirements. Do not edit the kit itself.\\n\\n"
+        "quality-control requirements. Do not edit the kit itself.\n\n"
         "This is a non-interactive, owner-approved production job. Do not call "
         "AskUserQuestion or pause for human gates. Use the requested mode and purpose "
         "from the job brief; if omitted, use Quick mode and Cinematic film. Choose the "
         "skill's recommended defaults and record all assumptions in the project "
         "STATE.md and output/report.md. Never install software, invoke paid APIs, "
         "buy assets, publish, or upload to third parties. If a required dependency, "
-        "licence, or capability is missing, stop and report the blocker.\\n\\n"
+        "licence, or capability is missing, stop and report the blocker.\n\n"
         "Create the project as a sibling of cinecode-kit/, use the kit's init_film.py "
-        "and render scripts, and copy the verified final MP4 to output/final.mp4.\\n",
+        "and render scripts, and copy the verified final MP4 to output/final.mp4.\n",
         encoding="utf-8",
     )
 
@@ -260,8 +260,8 @@ def _prompt(job: dict[str, Any]) -> str:
         "the film project, verify it with the kit's checks, then copy that exact verified "
         "file to output/final.mp4. Also write output/report.md with the project path, "
         "render settings, checks, assumptions, and asset licences/sources. Never fabricate "
-        "a completed render or a check result.\\n\\n"
-        "JOB BRIEF (JSON):\\n" + json.dumps(brief, ensure_ascii=False)
+        "a completed render or a check result.\n\n"
+        "JOB BRIEF (JSON):\n" + json.dumps(brief, ensure_ascii=False)
     )
 
 def _run_agent(workspace: Path, job: dict[str, Any], codex_bin: str,
