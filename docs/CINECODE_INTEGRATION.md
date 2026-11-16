@@ -55,7 +55,7 @@ Still required before production:
 - Host firewall/network policy and review of all installed Codex CLI/MCP configuration.
 - Real CLI authentication/usage verification, Chrome/GPU compatibility, and end-to-end render and artifact-delivery tests on the actual worker host.
 
-The worker is disabled by default and requires explicit execution and billing-confirmation environment gates. Do not enable it while the cost of the selected Codex account or other optional services is unknown.
+The worker is disabled by default and requires explicit execution and billing-confirmation environment gates. Every Cinecode brief must also include an explicit music choice: `none` or `code` (original music generated in code). User-supplied tracks and open-licence recording selection are not yet wired into the upload/research workflow, so they are not offered as selectable modes. Do not enable the worker while the cost of the selected Codex account or other optional services is unknown.
 
 ## Provider contract
 The existing provider-neutral video queue should expose a Cinecode provider with the same lifecycle as other engines:
