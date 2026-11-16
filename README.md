@@ -75,9 +75,11 @@ Secrets are not stored in SQLite, returned by status endpoints, or meant to be p
 
 The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner or MCP execution runtime.
 
-## Agency workforce catalog and owner console
+## OpenCompany workforce catalogue and owner console
 
-The Owner Console includes a catalog of 283 specialist definitions across 18 departments from the MIT-licensed \`hamza00alik-source/agency-agents\` repository, plus a 12-repository source inventory including the separate Automaton runtime reference and ten company/platform comparison repositories. These are source catalogs and architecture references, not 283 running processes. Each specialist prompt is inspectable from its source link. The current general-purpose agent execution runtime is still under development.
+OpenCompany's active workforce is defined by its own local catalogue: 10 departments, 10 department-manager roles, one CEO orchestrator role, and 500 specialist positions (511 role entries total). The first team in each department has named capability templates; additional positions are generated from department-specific generic templates and are not yet 500 individually authored specialist playbooks. Catalogue entries are role definitions, not 511 running processes.
+
+The historical `hamza00alik-source/agency-agents` manifest and repository inventory are retained temporarily for provenance and audit only. The active task execution path, workforce API, and owner-console workforce view use OpenCompany-owned role definitions; they do not download or execute third-party specialist prompts. The reference archive is not the runtime architecture and remains scheduled for a separate reviewed cleanup.
 
 The Owner Console supports a secure browser session: sign in once with \`AI_OS_API_KEY\`, then use the HttpOnly, Secure, SameSite=Strict session cookie for up to 14 days (or until logout/cookie clearing). The raw owner key is not saved in browser storage. API-key header authentication remains available for external clients.
 
@@ -96,9 +98,9 @@ The first route is hard-pinned to OpenRouter's `openrouter/free` free-model rout
 
 ## Bounded AI task execution
 
-The Owner Console can queue a task for the in-service agent worker. The worker selects a specialist definition from the 283-role Agency Agents catalogue, retrieves that role's Markdown instructions from the public source repository as untrusted prompt context, asks the configured free-confirmed OpenRouter model for a deliverable, then performs a separate CEO-style quality review call. Results and token/latency metadata are persisted in SQLite and shown in the task panel.
+The Owner Console queues tasks for the shared in-service worker. The worker selects a role from OpenCompany's local 511-entry catalogue, builds its role brief locally from OpenCompany-owned department guidance, retrieves approved company memories and captured research context, requests a deliverable from the configured free-confirmed model, then performs a separate CEO-style quality review. Completed stages and run metadata are persisted in SQLite and shown in the task panel.
 
-This is deliberately a bounded first execution runtime. It performs text-only research, planning and drafting. It has no shell, filesystem, browser, MCP, email, payment, store, publishing or customer-contact tools. It cannot perform external side effects. Free-model availability and rate limits are controlled by the provider; if the configured free model is unavailable, the run fails and reports the error rather than using a paid fallback. Do not classify the catalogue as 283 concurrently running agents: one selected specialist plus one CEO review are invoked per task run.
+This remains a bounded text-only runtime for research, planning and drafting. It has no shell, filesystem, browser, MCP, email, payment, store, publishing or customer-contact tools. It cannot perform external side effects. Free-model availability and rate limits are controlled by the provider; if the configured free model is unavailable, the run fails rather than using a paid fallback. A task invokes one selected specialist and one reviewer; the 511 role entries are not concurrently running agents.
 
 
 ## Persistent company AI brain (initial implementation)
