@@ -53,6 +53,7 @@ Implemented worker controls:
 Still required before production:
 - Dedicated OS account/container/VM with no access to unrelated files or application secrets. Workspace-write alone is not a substitute for this.
 - Host firewall/network policy and review of all installed Codex CLI/MCP configuration.
+- Treat the dedicated Codex authentication material as accessible to local agent tool execution: use a separate least-privilege service identity with a hard spend cap, never an owner's everyday account, and enforce outbound network restrictions at the host/firewall. The workspace-write sandbox does not protect credentials stored elsewhere on the same container from reads.
 - Real CLI authentication/usage verification, Chrome/GPU compatibility, and end-to-end render and artifact-delivery tests on the actual worker host.
 
 The worker is disabled by default and requires explicit execution and billing-confirmation environment gates. Every Cinecode brief must also include an explicit music choice: `none` or `code` (original music generated in code). User-supplied tracks and open-licence recording selection are not yet wired into the upload/research workflow, so they are not offered as selectable modes. Do not enable the worker while the cost of the selected Codex account or other optional services is unknown.
