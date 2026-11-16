@@ -83,7 +83,7 @@ On a dedicated Linux workstation with Docker Compose:
 
 1. Create a separate Codex home used only by this worker, authenticate Codex CLI into it, and make the dedicated directory writable by container UID 10001. Do not mount your everyday developer home or other provider credentials.
 2. Copy `workers/.env.cinecode.example` to `workers/.env.cinecode`; set the AIOS HTTPS URL and the unique Cinecode worker token. Keep both execution gates set to `false` initially.
-3. Export the two Compose build/runtime values in the shell: `CODEX_VERSION` (an exact pinned `@openai/codex` package version) and `CODEX_HOME_HOST` (the dedicated Codex home directory).
+3. Export `CODEX_HOME_HOST` (the dedicated Codex home directory). The Dockerfile pins stable `@openai/codex` version `0.169.0` by default; override `CODEX_VERSION` only when deliberately selecting another exact release.
 4. Build and start the worker:
 
    `docker compose -f workers/docker-compose.cinecode.yml build`
