@@ -200,6 +200,13 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         assert claim.status_code == 200
         assert claim.json()["id"] == job_id
         lease = claim.json()["lease_token"]
+        direct_completion = client.post(
+            f"/video/worker/jobs/{job_id}/complete",
+            headers={**cinecode_headers, "X-Job-Lease": lease},
+            json={"result_uri": "https://untrusted.example/fake.mp4", "metadata": {"content_type": "video/mp4"}},
+        )
+        assert direct_completion.status_code == 409
+        assert client.get(f"/video/jobs/{job_id}", headers=owner_headers).json()["status"] == "running"
         longcat_headers = {
             "X-Video-Worker-Token": "different-longcat-token",
             "X-Video-Provider": "longcat-video",
