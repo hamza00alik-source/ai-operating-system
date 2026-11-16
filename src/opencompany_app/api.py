@@ -401,6 +401,29 @@ def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_
     return proposal
 
 
+@app.post("/work-items/{item_id}/enqueue")
+def enqueue_work_item(item_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Admit an explicitly assigned, ready task to the queue without starting a worker."""
+    item=runtime.store.get_work_item(UUID(item_id))
+    if not item:raise HTTPException(404,"Work item not found.")
+    if item.state!=TaskState.READY:raise HTTPException(409,"Only owner-ready work items can be queued.")
+    if not item.assigned_agent_id or not item.assigned_role_key:
+        raise HTTPException(409,"Work must be assigned to an active specialist before queue admission.")
+    agent=next((value for value in runtime.agents.values() if value["id"]==str(item.assigned_agent_id)),None)
+    if not agent or agent.get("state")!="active":
+        raise HTTPException(409,"The assigned specialist must be explicitly active before queue admission.")
+    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        raise HTTPException(503,"No confirmed zero-cost provider is ready for this task.")
+    try:
+        runtime.queue.admit(item.id,item.assigned_agent_id,item.assigned_role_key)
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from exc
+    from dataclasses import replace
+    changed=replace(item,state=TaskState.QUEUED)
+    runtime.store.save_work_item_with_audit(changed,_audit("queue.admitted",item.id,"owner"))
+    return {**_item_dict(changed),"worker_started":False}
+
+
 @app.get("/work-items")
 def list_work_items(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
     items=runtime.store.list_work_items(business_id);return {"count":len(items),"items":[_item_dict(x) for x in items]}
