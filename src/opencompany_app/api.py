@@ -837,7 +837,7 @@ def create_code_evolution_proposal(payload:dict,runtime=Depends(get_runtime),own
         raise HTTPException(503,"A safe draft pull request could not be created.") from exc
     return {
         "pull_request_number":pull_request.number,"pull_request_url":pull_request.url,
-        "branch":pull_request.branch,"commit":pull_request.commit,"title":pull_request.title,
+        "branch":pull_request.branch,"commit":pull_request.commit_sha,"title":pull_request.title,
         "draft":True,"merged":False,"deployed":False,"owner_merge_review_required":True,
     }
 
