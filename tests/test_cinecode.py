@@ -108,7 +108,8 @@ def test_worker_readonly_kit_can_be_cleaned_up():
     from ai_os.cinecode_worker import _CleanupTemporaryDirectory, _make_read_only
 
     with _CleanupTemporaryDirectory(prefix="cinecode-test-") as temp:
-        kit = Path(temp) / "cinecode-kit"
+        temp_root = Path(temp)
+        kit = temp_root / "cinecode-kit"
         nested = kit / "docs"
         nested.mkdir(parents=True)
         source_file = nested / "SKILL.md"
@@ -116,3 +117,4 @@ def test_worker_readonly_kit_can_be_cleaned_up():
         _make_read_only(kit)
         assert source_file.stat().st_mode & 0o222 == 0
         assert nested.stat().st_mode & 0o222 == 0
+    assert not temp_root.exists()
