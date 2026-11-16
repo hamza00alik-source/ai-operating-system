@@ -89,7 +89,7 @@ textarea,input,select,button{font:inherit;padding:10px;border-radius:8px;border:
 textarea{width:calc(100% - 24px);min-height:120px}button{cursor:pointer;background:#263d75;margin:4px}
 .job{border-top:1px solid #26334d;padding:12px 0}.muted{color:#9aa9c3}a{color:#9bb8ff}
 </style>
-<h1>Cinecode Studio</h1><p class="muted">Create a brief, review it, then explicitly approve rendering. Jobs are private; publishing is not enabled.</p>
+<h1>Cinecode Studio</h1><p class="muted">Create a brief, review it, then explicitly approve rendering. Jobs are private; publishing is not enabled. Codex account usage may incur charges; AIOS cannot estimate or cap provider-side usage. Approve only after a separate service account and hard spend cap are verified.</p>
 <section><h2>New film brief</h2><form id="create">
 <textarea id="brief" minlength="20" maxlength="12000" required placeholder="Describe the film, audience, visual direction, scenes, narration and desired result..."></textarea><p>
 <label>Mode <select id="mode"><option value="quick">Quick (lower resource use)</option><option value="film">Film</option></select></label>
@@ -100,7 +100,7 @@ textarea{width:calc(100% - 24px);min-height:120px}button{cursor:pointer;backgrou
 const $=id=>document.getElementById(id), msg=t=>$('message').textContent=t;
 async function call(url,method='GET',body){const r=await fetch(url,{method,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({detail:r.statusText}));if(!r.ok)throw Error(d.detail||r.statusText);return d}
 $('create').addEventListener('submit',async e=>{e.preventDefault();try{const j=await call('/cinecode/jobs','POST',{brief:$('brief').value,mode:$('mode').value,music_source:$('music').value});msg('Draft created. Review the brief below and approve only when ready.');$('brief').value='';await refresh()}catch(x){msg(x.message)}});
-async function action(id,a){try{await call('/cinecode/jobs/'+id+'/'+a,'POST',{});await refresh()}catch(x){msg(x.message)}}
+async function action(id,a){if(a==='approve'&&!window.confirm('Approve this local render? This may consume Codex service-account usage. Confirm that the separate account, usage terms and hard spend cap have been checked.'))return;try{await call('/cinecode/jobs/'+id+'/'+a,'POST',{});await refresh()}catch(x){msg(x.message)}}
 async function refresh(){try{const d=await call('/cinecode/jobs');$('jobs').innerHTML=d.jobs.map(j=>'<div class="job"><b>'+escapeHtml(j.mode.toUpperCase())+' · '+escapeHtml(j.status)+'</b><p>'+escapeHtml(j.brief)+'</p><p class="muted">'+escapeHtml(j.progress||'')+(j.error?' · '+escapeHtml(j.error):'')+'</p>'+ (j.status==='pending_approval'?'<button data-job="'+j.id+'" data-action="approve">Approve render</button><button data-job="'+j.id+'" data-action="reject">Reject</button>':'') + (['approved','running'].includes(j.status)?'<button data-job="'+j.id+'" data-action="cancel">Cancel</button>':'') + (j.status==='succeeded'?'<a href="/cinecode/jobs/'+j.id+'/artifact">Download private MP4</a> · <a href="/cinecode/jobs/'+j.id+'/report">Production report</a>':'')+'</div>').join('')||'<p class="muted">No jobs yet.</p>';$('jobs').querySelectorAll('button[data-action]').forEach(b=>b.addEventListener('click',()=>action(b.dataset.job,b.dataset.action)));}catch(x){msg(x.message)}}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 $('refresh').addEventListener('click',refresh);refresh();
