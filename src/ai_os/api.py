@@ -1040,6 +1040,19 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
 
 
 
+def _ensure_video_artifact_capacity(directory: Path) -> None:
+    import shutil
+    limit = int(os.getenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", str(400 * 1024 * 1024)))
+    used = sum(
+        item.stat().st_size for item in directory.iterdir()
+        if item.is_file() and (item.suffix == ".mp4" or item.name.endswith(".report.md") or item.name.endswith(".tmp"))
+    )
+    if used > limit:
+        raise HTTPException(status_code=507, detail="Private video artifact storage quota is full.")
+    if shutil.disk_usage(directory).free < 64 * 1024 * 1024:
+        raise HTTPException(status_code=507, detail="Private video artifact volume must retain at least 64 MB free.")
+
+
 @app.put("/video/worker/jobs/{job_id}/report", dependencies=[Depends(require_video_worker)])
 async def put_video_worker_report(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
     import uuid as _uuid
@@ -1076,6 +1089,7 @@ async def put_video_worker_report(job_id: str, request: Request, x_job_lease: st
         report_text = temporary.read_text(encoding="utf-8")
         if not report_text.strip() or "\x00" in report_text:
             raise HTTPException(status_code=422, detail="Production report is empty or invalid.")
+        _ensure_video_artifact_capacity(directory)
         temporary.replace(destination)
     except UnicodeDecodeError as exc:
         temporary.unlink(missing_ok=True)
@@ -1124,6 +1138,9 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
                 size += len(chunk)
                 if size > 300 * 1024 * 1024:
                     raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
+                import shutil
+                if shutil.disk_usage(directory).free < 64 * 1024 * 1024:
+                    raise HTTPException(status_code=507, detail="Private video artifact volume must retain at least 64 MB free.")
                 if len(prefix) < 12:
                     prefix.extend(chunk[:12 - len(prefix)])
                 output.write(chunk)
@@ -1140,6 +1157,7 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
                     last_lease_refresh = time.monotonic()
         if size < 12 or bytes(prefix[4:8]) != b"ftyp":
             raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
+        _ensure_video_artifact_capacity(directory)
         temporary.replace(destination)
     except Exception:
         temporary.unlink(missing_ok=True)
