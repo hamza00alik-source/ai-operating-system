@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates chromium ffmpeg git python3 tini \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global "@openai/codex@${CODEX_VERSION}" \
+    && useradd --system --uid 10001 --create-home --home-dir /home/cinecode --shell /usr/sbin/nologin cinecode \ 
     && mkdir -p /opt/cinecode-source /opt/aios-worker /var/lib/cinecode-work /home/cinecode/.codex \
     && git -C /opt/cinecode-source init \
     && git -C /opt/cinecode-source remote add origin https://github.com/sarpstar/cinecode.git \
