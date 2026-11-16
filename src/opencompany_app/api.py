@@ -56,11 +56,13 @@ def _owner(request:Request, x_opencompany_api_key:str|None=Header(default=None))
     session=_sessions.get(token or "")
     if session and session["expires"]>time.time():
         if request.method not in ("GET","HEAD","OPTIONS"):
+            csrf=request.headers.get("x-csrf-token")
+            if not csrf:
+                raise HTTPException(401,"Owner authentication required for cookie-authenticated writes.")
             origin=request.headers.get("origin")
             if origin != str(request.base_url).rstrip("/"):
                 raise HTTPException(403,"Cookie-authenticated writes must come from the same origin.")
-            csrf=request.headers.get("x-csrf-token")
-            if not csrf or not secrets.compare_digest(csrf,session["csrf"]) or request.cookies.get("opencompany_csrf")!=csrf:
+            if not secrets.compare_digest(csrf,session["csrf"]) or request.cookies.get("opencompany_csrf")!=csrf:
                 raise HTTPException(403,"A valid CSRF token is required.")
         return "owner"
     if supplied is None: raise HTTPException(401,"Owner authentication required.")
