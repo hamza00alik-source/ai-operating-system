@@ -12,7 +12,7 @@ Run only inside a dedicated OS account, container, or VM with no access to the
 AIOS API host filesystem, unrelated customer files, or production secrets.
 Codex receives a workspace-write sandbox, and the AIOS worker token is removed
 from the Codex subprocess environment. This is defense in depth, not a substitute
-for OS/container isolation.
+for OS/container isolation. Use a separate least-privilege Codex service identity with a hard spend cap, never the owner's everyday Codex account. The dedicated Codex authentication directory is available to the Codex process and must be treated as potentially readable by its local agent commands; workspace-write does not protect secrets outside the workspace. Enforce outbound network restrictions at the host/firewall.
 
 The worker refuses to start unless both are explicitly set:
 
