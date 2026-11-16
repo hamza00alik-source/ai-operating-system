@@ -217,7 +217,8 @@ def _prompt(job: dict[str, Any]) -> str:
         "parameters": parameters,
         "cost_basis": job.get("cost_basis", "unknown"),
     }
-    init_command = "python cinecode-kit/scripts/init_film.py ./film-project --title \\\"AIOS Film\\\""
+    python_command = "python" if os.name == "nt" else "python3"
+    init_command = f"{python_command} cinecode-kit/scripts/init_film.py ./film-project --title AIOS-Film"
     if mode == "quick":
         init_command += " --quick"
     return (
