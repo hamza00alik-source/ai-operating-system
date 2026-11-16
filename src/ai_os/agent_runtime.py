@@ -412,7 +412,7 @@ def run_pending_once() -> bool:
         collaborator = _choose_collaborator(specialist, catalogue)
         saved_collaborator = prior_steps.get(2)
         if saved_collaborator and saved_collaborator.get("status") == "completed" and saved_collaborator.get("output"):
-            collaborator = next((item for item in manifest.get("agents", []) if item.get("id") == saved_collaborator.get("agent_id")), collaborator)
+            collaborator = next((item for item in catalogue.get("agents", []) if item.get("id") == saved_collaborator.get("agent_id")), collaborator)
         _record_event(run_id, "collaborator_selected", "Independent collaborator assigned: " + collaborator["name"] + " (" + collaborator.get("department", "general") + ").")
         collaborator_instructions = _load_specialist(collaborator)
         collaboration_prompt = (
