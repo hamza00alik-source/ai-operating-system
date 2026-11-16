@@ -330,7 +330,17 @@ def get_workforce_agents(department: str | None = None, q: str | None = None):
             or term in role["id"].casefold()
             or any(term in capability.casefold() for capability in role["capabilities"])
         ]
+    from opencompany_app.catalogue import DEPARTMENT_CATALOGUE
+    departments = [
+        {
+            "id": item["department"],
+            "name": item["name"],
+            "agent_count": sum(role["department"] == item["department"] for role in ROLE_CATALOGUE),
+        }
+        for item in DEPARTMENT_CATALOGUE
+    ]
     return {
+        "departments": departments,
         "catalogue": "opencompany-original",
         "agent_count": len(roles),
         "department_count": 10,
@@ -341,33 +351,6 @@ def get_workforce_agents(department: str | None = None, q: str | None = None):
         "runtime_model": "OpenCompany role templates are selected on demand by the shared supervised worker.",
         "agents": roles,
     }
-
-
-@app.get("/workforce/agents", dependencies=[Depends(require_api_key)])
-def get_workforce_agents(department: str | None = None, q: str | None = None):
-    """Return the complete catalogued Agency workforce; catalog entries are not live workers."""
-    manifest_path = Path(__file__).resolve().parents[2] / "data" / "agency_agents_manifest.json"
-    if not manifest_path.exists():
-        raise HTTPException(status_code=503, detail="Workforce manifest is unavailable.")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    agents = manifest["agents"]
-    if department:
-        agents = [a for a in agents if a["department"] == department]
-    if q:
-        term = q.casefold()
-        agents = [a for a in agents if term in a["name"].casefold() or term in a["department"].casefold() or term in a["id"].casefold()]
-    return {
-        "source_repository": manifest["source_repository"],
-        "license": manifest["license"],
-        "agent_count": manifest["agent_count"],
-        "department_count": manifest["department_count"],
-        "roles_including_ceo": manifest["roles_including_ceo"],
-        "departments": manifest["departments"],
-        "catalog_status": "on-demand-invocation",
-        "runtime_model": "one shared worker invokes selected role instructions per task; roles are not resident processes",
-        "agents": [{**a, "execution_status": "available-on-demand"} for a in agents],
-    }
-
 
 
 @app.get("/company/sources", dependencies=[Depends(require_api_key)])
