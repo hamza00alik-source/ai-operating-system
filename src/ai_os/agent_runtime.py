@@ -290,6 +290,9 @@ def _select_specialist(task: dict, catalogue: dict | None = None) -> dict:
         # Prefer authored department templates over generic expansion slots.
         if agent.get("team_key", "").endswith("__team_01"):
             score += 10
+        generated_prefix = (agent.get("department", "").replace("-", "_") + "_team_")
+        if not agent.get("id", "").startswith(generated_prefix):
+            score += 20
         if agent.get("name", "").casefold() in task_text:
             score += 60
         if score > best_score:
