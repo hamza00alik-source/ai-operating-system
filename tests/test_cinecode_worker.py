@@ -14,6 +14,8 @@ def test_worker_requires_https_api_url():
         worker._validate_api_url("http://api.example.test")
     with pytest.raises(worker.WorkerError, match="public HTTPS"):
         worker._validate_api_url("https://user:secret@api.example.test")
+    with pytest.raises(worker.WorkerError, match="public HTTPS"):
+        worker._validate_api_url("https://api.example.test/prefix")
 
 
 def test_workspace_rejects_non_uuid_job_ids(tmp_path):
