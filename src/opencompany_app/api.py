@@ -357,6 +357,65 @@ def create_delegation_proposal(item_id:str,payload:dict,runtime=Depends(get_runt
     return proposal
 
 
+@app.post("/executive/plan")
+def executive_plan(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Draft an atomic multi-department plan; never queue or execute its work items."""
+    ceo=runtime.agents.get("chief_executive_orchestrator")
+    if not ceo or ceo.get("state")!="active":
+        raise HTTPException(409,"The CEO orchestrator must be explicitly active before planning.")
+    title=str(payload.get("title","")).strip()
+    objective=str(payload.get("objective","")).strip()
+    if not title or not objective:raise HTTPException(422,"Plan title and objective are required.")
+    max_tasks=max(1,min(int(payload.get("max_tasks",8)),20))
+    request={
+        "task":"draft_executive_plan","title":title,"objective":objective,
+        "departments":[{"id":d["department"],"name":d["name"]} for d in DEPARTMENT_CATALOGUE],
+        "constraints":{"max_tasks":max_tasks,"draft_only":True,"no_queue":True,"no_execution":True,"zero_cost_only":True},
+    }
+    try:
+        result=runtime.gateway.generate(request,request_budget_usd=0.0)
+    except Exception as exc:
+        raise HTTPException(503,"The confirmed zero-cost provider could not produce an executive plan.") from exc
+    try:
+        decision=json.loads(result.text)
+        raw_items=decision.get("work_items",[])
+        if not isinstance(raw_items,list) or not raw_items or len(raw_items)>max_tasks:
+            raise ValueError("work_items must be a non-empty list within max_tasks")
+        normalized=[]
+        for index,raw in enumerate(raw_items):
+            department=str(raw.get("department",""))
+            task_title=str(raw.get("title","")).strip()
+            task_objective=str(raw.get("objective","")).strip()
+            dependencies=raw.get("depends_on",[])
+            if department not in {d[0] for d in DEPARTMENTS} or not task_title or not task_objective:
+                raise ValueError("Each plan item needs a known department, title, and objective")
+            if not isinstance(dependencies,list):
+                raise ValueError("depends_on must be a list of earlier item indexes")
+            deps=[]
+            for dependency in dependencies:
+                if not isinstance(dependency,int) or dependency<0 or dependency>=index:
+                    raise ValueError("Plan dependencies must reference earlier items only")
+                deps.append(dependency)
+            normalized.append({"department":department,"title":task_title,"objective":task_objective,"depends_on":deps})
+    except (TypeError,ValueError,AttributeError) as exc:
+        raise HTTPException(422,"Executive plan was invalid: "+str(exc)) from exc
+    ids=[uuid4() for _ in normalized]
+    created=[]
+    for index,entry in enumerate(normalized):
+        item=WorkItem(
+            ids[index],entry["title"],entry["objective"],entry["department"],TaskState.DRAFT,
+            "physical-agency",tuple(ids[dependency] for dependency in entry["depends_on"]),
+        )
+        runtime.store.create_work_item(item,_audit("ceo.plan_item_drafted",item.id,"ceo"))
+        created.append(_item_dict(item))
+    return {
+        "title":title,"rationale":str(decision.get("rationale",""))[:1600],
+        "manager_ai":{"provider":result.provider,"model":result.model,"cost_usd":result.cost_usd},
+        "created_count":len(created),"items":created,
+        "owner_review_required":True,"queue_entries_created":False,"execution_started":False,
+    }
+
+
 @app.post("/work-items/{item_id}/manager-proposal")
 def manager_proposal(item_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
     """Let an active department manager draft a team proposal; owner approval remains required."""
