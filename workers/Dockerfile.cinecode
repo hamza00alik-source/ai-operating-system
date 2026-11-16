@@ -21,17 +21,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CODEX_HOME=/home/cinecode/.codex
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates chromium ffmpeg git python3 tini \
+      ca-certificates chromium ffmpeg git passwd python3 tini \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global "@openai/codex@${CODEX_VERSION}" \
-    && useradd --system --uid 10001 --create-home --home-dir /home/cinecode --shell /usr/sbin/nologin cinecode \ 
+    && useradd --system --uid 10001 --create-home --home-dir /home/cinecode --shell /usr/sbin/nologin cinecode \
     && mkdir -p /opt/cinecode-source /opt/aios-worker /var/lib/cinecode-work /home/cinecode/.codex \
     && git -C /opt/cinecode-source init \
     && git -C /opt/cinecode-source remote add origin https://github.com/sarpstar/cinecode.git \
     && git -C /opt/cinecode-source fetch --depth 1 origin "${CINECODE_COMMIT}" \
     && git -C /opt/cinecode-source checkout --detach FETCH_HEAD \
     && test "$(git -C /opt/cinecode-source rev-parse HEAD)" = "${CINECODE_COMMIT}" \
-    && useradd --system --uid 10001 --create-home --home-dir /home/cinecode --shell /usr/sbin/nologin cinecode \
     && chown -R cinecode:cinecode /var/lib/cinecode-work /home/cinecode /opt/aios-worker
 
 WORKDIR /opt/aios-worker
