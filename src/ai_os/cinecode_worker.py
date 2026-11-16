@@ -61,12 +61,11 @@ def _source_checkout() -> Path:
 
 def _make_read_only(root: Path) -> None:
     """Prevent the render agent from modifying the pinned Cinecode kit."""
-    for current, directories, files in os.walk(root):
+    for current, _directories, files in os.walk(root):
         for name in files:
             (Path(current) / name).chmod(0o444)
-        for name in directories:
-            (Path(current) / name).chmod(0o555)
-    root.chmod(0o555)
+    # Keep directories writable so TemporaryDirectory can reliably clean up;
+    # the copied source files themselves cannot be modified in place.
 
 
 def _worker_environment() -> dict[str, str]:
