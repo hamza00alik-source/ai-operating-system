@@ -7,12 +7,12 @@ services:
     restart: unless-stopped
     profiles: ["cinecode"]
     environment:
-      AI_OS_DATABASE_URL: \${AI_OS_DATABASE_URL:?Set the same persistent database URL used by AIOS}
-      AI_OS_CINECODE_EXECUTION_ENABLED: \${AI_OS_CINECODE_EXECUTION_ENABLED:-false}
-      AI_OS_CINECODE_BILLING_CONFIRMED: \${AI_OS_CINECODE_BILLING_CONFIRMED:-false}
+      AI_OS_DATABASE_URL: ${AI_OS_DATABASE_URL:?Set the same persistent database URL used by AIOS}
+      AI_OS_CINECODE_EXECUTION_ENABLED: ${AI_OS_CINECODE_EXECUTION_ENABLED:-false}
+      AI_OS_CINECODE_BILLING_CONFIRMED: ${AI_OS_CINECODE_BILLING_CONFIRMED:-false}
       AI_OS_CINECODE_STORAGE_DIR: /data/cinecode
       CINECODE_SOURCE_DIR: /opt/cinecode
-      CINECODE_SOURCE_COMMIT: \${CINECODE_SOURCE_COMMIT:?Set the reviewed Cinecode commit SHA}
+      CINECODE_SOURCE_COMMIT: ${CINECODE_SOURCE_COMMIT:?Set the reviewed Cinecode commit SHA}
       CODEX_HOME: /codex
       AI_OS_LOG_LEVEL: INFO
     volumes:
