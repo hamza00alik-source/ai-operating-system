@@ -211,7 +211,7 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
             },
         )
         assert quota_rejected.status_code == 507
-        monkeypatch.setenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", str(400 * 1024 * 1024))
+        monkeypatch.setenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", str(300 * 1024 * 1024))
         report_upload = client.put(
             f"/video/worker/jobs/{job_id}/report",
             content=report_text,
