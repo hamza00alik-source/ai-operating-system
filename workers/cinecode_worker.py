@@ -379,7 +379,7 @@ def main() -> None:
     heartbeat_seconds = min(60, max(5, int(os.getenv("VIDEO_HEARTBEAT_SECONDS", "15"))))
     timeout_seconds = max(60, int(os.getenv("CINECODE_JOB_TIMEOUT_SECONDS", "3600")))
     max_duration = max(1, int(os.getenv("CINECODE_MAX_DURATION_SECONDS", "900")))
-    max_bytes = max(1_000_000, int(os.getenv("CINECODE_MAX_ARTIFACT_BYTES", str(300 * 1024 * 1024))))
+    max_bytes = min(300 * 1024 * 1024, max(1_000_000, int(os.getenv("CINECODE_MAX_ARTIFACT_BYTES", str(300 * 1024 * 1024)))))
     client = AIOSClient(base_url, token)
     if not source.is_dir() or not (source / ".git").is_dir():
         raise WorkerError("CINECODE_SOURCE_DIR must be a Git checkout of the pinned upstream project")
