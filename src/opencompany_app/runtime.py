@@ -162,6 +162,58 @@ class DelegationRepository(SharedRepository):
         return [json.loads(row["payload"]) for row in rows]
 
 
+class LearningRepository(SharedRepository):
+    """Persist review evaluations, owner-approved learning proposals, and applied notes."""
+    def __init__(self,db,lock):
+        super().__init__(db,lock)
+        with lock:
+            db.executescript("""
+            CREATE TABLE IF NOT EXISTS opencompany_evaluations(id TEXT PRIMARY KEY,payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS opencompany_learning_proposals(id TEXT PRIMARY KEY,role_key TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS opencompany_learning_notes(id TEXT PRIMARY KEY,role_key TEXT NOT NULL,payload TEXT NOT NULL);
+            """)
+            db.commit()
+
+    def save_evaluation(self,evaluation):
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO opencompany_evaluations VALUES(?,?)",
+                             (evaluation["id"],json.dumps(evaluation,sort_keys=True)))
+            self._db.commit()
+        return evaluation
+
+    def get_evaluations(self,ids):
+        result=[]
+        with self._lock:
+            for value in ids:
+                row=self._db.execute("SELECT payload FROM opencompany_evaluations WHERE id=?",(str(value),)).fetchone()
+                if row:result.append(json.loads(row["payload"]))
+        return result
+
+    def save_proposal(self,proposal):
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO opencompany_learning_proposals VALUES(?,?,?,?)",
+                             (proposal["id"],proposal["role_key"],proposal["status"],json.dumps(proposal,sort_keys=True)))
+            self._db.commit()
+        return proposal
+
+    def get_proposal(self,proposal_id):
+        with self._lock:
+            row=self._db.execute("SELECT payload FROM opencompany_learning_proposals WHERE id=?",(str(proposal_id),)).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def add_note(self,note):
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO opencompany_learning_notes VALUES(?,?,?)",
+                             (note["id"],note["role_key"],json.dumps(note,sort_keys=True)))
+            self._db.commit()
+        return note
+
+    def list_notes(self,role_key):
+        with self._lock:
+            rows=self._db.execute("SELECT payload FROM opencompany_learning_notes WHERE role_key=? ORDER BY rowid",(role_key,)).fetchall()
+        return [json.loads(row["payload"]) for row in rows]
+
+
 class WorkQueue(SharedRepository):
     def __init__(self,db,lock,store):
         super().__init__(db,lock); self.store=store; self._leases={}
@@ -248,7 +300,7 @@ class Runtime:
         self.delegations=DelegationRepository(self.sqlite._connection,self.sqlite._lock)
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
-        self.learning=SharedRepository(self.sqlite._connection,self.sqlite._lock)
+        self.learning=LearningRepository(self.sqlite._connection,self.sqlite._lock)
         self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock)
         self.queue=WorkQueue(self.sqlite._connection,self.sqlite._lock,self.store)
         self.fleet=WorkerFleet();self.gateway=ModelGateway.configure(())
