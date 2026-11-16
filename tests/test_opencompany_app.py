@@ -705,6 +705,52 @@ def test_session_login_uses_http_only_cookie_and_restores_across_tabs(owner_clie
         assert second_tab.get("/auth/session").status_code == 401
 
 
+
+def test_durable_queue_lease_recovers_after_runtime_restart(tmp_path):
+    database = str(tmp_path / "lease-recovery.sqlite3")
+    runtime = create_runtime(database)
+    agent_id, item_id = uuid4(), uuid4()
+    role_key = "market_intelligence_analyst"
+    item = WorkItem(
+        id=item_id, title="Recover abandoned work", objective="Resume safely after worker crash",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    runtime.store.create_work_item(item)
+    runtime.queue.admit(item_id, agent_id, role_key)
+    first_lease = runtime.queue.claim(agent_id, role_key)
+    assert first_lease is not None
+    runtime.close()
+
+    restarted = create_runtime(database)
+    recovered = restarted.queue.recover_expired_leases(
+        lease_seconds=1,
+        now=datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year + 1),
+    )
+    assert recovered == (item_id,)
+    second_lease = restarted.queue.claim(agent_id, role_key)
+    assert second_lease is not None
+    assert second_lease.lease_id != first_lease.lease_id
+    with pytest.raises(ValueError, match="stale"):
+        restarted.queue.complete(first_lease)
+    assert restarted.queue.complete(second_lease) is True
+    assert restarted.queue.counts()["done"] == 1
+    restarted.close()
+
+
+def test_queue_rejects_mismatched_assigned_role():
+    runtime = create_runtime(":memory:")
+    agent_id, item_id = uuid4(), uuid4()
+    item = WorkItem(
+        id=item_id, title="Role mismatch", objective="Must not be routed to another role",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=agent_id, assigned_role_key="market_intelligence_analyst",
+    )
+    runtime.store.create_work_item(item)
+    with pytest.raises(ValueError, match="assigned to this agent and role"):
+        runtime.queue.admit(item_id, agent_id, "sales_representative")
+    runtime.close()
+
 def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
     owner_client.post("/agents/bootstrap", headers=headers)

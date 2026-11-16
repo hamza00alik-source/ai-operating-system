@@ -392,39 +392,108 @@ class BusinessRepository(SharedRepository):
 
 
 class WorkQueue(SharedRepository):
+    DEFAULT_LEASE_SECONDS = 900
+
     def __init__(self,db,lock,store):
         super().__init__(db,lock); self.store=store; self._leases={}
         with lock:
             db.execute("""CREATE TABLE IF NOT EXISTS opencompany_queue(
-              work_item_id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,role_key TEXT NOT NULL,state TEXT NOT NULL)""");db.commit()
+              work_item_id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,role_key TEXT NOT NULL,state TEXT NOT NULL,
+              lease_id TEXT,claimed_at TEXT,attempts INTEGER NOT NULL DEFAULT 0)""")
+            columns={row["name"] for row in db.execute("PRAGMA table_info(opencompany_queue)").fetchall()}
+            for name,definition in (("lease_id","TEXT"),("claimed_at","TEXT"),("attempts","INTEGER NOT NULL DEFAULT 0")):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE opencompany_queue ADD COLUMN {name} {definition}")
+            db.commit()
+
     def admit(self,item_id,agent_id,role_key):
         with self._lock:
             item=self.store.get_work_item(item_id)
-            if not item or not item.assigned_agent_id or item.assigned_agent_id!=agent_id: raise ValueError("work must be assigned to an active agent")
-            self._db.execute("INSERT OR REPLACE INTO opencompany_queue VALUES(?,?,?,'queued')",(str(item_id),str(agent_id),role_key));self._db.commit()
+            if (not item or not item.assigned_agent_id or item.assigned_agent_id!=agent_id
+                    or item.assigned_role_key!=role_key):
+                raise ValueError("work must be assigned to this agent and role")
+            self._db.execute("""INSERT INTO opencompany_queue
+              (work_item_id,agent_id,role_key,state,lease_id,claimed_at,attempts)
+              VALUES(?,?,?,'queued',NULL,NULL,0)
+              ON CONFLICT(work_item_id) DO UPDATE SET agent_id=excluded.agent_id,
+              role_key=excluded.role_key,state='queued',lease_id=NULL,claimed_at=NULL""",
+              (str(item_id),str(agent_id),role_key))
+            self._db.commit()
+
+    def recover_expired_leases(self,lease_seconds=DEFAULT_LEASE_SECONDS,now=None):
+        """Return abandoned running jobs to the queue after their durable lease expires."""
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
+        now=now or datetime.now(timezone.utc)
+        cutoff=(now.timestamp()-lease_seconds)
+        recovered=[]
+        with self._lock:
+            rows=self._db.execute(
+                "SELECT work_item_id,lease_id,claimed_at FROM opencompany_queue WHERE state='running'"
+            ).fetchall()
+            for row in rows:
+                if not row["claimed_at"]:
+                    expired=True
+                else:
+                    try:
+                        claimed=datetime.fromisoformat(row["claimed_at"])
+                        if claimed.tzinfo is None: claimed=claimed.replace(tzinfo=timezone.utc)
+                        expired=claimed.timestamp() <= cutoff
+                    except (TypeError,ValueError):
+                        expired=True
+                if expired:
+                    cursor=self._db.execute("""UPDATE opencompany_queue
+                      SET state='queued',lease_id=NULL,claimed_at=NULL
+                      WHERE work_item_id=? AND state='running' AND lease_id IS ?""",
+                      (row["work_item_id"],row["lease_id"]))
+                    if cursor.rowcount:
+                        recovered.append(UUID(row["work_item_id"]))
+            self._db.commit()
+            for lease_id,lease in list(self._leases.items()):
+                if lease.work_item_id in recovered:
+                    self._leases.pop(lease_id,None)
+        return tuple(recovered)
+
     def claim(self,agent_id,role_key=None):
         with self._lock:
+            self.recover_expired_leases()
             if role_key is None:
                 row=self._db.execute("SELECT work_item_id,role_key FROM opencompany_queue WHERE agent_id=? AND state='queued' ORDER BY rowid LIMIT 1",(str(agent_id),)).fetchone()
                 if row: role_key=row["role_key"]
             else:
                 row=self._db.execute("SELECT work_item_id,role_key FROM opencompany_queue WHERE agent_id=? AND role_key=? AND state='queued' ORDER BY rowid LIMIT 1",(str(agent_id),role_key)).fetchone()
             if not row:return None
-            self._db.execute("UPDATE opencompany_queue SET state='running' WHERE work_item_id=?",(row["work_item_id"],));self._db.commit()
-            lease=QueueLease(UUID(row["work_item_id"]),agent_id,role_key,str(uuid4()));self._leases[lease.lease_id]=lease
+            lease=QueueLease(UUID(row["work_item_id"]),agent_id,role_key,str(uuid4()))
+            now=datetime.now(timezone.utc).isoformat()
+            cursor=self._db.execute("""UPDATE opencompany_queue
+              SET state='running',lease_id=?,claimed_at=?,attempts=attempts+1
+              WHERE work_item_id=? AND state='queued'""",
+              (lease.lease_id,now,str(lease.work_item_id)))
+            if cursor.rowcount != 1:
+                self._db.rollback()
+                return None
+            self._db.commit()
+            self._leases[lease.lease_id]=lease
             from dataclasses import replace
             item=self.store.get_work_item(lease.work_item_id)
             if item and item.state != TaskState.IN_PROGRESS:
                 self.store.save_work_item_with_audit(replace(item,state=TaskState.IN_PROGRESS),_audit("queue.claim",item.id,"worker"))
             return lease
-    def complete(self,lease):
+
+    def _finish(self,lease,state):
         with self._lock:
-            self._db.execute("UPDATE opencompany_queue SET state='done' WHERE work_item_id=?",(str(lease.work_item_id),));self._db.commit()
+            cursor=self._db.execute("""UPDATE opencompany_queue SET state=?,lease_id=NULL,claimed_at=NULL
+              WHERE work_item_id=? AND state='running' AND lease_id=?""",
+              (state,str(lease.work_item_id),lease.lease_id))
+            self._db.commit()
             self._leases.pop(lease.lease_id,None)
-    def fail(self,lease):
-        with self._lock:
-            self._db.execute("UPDATE opencompany_queue SET state='failed' WHERE work_item_id=?",(str(lease.work_item_id),));self._db.commit()
-            self._leases.pop(lease.lease_id,None)
+            if cursor.rowcount != 1:
+                raise ValueError("worker lease is stale or has already been completed")
+            return True
+
+    def complete(self,lease):return self._finish(lease,"done")
+    def fail(self,lease):return self._finish(lease,"failed")
+
     def counts(self):
         with self._lock:
             rows=self._db.execute("SELECT state,COUNT(*) n FROM opencompany_queue GROUP BY state").fetchall()
