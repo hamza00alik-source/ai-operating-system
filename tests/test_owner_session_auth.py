@@ -66,3 +66,23 @@ def test_owner_dashboard_office_uses_live_twelve_department_data():
     assert "on-demand" in html
     assert "Drag to rotate" in html or "Drag to rotate" in html
 
+def test_owner_dashboard_executive_overview_exposes_live_status_and_shortcuts():
+    response = TestClient(app).get("/owner")
+    assert response.status_code == 200
+    html = response.text
+    for element_id in (
+        "overviewActiveRuns",
+        "overviewCompletedRuns",
+        "overviewQueuedTasks",
+        "overviewFailedRuns",
+        "overviewApprovalPreview",
+        "overviewActivity",
+        "overviewLastUpdated",
+        "overviewRefresh",
+    ):
+        assert f'id="{element_id}"' in html
+    assert "function renderExecutiveOverview" in html
+    assert 'data-overview-view="tasks"' in html
+    assert 'data-overview-view="workflows"' in html
+    assert 'data-overview-view="models"' in html
+    assert "Department workflow templates are available in Orchestration" in html
