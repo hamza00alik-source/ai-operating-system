@@ -875,6 +875,11 @@ def get_video_status(provider: str = Query(default="longcat-video", pattern="^(l
 
 @app.post("/video/jobs", status_code=201, dependencies=[Depends(require_owner_key)])
 def post_video_job(payload: VideoJobCreate):
+    if payload.provider == "cinecode" and payload.parameters.get("music_source") not in {"none", "code"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Cinecode requires an explicit music_source choice: 'none' or 'code'.",
+        )
     try:
         return video_jobs.create_job(
             prompt=payload.prompt, provider=payload.provider,
