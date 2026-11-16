@@ -588,6 +588,15 @@ def review_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),owner
     state=TaskState.COMPLETED if payload.get("approved") else TaskState.FAILED
     changed=replace(item,state=state)
     runtime.store.save_work_item_with_audit(changed,_audit("owner.review",item.id,"owner"))
+    evaluation_id=str(uuid4())
+    deliverables=runtime.store.list_deliverables(item.id)
+    role_key=(deliverables[-1]["role_key"] if deliverables else item.assigned_role_key) or "unassigned"
+    runtime.learning.save_evaluation({
+        "id":evaluation_id,"work_item_id":str(item.id),"role_key":role_key,
+        "approved":bool(payload.get("approved")),"rationale":payload["rationale"].strip(),
+        "deliverable_content":deliverables[-1]["content"] if deliverables else "",
+        "created_at":datetime.now(timezone.utc).isoformat(),
+    })
     auto_queue_enabled=os.getenv("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK","false").lower()=="true"
     provider_ready=bool(runtime.gateway.eligible_providers(request_budget_usd=0.0)) if auto_queue_enabled else False
     queued_ids=[]
@@ -611,7 +620,7 @@ def review_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),owner
                             )
                             queued_ids.append(str(queued_parent.id))
     return {
-        "state":state.value,"evaluation_recorded":True,"evaluation_id":str(uuid4()),
+        "state":state.value,"evaluation_recorded":True,"evaluation_id":evaluation_id,
         "auto_queue":{"enabled":auto_queue_enabled,"provider_ready":provider_ready,"queued_work_item_ids":queued_ids},
     }
 @app.get("/work-items/{item_id}/deliverables")
