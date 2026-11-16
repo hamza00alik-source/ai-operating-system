@@ -2027,3 +2027,51 @@ def test_gateway_worker_executor_rejects_inactive_specialist():
     with pytest.raises(ValueError, match="not active"):
         runtime.worker.executor.execute(role_key, item)
     runtime.close()
+
+
+def test_owner_run_once_executes_one_zero_cost_specialist_draft(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    agent_id = uuid4()
+    role_key = "market_intelligence_analyst"
+    runtime.agents[role_key] = {
+        "id": str(agent_id), "role_key": role_key, "title": "Market Intelligence Analyst",
+        "state": "active", "capabilities": ["market research", "competitor analysis"],
+    }
+
+    class FreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),) if request_budget_usd == 0.0 else ()
+
+        def generate(self, request, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            return ModelResult(
+                text="## Draft\\nOwner review required.",
+                provider="test-free", model="test-model", cost_usd=0.0,
+            )
+
+    runtime.gateway = FreeGateway()
+    item = WorkItem(
+        id=uuid4(), title="Research a market", objective="Prepare a first-pass market analysis.",
+        department="Marketing", state=TaskState.READY, business_id="digital-products",
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="owner.created", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id=str(uuid4()),
+    )
+    runtime.store.create_work_item(item, audit)
+    runtime.queue.admit(item.id, agent_id, role_key)
+    runtime.fleet.start()
+
+    response = owner_client.post(
+        "/workers/run-once", headers=headers,
+        json={"agent_id": str(agent_id), "role_key": role_key},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed_review_required"
+    assert response.json()["execution_mode"] == "single_task_owner_triggered"
+    assert response.json()["background_loop_enabled"] is False
+    assert runtime.store.get_work_item(item.id).state == TaskState.REVIEW
+    assert runtime.queue.counts().get("done") == 1
