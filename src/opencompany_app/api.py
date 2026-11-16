@@ -502,7 +502,16 @@ def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_
     proposal["materialized_work_items"]=materialized
     proposal["updated_at"]=datetime.now(timezone.utc).isoformat()
     runtime.delegations.save_proposal(proposal)
-    runtime.store.save_work_item_with_audit(item,_audit("delegation.proposal_approved",item.id,"owner"))
+    from dataclasses import replace
+    child_ids=tuple(UUID(task["id"]) for task in materialized)
+    assigned_parent=replace(
+        item,assigned_agent_id=UUID(manager["id"]),
+        assigned_role_key=manager["role_key"],
+        depends_on=tuple(dict.fromkeys((*item.depends_on,*child_ids))),
+    )
+    runtime.store.save_work_item_with_audit(
+        assigned_parent,_audit("delegation.parent_assigned",item.id,"owner"),
+    )
     return proposal
 
 
@@ -560,6 +569,15 @@ def review_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),owner
     state=TaskState.COMPLETED if payload.get("approved") else TaskState.FAILED
     changed=replace(item,state=state)
     runtime.store.save_work_item_with_audit(changed,_audit("owner.review",item.id,"owner"))
+    if state==TaskState.COMPLETED:
+        for dependent in runtime.store.list_work_items():
+            if item.id in dependent.depends_on and dependent.state==TaskState.DRAFT and dependent.assigned_agent_id:
+                prerequisites=[runtime.store.get_work_item(dep) for dep in dependent.depends_on]
+                if prerequisites and all(value and value.state==TaskState.COMPLETED for value in prerequisites):
+                    ready_parent=replace(dependent,state=TaskState.READY)
+                    runtime.store.save_work_item_with_audit(
+                        ready_parent,_audit("workflow.dependencies_completed",dependent.id,"system"),
+                    )
     return {"state":state.value,"evaluation_recorded":True,"evaluation_id":str(uuid4())}
 @app.get("/work-items/{item_id}/deliverables")
 def deliverables(item_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
