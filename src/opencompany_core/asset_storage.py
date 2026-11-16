@@ -192,7 +192,7 @@ class PrivateFilesystemAssetStorage:
 
     def read_chunks(self, storage_key: str, *, chunk_size: int = 1024 * 1024):
         """Internal bounded reader for scanners; never exposed as a download route."""
-        if not isinstance(storage_key, str) or not re.fullmatch(r"[a-f0-9]{64}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.blob", storage_key):
+        if not isinstance(storage_key, str) or not re.fullmatch(r"[a-f0-9]{64}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.blob", storage_key):
             raise AssetStorageError("invalid private storage key")
         if not 4096 <= chunk_size <= 4 * 1024 * 1024:
             raise AssetStorageError("invalid internal read chunk size")
