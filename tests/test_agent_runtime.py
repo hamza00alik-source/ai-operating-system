@@ -150,3 +150,18 @@ def test_all_ten_departments_have_five_original_named_specialist_templates():
         assert len(first_team) == 5
         assert all("Team 1 Specialist" not in role["name"] for role in first_team)
         assert len({role["id"] for role in first_team}) == 5
+
+def test_every_opencompany_department_receives_specific_local_role_guidance():
+    from ai_os.agent_runtime import _load_specialist
+
+    departments = [
+        "intelligence-research", "product-innovation", "engineering",
+        "design-creative", "marketing-growth", "sales-marketplace",
+        "customer-operations", "finance-operations", "legal-compliance",
+        "quality-workforce",
+    ]
+    for department in departments:
+        brief = _load_specialist({"name": "Department Specialist", "department": department})
+        assert "ROLE FOCUS:" in brief
+        assert "sound professional practice for the assigned function" not in brief
+        assert "request owner approval" in brief
