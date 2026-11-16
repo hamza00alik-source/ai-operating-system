@@ -81,4 +81,5 @@ def test_owner_dashboard_exposes_video_job_controls_and_status():
     assert 'id="videoJobForm"' in html
     assert "video-decision" in html
     assert "video-cancel" in html
+    assert '/video/reports/' in html
     assert "Submit for owner approval" in html
