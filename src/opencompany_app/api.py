@@ -1,6 +1,6 @@
 """Owner-controlled FastAPI surface for the OpenCompany runtime."""
 from __future__ import annotations
-import hashlib, html, os, secrets, time
+import hashlib, html, json, os, secrets, time
 from collections import defaultdict
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -355,6 +355,52 @@ def create_delegation_proposal(item_id:str,payload:dict,runtime=Depends(get_runt
     }
     runtime.delegations.save_proposal(proposal)
     return proposal
+
+
+@app.post("/work-items/{item_id}/manager-proposal")
+def manager_proposal(item_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Let an active department manager draft a team proposal; owner approval remains required."""
+    item=runtime.store.get_work_item(UUID(item_id))
+    if not item:raise HTTPException(404,"Work item not found.")
+    department=next((d for d in DEPARTMENT_CATALOGUE if d["department"]==item.department),None)
+    if not department:raise HTTPException(422,"Unknown OpenCompany department.")
+    manager_role=next((r for r in ROLE_CATALOGUE if r["role_key"]==department["manager_role_key"]),None)
+    manager=runtime.agents.get(department["manager_role_key"])
+    if not manager or manager.get("state")!="active":
+        raise HTTPException(409,"The department manager must be explicitly ACTIVE before creating an AI proposal.")
+    request={
+        "task":"propose_specialist_team",
+        "manager_role":manager_role,
+        "work_item":{"title":item.title,"objective":item.objective,"department":item.department},
+        "constraints":{"max_specialists":max(1,min(int(payload.get("max_specialists",5)),5)),
+                       "no_assignment":True,"no_queue_admission":True,"no_execution":True,
+                       "zero_cost_only":True},
+    }
+    try:
+        result=runtime.gateway.generate(request,request_budget_usd=0.0)
+    except Exception as exc:
+        raise HTTPException(503,"The confirmed zero-cost model provider could not produce a manager proposal.") from exc
+    try:
+        decision=json.loads(result.text)
+        required=[str(value) for value in decision.get("required_capabilities",[])]
+        if not required or not all(value.strip() for value in required):
+            raise ValueError("required_capabilities must be a non-empty list")
+    except (TypeError,ValueError,AttributeError) as exc:
+        raise HTTPException(422,"Manager proposal output was not valid structured JSON.") from exc
+    proposal=create_delegation_proposal(
+        item_id,{"required_capabilities":required,"max_specialists":request["constraints"]["max_specialists"]},
+        runtime,owner,
+    )
+    proposal["rationale"]=str(decision.get("rationale",""))[:1200]
+    proposal["manager_role_key"]=manager_role["role_key"]
+    runtime.delegations.save_proposal(proposal)
+    return {
+        "manager_ai":{"provider":result.provider,"model":result.model,"cost_usd":result.cost_usd},
+        "required_capabilities":required,"rationale":proposal["rationale"],
+        "mode":"specialist_team","proposal":proposal,
+        "owner_approval_required":True,"assignment_performed":False,
+        "queue_entries_created":False,"execution_started":False,
+    }
 
 
 @app.get("/work-items/{item_id}/delegation-proposals")
