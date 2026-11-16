@@ -148,7 +148,7 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
             "prompt": "Cinecode private artifact integration test",
             "provider": "cinecode",
             "idempotency_key": "cinecode-artifact-001",
-            "parameters": {},
+            "parameters": {"music_source": "none"},
             "estimated_cost_minor": 0,
             "approved_budget_minor": 0,
             "currency": "USD",
