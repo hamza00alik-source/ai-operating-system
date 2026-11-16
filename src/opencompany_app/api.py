@@ -274,6 +274,60 @@ def get_unorouter_models(runtime=Depends(get_runtime),owner=Depends(_owner)):
     }
 
 
+@app.post("/finance/entries")
+def create_finance_entry(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=str(payload.get("business_id",""))
+    entry_type=str(payload.get("entry_type",""))
+    amount=payload.get("amount_minor")
+    currency=str(payload.get("currency","")).upper()
+    description=str(payload.get("description","")).strip()
+    if business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    if entry_type not in ("expense","revenue"):
+        raise HTTPException(422,"Finance entry type must be expense or revenue.")
+    if not isinstance(amount,int) or isinstance(amount,bool) or amount<=0:
+        raise HTTPException(422,"Amount must be a positive integer in minor currency units.")
+    if len(currency)!=3 or not currency.isalpha() or not description:
+        raise HTTPException(422,"A three-letter currency and description are required.")
+    if payload.get("confirm_owner_record") is not True:
+        raise HTTPException(422,"Owner confirmation is required to record a finance entry.")
+    entry={
+        "id":str(uuid4()),"business_id":business_id,"entry_type":entry_type,
+        "amount_minor":amount,"currency":currency,"description":description[:1000],
+        "recorded_at":datetime.now(timezone.utc).isoformat(),
+    }
+    runtime.finance.create_entry(entry)
+    return {**entry,"recorded":True,"external_payment_initiated":False,"spending_authorized":False}
+
+
+@app.post("/finance/entries/{entry_id}/review")
+def review_finance_entry(entry_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    entry=runtime.finance.get_entry(entry_id)
+    if not entry:raise HTTPException(404,"Finance entry not found.")
+    if payload.get("confirm_owner_decision") is not True:
+        raise HTTPException(422,"Owner confirmation is required for a finance review decision.")
+    action=str(payload.get("action",""))
+    if action not in ("owner_approved","owner_rejected","owner_verified"):
+        raise HTTPException(422,"Unsupported finance review action.")
+    rationale=str(payload.get("rationale","")).strip()
+    if not rationale:raise HTTPException(422,"A review rationale is required.")
+    review={
+        "id":str(uuid4()),"entry_id":entry_id,"action":action,
+        "rationale":rationale[:1200],"created_at":datetime.now(timezone.utc).isoformat(),
+    }
+    if not runtime.finance.save_review(review):
+        raise HTTPException(422,"A finance entry can receive only one owner review decision.")
+    return {**review,"external_payment_initiated":False,"spending_authorized":False}
+
+
+@app.get("/finance/entries")
+def list_finance_entries(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if business_id and business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    entries=runtime.finance.list_entries(business_id)
+    return {"count":len(entries),"entries":entries,"external_payment_initiated":False}
+
+
 @app.get("/usage/model")
 def model_usage(runtime=Depends(get_runtime),owner=Depends(_owner)):return runtime.usage.summary()
 
