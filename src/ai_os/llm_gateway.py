@@ -444,21 +444,25 @@ def generate(provider_id: str, prompt: str) -> dict[str, Any]:
 
 
 
-def test_unorouter_personal(prompt: str) -> dict[str, Any]:
-    """Owner-triggered consumer-account test; paid models are never permitted."""
+def test_unorouter_personal(prompt: str, approve_paid_request: bool = False) -> dict[str, Any]:
+    """Owner-triggered consumer-account connectivity test, separate from company routing.
+
+    Free models require explicit free-only confirmation. A paid model can only be
+    called when this individual request carries an explicit owner approval.
+    """
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
         raise ValueError("Enter a test prompt of 1 to 12,000 characters.")
     config = get_provider_credential("unorouter")
     if not config or not config.get("secret"):
         raise PermissionError("Save a UnoRouter consumer API key in the owner console first.")
-    if not config.get("free_confirmed"):
-        raise PermissionError("UnoRouter free-only credentials are not owner-confirmed.")
-    from opencompany_core.unorouter_adapter import discover_model_catalog
-    catalog = discover_model_catalog(config["secret"])
-    eligible = [item for item in catalog if item.get("allowed_for_inference") is True]
-    if not eligible:
-        raise PermissionError("No model is verified free, zero-priced, online, chat-capable, and accessible to this key. No prompt was sent.")
-    model = str(eligible[0]["model_id"])
+    model = str(config.get("model") or "").strip()
+    if not model or model == "__catalog_only__":
+        raise PermissionError("Select a specific UnoRouter model before running a personal test.")
+    is_free = model.endswith(":free")
+    if is_free and not config.get("free_confirmed"):
+        raise PermissionError("This :free model is not owner-confirmed for free-only routing.")
+    if not is_free and not approve_paid_request:
+        raise PermissionError("This is a paid model. Explicitly approve this specific request before sending it.")
     base = (config.get("base_url") or "https://api.unorouter.com/v1").rstrip("/")
     started = time.monotonic()
     data = _post(
@@ -468,7 +472,8 @@ def test_unorouter_personal(prompt: str) -> dict[str, Any]:
         {"Authorization": f"Bearer {config['secret']}"},
         timeout=45,
     )
-    _assert_zero_cost_model_response(data, model)
+    if is_free:
+        _assert_zero_cost_model_response(data, model)
     choices = data.get("choices") or []
     answer = str((choices[0].get("message") or {}).get("content", "")).strip() if choices else ""
     if not answer or answer.casefold() in {"none", "null", "n/a", "[]", "{}"} or len(answer) < 8:
@@ -482,10 +487,10 @@ def test_unorouter_personal(prompt: str) -> dict[str, Any]:
                   "total_tokens": usage.get("total_tokens"),
                   "reported_by_provider": bool(usage)},
         "mode": "owner_personal_test_only",
-        "model_cost_class": "free",
-        "paid_request_approved": False,
+        "model_cost_class": "free" if is_free else "paid",
+        "paid_request_approved": bool(approve_paid_request and not is_free),
         "company_task_routing": False,
-        "warning": "Consumer-account test only. Paid models are blocked. Do not submit customer, company, confidential, or sensitive personal data. Provider/model-specific data terms apply.",
+        "warning": "Consumer-account test only. Paid requests require explicit approval for each request. Do not submit customer, company, confidential, or sensitive personal data. Provider/model-specific data terms apply.",
         "live": True,
     }
 
