@@ -32,12 +32,11 @@ Set these as private environment variables in the hosting panel. Never put real 
 | `AI_OS_DATABASE_URL` | `sqlite:////absolute/path/on/persistent-storage/ai_os.db` |
 | `VIDEO_WORKER_TOKEN` | A unique random secret for the LongCat worker only; optional until that worker is deployed |
 | `VIDEO_CINECODE_WORKER_TOKEN` | A different unique random secret for the Cinecode worker only; optional until a sandboxed Cinecode worker is deployed |
-| `PUBLIC_API_BASE_URL` | Public HTTPS API origin; required only when workers upload MP4 artifacts |
+| `PUBLIC_API_BASE_URL` | `https://aios-api-production-e878.up.railway.app` for the current AIOS Railway production service; use the actual public HTTPS API origin if it changes |
 | `VIDEO_ARTIFACT_DIR` | `/data/video_artifacts` on the persistent Railway volume; required for durable MP4/report storage |
 | `VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES` | `314572800` (300 MiB aggregate cap; API also preserves at least 64 MiB free) |
-| `PUBLIC_API_BASE_URL` | `https://aios-api-production-e878.up.railway.app` for the current AIOS Railway production service; use the actual HTTPS API origin if it changes |
 
-The current AIOS Railway production service has a persistent 500 MB volume mounted at `/data`; use `/data/video_artifacts` for private MP4s and production-report sidecars. The API enforces a 400 MiB aggregate artifact cap and a 64 MiB free-space reserve so video uploads cannot silently fill the entire volume. The volume is shared with the app's persistent data, so keep the cap and database backup/retention policy under review.
+The current AIOS Railway production service has a persistent 500 MB volume mounted at `/data`; use `/data/video_artifacts` for private MP4s and production-report sidecars. The API enforces a 300 MiB aggregate artifact cap and a 64 MiB free-space reserve so video uploads cannot silently fill the entire volume. The volume is shared with the app's persistent data, so keep the cap and database backup/retention policy under review.
 
 The Enzonic database path is a historical template only. On the current Railway service, use the existing persistent `/data` mount for the database and artifact directory; do not use an ephemeral working directory. Do not deploy with SQLite on an ephemeral working directory if records must survive restarts/redeploys.
 
