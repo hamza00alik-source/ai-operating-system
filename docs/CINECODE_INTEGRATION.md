@@ -40,7 +40,7 @@ Cinecode remains responsible for the local filmmaking workflow and render pipeli
 ## Agent execution design
 Cinecode's core dependency is an agent that can operate local tools. AIOS's current bounded agent runtime is text-only and has no shell, filesystem, browser, or MCP tools. Therefore a Cinecode worker cannot be implemented safely by merely passing a Cinecode prompt to the existing LLM gateway.
 
-An experimental adapter now exists at `workers/cinecode_worker.py`. It invokes the installed Codex CLI with fixed arguments (`codex exec`, `workspace-write`, `--ask-for-approval never`, `--ignore-user-config`, `--ephemeral`, and JSONL output), a per-job workspace, and a pinned clean Cinecode checkout. It does not accept a user-supplied executable or shell command. The creative brief is still untrusted input and the agent can execute commands inside its workspace; the Codex sandbox is not a complete security boundary.
+An experimental adapter now exists at `workers/cinecode_worker.py`. It invokes the installed Codex CLI with fixed arguments (`codex exec`, `--sandbox workspace-write`, `--ignore-user-config`, `--ephemeral`, and JSONL output). `codex exec` is inherently non-interactive and does not accept the interactive CLI's `--ask-for-approval` flag. The adapter uses a per-job workspace and a pinned clean Cinecode checkout. It does not accept a user-supplied executable or shell command. The creative brief is still untrusted input and the agent can execute commands inside its workspace; the Codex sandbox is not a complete security boundary.
 
 Implemented worker controls:
 - Non-interactive Codex CLI invocation with machine-readable JSONL output.
