@@ -63,12 +63,14 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] Document Cinecode integration architecture, isolation, cost controls, and acceptance tests
 - [x] Add provider-scoped worker claims and heartbeat status for Cinecode and LongCat
 - [x] Enforce separate provider-specific worker credentials and bind claim identity to the authenticated provider
-- [ ] Generalize video provider routing for multiple isolated workers without cross-claiming jobs
+- [x] Generalize video provider routing for multiple isolated workers without cross-claiming jobs
 - [x] Implement allowlisted Cinecode worker capability/health reporting (GPU remains unverified until a real render)
 - [x] Implement fixed-command Codex CLI adapter with workspace-write sandbox, ignored user config, ephemeral sessions, and non-Git workspace support
 - [x] Implement isolated per-job workspace layout with the Cinecode kit and generated film project as sibling folders
 - [x] Implement autonomous Quick-mode defaults for owner-approved jobs, final-render checks, production-report validation/upload, heartbeats, cancellation, bounded retries, and private MP4 upload/download
 - [x] Enforce provider identity across every worker job action and apply private artifact aggregate quotas/free-space reserves sized for the existing 500 MB Railway volume
+- [x] Require explicit Cinecode music selection (`none` or original code-generated music) and reject missing/unsupported choices
+- [x] Require HTTPS AIOS worker API origin and prevent Cinecode jobs from bypassing validated MP4/report artifact completion
 - [x] Add provider-isolation tests for Cinecode and LongCat job claims
 - [x] Add API tests for provider-specific worker authentication, claim identity, Cinecode artifact upload, and private download
 - [x] Add worker tests for path traversal, symlink exclusion, environment-secret filtering, untrusted creative briefs, MP4 validation, and production-report validation
