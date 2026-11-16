@@ -277,6 +277,42 @@ def create_work_item(payload:dict,runtime=Depends(get_runtime),owner=Depends(_ow
     if not item.title or not item.objective:raise HTTPException(422,"Title and objective are required.")
     runtime.store.create_work_item(item)
     return {"item_id":str(item.id),"id":str(item.id),"state":item.state.value,"business_id":business}
+@app.post("/work-items/{item_id}/delegation-preview")
+def delegation_preview(item_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Preview a same-team manager/specialist group without assigning or starting work."""
+    item=runtime.store.get_work_item(UUID(item_id))
+    if not item:raise HTTPException(404,"Work item not found.")
+    department=next((d for d in DEPARTMENT_CATALOGUE if d["department"]==item.department),None)
+    if not department:raise HTTPException(422,"Work item department is not in the OpenCompany catalogue.")
+    manager=next((r for r in ROLE_CATALOGUE if r["role_key"]==department["manager_role_key"]),None)
+    if not manager:raise HTTPException(503,"Department manager role is unavailable.")
+    team_key=item.department+"__team_01"
+    candidates=[
+        r for r in ROLE_CATALOGUE
+        if r["department"]==item.department and r["kind"]=="specialist" and r["team_key"]==team_key
+    ]
+    required=[str(value).casefold() for value in payload.get("required_capabilities",[])]
+    def relevance(role):
+        values=[role["title"].casefold(),*(str(x).casefold() for x in role["capabilities"])]
+        return sum(any(term in value for value in values) for term in required)
+    candidates.sort(key=relevance,reverse=True)
+    limit=max(1,min(int(payload.get("max_specialists",5)),5))
+    specialists=[
+        {
+            "role_key":role["role_key"],"title":role["title"],"department":role["department"],
+            "team_key":role["team_key"],"capabilities":role["capabilities"],
+            "supporting_member":index>=max(0,limit-2),
+        }
+        for index,role in enumerate(candidates[:limit])
+    ]
+    return {
+        "work_item_id":str(item.id),
+        "manager":{"role_key":manager["role_key"],"title":manager["title"],"department":manager["department"]},
+        "mode":"specialist_team","specialists":specialists,
+        "assignment_performed":False,"execution_started":False,
+    }
+
+
 @app.get("/work-items")
 def list_work_items(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
     items=runtime.store.list_work_items(business_id);return {"count":len(items),"items":[_item_dict(x) for x in items]}
