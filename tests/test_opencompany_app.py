@@ -967,6 +967,7 @@ def test_active_ceo_creates_atomic_draft_department_plan(owner_client):
     response = owner_client.post("/executive/plan", headers=headers, json={
         "title": "Build a new international digital business",
         "objective": "Research buyers, validate a product opportunity, and prepare a launch plan.",
+        "business_id": "digital-products",
         "max_tasks": 8,
     })
     assert response.status_code == 200
@@ -976,6 +977,7 @@ def test_active_ceo_creates_atomic_draft_department_plan(owner_client):
     assert payload["queue_entries_created"] is False
     assert payload["execution_started"] is False
     assert all(item["state"] == "draft" for item in payload["items"])
+    assert all(item["business_id"] == "digital-products" for item in payload["items"])
     assert payload["items"][1]["depends_on"] == [payload["items"][0]["id"]]
     after = owner_client.get("/work-items", headers=headers).json()["count"]
     assert after == before + 2
