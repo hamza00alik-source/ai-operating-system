@@ -372,7 +372,7 @@ th{background:#101b2c}
 <h3>Content workspace</h3><div class="scroll"><table><thead><tr><th>Title</th><th>Type</th><th>Channels</th><th>Status</th><th>Actions</th></tr></thead><tbody id="socialContentRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <p class="small">Approval means “approved for scheduling” only. It does not publish or schedule content. Every actual external action requires a separately implemented and tested connector.</p>
 </section>
-\n<section id="business" class="panel section" data-view-panel="business">
+<section id="business" class="panel section" data-view-panel="business">
 <h2>Business operations · financial ledger & customers</h2>
 <p class="small">Persistent records stored in the AIOS database. Only owner-confirmed payments count as revenue. Expenses are recorded for review; no payment is initiated by this dashboard.</p>
 <div id="businessSummary" class="grid"><div class="metric"><strong>—</strong><span>Customers</span></div><div class="metric"><strong>—</strong><span>Verified revenue records</span></div><div class="metric"><strong>—</strong><span>Expenses awaiting approval</span></div></div>
@@ -827,7 +827,7 @@ fallback.style.display="none";
  const socialLink=document.querySelector('nav.main-nav a[data-view="social-media"]');socialLink?.addEventListener("click",loadSocial);
  if(location.hash==="#social-media")loadSocial();
  window.addEventListener("hashchange",()=>{if(location.hash==="#social-media")loadSocial()});
-\n const businessLink=document.querySelector('nav.main-nav a[data-view="business"]');businessLink?.addEventListener("click",loadBusiness);
+ const businessLink=document.querySelector('nav.main-nav a[data-view="business"]');businessLink?.addEventListener("click",loadBusiness);
  const assetsLink=document.querySelector('nav.main-nav a[data-view="code-assets"]');assetsLink?.addEventListener("click",loadAssets);
  if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets();
  window.addEventListener("hashchange",()=>{if(location.hash==="#business")loadBusiness();if(location.hash==="#code-assets")loadAssets()});
