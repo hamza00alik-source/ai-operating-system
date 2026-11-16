@@ -268,6 +268,126 @@ class FinanceRepository(SharedRepository):
         return [self.get_entry(row["id"]) for row in rows]
 
 
+class BusinessRepository(SharedRepository):
+    """Business-unit scoped credential metadata, integrations, and owner-written memory."""
+    def __init__(self,db,lock):
+        super().__init__(db,lock)
+        with lock:
+            db.executescript("""
+            CREATE TABLE IF NOT EXISTS opencompany_business_credentials(
+              business_id TEXT NOT NULL,credential_key TEXT NOT NULL,encrypted_secret TEXT NOT NULL,
+              created_at TEXT NOT NULL,PRIMARY KEY(business_id,credential_key));
+            CREATE TABLE IF NOT EXISTS opencompany_business_integrations(
+              integration_id TEXT PRIMARY KEY,business_id TEXT NOT NULL,provider_key TEXT NOT NULL,
+              display_name TEXT NOT NULL,credential_key TEXT NOT NULL,permissions TEXT NOT NULL,
+              rationale TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS opencompany_business_integration_events(
+              event_id TEXT PRIMARY KEY,integration_id TEXT NOT NULL,action TEXT NOT NULL,
+              rationale TEXT NOT NULL,created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS opencompany_business_memory(
+              business_id TEXT NOT NULL,memory_key TEXT NOT NULL,revision INTEGER NOT NULL,
+              category TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,
+              created_at TEXT NOT NULL,active INTEGER NOT NULL,PRIMARY KEY(business_id,memory_key));
+            CREATE TABLE IF NOT EXISTS opencompany_business_memory_history(
+              id TEXT PRIMARY KEY,business_id TEXT NOT NULL,memory_key TEXT NOT NULL,
+              revision INTEGER NOT NULL,category TEXT NOT NULL,content TEXT NOT NULL,
+              source TEXT NOT NULL,created_at TEXT NOT NULL);
+            """)
+            db.commit()
+
+    def put_credential(self,business_id,credential_key,encrypted_secret):
+        now=datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO opencompany_business_credentials VALUES(?,?,?,?)",
+                             (business_id,credential_key,encrypted_secret,now))
+            self._db.commit()
+        return {"business_id":business_id,"credential_key":credential_key,"created_at":now}
+
+    def has_credential(self,business_id,credential_key):
+        with self._lock:
+            row=self._db.execute("SELECT 1 FROM opencompany_business_credentials WHERE business_id=? AND credential_key=?",
+                                 (business_id,credential_key)).fetchone()
+        return row is not None
+
+    def list_credentials(self,business_id):
+        with self._lock:
+            rows=self._db.execute("SELECT business_id,credential_key,created_at FROM opencompany_business_credentials WHERE business_id=? ORDER BY created_at",
+                                  (business_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_credential(self,business_id,credential_key):
+        with self._lock:
+            cursor=self._db.execute("DELETE FROM opencompany_business_credentials WHERE business_id=? AND credential_key=?",
+                                    (business_id,credential_key))
+            self._db.commit()
+        return cursor.rowcount>0
+
+    def add_integration(self,integration):
+        with self._lock:
+            self._db.execute("INSERT INTO opencompany_business_integrations VALUES(?,?,?,?,?,?,?,?,?)",
+                (integration["integration_id"],integration["business_id"],integration["provider_key"],
+                 integration["display_name"],integration["credential_key"],json.dumps(integration["permissions"]),
+                 integration["rationale"],integration["status"],integration["created_at"]))
+            self._db.execute("INSERT INTO opencompany_business_integration_events VALUES(?,?,?,?,?)",
+                (str(uuid4()),integration["integration_id"],"registered",integration["rationale"],integration["created_at"]))
+            self._db.commit()
+        return integration
+
+    def list_integrations(self,business_id):
+        with self._lock:
+            rows=self._db.execute("SELECT * FROM opencompany_business_integrations WHERE business_id=? ORDER BY created_at",
+                                  (business_id,)).fetchall()
+        return [{
+            "integration_id":row["integration_id"],"business_id":row["business_id"],
+            "provider_key":row["provider_key"],"display_name":row["display_name"],
+            "credential_key":row["credential_key"],"permissions":json.loads(row["permissions"]),
+            "rationale":row["rationale"],"status":row["status"],"created_at":row["created_at"],
+            "credential_available":self.has_credential(business_id,row["credential_key"]),
+        } for row in rows]
+
+    def integration_events(self,business_id,integration_id):
+        with self._lock:
+            exists=self._db.execute("SELECT 1 FROM opencompany_business_integrations WHERE business_id=? AND integration_id=?",
+                                    (business_id,integration_id)).fetchone()
+            if not exists:return None
+            rows=self._db.execute("SELECT action,rationale,created_at FROM opencompany_business_integration_events WHERE integration_id=? ORDER BY rowid",
+                                  (integration_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def save_memory(self,business_id,memory):
+        now=datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            row=self._db.execute("SELECT revision FROM opencompany_business_memory WHERE business_id=? AND memory_key=?",
+                                 (business_id,memory["memory_key"])).fetchone()
+            revision=(row["revision"]+1) if row else 1
+            record={**memory,"business_id":business_id,"revision":revision,"created_at":now,"active":True}
+            self._db.execute("INSERT OR REPLACE INTO opencompany_business_memory VALUES(?,?,?,?,?,?,?,1)",
+                (business_id,memory["memory_key"],revision,memory["category"],memory["content"],memory["source"],now))
+            self._db.execute("INSERT INTO opencompany_business_memory_history VALUES(?,?,?,?,?,?,?,?)",
+                (str(uuid4()),business_id,memory["memory_key"],revision,memory["category"],memory["content"],memory["source"],now))
+            self._db.commit()
+        return record
+
+    def list_memory(self,business_id):
+        with self._lock:
+            rows=self._db.execute("SELECT * FROM opencompany_business_memory WHERE business_id=? AND active=1 ORDER BY created_at",
+                                  (business_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def memory_history(self,business_id,memory_key):
+        with self._lock:
+            rows=self._db.execute("SELECT * FROM opencompany_business_memory_history WHERE business_id=? AND memory_key=? ORDER BY revision",
+                                  (business_id,memory_key)).fetchall()
+        return [dict(row) for row in rows]
+
+    def forget_memory(self,business_id,memory_key):
+        with self._lock:
+            cursor=self._db.execute("UPDATE opencompany_business_memory SET active=0 WHERE business_id=? AND memory_key=? AND active=1",
+                                    (business_id,memory_key))
+            self._db.commit()
+        return cursor.rowcount>0
+
+
 class WorkQueue(SharedRepository):
     def __init__(self,db,lock,store):
         super().__init__(db,lock); self.store=store; self._leases={}
@@ -363,7 +483,7 @@ class Runtime:
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.learning=LearningRepository(self.sqlite._connection,self.sqlite._lock)
-        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock)
+        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock);self.business=BusinessRepository(self.sqlite._connection,self.sqlite._lock)
         self.queue=WorkQueue(self.sqlite._connection,self.sqlite._lock,self.store)
         self.fleet=WorkerFleet();self.gateway=ModelGateway.configure(())
         self.worker=DeterministicWorker(self);self.github_evolution=None
