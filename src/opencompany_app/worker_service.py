@@ -60,7 +60,11 @@ def main() -> None:
     if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
         runtime.close()
         raise SystemExit("No owner-confirmed zero-cost provider configured; worker did not start.")
-    runtime.worker_presence.start(worker_id)
+    try:
+        runtime.worker_presence.start(worker_id)
+    except Exception:
+        runtime.close()
+        raise
     stop = {"requested": False}
     def request_stop(_signum, _frame):
         stop["requested"] = True
