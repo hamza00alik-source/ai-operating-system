@@ -87,6 +87,8 @@ def test_owner_dashboard_exposes_video_job_controls_and_status():
     assert "video-cancel" in html
     assert '/video/reports/' in html
     assert "Submit for owner approval" in html
+    assert "Billing warning" in html
+    assert "not measured or charged against the job's estimated-cost" in html
 
 
 
