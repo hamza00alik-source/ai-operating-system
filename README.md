@@ -171,3 +171,13 @@ The task router classifies a prompt as coding, reasoning, research, creative, or
 The selected model ID is used for that request and recorded in run metadata. The saved model remains a fallback preference in ranking, not a requirement to manually configure every model. If no eligible free chat model can be verified, the UnoRouter route fails closed and the normal free-confirmed provider failover may continue. Paid models are never candidates for automatic task routing.
 
 This is a metadata/name heuristic, not a benchmark or a guarantee that a model is best. It does not run background benchmark prompts or make extra inference calls. Provider rate limits, availability, and actual billing behavior remain controlled by UnoRouter. Only owner-authorized task execution sends the task prompt; catalogue discovery itself is read-only.
+
+
+## Cinecode Studio (owner-approved local rendering)
+
+The active AIOS application includes a separate Cinecode Studio at /cinecode.
+Film briefs are created as drafts, require explicit owner approval, and remain
+queued until a separately provisioned local worker is explicitly enabled.
+Completed MP4s and production reports are private owner-only downloads.
+Execution is disabled by default; see docs/CINECODE_NATIVE_AIOS.md for the
+worker isolation, pinned source, billing gates, and setup instructions.
