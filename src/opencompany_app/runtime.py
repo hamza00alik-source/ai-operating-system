@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 from opencompany_core.domain import AuditRecord, TaskState
+from opencompany_core.business_assets import BusinessAssetRegistry
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.model_gateway import ModelGateway
 from opencompany_core.persistence import SQLiteStore
@@ -483,7 +484,7 @@ class Runtime:
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.learning=LearningRepository(self.sqlite._connection,self.sqlite._lock)
-        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock);self.business=BusinessRepository(self.sqlite._connection,self.sqlite._lock)
+        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock);self.business=BusinessRepository(self.sqlite._connection,self.sqlite._lock);self.asset_registry=BusinessAssetRegistry(self.sqlite._connection,self.sqlite._lock);self.asset_storage=None
         self.queue=WorkQueue(self.sqlite._connection,self.sqlite._lock,self.store)
         self.fleet=WorkerFleet();self.gateway=ModelGateway.configure(())
         self.worker=DeterministicWorker(self);self.github_evolution=None
