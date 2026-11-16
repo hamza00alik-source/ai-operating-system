@@ -620,6 +620,44 @@ class DeterministicWorker:
 def _audit(action,subject_id,actor):
     return AuditRecord(uuid4(),datetime.now(timezone.utc),actor,actor,action,"work_item",str(subject_id),"recorded",str(uuid4()))
 
+class AgentRepository:
+    """Durable registry for owner-managed specialist and leadership profiles."""
+    def __init__(self,db,lock):
+        self._db,self._lock=db,lock
+        with lock:
+            db.execute("""CREATE TABLE IF NOT EXISTS opencompany_agents(
+              role_key TEXT PRIMARY KEY,agent_id TEXT NOT NULL UNIQUE,payload TEXT NOT NULL)""")
+            db.commit()
+
+    def get(self,role_key):
+        with self._lock:
+            row=self._db.execute("SELECT payload FROM opencompany_agents WHERE role_key=?",(str(role_key),)).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def values(self):
+        with self._lock:
+            rows=self._db.execute("SELECT payload FROM opencompany_agents ORDER BY rowid").fetchall()
+        return [json.loads(row["payload"]) for row in rows]
+
+    def setdefault(self,role_key,agent):
+        payload=json.dumps(agent,sort_keys=True)
+        with self._lock:
+            self._db.execute("INSERT OR IGNORE INTO opencompany_agents(role_key,agent_id,payload) VALUES(?,?,?)",
+                             (str(role_key),str(agent["id"]),payload))
+            self._db.commit()
+            row=self._db.execute("SELECT payload FROM opencompany_agents WHERE role_key=?",(str(role_key),)).fetchone()
+        return json.loads(row["payload"])
+
+    def save(self,agent):
+        payload=json.dumps(agent,sort_keys=True)
+        with self._lock:
+            cursor=self._db.execute("UPDATE opencompany_agents SET payload=? WHERE role_key=? AND agent_id=?",
+                                    (payload,str(agent["role_key"]),str(agent["id"])))
+            self._db.commit()
+            if cursor.rowcount!=1:
+                raise KeyError("Agent profile no longer exists or its identity changed.")
+        return agent
+
 class Runtime:
     def __init__(self,database_path=":memory:"):
         self.sqlite=SQLiteStore(database_path);self.store=WorkItemRepository(self.sqlite._connection,self.sqlite._lock)
@@ -640,7 +678,7 @@ class Runtime:
             self.asset_storage=PrivateFilesystemAssetStorage(storage_root)
         if scanner_socket:
             self.asset_scanner=ClamAVUnixSocketScanner(scanner_socket)
-        self.agents={}
+        self.agents=AgentRepository(self.sqlite._connection,self.sqlite._lock)
     def close(self):self.sqlite.close()
 
 def create_runtime(database_path):

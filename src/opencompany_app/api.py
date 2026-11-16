@@ -656,6 +656,7 @@ def agent_state(agent_id:str,payload:dict,runtime=Depends(get_runtime),owner=Dep
     target=payload.get("target_state")
     if target not in ("active","paused","draft"):raise HTTPException(422,"Invalid agent state.")
     agent["state"]=target;agent["revision"]+=1
+    runtime.agents.save(agent)
     return {**agent,"worker_started":False}
 
 @app.post("/work-items")

@@ -2145,3 +2145,28 @@ def test_owner_run_once_executes_one_zero_cost_specialist_draft(owner_client):
     assert response.json()["background_loop_enabled"] is False
     assert runtime.store.get_work_item(item.id).state == TaskState.REVIEW
     assert runtime.queue.counts().get("done") == 1
+
+
+def test_agent_registry_persists_profiles_and_owner_state_across_runtime_restart(tmp_path):
+    database = tmp_path / "agent-registry.sqlite3"
+    first = create_runtime(str(database))
+    profile = {
+        "id": str(uuid4()), "role_key": "intelligence-research__market_researcher",
+        "name": "Market Researcher", "title": "Market Researcher",
+        "department": "intelligence-research", "team_key": "intelligence-research__team_01",
+        "capabilities": ["market research"], "state": "draft", "revision": 1,
+        "kind": "specialist",
+    }
+    created = first.agents.setdefault(profile["role_key"], profile)
+    created["state"] = "active"
+    created["revision"] += 1
+    first.agents.save(created)
+    first.close()
+
+    restarted = create_runtime(str(database))
+    restored = restarted.agents.get(profile["role_key"])
+    assert restored["id"] == profile["id"]
+    assert restored["state"] == "active"
+    assert restored["revision"] == 2
+    assert len(restarted.agents.values()) == 1
+    restarted.close()
