@@ -98,3 +98,28 @@ def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist
     with connect() as db:
         assert db.execute("SELECT status FROM tasks WHERE id='task-1'").fetchone()["status"] == "queued"
         assert db.execute("SELECT output FROM agent_run_steps WHERE run_id='run-1' AND sequence_no=1").fetchone()["output"] == "Saved specialist report"
+
+def test_specialist_role_briefs_are_opencompany_owned_and_local():
+    from ai_os.agent_runtime import _load_specialist
+
+    brief = _load_specialist({
+        "id": "research/research-synthesist",
+        "name": "Research Synthesist",
+        "department": "research",
+        "source_path": "ignored/third-party-prompt.md",
+    })
+
+    assert "OpenCompany's Research Synthesist" in brief
+    assert "separate evidence from inference" in brief
+    assert "never fetch third-party prompts" not in brief
+    assert "request owner approval" in brief
+
+
+def test_unknown_specialist_department_gets_safe_local_brief():
+    from ai_os.agent_runtime import _load_specialist
+
+    brief = _load_specialist({"name": "Operations Analyst", "department": "operations"})
+
+    assert "OpenCompany's Operations Analyst" in brief
+    assert "sound professional practice" in brief
+    assert "You have no authority to spend money" in brief
