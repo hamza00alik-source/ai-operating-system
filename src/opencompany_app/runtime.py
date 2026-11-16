@@ -11,7 +11,7 @@ from opencompany_core.business_assets import BusinessAssetRegistry
 from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
 from opencompany_core.asset_scanning import ClamAVUnixSocketScanner
 from opencompany_core.execution import AgentDeliverable
-from opencompany_core.model_gateway import ModelGateway
+from opencompany_core.model_gateway import ModelGateway, ProviderUnavailable
 from opencompany_core.persistence import SQLiteStore
 
 @dataclass(frozen=True)
