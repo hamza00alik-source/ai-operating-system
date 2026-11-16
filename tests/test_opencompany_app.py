@@ -51,7 +51,7 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert 'id="unorouter-model"' in response.text
     assert "automatic rotation across confirmed-free models" in response.text
     assert 'id="unorouter-model"' in response.text
-    assert "discover all free models" in response.text.lower()
+    assert "import full model catalogue" in response.text.lower()
     assert "payload.detail" in response.text
     assert 'id="github-evolution-token"' in response.text
     assert "draft pull requests only" in response.text

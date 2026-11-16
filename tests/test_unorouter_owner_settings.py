@@ -19,13 +19,13 @@ def test_owner_can_manage_encrypted_unorouter_credentials_without_key_echo(monke
         denied = client.get("/settings/providers/unorouter")
         assert denied.status_code == 401
         saved = client.put("/settings/providers/unorouter", headers={"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"},
-            json={"api_key":"unorouter-private-api-key-value","model":"qwen/model:free","confirm_free":True})
+            json={"api_key":"unorouter-private-api-key-value","model":"unorouter/free-catalog:free","confirm_free":True})
         assert saved.status_code == 200
         assert "unorouter-private-api-key-value" not in saved.text
         status = client.get("/settings/providers/unorouter", headers={"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"})
         assert status.status_code == 200
         assert status.json()["configured"] is True
-        assert status.json()["model"] == "qwen/model:free"
+        assert status.json()["model"] == "unorouter/free-catalog:free"
         assert status.json()["api_key_present"] is True
         assert "unorouter-private-api-key-value" not in status.text
         removed = client.delete("/settings/providers/unorouter", headers={"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"})
@@ -55,7 +55,7 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
         def __exit__(self, *args): return False
         def read(self, limit):
             return json.dumps({
-                "model": "qwen/model:free",
+                "model": "unorouter/free-catalog:free",
                 "choices": [{"message": {"content": "OPENCOMPANY_UNOROUTER_OK"}}],
                 "usage": {"prompt_tokens": 5, "completion_tokens": 4, "cost": 0},
             }).encode()
@@ -67,6 +67,7 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
         return FakeResponse()
 
     monkeypatch.setattr(unorouter_adapter, "urlopen", fake_urlopen)
+    monkeypatch.setattr(unorouter_adapter, "discover_free_models", lambda api_key, **kwargs: ("qwen/model:free",))
     runtime = create_runtime(str(tmp_path / "test.sqlite3"))
     worker_starts = []
     runtime.fleet.start = lambda: worker_starts.append(True) or True
@@ -75,11 +76,15 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
     headers = {"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"}
     try:
         saved = client.put("/settings/providers/unorouter", headers=headers,
-            json={"api_key":"private-unorouter-token-123456","model":"qwen/model:free","confirm_free":True})
+            json={"api_key":"private-unorouter-token-123456","model":"unorouter/free-catalog:free","confirm_free":True})
         assert saved.status_code == 200
         assert worker_starts == []
-        tested = client.post("/settings/providers/unorouter/test", headers=headers, json={})
+        queued = client.post("/settings/providers/unorouter/test", headers=headers, json={})
+        assert queued.status_code == 202
+        tested = client.get("/settings/providers/unorouter/test/" + queued.json()["job_id"], headers=headers)
         assert tested.status_code == 200
+        assert tested.json()["status"] == "succeeded"
+        assert tested.json()["success"] is True
         assert tested.json()["cost_usd"] == 0
         assert tested.json()["paid_fallback"] is False
         assert tested.json()["worker_autostart_enabled"] is True
@@ -101,7 +106,7 @@ def test_runtime_reloads_encrypted_unorouter_credentials_after_restart(monkeypat
     monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
     path = str(tmp_path / "persisted.sqlite3")
     first = create_runtime(path)
-    first.secret_vault.put("unorouter", {"api_key":"private-unorouter-token-123456","model":"qwen/model:free"})
+    first.secret_vault.put("unorouter", {"api_key":"private-unorouter-token-123456","model":"unorouter/free-catalog:free"})
     first.secret_vault.put("github_evolution", {"token":"github-fine-grained-token-private-value-123456"})
     first.close()
     second = create_runtime(path)
@@ -129,7 +134,7 @@ def test_provider_credentials_are_not_changed_if_running_workers_cannot_stop(mon
         response = client.put(
             "/settings/providers/unorouter",
             headers={"X-OpenCompany-API-Key": "owner-api-key-for-tests-long-enough-123456"},
-            json={"api_key": "private-unorouter-token-123456", "model": "qwen/model:free", "confirm_free": True},
+            json={"api_key": "private-unorouter-token-123456", "model": "unorouter/free-catalog:free", "confirm_free": True},
         )
         assert response.status_code == 409
         assert runtime.secret_vault.get("unorouter") is None
@@ -142,7 +147,7 @@ def test_provider_credentials_are_not_changed_if_running_workers_cannot_stop(mon
 def test_provider_dashboard_explains_verified_worker_autostart():
     response = TestClient(api.app).get("/owner")
     assert response.status_code == 200
-    assert "worker fleet starts automatically only when owner-configured autostart is enabled" in response.text
+    assert "After a successful zero-cost test, workers start only if owner-configured autostart is enabled." in response.text
     assert "Worker fleet started automatically." in response.text
 
 
@@ -216,7 +221,7 @@ def test_startup_recovers_from_encryption_key_rotation_and_allows_secret_replace
     monkeypatch.setenv("OPENCOMPANY_GITHUB_REPOSITORY", "hamza00alik-source/ai-operating-system")
     path = str(tmp_path / "rotated-key.sqlite3")
     first = create_runtime(path)
-    first.secret_vault.put("unorouter", {"api_key": "old-unorouter-key-private-123456", "model": "qwen/model:free"})
+    first.secret_vault.put("unorouter", {"api_key": "old-unorouter-key-private-123456", "model": "unorouter/free-catalog:free"})
     first.secret_vault.put("github_evolution", {"token": "old-github-token-private-123456789"})
     first.close()
 
@@ -236,7 +241,7 @@ def test_startup_recovers_from_encryption_key_rotation_and_allows_secret_replace
 
         replaced_uno = client.put(
             "/settings/providers/unorouter", headers=headers,
-            json={"api_key": "new-unorouter-key-private-123456", "model": "qwen/model:free", "confirm_free": True},
+            json={"api_key": "new-unorouter-key-private-123456", "model": "unorouter/free-catalog:free", "confirm_free": True},
         )
         assert replaced_uno.status_code == 200
         assert "unorouter" not in runtime.secret_vault_errors
@@ -299,7 +304,7 @@ def test_unreadable_unorouter_secret_can_be_replaced_or_removed(monkeypatch, tmp
     monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "original-encryption-key-at-least-32-chars")
     path = str(tmp_path / "unreadable-secret.sqlite3")
     runtime = create_runtime(path)
-    runtime.secret_vault.put("unorouter", {"api_key":"private-unorouter-token-123456","model":"qwen/model:free"})
+    runtime.secret_vault.put("unorouter", {"api_key":"private-unorouter-token-123456","model":"unorouter/free-catalog:free"})
     runtime.close()
     monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "rotated-encryption-key-at-least-32-chars")
     recovered = create_runtime(path)
@@ -314,7 +319,7 @@ def test_unreadable_unorouter_secret_can_be_replaced_or_removed(monkeypatch, tmp
         assert status.json()["configuration_error"]
         replaced = client.put(
             "/settings/providers/unorouter", headers=headers,
-            json={"api_key":"replacement-unorouter-token-123456","model":"qwen/model:free","confirm_free":True},
+            json={"api_key":"replacement-unorouter-token-123456","model":"unorouter/free-catalog:free","confirm_free":True},
         )
         assert replaced.status_code == 200
         assert recovered.secret_vault.get("unorouter")["api_key"] == "replacement-unorouter-token-123456"
