@@ -639,6 +639,25 @@ class AgentRepository:
             rows=self._db.execute("SELECT payload FROM opencompany_agents ORDER BY rowid").fetchall()
         return [json.loads(row["payload"]) for row in rows]
 
+    def __getitem__(self,role_key):
+        agent=self.get(role_key)
+        if agent is None:
+            raise KeyError(role_key)
+        return agent
+
+    def __setitem__(self,role_key,agent):
+        if not isinstance(agent,dict) or str(agent.get("role_key"))!=str(role_key):
+            raise ValueError("agent profile role_key must match its registry key")
+        if not agent.get("id"):
+            raise ValueError("agent profile id is required")
+        payload=json.dumps(agent,sort_keys=True)
+        with self._lock:
+            self._db.execute("""INSERT INTO opencompany_agents(role_key,agent_id,payload)
+              VALUES(?,?,?) ON CONFLICT(role_key) DO UPDATE SET
+              agent_id=excluded.agent_id,payload=excluded.payload""",
+              (str(role_key),str(agent["id"]),payload))
+            self._db.commit()
+
     def setdefault(self,role_key,agent):
         payload=json.dumps(agent,sort_keys=True)
         with self._lock:
