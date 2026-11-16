@@ -190,6 +190,35 @@ class PrivateFilesystemAssetStorage:
             "byte_size": total,
         }
 
+    def read_chunks(self, storage_key: str, *, chunk_size: int = 1024 * 1024):
+        """Internal bounded reader for scanners; never exposed as a download route."""
+        if not isinstance(storage_key, str) or not re.fullmatch(r"[a-f0-9]{64}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.blob", storage_key):
+            raise AssetStorageError("invalid private storage key")
+        if not 4096 <= chunk_size <= 4 * 1024 * 1024:
+            raise AssetStorageError("invalid internal read chunk size")
+        target = self.root / storage_key
+        try:
+            info = target.lstat()
+        except OSError as exc:
+            raise AssetStorageError("private asset is unavailable for scanning") from exc
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            raise AssetStorageError("private asset permissions or file type are unsafe")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(target, flags)
+        except OSError as exc:
+            raise AssetStorageError("private asset could not be opened safely") from exc
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or opened.st_ino != info.st_ino or opened.st_dev != info.st_dev:
+            os.close(fd)
+            raise AssetStorageError("private asset changed during scanner access")
+        with os.fdopen(fd, "rb") as stream:
+            while True:
+                block = stream.read(chunk_size)
+                if not block:
+                    break
+                yield block
+
     def discard_uncommitted(
         self, *, business_id: str, asset_scope_id: str, asset_id: str, storage_key: str
     ) -> None:
