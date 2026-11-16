@@ -51,8 +51,8 @@ security boundary. Apply host/firewall egress restrictions and do not expose
 the worker container publicly. The Compose profile uses a read-only root
 filesystem, drops Linux capabilities, and mounts source read-only. The
 container still needs host-level network egress controls and a persistent
-shared database with the AIOS API. The worker makes copied kit files read-only
-while leaving directory permissions suitable for reliable temporary-workspace cleanup.
+shared database with the AIOS API. The worker makes the copied kit files and directories read-only during the
+render, then restores temporary-directory permissions before cleanup.
 
 ## Build and provision
 
