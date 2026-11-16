@@ -207,9 +207,12 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         assert uploaded.status_code == 200
         assert uploaded.json()["provider"] == "cinecode"
         assert uploaded.json()["status"] == "succeeded"
+        assert uploaded.json()["result_metadata"]["production_report_uri"].endswith(f"/video/reports/{job_id}")
         downloaded = client.get(f"/video/artifacts/{job_id}", headers=owner_headers)
         assert downloaded.status_code == 200
         assert downloaded.content == mp4
         report_download = client.get(f"/video/reports/{job_id}", headers=owner_headers)
         assert report_download.status_code == 200
         assert "Licence: original generated assets" in report_download.text
+        forbidden_report = client.get(f"/video/reports/{job_id}", headers=cinecode_headers)
+        assert forbidden_report.status_code == 401
