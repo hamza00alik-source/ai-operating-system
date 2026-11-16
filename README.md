@@ -82,7 +82,7 @@ The Owner Console includes a catalog of 283 specialist definitions across 18 dep
 The Owner Console supports a secure browser session: sign in once with \`AI_OS_API_KEY\`, then use the HttpOnly, Secure, SameSite=Strict session cookie for up to 14 days (or until logout/cookie clearing). The raw owner key is not saved in browser storage. API-key header authentication remains available for external clients.
 
 ## Hosting
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the verified Railway production target, its existing persistent /data volume, and the historical Enzonic fallback. Use a persistent writable data directory for SQLite and private video artifacts; the default relative database path is suitable only when the working directory is persistent.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
