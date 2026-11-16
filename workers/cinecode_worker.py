@@ -150,6 +150,7 @@ def _safe_workspace(root: Path, job_id: str) -> Path:
     if workspace.exists():
         shutil.rmtree(workspace)
     workspace.mkdir(mode=0o700)
+    (workspace / "output").mkdir(mode=0o700)
     return workspace
 
 
@@ -252,7 +253,9 @@ def _run_agent(workspace: Path, job: dict[str, Any], codex_bin: str,
     command = [
         codex_bin, "exec", "--cd", str(workspace),
         "--sandbox", "workspace-write", "--ask-for-approval", "never",
-        "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "--json", prompt,
+        "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
+        "--output-last-message", str(workspace / "output" / "codex-summary.md"),
+        "--json", prompt,
     ]
     process = subprocess.Popen(
         command, cwd=workspace, env=_agent_env(),
@@ -358,6 +361,16 @@ def _validate_mp4(path: Path, workspace: Path, ffprobe_bin: str,
     }
 
 
+
+def _validate_report(path: Path, workspace: Path, max_bytes: int = 64 * 1024) -> None:
+    resolved = path.resolve()
+    if workspace.resolve() not in resolved.parents or path.is_symlink():
+        raise WorkerError("Production report must be a regular file inside the job workspace")
+    if not path.is_file() or path.stat().st_size <= 0 or path.stat().st_size > max_bytes:
+        raise WorkerError("Production report is missing, empty, or exceeds the size limit")
+
+
+
 def process_job(client: AIOSClient, job: dict[str, Any], source: Path,
                 work_root: Path, codex_bin: str, ffprobe_bin: str,
                 heartbeat_seconds: int, lease_seconds: int,
@@ -372,6 +385,7 @@ def process_job(client: AIOSClient, job: dict[str, Any], source: Path,
         _run_agent(workspace, job, codex_bin, client, lease,
                    heartbeat_seconds, timeout_seconds)
         artifact = workspace / "output" / "final.mp4"
+        _validate_report(workspace / "output" / "report.md", workspace)
         metadata = _validate_mp4(
             artifact, workspace, ffprobe_bin, max_duration, max_bytes
         )
