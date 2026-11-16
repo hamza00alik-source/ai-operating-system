@@ -421,6 +421,10 @@ class WorkQueue(SharedRepository):
         with self._lock:
             self._db.execute("UPDATE opencompany_queue SET state='done' WHERE work_item_id=?",(str(lease.work_item_id),));self._db.commit()
             self._leases.pop(lease.lease_id,None)
+    def fail(self,lease):
+        with self._lock:
+            self._db.execute("UPDATE opencompany_queue SET state='failed' WHERE work_item_id=?",(str(lease.work_item_id),));self._db.commit()
+            self._leases.pop(lease.lease_id,None)
     def counts(self):
         with self._lock:
             rows=self._db.execute("SELECT state,COUNT(*) n FROM opencompany_queue GROUP BY state").fetchall()
@@ -461,20 +465,76 @@ class UsageRepository(SharedRepository):
         return {"request_count":len(events),"total_cost_usd":sum(x["cost_usd"] or 0 for x in events),
           "total_input_tokens":sum(x["input_tokens"] or 0 for x in events),"total_output_tokens":sum(x["output_tokens"] or 0 for x in events),"events":events}
 
+class GatewayWorkerExecutor:
+    """Generate one bounded work-item draft through the zero-cost provider gateway."""
+    def __init__(self,runtime):
+        self.runtime=runtime
+
+    def execute(self,role_key,item):
+        agent=next((value for value in self.runtime.agents.values()
+                    if value.get("id")==str(item.assigned_agent_id)),None)
+        if not agent or agent.get("state")!="active" or agent.get("role_key")!=role_key:
+            raise ValueError("The assigned specialist is not active for this role.")
+        if not self.runtime.gateway.eligible_providers(request_budget_usd=0.0):
+            raise ProviderUnavailable("No confirmed zero-cost provider is ready.")
+        capabilities=agent.get("capabilities",[])
+        prompt=(
+            "You are an OpenCompany specialist. Produce a useful first draft for the owner to review. "
+            "Do not claim actions you did not perform. Do not contact customers, publish, spend money, "
+            "change external systems, or make commitments. State assumptions and missing information. "
+            "Return concise, structured Markdown.\\n\\n"
+            f"Business unit: {item.business_id}\\n"
+            f"Department: {item.department}\\n"
+            f"Specialist role: {role_key} ({agent.get('title')})\\n"
+            f"Capabilities: {', '.join(str(value) for value in capabilities)}\\n"
+            f"Task: {item.title}\\nObjective: {item.objective}"
+        )
+        result=self.runtime.gateway.generate(
+            {"task":"owner_approved_work_item_draft","prompt":prompt,
+             "work_item_id":str(item.id),"role_key":role_key,"business_id":item.business_id},
+            request_budget_usd=0.0,
+        )
+        if not isinstance(result.text,str) or not result.text.strip():
+            raise ValueError("The model returned an empty specialist draft.")
+        if result.cost_usd!=0.0:
+            raise ProviderUnavailable("The provider violated the zero-cost policy.")
+        return AgentDeliverable(
+            id=uuid4(),work_item_id=item.id,role_key=role_key,content=result.text.strip(),
+            provider=result.provider,model=result.model,cost_usd=result.cost_usd,
+        )
+
+
 class DeterministicWorker:
-    def __init__(self,runtime):self.runtime=runtime;self.executor=None
+    def __init__(self,runtime):
+        self.runtime=runtime
+        self.executor=GatewayWorkerExecutor(runtime)
+
     def run_once(self,agent_id,role_key):
         lease=self.runtime.queue.claim(agent_id,role_key)
-        if not lease:return "idle"
+        if not lease:return {"status":"idle","deliverable":None}
         item=self.runtime.store.get_work_item(lease.work_item_id)
         from dataclasses import replace
-        self.runtime.store.save_work_item_with_audit(replace(item,state=TaskState.IN_PROGRESS),_audit("worker.claim",item.id,"worker"))
-        deliverable=self.executor.execute(role_key,item)
-        self.runtime.store.save_deliverable_with_audit(deliverable,_audit("worker.deliverable",item.id,"agent"))
-        current=self.runtime.store.get_work_item(item.id)
-        self.runtime.store.save_work_item_with_audit(replace(current,state=TaskState.REVIEW),_audit("worker.review",item.id,"worker"))
-        self.runtime.queue.complete(lease)
-        return "completed_review_required"
+        try:
+            if item is None:raise ValueError("Queued work item no longer exists.")
+            deliverable=self.executor.execute(role_key,item)
+            self.runtime.store.save_deliverable_with_audit(
+                deliverable,_audit("worker.deliverable",item.id,"agent"))
+            current=self.runtime.store.get_work_item(item.id)
+            self.runtime.store.save_work_item_with_audit(
+                replace(current,state=TaskState.REVIEW),
+                _audit("worker.review",item.id,"worker"))
+            self.runtime.queue.complete(lease)
+            return {"status":"completed_review_required","deliverable_id":str(deliverable.id),
+                    "work_item_id":str(item.id),"provider":deliverable.provider,
+                    "model":deliverable.model,"cost_usd":deliverable.cost_usd}
+        except Exception:
+            current=self.runtime.store.get_work_item(lease.work_item_id)
+            if current and current.state in (TaskState.QUEUED,TaskState.IN_PROGRESS):
+                self.runtime.store.save_work_item_with_audit(
+                    replace(current,state=TaskState.FAILED),
+                    _audit("worker.failed",current.id,"worker"))
+            self.runtime.queue.fail(lease)
+            raise
 
 def _audit(action,subject_id,actor):
     return AuditRecord(uuid4(),datetime.now(timezone.utc),actor,actor,action,"work_item",str(subject_id),"recorded",str(uuid4()))
