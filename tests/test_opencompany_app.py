@@ -1873,6 +1873,42 @@ def test_business_asset_upload_is_owner_confirmed_private_and_unavailable(owner_
     assert listed["storage_state"] == "private_stored_unscanned"
     assert listed["status"] == "pending_scan"
 
+    class CleanScanner:
+        def scan(self, chunks):
+            scanned = b"".join(chunks)
+            return {
+                "status": "clean", "scanner_key": "test-clamav",
+                "checksum_sha256": hashlib.sha256(scanned).hexdigest(),
+                "byte_size": len(scanned), "verdict": "stream: OK",
+            }
+
+    runtime.asset_scanner = CleanScanner()
+    unconfirmed_scan = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers=headers, json={"confirm_owner_scan": False},
+    )
+    assert unconfirmed_scan.status_code == 422
+    scanned = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers=headers, json={"confirm_owner_scan": True},
+    )
+    assert scanned.status_code == 200
+    assert scanned.json()["scan_status"] == "clean"
+    assert scanned.json()["delivery_approval_required"] is True
+    assert scanned.json()["download_enabled"] is False
+    after_scan = owner_client.get(
+        "/business-units/digital-products/assets", headers=headers
+    ).json()["assets"][0]
+    assert after_scan["storage_state"] == "private_scanned_clean"
+    assert after_scan["status"] == "pending_delivery_approval"
+    scan_events = owner_client.get(
+        f"/business-units/digital-products/assets/{asset_id}/scan-events",
+        headers=headers,
+    )
+    assert scan_events.status_code == 200
+    assert scan_events.json()["count"] == 1
+    assert scan_events.json()["events"][0]["status"] == "clean"
+
     duplicate = owner_client.put(
         f"/business-units/digital-products/assets/{asset_id}/content",
         headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
