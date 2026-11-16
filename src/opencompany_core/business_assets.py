@@ -128,6 +128,16 @@ class BusinessAssetRegistry:
             self._event(business_id,item["asset_id"],"stored_unscanned",audit); self.connection.commit()
             return {**self._get(business_id,item["asset_id"]),"download_enabled":False}
 
+    def scan_events(self,business_id,asset_id):
+        with self.lock:
+            self._get(business_id,asset_id)
+            rows=self.connection.execute(
+                "SELECT scanner_key,status,checksum_sha256,byte_size,verdict,occurred_at,audit_json "
+                "FROM opencompany_business_asset_scan_events WHERE business_id=? AND asset_id=? ORDER BY rowid",
+                (business_id,str(asset_id)),
+            ).fetchall()
+        return tuple({**dict(row),"audit":json.loads(row["audit_json"])} for row in rows)
+
     def scan_declaration(self,business_id,asset_id):
         with self.lock:
             item=self._get(business_id,asset_id)
