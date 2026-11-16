@@ -101,3 +101,18 @@ def test_cinecode_requires_explicit_music_choice(monkeypatch, tmp_path):
             "brief": "A short film brief that omits the music choice intentionally."
         })
         assert response.status_code == 422
+
+
+def test_worker_readonly_kit_can_be_cleaned_up():
+    from pathlib import Path
+    from ai_os.cinecode_worker import _CleanupTemporaryDirectory, _make_read_only
+
+    with _CleanupTemporaryDirectory(prefix="cinecode-test-") as temp:
+        kit = Path(temp) / "cinecode-kit"
+        nested = kit / "docs"
+        nested.mkdir(parents=True)
+        source_file = nested / "SKILL.md"
+        source_file.write_text("reviewed instructions", encoding="utf-8")
+        _make_read_only(kit)
+        assert source_file.stat().st_mode & 0o222 == 0
+        assert nested.stat().st_mode & 0o222 == 0
