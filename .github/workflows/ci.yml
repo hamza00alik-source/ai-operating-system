@@ -44,3 +44,21 @@ jobs:
           tests/test_video_worker_protocol.py
           tests/test_cinecode_worker.py
           tests/test_owner_session_auth.py
+
+  cinecode-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: |
+          cp workers/.env.cinecode.example workers/.env.cinecode
+          CODEX_HOME_HOST=/tmp/codex-home docker compose -f workers/docker-compose.cinecode.yml config
+      - name: Build the pinned Cinecode worker image
+        run: >-
+          docker build
+          --build-arg CINECODE_COMMIT=c8a3e7552699360a2b0142c9620882af2069eedb
+          --build-arg CODEX_VERSION=0.169.0
+          --file workers/Dockerfile.cinecode
+          --tag aios-cinecode-worker:ci
+          .
