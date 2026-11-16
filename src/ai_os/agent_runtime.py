@@ -235,6 +235,7 @@ def _load_opencompany_catalogue() -> dict:
                 "id": role["role_key"],
                 "name": role["title"],
                 "department": role["department"],
+                "team_key": role["team_key"],
                 "capabilities": role["capabilities"],
             }
             for role in ROLE_CATALOGUE
