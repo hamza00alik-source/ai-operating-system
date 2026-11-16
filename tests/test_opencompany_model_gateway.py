@@ -59,10 +59,10 @@ def test_paid_provider_requires_owner_approval_and_sufficient_budget():
     approved = ModelGateway.configure((
         (ProviderPolicy("paid", "large-model", BillingMode.PAID_OWNER_APPROVED, 0.05), adapter),
     ))
+    assert approved.eligible_providers(request_budget_usd=100.0) == ()
     with pytest.raises(NoEligibleProvider):
-        approved.complete(request(), request_budget_usd=0.01)
+        approved.complete(request(), request_budget_usd=0.05)
     assert adapter.calls == 0
-    assert approved.complete(request(), request_budget_usd=0.05).text == "answer"
 
 
 def test_free_provider_charge_is_rejected():

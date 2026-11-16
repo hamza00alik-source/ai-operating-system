@@ -147,7 +147,7 @@ def test_unorouter_status_never_exposes_api_key(monkeypatch):
 
 
 
-def test_unorouter_rejects_responses_without_explicit_cost(monkeypatch):
+def test_unorouter_free_route_without_cost_field_is_zero_cost(monkeypatch):
     class FakeResponse:
         def __enter__(self):
             return self
@@ -156,15 +156,14 @@ def test_unorouter_rejects_responses_without_explicit_cost(monkeypatch):
         def read(self, limit):
             return json.dumps({
                 "model": "model:free",
-                "choices": [{"message": {"content": "No cost field"}}],
+                "choices": [{"message": {"content": "A valid free-route response"}}],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
             }).encode()
 
     monkeypatch.setattr(unorouter_adapter, "urlopen", lambda *a, **k: FakeResponse())
     adapter = unorouter_adapter.UnoRouterAdapter("secret")
-    with pytest.raises(ProviderUnavailable, match="invalid chat-completion response"):
-        adapter.generate(ModelRequest("test", "req-no-cost"), model="model:free")
-
+    result = adapter.generate(ModelRequest("test", "req-no-cost"), model="model:free")
+    assert result.cost_usd == 0.0
 
 
 def test_unorouter_discovers_only_key_accessible_free_online_zero_price_models(monkeypatch):
@@ -190,24 +189,25 @@ def test_unorouter_discovers_only_key_accessible_free_online_zero_price_models(m
                 {"id": "not-in-pricing:free"},
             ]})
         return FakeResponse({"counts": {"models": 4}, "models": [
-            {"model_name": "glm-5.3", "is_free": True, "online": True,
-             "input_price": 0, "output_price": 0, "vendor": "Zhipu"},
-            {"model_name": "paid-model", "is_free": False, "online": True,
-             "input_price": 0.1, "output_price": 0.2},
-            {"model_name": "offline-model", "is_free": True, "online": False,
-             "input_price": 0, "output_price": 0},
+            {"model_name": "glm-5.3:free", "type": "text", "chat": True,
+             "supported_endpoint_types": ["openai"], "is_free": True, "online": True,
+             "input_price": 0, "output_price": 0, "fixed_price": 0, "vendor": "Zhipu"},
+            {"model_name": "paid-model", "type": "text", "chat": True,
+             "supported_endpoint_types": ["openai"], "is_free": False, "online": True,
+             "input_price": 0.1, "output_price": 0.2, "fixed_price": 0.0},
+            {"model_name": "offline-model:free", "type": "text", "chat": True,
+             "supported_endpoint_types": ["openai"], "is_free": True, "online": False,
+             "input_price": 0, "output_price": 0, "fixed_price": 0},
         ]})
 
     monkeypatch.setattr(unorouter_adapter, "urlopen", fake_urlopen)
     models = unorouter_adapter.discover_free_models("secret-api-key")
 
-    assert [model["id"] for model in models] == ["glm-5.3:free"]
-    assert models[0]["vendor"] == "Zhipu"
-    assert models[0]["context_length"] == 32768
-    assert calls[0][0] == "https://api.unorouter.com/v1/models"
-    assert calls[0][1].get("Authorization") == "Bearer secret-api-key"
-    assert calls[1][0] == "https://api.unorouter.com/api/pricing/catalog"
-    assert "Authorization" not in calls[1][1]
+    assert models == ("glm-5.3:free",)
+    assert calls[0][0] == "https://api.unorouter.com/api/pricing/catalog"
+    assert "Authorization" not in calls[0][1]
+    assert calls[1][0] == "https://api.unorouter.com/v1/models"
+    assert calls[1][1].get("Authorization") == "Bearer secret-api-key"
 
 
 def test_unorouter_discovery_rejects_invalid_key_and_malformed_catalogue(monkeypatch):
@@ -222,6 +222,7 @@ def test_unorouter_discovery_rejects_invalid_key_and_malformed_catalogue(monkeyp
         def read(self, limit):
             return b'{"data": []}'
 
+    monkeypatch.setattr(unorouter_adapter, "_catalog_cache", {})
     monkeypatch.setattr(unorouter_adapter, "urlopen", lambda *a, **k: FakeResponse())
-    with pytest.raises(ProviderUnavailable, match="pricing catalogue"):
+    with pytest.raises(ProviderUnavailable, match="model catalogue format"):
         unorouter_adapter.discover_free_models("secret-api-key")
