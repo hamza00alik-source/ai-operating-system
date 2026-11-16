@@ -433,7 +433,7 @@ class WorkQueue(SharedRepository):
 
 class WorkerFleet:
     def __init__(self):self._running=False
-    def status(self):return FleetStatus(self._running,1 if self._running else 0)
+    def status(self):return FleetStatus(self._running,0)
     def start(self):self._running=True;return self.status()
     def stop(self):self._running=False;return self.status()
 
