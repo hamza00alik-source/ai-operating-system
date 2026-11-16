@@ -69,7 +69,7 @@ def _job(row) -> dict:
 class CinecodeJobCreate(BaseModel):
     brief: str = Field(min_length=20, max_length=12000)
     mode: str = Field(default="quick", pattern="^(quick|film)$")
-    music_source: str = Field(default="none", pattern="^(none|code)$")
+    music_source: str = Field(pattern="^(none|code)$")
 
 
 def _get_job(job_id: str):
