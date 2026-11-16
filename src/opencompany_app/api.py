@@ -594,16 +594,16 @@ def model_usage(runtime=Depends(get_runtime),owner=Depends(_owner)):return runti
 
 @app.get("/workers/status")
 def workers_status(runtime=Depends(get_runtime),owner=Depends(_owner)):
-    status=runtime.fleet.status();return {"running":status.running,"worker_count":status.worker_count}
+    status=runtime.fleet.status();return {"running":status.running,"worker_count":status.worker_count,"execution_mode":"owner_triggered_single_task","background_loop_enabled":False}
 @app.get("/workers/queue")
 def workers_queue(runtime=Depends(get_runtime),owner=Depends(_owner)):
     counts=runtime.queue.counts();return {"counts":counts,"total":sum(counts.values())}
 @app.post("/workers/start")
 def workers_start(runtime=Depends(get_runtime),owner=Depends(_owner)):
     if not runtime.gateway.eligible_providers(request_budget_usd=0.0):raise HTTPException(503,"No confirmed zero-cost provider is ready.")
-    return {"running":runtime.fleet.start().running}
+    return {"running":runtime.fleet.start().running,"execution_mode":"owner_triggered_single_task","background_loop_enabled":False}
 @app.post("/workers/stop")
-def workers_stop(runtime=Depends(get_runtime),owner=Depends(_owner)):return {"running":runtime.fleet.stop().running}
+def workers_stop(runtime=Depends(get_runtime),owner=Depends(_owner)):return {"running":runtime.fleet.stop().running,"execution_mode":"owner_triggered_single_task","background_loop_enabled":False}
 
 @app.post("/workers/run-once")
 def workers_run_once(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
