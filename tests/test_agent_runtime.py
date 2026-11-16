@@ -142,7 +142,7 @@ def test_all_ten_departments_have_five_original_named_specialist_templates():
         "quality-workforce",
     }
     for department in department_ids:
-        team_key = department.replace("-", "_") + "__team_01"
+        team_key = department + "__team_01"
         first_team = [
             role for role in catalogue["agents"]
             if role.get("department") == department and role.get("team_key") == team_key
