@@ -605,6 +605,27 @@ def workers_start(runtime=Depends(get_runtime),owner=Depends(_owner)):
 @app.post("/workers/stop")
 def workers_stop(runtime=Depends(get_runtime),owner=Depends(_owner)):return {"running":runtime.fleet.stop().running}
 
+@app.post("/workers/run-once")
+def workers_run_once(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if not runtime.fleet.status().running:
+        raise HTTPException(409,"Workers must be explicitly started before executing queued work.")
+    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        raise HTTPException(503,"No confirmed zero-cost provider is ready.")
+    agent_id=payload.get("agent_id")
+    role_key=payload.get("role_key")
+    if not isinstance(agent_id,str) or not isinstance(role_key,str) or not role_key.strip():
+        raise HTTPException(422,"An active specialist agent ID and role key are required.")
+    agent=next((value for value in runtime.agents.values() if value.get("id")==agent_id),None)
+    if not agent or agent.get("state")!="active" or agent.get("role_key")!=role_key:
+        raise HTTPException(409,"The selected specialist must be active and match the requested role.")
+    try:
+        result=runtime.worker.run_once(UUID(agent_id),role_key)
+    except (ProviderUnavailable,ValueError) as exc:
+        raise HTTPException(503,"Specialist execution failed safely: "+str(exc)) from exc
+    return result
+
+
+
 @app.post("/agents/bootstrap")
 def bootstrap_agents(runtime=Depends(get_runtime),owner=Depends(_owner)):
     for role in ROLE_CATALOGUE:
