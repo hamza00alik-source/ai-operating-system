@@ -156,25 +156,42 @@ def _safe_workspace(root: Path, job_id: str) -> Path:
 def _copy_cinecode(source: Path, workspace: Path) -> None:
     if not source.is_dir() or source.is_symlink():
         raise WorkerError("CINECODE_SOURCE_DIR must be a real, pre-provisioned directory")
-    # Never follow source symlinks into unrelated host files.
+    kit = workspace / "cinecode-kit"
+    kit.mkdir(mode=0o700)
+    # Keep the kit and each film project as siblings, as required by Cinecode.
     for item in source.iterdir():
         if (item.name in {".git", "node_modules", "__pycache__", ".codex", "secrets"}
                 or item.name == ".env" or item.name.startswith(".env.")):
             continue
-        target = workspace / item.name
+        target = kit / item.name
         if item.is_symlink():
             continue
         if item.is_dir():
             def ignore_unsafe(directory: str, names: list[str]) -> set[str]:
-                ignored = {name for name in names
-                           if (name in {".git", "__pycache__", "node_modules", ".codex", "secrets"}
-                               or name == ".env" or name.startswith(".env.")
-                               or (Path(directory) / name).is_symlink())}
-                return ignored
+                return {name for name in names if (
+                    name in {".git", "__pycache__", "node_modules", ".codex", "secrets"}
+                    or name == ".env" or name.startswith(".env.")
+                    or (Path(directory) / name).is_symlink())}
             shutil.copytree(item, target, symlinks=False, ignore=ignore_unsafe)
         elif item.is_file():
             shutil.copy2(item, target)
-
+    (workspace / "AGENTS.md").write_text(
+        "# AIOS Cinecode execution workspace\\n\\n"
+        "The Cinecode kit is in cinecode-kit/; the film project must be a sibling "
+        "directory named film-project/. Read cinecode-kit/AGENTS.md and "
+        "cinecode-kit/SKILL.md and follow their craft, rendering, licensing, and "
+        "quality-control requirements. Do not edit the kit itself.\\n\\n"
+        "This is a non-interactive, owner-approved production job. Do not call "
+        "AskUserQuestion or pause for human gates. Use the requested mode and purpose "
+        "from the job brief; if omitted, use Quick mode and Cinematic film. Choose the "
+        "skill's recommended defaults and record all assumptions in the project "
+        "STATE.md and output/report.md. Never install software, invoke paid APIs, "
+        "buy assets, publish, or upload to third parties. If a required dependency, "
+        "licence, or capability is missing, stop and report the blocker.\\n\\n"
+        "Create the project as a sibling of cinecode-kit/, use the kit's init_film.py "
+        "and render scripts, and copy the verified final MP4 to output/final.mp4.\\n",
+        encoding="utf-8",
+    )
 
 def _agent_env() -> dict[str, str]:
     # Do not pass AIOS worker credentials or application secrets to the agent.
