@@ -313,6 +313,94 @@ def delegation_preview(item_id:str,payload:dict,runtime=Depends(get_runtime),own
     }
 
 
+@app.post("/work-items/{item_id}/delegation-proposals")
+def create_delegation_proposal(item_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Create a persisted draft team proposal; do not assign work or enqueue tasks."""
+    item=runtime.store.get_work_item(UUID(item_id))
+    if not item:raise HTTPException(404,"Work item not found.")
+    department=next((d for d in DEPARTMENT_CATALOGUE if d["department"]==item.department),None)
+    if not department:raise HTTPException(422,"Unknown OpenCompany department.")
+    manager=next((r for r in ROLE_CATALOGUE if r["role_key"]==department["manager_role_key"]),None)
+    if not manager:raise HTTPException(503,"Department manager role is unavailable.")
+    manager_agent=runtime.agents.get(manager["role_key"])
+    team_key=item.department+"__team_01"
+    candidates=[
+        role for role in ROLE_CATALOGUE
+        if role["department"]==item.department and role["kind"]=="specialist" and role["team_key"]==team_key
+    ]
+    required=[str(value).casefold() for value in payload.get("required_capabilities",[])]
+    def relevance(role):
+        values=[role["title"].casefold(),*(str(value).casefold() for value in role["capabilities"])]
+        return sum(any(term in value for value in values) for term in required)
+    candidates.sort(key=relevance,reverse=True)
+    limit=max(1,min(int(payload.get("max_specialists",5)),5))
+    children=[]
+    for role in candidates[:limit]:
+        agent=runtime.agents.get(role["role_key"])
+        if not agent:raise HTTPException(409,"Bootstrap the specialist profiles before preparing a delegation proposal.")
+        children.append({
+            "id":str(uuid4()),"title":item.title+" — "+role["title"],
+            "objective":item.objective,"department":item.department,"role_key":role["role_key"],
+            "assigned_agent_id":agent["id"],"team_key":role["team_key"],
+            "state":"draft","materialized_work_item_id":None,
+        })
+    if len(children)!=limit:raise HTTPException(409,"The department does not have enough specialist roles for this proposal.")
+    now=datetime.now(timezone.utc).isoformat()
+    proposal={
+        "id":str(uuid4()),"work_item_id":str(item.id),"department":item.department,
+        "manager_role_key":manager["role_key"],
+        "manager_agent_id":manager_agent["id"] if manager_agent else None,
+        "status":"draft","children":children,"queue_entries_created":False,
+        "execution_started":False,"created_at":now,"updated_at":now,
+    }
+    runtime.delegations.save_proposal(proposal)
+    return proposal
+
+
+@app.get("/work-items/{item_id}/delegation-proposals")
+def list_delegation_proposals(item_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    item=runtime.store.get_work_item(UUID(item_id))
+    if not item:raise HTTPException(404,"Work item not found.")
+    proposals=runtime.delegations.list_proposals(item.id)
+    return {"count":len(proposals),"proposals":proposals}
+
+
+@app.post("/work-items/{item_id}/delegation-proposals/{proposal_id}/approve")
+def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    item=runtime.store.get_work_item(UUID(item_id))
+    if not item:raise HTTPException(404,"Work item not found.")
+    proposal=runtime.delegations.get_proposal(item.id,proposal_id)
+    if not proposal:raise HTTPException(404,"Delegation proposal not found.")
+    if proposal["status"]!="draft":raise HTTPException(409,"Only draft delegation proposals can be approved.")
+    manager=next((agent for agent in runtime.agents.values() if agent["id"]==proposal.get("manager_agent_id")),None)
+    if not manager or manager.get("state")!="active":
+        raise HTTPException(409,"The department manager must be explicitly active before approval.")
+    specialists=[]
+    for child in proposal["children"]:
+        agent=next((value for value in runtime.agents.values() if value["id"]==child["assigned_agent_id"]),None)
+        if not agent or agent.get("state")!="active":
+            raise HTTPException(409,"Every assigned specialist must be explicitly active before approval.")
+        specialists.append(agent)
+    materialized=[]
+    for child,agent in zip(proposal["children"],specialists):
+        work_item=WorkItem(
+            uuid4(),child["title"],child["objective"],child["department"],TaskState.READY,
+            item.business_id,(),UUID(agent["id"]),child["role_key"],
+        )
+        runtime.store.create_work_item(work_item,_audit("delegation.child_approved",work_item.id,"owner"))
+        child["state"]="approved"
+        child["materialized_work_item_id"]=str(work_item.id)
+        materialized.append(_item_dict(work_item))
+    proposal["status"]="approved"
+    proposal["queue_entries_created"]=False
+    proposal["execution_started"]=False
+    proposal["materialized_work_items"]=materialized
+    proposal["updated_at"]=datetime.now(timezone.utc).isoformat()
+    runtime.delegations.save_proposal(proposal)
+    runtime.store.save_work_item_with_audit(item,_audit("delegation.proposal_approved",item.id,"owner"))
+    return proposal
+
+
 @app.get("/work-items")
 def list_work_items(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
     items=runtime.store.list_work_items(business_id);return {"count":len(items),"items":[_item_dict(x) for x in items]}
