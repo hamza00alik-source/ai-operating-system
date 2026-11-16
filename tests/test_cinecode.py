@@ -18,7 +18,7 @@ def test_cinecode_routes_require_owner_auth(monkeypatch, tmp_path):
     with _client(monkeypatch, tmp_path) as client:
         assert client.get("/cinecode/status").status_code == 401
         assert client.get("/cinecode/jobs").status_code == 401
-        assert client.post("/cinecode/jobs", json={"brief": "A sufficiently long film brief for this test."}).status_code == 401
+        assert client.post("/cinecode/jobs", json={"brief": "A sufficiently long film brief for this test.", "music_source": "none"}).status_code == 401
 
 
 def test_cinecode_job_requires_owner_approval_before_execution(monkeypatch, tmp_path):
@@ -49,7 +49,7 @@ def test_cinecode_job_requires_owner_approval_before_execution(monkeypatch, tmp_
 def test_cinecode_reject_and_cancel_transitions_are_bounded(monkeypatch, tmp_path):
     with _client(monkeypatch, tmp_path) as client:
         rejected = client.post("/cinecode/jobs", headers=_headers(), json={
-            "brief": "A short film brief long enough to satisfy the schema."
+            "brief": "A short film brief long enough to satisfy the schema.", "music_source": "none"
         }).json()
         response = client.post(f"/cinecode/jobs/{rejected['id']}/reject", headers=_headers(), json={})
         assert response.status_code == 200
@@ -57,7 +57,7 @@ def test_cinecode_reject_and_cancel_transitions_are_bounded(monkeypatch, tmp_pat
         assert client.post(f"/cinecode/jobs/{rejected['id']}/approve", headers=_headers(), json={}).status_code == 409
 
         queued = client.post("/cinecode/jobs", headers=_headers(), json={
-            "brief": "Another short film brief long enough for the schema."
+            "brief": "Another short film brief long enough for the schema.", "music_source": "none"
         }).json()
         assert client.post(f"/cinecode/jobs/{queued['id']}/approve", headers=_headers(), json={}).status_code == 200
         cancelled = client.post(f"/cinecode/jobs/{queued['id']}/cancel", headers=_headers(), json={})
@@ -69,7 +69,7 @@ def test_cinecode_reject_and_cancel_transitions_are_bounded(monkeypatch, tmp_pat
 def test_cinecode_artifact_is_unavailable_until_verified_completion(monkeypatch, tmp_path):
     with _client(monkeypatch, tmp_path) as client:
         job = client.post("/cinecode/jobs", headers=_headers(), json={
-            "brief": "A documentary-style short film about ocean conservation."
+            "brief": "A documentary-style short film about ocean conservation.", "music_source": "none"
         }).json()
         response = client.get(f"/cinecode/jobs/{job['id']}/artifact", headers=_headers())
         assert response.status_code == 409
@@ -93,3 +93,11 @@ def test_owner_console_exposes_cinecode_studio_link():
     assert response.status_code == 200
     assert 'href="/cinecode"' in response.text
     assert "Cinecode Studio" in response.text
+
+
+def test_cinecode_requires_explicit_music_choice(monkeypatch, tmp_path):
+    with _client(monkeypatch, tmp_path) as client:
+        response = client.post("/cinecode/jobs", headers=_headers(), json={
+            "brief": "A short film brief that omits the music choice intentionally."
+        })
+        assert response.status_code == 422
