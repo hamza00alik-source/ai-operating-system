@@ -275,7 +275,7 @@ def create_work_item(payload:dict,runtime=Depends(get_runtime),owner=Depends(_ow
         if not parent or parent.business_id!=business:raise HTTPException(422,"Dependency must exist in the same business unit.")
     item=WorkItem(uuid4(),payload.get("title","").strip(),payload.get("objective","").strip(),dept,TaskState.DRAFT,business,deps)
     if not item.title or not item.objective:raise HTTPException(422,"Title and objective are required.")
-    runtime.store.create_work_item(item)
+    runtime.store.create_work_item(item,_audit("owner.created",item.id,"owner"))
     return {"item_id":str(item.id),"id":str(item.id),"state":item.state.value,"business_id":business}
 @app.post("/work-items/{item_id}/delegation-preview")
 def delegation_preview(item_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
@@ -324,7 +324,10 @@ def transition_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),o
     if not item:raise HTTPException(404,"Work item not found.")
     target=payload.get("target_state")
     if item.state==TaskState.IN_PROGRESS and target=="cancelled":raise HTTPException(409,"Use queue-aware cancellation to avoid orphaning a running worker.")
-    if target in ("queued","in_progress","completed"):raise HTTPException(409,"This lifecycle transition requires queue admission, worker execution, or owner review.")
+    if target=="completed":
+        runtime.store.save_work_item_with_audit(item,_audit("owner.direct_completion_blocked",item.id,"owner"))
+        raise HTTPException(409,"Completion requires an owner review of a saved deliverable.")
+    if target in ("queued","in_progress"):raise HTTPException(409,"This lifecycle transition requires queue admission or worker execution.")
     if target not in ("ready","cancelled","failed"):raise HTTPException(422,"Invalid transition.")
     if target=="ready" and any(runtime.store.get_work_item(dep).state!=TaskState.COMPLETED for dep in item.depends_on):pass
     from dataclasses import replace
