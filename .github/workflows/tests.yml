@@ -44,4 +44,4 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
-      - run: pytest tests/test_postgres_adapter.py
+      - run: pytest tests/test_postgres_adapter.py tests/test_cinecode_postgres.py
