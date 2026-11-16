@@ -65,11 +65,16 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] Enforce separate provider-specific worker credentials and bind claim identity to the authenticated provider
 - [ ] Generalize video provider routing for multiple isolated workers without cross-claiming jobs
 - [x] Implement allowlisted Cinecode worker capability/health reporting (GPU remains unverified until a real render)
-- [ ] Implement sandboxed local agent-CLI adapter with fixed commands and isolated per-job workspaces
-- [ ] Implement Cinecode job execution, heartbeat, cancellation, retries, and private MP4 upload
+- [x] Implement fixed-command Codex CLI adapter with workspace-write sandbox, ignored user config, ephemeral sessions, and non-Git workspace support
+- [x] Implement isolated per-job workspace layout with the Cinecode kit and generated film project as sibling folders
+- [x] Implement autonomous Quick-mode defaults for owner-approved jobs, final-render checks, production-report validation, heartbeats, cancellation, bounded retries, and private MP4 upload
 - [x] Add provider-isolation tests for Cinecode and LongCat job claims
-- [x] Add API tests for provider-specific worker authentication and claim identity
-- [ ] Add command-injection, workspace-isolation, secret-redaction, and full lifecycle tests
-- [ ] Provision a dedicated OS account/container/VM and verify host-level filesystem/network isolation\n- [ ] Verify one end-to-end local Cinecode render on the intended worker hardware
+- [x] Add API tests for provider-specific worker authentication, claim identity, Cinecode artifact upload, and private download
+- [x] Add worker tests for path traversal, symlink exclusion, environment-secret filtering, untrusted creative briefs, MP4 validation, and production-report validation
+- [x] Add allowlisted runtime capability reporting to the Owner Console (GPU remains explicitly unverified)
+- [ ] Provision a dedicated OS account/container/VM and verify host-level filesystem/network isolation
+- [ ] Verify one end-to-end local Cinecode render and MP4 delivery on the intended worker hardware
 - [x] Add read-only owner-dashboard monitoring for Cinecode/LongCat readiness, queue, progress, and completed MP4 artifacts
-- [ ] Keep publishing disabled until a separate platform adapter and owner approval exist
+- [x] Keep publishing disabled; no social/platform publishing adapter is invoked by Cinecode
+- [ ] Verify latest commits in CI and triage the existing full-suite OpenCompany failures
+- [ ] Load-test concurrent workers and verify provider-scoped queue fairness
