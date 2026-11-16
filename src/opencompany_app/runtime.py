@@ -124,6 +124,8 @@ class WorkItemRepository:
 
 class SharedRepository:
     def __init__(self,db,lock):self._db,self._lock=db,lock
+    def get(self,key):
+        return None
 
 class DelegationRepository(SharedRepository):
     """Persist owner-reviewed delegation proposals without admitting queue work."""
@@ -306,6 +308,7 @@ class Runtime:
         self.fleet=WorkerFleet();self.gateway=ModelGateway.configure(())
         self.worker=DeterministicWorker(self);self.github_evolution=None
         self.github_evolution_tested_at=None;self.unorouter_tested_at=None
+        self.provider_test_jobs={}
         self.secret_vault=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.asset_storage=None;self.agents={}
     def close(self):self.sqlite.close()
