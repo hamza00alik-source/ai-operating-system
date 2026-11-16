@@ -287,6 +287,9 @@ def _select_specialist(task: dict, catalogue: dict | None = None) -> dict:
         score = len(tokens & name_tokens) * 3 + len(tokens & capability_tokens)
         if agent.get("department") == target_department:
             score += 50
+        # Prefer authored department templates over generic expansion slots.
+        if agent.get("team_key", "").endswith("__team_01"):
+            score += 10
         if agent.get("name", "").casefold() in task_text:
             score += 60
         if score > best_score:
