@@ -68,12 +68,15 @@ class WorkItemRepository:
                 rows=self._connection.execute("SELECT * FROM work_items WHERE business_id=? ORDER BY rowid",(business_id,)).fetchall()
             else: rows=self._connection.execute("SELECT * FROM work_items ORDER BY rowid").fetchall()
         return tuple(self._from(r) for r in rows)
-    def create_work_item(self,item):
+    def create_work_item(self,item,audit=None):
         with self._lock:
             self._connection.execute("INSERT INTO work_items VALUES(?,?,?,?,?,?,?,?,?,?)",
               (str(item.id),item.title,item.objective,item.department,item.state.value,item.business_id,
                json.dumps([str(x) for x in item.depends_on]),str(item.assigned_agent_id) if item.assigned_agent_id else None,
-               item.assigned_role_key,item.revision)); self._connection.commit()
+               item.assigned_role_key,item.revision))
+            if audit is not None:
+                self._append_audit(audit)
+            self._connection.commit()
         return item
     def save_work_item_with_audit(self,item,audit):
         with self._lock:
