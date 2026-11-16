@@ -42,6 +42,10 @@ def _source_checkout() -> Path:
     expected = os.environ.get("CINECODE_SOURCE_COMMIT", "").strip()
     if not expected or not source.is_dir() or not (source / ".git").exists():
         raise RuntimeError("A pre-provisioned Cinecode Git checkout and CINECODE_SOURCE_COMMIT are required.")
+    license_file = source / "LICENSE"
+    if (not license_file.is_file() or "MIT" not in license_file.read_text(encoding="utf-8", errors="replace")[:2000]
+            or not (source / "AGENTS.md").is_file() or not (source / "SKILL.md").is_file()):
+        raise RuntimeError("Pinned Cinecode source must include its reviewed MIT license, AGENTS.md and SKILL.md.")
     actual = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
         check=True, capture_output=True, text=True, timeout=15,
