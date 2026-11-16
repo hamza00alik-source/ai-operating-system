@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from opencompany_core.model_gateway import gateway_from_environment, ProviderUnavailable, UnoRouterFreeAdapter
 from opencompany_app.worker_service import run_active_specialists_once
+from opencompany_app.runtime import create_runtime
 
 
 def test_gateway_fails_closed_without_free_confirmation(monkeypatch):
