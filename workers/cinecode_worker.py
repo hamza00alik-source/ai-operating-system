@@ -347,7 +347,8 @@ def _validate_mp4(path: Path, workspace: Path, ffprobe_bin: str,
         raise WorkerError("MP4 metadata is missing or invalid") from exc
     streams = metadata.get("streams", [])
     video = next((item for item in streams if item.get("codec_type") == "video"), None)
-    if not video or duration <= 0 or duration > max_duration or "mp4" not in metadata.get("format", {}).get("format_name", "").lower():
+    format_names = {name.strip().lower() for name in metadata.get("format", {}).get("format_name", "").split(",")}
+    if not video or duration <= 0 or duration > max_duration or "mp4" not in format_names:
         raise WorkerError("MP4 must contain a video stream and fit the duration limit")
     return {
         "content_type": "video/mp4",
