@@ -93,6 +93,17 @@ class AIOSClient:
             lease=lease,
         )
 
+    def upload_report(self, job_id: str, lease: str, path: Path,
+                      max_bytes: int = 64 * 1024) -> Any:
+        size = path.stat().st_size
+        if size <= 0 or size > max_bytes:
+            raise WorkerError(f"Production report size {size} is outside the allowed 1..{max_bytes} bytes")
+        return self.request(
+            "PUT", f"/video/worker/jobs/{job_id}/report",
+            body=path.read_bytes(), content_type="text/markdown; charset=utf-8",
+            lease=lease,
+        )
+
     def upload(self, job_id: str, lease: str, path: Path, max_bytes: int) -> Any:
         size = path.stat().st_size
         if size <= 0 or size > max_bytes:
@@ -386,7 +397,9 @@ def process_job(client: AIOSClient, job: dict[str, Any], source: Path,
         _run_agent(workspace, job, codex_bin, client, lease,
                    heartbeat_seconds, timeout_seconds)
         artifact = workspace / "output" / "final.mp4"
-        _validate_report(workspace / "output" / "report.md", workspace)
+        report = workspace / "output" / "report.md"
+        _validate_report(report, workspace)
+        client.upload_report(job["id"], lease, report)
         metadata = _validate_mp4(
             artifact, workspace, ffprobe_bin, max_duration, max_bytes
         )
