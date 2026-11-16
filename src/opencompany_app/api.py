@@ -482,7 +482,10 @@ async def upload_business_asset_content(business_id:str,asset_id:str,request:Req
             )
             raise
     except AssetStorageError as exc:
-        raise HTTPException(422,str(exc)) from exc
+        detail=str(exc)
+        if "declared size" in detail or "checksum" in detail:
+            detail="Uploaded asset size or checksum does not match its owner declaration."
+        raise HTTPException(422,detail) from exc
     except ValueError as exc:
         status=409 if "already" in str(exc) else 422
         raise HTTPException(status,str(exc)) from exc
