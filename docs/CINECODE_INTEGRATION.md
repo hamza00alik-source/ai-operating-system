@@ -121,7 +121,8 @@ Consider only after isolation, cost estimation, provider terms, persistent stora
 - The Owner Console now has read-only readiness, queue, progress, and completed MP4 artifact links for both providers.
 - Focused video integration tests have passed on the CI branch; the full repository suite still has unrelated failures in `tests/test_opencompany_app.py`.
 - The experimental local Codex worker is implemented in `workers/cinecode_worker.py`. It reads the upstream AGENTS.md/SKILL.md, keeps the kit and film project in separate sibling folders, runs non-interactively with Quick mode defaults after owner approval, validates a production report and MP4, and streams the MP4 into private AIOS storage.
-- The Owner Console now supports creating video jobs, approving/rejecting pending jobs, cancelling queued/running jobs, monitoring workers and capabilities, and opening completed MP4 artifacts.
+- The Owner Console now supports creating video jobs, approving/rejecting pending jobs, cancelling queued/running jobs, monitoring workers and capabilities, and opening completed MP4 artifacts plus the private production report.
+- Cinecode production reports are uploaded as a bounded private sidecar before MP4 completion, linked in result metadata, and accessible only through owner-authenticated report downloads.
 - New focused and full-suite GitHub Actions runs have been triggered for the latest branch head; their results are pending.
 - The worker is not deployed, and no intended workstation/VM has been provisioned or authenticated. A real Cinecode render and end-to-end MP4 delivery remain unverified.
 - The prior full-suite run reported 30 failures and 165 passes, concentrated in the separate `tests/test_opencompany_app.py` suite. The latest full-suite run must confirm whether these remain.
