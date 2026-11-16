@@ -623,6 +623,100 @@ def review_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),owner
         "state":state.value,"evaluation_recorded":True,"evaluation_id":evaluation_id,
         "auto_queue":{"enabled":auto_queue_enabled,"provider_ready":provider_ready,"queued_work_item_ids":queued_ids},
     }
+@app.post("/learning/ai-proposals")
+def learning_ai_proposal(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Draft a learning note from persisted review evaluations; never apply it automatically."""
+    evaluation_ids=payload.get("evaluation_ids",[])
+    if not isinstance(evaluation_ids,list) or not evaluation_ids:
+        raise HTTPException(422,"At least one evaluation ID is required.")
+    evaluations=runtime.learning.get_evaluations(evaluation_ids)
+    if len(evaluations)!=len(set(str(value) for value in evaluation_ids)):
+        raise HTTPException(404,"One or more review evaluations were not found.")
+    request={
+        "task":"propose_role_learning_note",
+        "evaluations":evaluations,
+        "constraints":{"draft_only":True,"owner_approval_required":True,"do_not_apply":True,"zero_cost_only":True},
+    }
+    try:
+        result=runtime.gateway.generate(request,request_budget_usd=0.0)
+    except Exception as exc:
+        raise HTTPException(503,"The confirmed zero-cost provider could not draft a learning note.") from exc
+    try:
+        decision=json.loads(result.text)
+        role_key=str(decision["role_key"])
+        note=str(decision["note"]).strip()
+        rationale=str(decision["rationale"]).strip()
+        expected=str(decision["expected_measurement"]).strip()
+        risk=str(decision["risk_level"]).strip().lower()
+        if role_key not in {role["role_key"] for role in ROLE_CATALOGUE} or not note or not rationale or not expected:
+            raise ValueError("Learning proposal fields are incomplete or refer to an unknown role.")
+    except (KeyError,TypeError,ValueError) as exc:
+        raise HTTPException(422,"Learning proposal output was not valid structured content.") from exc
+    proposal={
+        "id":str(uuid4()),"role_key":role_key,"note":note[:3000],
+        "rationale":rationale[:1600],"expected_measurement":expected[:1200],
+        "risk_level":risk,"evaluation_ids":[str(value) for value in evaluation_ids],
+        "status":"draft","owner_approval_required":True,"note_applied":False,
+        "provider":result.provider,"model":result.model,"cost_usd":result.cost_usd,
+        "created_at":datetime.now(timezone.utc).isoformat(),
+    }
+    runtime.learning.save_proposal(proposal)
+    source_item=runtime.store.get_work_item(UUID(evaluations[0]["work_item_id"]))
+    if source_item:
+        runtime.store.save_work_item_with_audit(source_item,_audit("learning.proposal_created",source_item.id,"owner"))
+    return proposal
+
+
+@app.post("/learning/proposals/{proposal_id}/decision")
+def decide_learning_proposal(proposal_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    proposal=runtime.learning.get_proposal(proposal_id)
+    if not proposal:raise HTTPException(404,"Learning proposal not found.")
+    if proposal["status"]!="draft":raise HTTPException(409,"Only draft learning proposals can receive an owner decision.")
+    rationale=str(payload.get("rationale","")).strip()
+    if not rationale:raise HTTPException(422,"Owner decision rationale is required.")
+    approved=bool(payload.get("approved"))
+    proposal["status"]="approved" if approved else "rejected"
+    proposal["owner_approval_required"]=False
+    proposal["decision_rationale"]=rationale[:1200]
+    proposal["decided_at"]=datetime.now(timezone.utc).isoformat()
+    runtime.learning.save_proposal(proposal)
+    evaluations=runtime.learning.get_evaluations(proposal["evaluation_ids"])
+    if evaluations:
+        source_item=runtime.store.get_work_item(UUID(evaluations[0]["work_item_id"]))
+        if source_item:
+            runtime.store.save_work_item_with_audit(source_item,_audit("learning.proposal_decided",source_item.id,"owner"))
+    return proposal
+
+
+@app.post("/learning/proposals/{proposal_id}/apply-note")
+def apply_learning_note(proposal_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    proposal=runtime.learning.get_proposal(proposal_id)
+    if not proposal:raise HTTPException(404,"Learning proposal not found.")
+    if proposal["status"]!="approved":raise HTTPException(409,"An owner-approved learning proposal is required before applying a note.")
+    note={
+        "id":str(uuid4()),"role_key":proposal["role_key"],"note":proposal["note"],
+        "proposal_id":proposal["id"],"expected_measurement":proposal["expected_measurement"],
+        "risk_level":proposal["risk_level"],"created_at":datetime.now(timezone.utc).isoformat(),
+    }
+    runtime.learning.add_note(note)
+    proposal["status"]="implemented"
+    proposal["note_applied"]=True
+    proposal["implemented_at"]=note["created_at"]
+    runtime.learning.save_proposal(proposal)
+    evaluations=runtime.learning.get_evaluations(proposal["evaluation_ids"])
+    if evaluations:
+        source_item=runtime.store.get_work_item(UUID(evaluations[0]["work_item_id"]))
+        if source_item:
+            runtime.store.save_work_item_with_audit(source_item,_audit("learning.note_applied",source_item.id,"owner"))
+    return {"state":"implemented","note_id":note["id"],"role_key":note["role_key"],"note_applied":True}
+
+
+@app.get("/learning/notes/{role_key}")
+def list_learning_notes(role_key:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    notes=runtime.learning.list_notes(role_key)
+    return {"role_key":role_key,"count":len(notes),"notes":notes}
+
+
 @app.get("/work-items/{item_id}/deliverables")
 def deliverables(item_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
     items=runtime.store.list_deliverables(UUID(item_id));return {"count":len(items),"deliverables":list(items)}
