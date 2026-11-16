@@ -1027,7 +1027,12 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
     if item["provider"] != x_video_provider:
         raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     try:
-        return video_jobs.fail_job(job_id, x_job_lease, error=payload.error, retryable=payload.retryable)
+        failed = video_jobs.fail_job(job_id, x_job_lease, error=payload.error, retryable=payload.retryable)
+        if failed and failed["status"] in {"failed", "cancelled"}:
+            import uuid as _uuid
+            report_path = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve() / f"{_uuid.UUID(job_id)}.report.md"
+            report_path.unlink(missing_ok=True)
+        return failed
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
