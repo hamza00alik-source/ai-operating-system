@@ -73,3 +73,15 @@ def test_cinecode_artifact_is_unavailable_until_verified_completion(monkeypatch,
         }).json()
         response = client.get(f"/cinecode/jobs/{job['id']}/artifact", headers=_headers())
         assert response.status_code == 409
+
+
+def test_cinecode_worker_requires_both_explicit_execution_gates(monkeypatch):
+    from ai_os import cinecode_worker
+
+    monkeypatch.delenv("AI_OS_CINECODE_EXECUTION_ENABLED", raising=False)
+    monkeypatch.delenv("AI_OS_CINECODE_BILLING_CONFIRMED", raising=False)
+    assert cinecode_worker._enabled() is False
+    monkeypatch.setenv("AI_OS_CINECODE_EXECUTION_ENABLED", "true")
+    assert cinecode_worker._enabled() is False
+    monkeypatch.setenv("AI_OS_CINECODE_BILLING_CONFIRMED", "true")
+    assert cinecode_worker._enabled() is True
