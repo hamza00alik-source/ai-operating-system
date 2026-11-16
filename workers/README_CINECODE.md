@@ -81,6 +81,12 @@ The repository includes a reproducible Linux worker image and Compose profile:
 - `workers/docker-compose.cinecode.yml` runs as an unprivileged UID, with a read-only container root, dropped Linux capabilities, no-new-privileges, bounded PIDs/memory/CPU, a private writable job volume, and a dedicated Codex home mount.
 - `workers/.env.cinecode.example` is the environment template. Copy it to `workers/.env.cinecode` and enter real secrets only on the worker host; never commit that file.
 
+Before connecting a worker, deploy the matching AIOS API revision and configure the API host with:
+
+- `PUBLIC_API_BASE_URL` set to the public HTTPS API origin (used to construct private artifact links).
+- `VIDEO_ARTIFACT_DIR` pointing to a private persistent volume with enough free space for MP4s and report sidecars. Do not expose this directory as a static public folder.
+- Separate `VIDEO_CINECODE_WORKER_TOKEN` and `VIDEO_WORKER_TOKEN` secrets. The Cinecode worker receives only the Cinecode token; API owner sessions remain separate.
+
 On a dedicated Linux workstation with Docker Compose:
 
 1. Create a separate Codex home used only by this worker, authenticate Codex CLI into it, and make the dedicated directory writable by container UID 10001. Do not mount your everyday developer home or other provider credentials.
