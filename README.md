@@ -11,7 +11,25 @@ A modular, human-supervised foundation for running an AI-powered company.
 - Local-first development; SQLite is the default.
 - Never commit secrets or customer data.
 
-## Quick start
+## OpenCompany API quick start
+
+Requires Python 3.11+. This starts OpenCompany's owner-controlled FastAPI
+application, not the separate legacy AIOS starter.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+export OPENCOMPANY_DATABASE_PATH=./opencompany.sqlite3
+export OPENCOMPANY_OWNER_API_KEY="replace-with-a-long-random-local-key"
+opencompany-api
+```
+
+Open http://127.0.0.1:8000/owner for the OpenCompany owner console, or
+http://127.0.0.1:8000/docs for its API. For a separate persistent worker,
+follow [docs/OPENCOMPANY_WORKER.md](docs/OPENCOMPANY_WORKER.md).
+
+## Legacy AIOS starter
 Requires Python 3.11+.
 
 \`\`\`bash

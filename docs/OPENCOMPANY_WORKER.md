@@ -7,8 +7,9 @@ process alive between requests.
 
 ## Process command
 
-Install the project dependencies and start the API with the host's normal
-ASGI command. Start the worker as a separate long-running process using:
+Install the project with `pip install -e .`. Start the OpenCompany API using
+`opencompany-api` (or `python -m opencompany_app.server`). Start the worker as
+a separate long-running process using:
 
 ```bash
 python worker_main.py
