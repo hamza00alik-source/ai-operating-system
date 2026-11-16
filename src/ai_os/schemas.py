@@ -28,6 +28,7 @@ class ApprovalCreate(BaseModel):
 
 class ApprovalOut(BaseModel):
     id: str
+    business_id: str
     task_id: str | None
     action: str
     details: str
