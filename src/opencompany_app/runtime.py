@@ -125,6 +125,43 @@ class WorkItemRepository:
 class SharedRepository:
     def __init__(self,db,lock):self._db,self._lock=db,lock
 
+class DelegationRepository(SharedRepository):
+    """Persist owner-reviewed delegation proposals without admitting queue work."""
+    def __init__(self,db,lock):
+        super().__init__(db,lock)
+        with lock:
+            db.execute("""CREATE TABLE IF NOT EXISTS opencompany_delegation_proposals(
+              id TEXT PRIMARY KEY,work_item_id TEXT NOT NULL,status TEXT NOT NULL,
+              payload TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)""")
+            db.commit()
+
+    def save_proposal(self,proposal):
+        payload=json.dumps(proposal,sort_keys=True)
+        with self._lock:
+            self._db.execute("""INSERT INTO opencompany_delegation_proposals
+              (id,work_item_id,status,payload,created_at,updated_at) VALUES(?,?,?,?,?,?)
+              ON CONFLICT(id) DO UPDATE SET status=excluded.status,payload=excluded.payload,
+              updated_at=excluded.updated_at""",
+              (proposal["id"],proposal["work_item_id"],proposal["status"],payload,
+               proposal["created_at"],proposal["updated_at"]))
+            self._db.commit()
+        return proposal
+
+    def get_proposal(self,work_item_id,proposal_id):
+        with self._lock:
+            row=self._db.execute(
+                "SELECT payload FROM opencompany_delegation_proposals WHERE work_item_id=? AND id=?",
+                (str(work_item_id),str(proposal_id))).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def list_proposals(self,work_item_id):
+        with self._lock:
+            rows=self._db.execute(
+                "SELECT payload FROM opencompany_delegation_proposals WHERE work_item_id=? ORDER BY created_at",
+                (str(work_item_id),)).fetchall()
+        return [json.loads(row["payload"]) for row in rows]
+
+
 class WorkQueue(SharedRepository):
     def __init__(self,db,lock,store):
         super().__init__(db,lock); self.store=store; self._leases={}
@@ -208,7 +245,7 @@ def _audit(action,subject_id,actor):
 class Runtime:
     def __init__(self,database_path=":memory:"):
         self.sqlite=SQLiteStore(database_path);self.store=WorkItemRepository(self.sqlite._connection,self.sqlite._lock)
-        self.delegations=SharedRepository(self.sqlite._connection,self.sqlite._lock)
+        self.delegations=DelegationRepository(self.sqlite._connection,self.sqlite._lock)
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.learning=SharedRepository(self.sqlite._connection,self.sqlite._lock)
