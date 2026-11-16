@@ -986,7 +986,12 @@ def post_video_worker_claim(
 
 
 @app.post("/video/worker/jobs/{job_id}/heartbeat", dependencies=[Depends(require_video_worker)])
-def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     try:
         return video_jobs.heartbeat(job_id, x_job_lease, progress=payload.progress, message=payload.message)
     except LookupError as exc:
@@ -998,7 +1003,12 @@ def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_jo
 
 
 @app.post("/video/worker/jobs/{job_id}/complete", dependencies=[Depends(require_video_worker)])
-def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     try:
         return video_jobs.complete_job(job_id, x_job_lease, result_uri=payload.result_uri, metadata=payload.metadata)
     except LookupError as exc:
@@ -1010,7 +1020,12 @@ def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_
 
 
 @app.post("/video/worker/jobs/{job_id}/fail", dependencies=[Depends(require_video_worker)])
-def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     try:
         return video_jobs.fail_job(job_id, x_job_lease, error=payload.error, retryable=payload.retryable)
     except LookupError as exc:
@@ -1021,11 +1036,13 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
 
 
 @app.put("/video/worker/jobs/{job_id}/report", dependencies=[Depends(require_video_worker)])
-async def put_video_worker_report(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+async def put_video_worker_report(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
     import uuid as _uuid
     item = video_jobs.get_job(job_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     if item["provider"] != "cinecode":
         raise HTTPException(status_code=403, detail="Production reports are only accepted for Cinecode jobs.")
     if request.headers.get("content-type", "").split(";")[0].strip().lower() != "text/markdown":
@@ -1065,11 +1082,13 @@ async def put_video_worker_report(job_id: str, request: Request, x_job_lease: st
 
 
 @app.put("/video/worker/jobs/{job_id}/artifact", dependencies=[Depends(require_video_worker)])
-async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
     import uuid as _uuid
     item = video_jobs.get_job(job_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     if request.headers.get("content-type", "").split(";")[0].strip().lower() != "video/mp4":
         raise HTTPException(status_code=415, detail="Only video/mp4 artifacts are accepted.")
     public_base = os.getenv("PUBLIC_API_BASE_URL", "").rstrip("/")
