@@ -85,7 +85,7 @@ def _claim(worker_id: str):
                WHERE id=? AND status='approved' AND cancel_requested=0""",
             (worker_id, now, now, row["id"]),
         )
-        db.commit()
+
         if updated.rowcount != 1:
             return None
     return dict(row)
@@ -97,8 +97,6 @@ def _set_progress(job_id: str, message: str) -> None:
             "UPDATE cinecode_jobs SET progress=?,updated_at=? WHERE id=? AND status='running'",
             (message[:500], _now(), job_id),
         )
-        db.commit()
-
 
 def _cancelled(job_id: str) -> bool:
     with connect() as db:
@@ -125,8 +123,6 @@ def _finish(job_id: str, *, status: str, error: str | None = None,
             (status, error[:2000] if error else None, artifact_path, digest, size,
              report_path, now, now, progress, job_id),
         )
-        db.commit()
-
 
 def _run_render(job: dict, source: Path, env: dict[str, str]) -> None:
     job_id = job["id"]
