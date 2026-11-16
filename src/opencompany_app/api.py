@@ -1,6 +1,6 @@
 """Owner-controlled FastAPI surface for the OpenCompany runtime."""
 from __future__ import annotations
-import hashlib, html, json, os, secrets, time
+import base64, hashlib, html, json, os, secrets, time
 from collections import defaultdict
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -40,6 +40,21 @@ def _prune(values):
     now=time.time()
     while values and now-values[0]>300:values.pop(0)
     return values
+
+def _business_fernet():
+    secret=os.getenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY","")
+    if len(secret)<32:
+        raise HTTPException(503,"Business credential encryption is not configured.")
+    from cryptography.fernet import Fernet
+    key=base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+    return Fernet(key)
+
+
+def _business_id(value):
+    if value not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(404,"Business unit not found.")
+    return value
+
 
 def _owner(request:Request, x_opencompany_api_key:str|None=Header(default=None)):
     key=os.getenv("OPENCOMPANY_OWNER_API_KEY")
@@ -272,6 +287,127 @@ def get_unorouter_models(runtime=Depends(get_runtime),owner=Depends(_owner)):
         "routing_mode":"automatic_all_free_models","models":free_models,
         "paid_fallback":False,"configured":bool(api_key),
     }
+
+
+@app.post("/business-units/{business_id}/credentials")
+def store_business_credential(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    key=str(payload.get("credential_key","")).strip()
+    secret=payload.get("secret")
+    if payload.get("confirm_owner_storage") is not True:
+        raise HTTPException(422,"Owner confirmation is required to store a business credential.")
+    if not key or len(key)>100 or not all(ch.isalnum() or ch in "._-" for ch in key):
+        raise HTTPException(422,"Credential key is invalid.")
+    if not isinstance(secret,dict) or not secret:
+        raise HTTPException(422,"Credential secret must be a non-empty object.")
+    try:
+        encrypted=_business_fernet().encrypt(json.dumps(secret,sort_keys=True).encode("utf-8")).decode("ascii")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(422,"Credential could not be encrypted.") from exc
+    record=runtime.business.put_credential(business_id,key,encrypted)
+    return {"credential":{"business_id":business_id,"credential_key":key,"created_at":record["created_at"]},
+            "stored":True,"external_connection_attempted":False}
+
+
+@app.get("/business-units/{business_id}/credentials")
+def list_business_credentials(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    credentials=runtime.business.list_credentials(business_id)
+    return {"count":len(credentials),"credentials":credentials}
+
+
+@app.delete("/business-units/{business_id}/credentials/{credential_key}")
+def delete_business_credential(business_id:str,credential_key:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_deletion") is not True:
+        raise HTTPException(422,"Owner confirmation is required to delete a credential.")
+    deleted=runtime.business.delete_credential(business_id,credential_key)
+    if not deleted:raise HTTPException(404,"Business credential not found.")
+    return {"deleted":True,"business_id":business_id,"credential_key":credential_key,"external_connection_attempted":False}
+
+
+@app.post("/business-units/{business_id}/integrations")
+def register_business_integration(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_registration") is not True:
+        raise HTTPException(422,"Owner confirmation is required to register an integration.")
+    provider_key=str(payload.get("provider_key","")).strip()
+    display_name=str(payload.get("display_name","")).strip()
+    credential_key=str(payload.get("credential_key","")).strip()
+    permissions=payload.get("permissions",[])
+    rationale=str(payload.get("rationale","")).strip()
+    if not provider_key or not display_name or not credential_key or not rationale:
+        raise HTTPException(422,"Integration metadata and rationale are required.")
+    if not isinstance(permissions,list) or not permissions or not all(isinstance(x,str) and x.strip() for x in permissions):
+        raise HTTPException(422,"At least one explicit integration permission is required.")
+    if not runtime.business.has_credential(business_id,credential_key):
+        raise HTTPException(409,"The integration credential must exist in this business unit.")
+    integration={
+        "integration_id":str(uuid4()),"business_id":business_id,"provider_key":provider_key,
+        "display_name":display_name,"credential_key":credential_key,"permissions":permissions,
+        "rationale":rationale[:1200],"status":"pending_review",
+        "created_at":datetime.now(timezone.utc).isoformat(),
+    }
+    runtime.business.add_integration(integration)
+    return {"integration":integration,"external_connection_attempted":False}
+
+
+@app.get("/business-units/{business_id}/integrations")
+def list_business_integrations(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    integrations=runtime.business.list_integrations(business_id)
+    return {"count":len(integrations),"integrations":integrations,"external_connections_enabled":False}
+
+
+@app.get("/business-units/{business_id}/integrations/{integration_id}/events")
+def business_integration_events(business_id:str,integration_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    events=runtime.business.integration_events(business_id,integration_id)
+    if events is None:raise HTTPException(404,"Business integration not found.")
+    return {"count":len(events),"events":events}
+
+
+@app.post("/business-units/{business_id}/memory")
+def save_business_memory(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_write") is not True:
+        raise HTTPException(422,"Owner confirmation is required to write business memory.")
+    memory_key=str(payload.get("memory_key","")).strip()
+    category=str(payload.get("category","")).strip()
+    content=str(payload.get("content","")).strip()
+    source=str(payload.get("source","")).strip()
+    if not memory_key or not category or not content or not source:
+        raise HTTPException(422,"Memory key, category, content, and source are required.")
+    memory=runtime.business.save_memory(business_id,{
+        "memory_key":memory_key,"category":category,"content":content,"source":source,
+    })
+    return {"memory":memory,"agent_writes_enabled":False}
+
+
+@app.get("/business-units/{business_id}/memory")
+def list_business_memory(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    memories=runtime.business.list_memory(business_id)
+    return {"count":len(memories),"memories":memories,"agent_writes_enabled":False}
+
+
+@app.get("/business-units/{business_id}/memory/{memory_key}/history")
+def business_memory_history(business_id:str,memory_key:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    history=runtime.business.memory_history(business_id,memory_key)
+    return {"count":len(history),"history":history}
+
+
+@app.delete("/business-units/{business_id}/memory/{memory_key}")
+def forget_business_memory(business_id:str,memory_key:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_forget") is not True:
+        raise HTTPException(422,"Owner confirmation is required to forget business memory.")
+    forgotten=runtime.business.forget_memory(business_id,memory_key)
+    if not forgotten:raise HTTPException(404,"Active business memory not found.")
+    return {"forgotten":True,"historical_versions_retained":True,"agent_writes_enabled":False}
 
 
 @app.post("/finance/entries")
