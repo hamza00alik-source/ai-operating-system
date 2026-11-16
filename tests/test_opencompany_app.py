@@ -2170,3 +2170,24 @@ def test_agent_registry_persists_profiles_and_owner_state_across_runtime_restart
     assert restored["revision"] == 2
     assert len(restarted.agents.values()) == 1
     restarted.close()
+
+
+
+def test_worker_service_status_is_owner_authenticated_and_reports_heartbeat(owner_client):
+    unauthorized = owner_client.get("/workers/service-status")
+    assert unauthorized.status_code == 401
+    runtime = app.dependency_overrides[get_runtime]()
+    worker_id = str(uuid4())
+    runtime.worker_presence.start(worker_id)
+    assert runtime.worker_presence.heartbeat(worker_id, 3) is True
+    response = owner_client.get(
+        "/workers/service-status",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["single_instance_mode"] is True
+    assert payload["multi_replica_supported"] is False
+    assert payload["worker_instances"][0]["worker_id"] == worker_id
+    assert payload["worker_instances"][0]["processed_count"] == 3
+    assert payload["worker_instances"][0]["stale"] is False

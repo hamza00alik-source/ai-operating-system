@@ -204,6 +204,4 @@ unchanging terms. No paid fallback exists.
 Run a single worker instance only. Queue leases expire after 15 minutes; the
 current provider request timeout is at most 60 seconds. Multi-replica worker
 operation, lease heartbeats, and production service supervision still require
-separate validation. The API's `/workers/run-once` endpoint remains a separate
-owner-triggered execution path; this process does not mark the API's in-memory
-worker-fleet flag as running.
+separate validation. The owner-only `GET /workers/service-status` endpoint reports durable process heartbeats, last-seen age, stale status, and processed-task counts. A recent heartbeat prevents a second worker from starting; a stale process can be replaced after 120 seconds. The API's `/workers/run-once` endpoint remains a separate owner-triggered execution path; this process does not mark the API's in-memory worker-fleet flag as running.
