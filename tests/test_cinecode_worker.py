@@ -17,6 +17,7 @@ def test_workspace_is_created_under_configured_root(tmp_path):
     workspace = worker._safe_workspace(tmp_path, "2e8c0e1a-5d35-4a3c-9e5a-5c6e8f35b001")
     assert workspace.parent == tmp_path.resolve()
     assert workspace.is_dir()
+    assert (workspace / "output").is_dir()
 
 
 def test_agent_environment_does_not_receive_worker_or_owner_secrets(monkeypatch):
@@ -120,3 +121,16 @@ def test_validate_mp4_rejects_non_mp4_container_even_with_video_stream(tmp_path,
     monkeypatch.setattr(worker.subprocess, "run", lambda *args, **kwargs: fake)
     with pytest.raises(worker.WorkerError, match="video stream and fit the duration limit"):
         worker._validate_mp4(artifact, workspace, "ffprobe", 60, 1024)
+
+
+
+def test_production_report_must_exist_inside_workspace(tmp_path):
+    workspace = tmp_path / "job"
+    workspace.mkdir()
+    report = workspace / "output" / "report.md"
+    report.parent.mkdir()
+    report.write_text("Render settings and licence notes", encoding="utf-8")
+    worker._validate_report(report, workspace)
+    report.write_text("", encoding="utf-8")
+    with pytest.raises(worker.WorkerError, match="missing, empty"):
+        worker._validate_report(report, workspace)
