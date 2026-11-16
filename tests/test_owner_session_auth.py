@@ -90,10 +90,14 @@ def test_owner_dashboard_exposes_video_job_controls_and_status():
 
 
 
-def test_owner_dashboard_inline_javascript_parses(tmp_path):
+def test_owner_dashboard_inline_javascript_parses(tmp_path, monkeypatch):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node.js is not installed in this test environment")
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "owner-js-test-key")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "owner-js.db"))
+    initialize_database()
     with TestClient(app, base_url="https://testserver") as client:
         response = client.get("/owner")
     assert response.status_code == 200
