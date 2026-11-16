@@ -1,0 +1,43 @@
+services:
+  cinecode-worker:
+    build:
+      context: ..
+      dockerfile: workers/Dockerfile.cinecode
+      args:
+        CINECODE_COMMIT: c8a3e7552699360a2b0142c9620882af2069eedb
+        CODEX_VERSION: ${CODEX_VERSION:-0.169.0}
+    image: aios-cinecode-worker:local
+    restart: "no"
+    env_file:
+      - .env.cinecode
+    environment:
+      CINECODE_SOURCE_DIR: /opt/cinecode-source
+      CINECODE_EXPECTED_COMMIT: c8a3e7552699360a2b0142c9620882af2069eedb
+      CINECODE_WORK_ROOT: /var/lib/cinecode-work
+      HOME: /home/cinecode
+      CODEX_HOME: /home/cinecode/.codex
+      PYTHON_BIN: python3
+      CHROME_BIN: chromium
+      FFPROBE_BIN: ffprobe
+      CODEX_BIN: codex
+    volumes:
+      - cinecode-work:/var/lib/cinecode-work
+      - ${CODEX_HOME_HOST:?Set CODEX_HOME_HOST to a dedicated worker Codex auth directory}:/home/cinecode/.codex:rw
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+      - /home/cinecode:rw,nosuid,size=512m
+    shm_size: 2gb
+    mem_limit: ${CINECODE_MEMORY_LIMIT:-8g}
+    cpus: ${CINECODE_CPU_LIMIT:-4}
+    pids_limit: 256
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Optional Linux GPU device passthrough. Uncomment only on a host with /dev/dri:
+    # devices:
+    #   - /dev/dri:/dev/dri
+
+volumes:
+  cinecode-work:

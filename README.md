@@ -82,9 +82,13 @@ The Owner Console includes a catalog of 283 specialist definitions across 18 dep
 The Owner Console supports a secure browser session: sign in once with \`AI_OS_API_KEY\`, then use the HttpOnly, Secure, SameSite=Strict session cookie for up to 14 days (or until logout/cookie clearing). The raw owner key is not saved in browser storage. API-key header authentication remains available for external clients.
 
 ## Hosting
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the verified Railway production target, its existing persistent /data volume, and the historical Enzonic fallback. Use a persistent writable data directory for SQLite and private video artifacts; the default relative database path is suitable only when the working directory is persistent.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+### Experimental Cinecode worker
+
+An optional local Cinecode worker implementation is available in [workers/README_CINECODE.md](workers/README_CINECODE.md). It uses a pinned upstream checkout and the Codex CLI, requires a dedicated isolated host, and remains disabled until its execution and billing gates are explicitly configured. A real render and host-level isolation test are still required before production use.
 
 
 ## Private provider credential vault
@@ -178,3 +182,8 @@ The LongCat-Video fork is tracked as an optional upstream video engine, not as O
 ## Optional LongCat GPU worker
 
 OpenCompany's video queue remains operational without a GPU worker. The optional separate LongCat worker uses authenticated claims, per-job leases, heartbeats, bounded retries, cancellation signals, and private MP4 artifact reporting. The first adapter supports single-GPU text-to-video; no hosted GPU is provisioned automatically. See [worker deployment instructions](workers/README_LONGCAT.md) and the [integration design](docs/LONGCAT_VIDEO_INTEGRATION.md). Configure a persistent artifact volume and HTTPS API origin before accepting generated videos.
+
+
+### Cinecode filmmaking engine evaluation
+
+Cinecode (MIT-licensed upstream: [sarpstar/cinecode](https://github.com/sarpstar/cinecode)) is being evaluated as a separate, local agent-operated filmmaking engine alongside the optional LongCat GPU worker. It can create coded animation/films, product videos, explainers, music videos and longer documentaries through an AI coding agent with local tools. It is not a hosted API and cannot run inside the current text-only AIOS agent runtime. It requires a separate workstation/worker with a supported coding-agent CLI, Node.js 22+, Python 3.9+, FFmpeg, Chrome/Chromium/Edge, GPU-capable browser rendering and sufficient disk. See [docs/CINECODE_INTEGRATION.md](docs/CINECODE_INTEGRATION.md). Provider-scoped Cinecode job claims and worker heartbeat reporting are behind the existing approval and budget gates. An experimental Codex-based local worker is now implemented in `workers/cinecode_worker.py`; it remains disabled until a dedicated isolated host and billing gates are configured. No end-to-end Cinecode render has been verified yet; the existing AIOS queue remains safe and usable without the worker.

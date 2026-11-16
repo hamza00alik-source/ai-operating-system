@@ -1,0 +1,64 @@
+name: Python tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Run test suite
+        run: python -m pytest -q
+
+  video-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Run video queue, provider isolation, and worker protocol tests
+        run: >-
+          python -m pytest -q
+          tests/test_video_jobs.py
+          tests/test_video_provider_routing.py
+          tests/test_video_worker_auth.py
+          tests/test_video_worker_artifacts.py
+          tests/test_video_worker_protocol.py
+          tests/test_cinecode_worker.py
+          tests/test_owner_session_auth.py
+
+  cinecode-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate Compose configuration
+        run: |
+          cp workers/.env.cinecode.example workers/.env.cinecode
+          CODEX_HOME_HOST=/tmp/codex-home docker compose -f workers/docker-compose.cinecode.yml config
+      - name: Build the pinned Cinecode worker image
+        run: >-
+          docker build
+          --build-arg CINECODE_COMMIT=c8a3e7552699360a2b0142c9620882af2069eedb
+          --build-arg CODEX_VERSION=0.169.0
+          --file workers/Dockerfile.cinecode
+          --tag aios-cinecode-worker:ci
+          .
