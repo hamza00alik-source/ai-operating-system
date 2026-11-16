@@ -97,11 +97,12 @@ def test_owner_dashboard_inline_javascript_parses(tmp_path):
     with TestClient(app, base_url="https://testserver") as client:
         response = client.get("/owner")
     assert response.status_code == 200
-    scripts = re.findall(r"<script\b[^>]*>(.*?)</script\s*>", response.text, re.IGNORECASE | re.DOTALL)
-    inline_scripts = [script for script in scripts if script.strip()]
+    scripts = re.findall(r"<script\b([^>]*)>(.*?)</script\s*>", response.text, re.IGNORECASE | re.DOTALL)
+    inline_scripts = [(attributes, script) for attributes, script in scripts if script.strip()]
     assert inline_scripts
-    for index, script in enumerate(inline_scripts):
-        path = tmp_path / f"owner-inline-{index}.js"
+    for index, (attributes, script) in enumerate(inline_scripts):
+        suffix = ".mjs" if 'type="module"' in attributes.lower() else ".js"
+        path = tmp_path / f"owner-inline-{index}{suffix}"
         path.write_text(script, encoding="utf-8")
         checked = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, check=False)
         assert checked.returncode == 0, checked.stderr
