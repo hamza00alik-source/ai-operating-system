@@ -32,42 +32,42 @@ def test_owner_can_queue_bounded_agent_run(monkeypatch, tmp_path):
 
 
 
-def test_general_market_research_routes_to_research_role():
-    from ai_os.agent_runtime import _select_specialist
+def test_general_market_research_routes_to_opencompany_research_role():
+    from ai_os.agent_runtime import _select_specialist, _load_opencompany_catalogue
 
-    manifest = {
-        "agents": [
-            {"id": "marketing/global-podcast-strategist", "name": "Global Podcast Strategist",
-             "department": "marketing", "source_path": ""},
-            {"id": "research/research-synthesist", "name": "Research Synthesist",
-             "department": "research", "source_path": ""},
-        ]
-    }
+    catalogue = _load_opencompany_catalogue()
     selected = _select_specialist(
         {"title": "Prepare a global market research brief on downloadable PC gaming utilities",
          "description": "", "department": "general"},
-        manifest,
+        catalogue,
     )
-    assert selected["id"] == "research/research-synthesist"
+    assert selected["department"] == "intelligence-research"
+    assert selected["id"] == "market_demand_researcher"
 
 
+def test_company_department_routes_to_opencompany_customer_operations_role():
+    from ai_os.agent_runtime import _select_specialist, _load_opencompany_catalogue
 
-def test_company_department_routes_to_mapped_specialist():
-    from ai_os.agent_runtime import _select_specialist
-
-    manifest = {
-        "agents": [
-            {"id": "engineering/backend-developer", "name": "Backend Developer",
-             "department": "engineering", "source_path": ""},
-            {"id": "support/customer-support-specialist", "name": "Customer Support Specialist",
-             "department": "support", "source_path": ""},
-        ]
-    }
     selected = _select_specialist(
         {"title": "Prepare a customer response workflow", "description": "", "department": "customer-support"},
-        manifest,
+        _load_opencompany_catalogue(),
     )
-    assert selected["id"] == "support/customer-support-specialist"
+    assert selected["department"] == "customer-operations"
+    assert selected["id"] == "customer_operations_manager" or selected["id"].startswith("customer_operations_")
+
+
+def test_execution_catalogue_is_opencompany_owned_and_contains_511_roles():
+    from ai_os.agent_runtime import _load_opencompany_catalogue
+
+    catalogue = _load_opencompany_catalogue()
+    assert len(catalogue["agents"]) == 511
+    assert all("source_path" not in role and "source_url" not in role for role in catalogue["agents"])
+    assert {role["department"] for role in catalogue["agents"]} >= {
+        "intelligence-research", "product-innovation", "engineering",
+        "design-creative", "marketing-growth", "sales-marketplace",
+        "customer-operations", "finance-operations", "legal-compliance",
+        "quality-workforce",
+    }
 
 
 def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist(monkeypatch, tmp_path):
