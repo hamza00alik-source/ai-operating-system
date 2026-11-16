@@ -515,7 +515,7 @@ def create_finance_entry(payload:dict,runtime=Depends(get_runtime),owner=Depends
         "recorded_at":datetime.now(timezone.utc).isoformat(),
     }
     runtime.finance.create_entry(entry)
-    return {**entry,"recorded":True,"external_payment_initiated":False,"spending_authorized":False}
+    return {**entry,"entry_id":entry["id"],"recorded":True,"external_payment_initiated":False,"spending_authorized":False}
 
 
 @app.post("/finance/entries/{entry_id}/review")
