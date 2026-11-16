@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
-from opencompany_app.runtime import create_runtime
+from opencompany_app.runtime import WorkItem, create_runtime
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
 from opencompany_core.domain import AuditRecord, TaskState
@@ -1971,3 +1971,59 @@ def test_business_asset_api_is_owner_confirmed_and_metadata_only(owner_client):
         f"/business-units/physical-agency/assets/{asset_id}/events", headers=headers
     )
     assert events.status_code == 200 and len(events.json()["events"]) == 1
+
+
+def test_gateway_worker_executor_creates_owner_reviewable_draft_only():
+    runtime = create_runtime(":memory:")
+    agent_id = uuid4()
+    role_key = "market_intelligence_analyst"
+    runtime.agents[role_key] = {
+        "id": str(agent_id), "role_key": role_key, "title": "Market Intelligence Analyst",
+        "state": "active", "capabilities": ["market research", "competitor analysis"],
+    }
+
+    class FreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            return (object(),)
+
+        def generate(self, request, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            assert request["task"] == "owner_approved_work_item_draft"
+            assert "Do not contact customers" in request["prompt"]
+            return ModelResult(
+                text="## Research draft\\nEvidence and assumptions for owner review.",
+                provider="test-free", model="test-model", cost_usd=0.0,
+            )
+
+    runtime.gateway = FreeGateway()
+    item = WorkItem(
+        id=uuid4(), title="Research competitors", objective="Prepare a competitor comparison.",
+        department="Marketing", state=TaskState.READY, business_id="digital-products",
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    deliverable = runtime.worker.executor.execute(role_key, item)
+    assert deliverable.work_item_id == item.id
+    assert deliverable.role_key == role_key
+    assert deliverable.provider == "test-free"
+    assert deliverable.cost_usd == 0.0
+    assert "owner review" in deliverable.content
+    runtime.close()
+
+
+def test_gateway_worker_executor_rejects_inactive_specialist():
+    runtime = create_runtime(":memory:")
+    agent_id = uuid4()
+    role_key = "market_intelligence_analyst"
+    runtime.agents[role_key] = {
+        "id": str(agent_id), "role_key": role_key, "title": "Market Intelligence Analyst",
+        "state": "draft", "capabilities": ["market research"],
+    }
+    item = WorkItem(
+        id=uuid4(), title="Research competitors", objective="Prepare a competitor comparison.",
+        department="Marketing", state=TaskState.READY, business_id="digital-products",
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    with pytest.raises(ValueError, match="not active"):
+        runtime.worker.executor.execute(role_key, item)
+    runtime.close()
