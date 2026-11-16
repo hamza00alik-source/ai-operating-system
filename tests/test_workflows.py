@@ -12,18 +12,18 @@ def test_workflow_starts_with_one_queued_step_and_gates_the_rest(monkeypatch, tm
         catalog = client.get("/company/workflows")
         assert catalog.status_code == 200
         assert any(item["id"] == "digital-product-launch" for item in catalog.json()["templates"])
-        created = client.post("/company/workflows/digital-product-launch/start", headers={"X-API-Key": "workflow-owner-key"})
+        created = client.post("/company/workflows/digital-product-launch/start?business_id=digital-products", headers={"X-API-Key": "workflow-owner-key"})
         assert created.status_code == 201
         workflow = created.json()
         assert len(workflow["steps"]) == 7
         assert workflow["steps"][0]["status"] == "queued"
         assert all(step["status"] == "blocked" for step in workflow["steps"][1:])
-        instances = client.get("/company/workflows/instances")
+        instances = client.get("/company/workflows/instances?business_id=digital-products")
         assert instances.status_code == 200
         assert any(item["id"] == workflow["id"] for item in instances.json())
-        blocked = client.post(f"/tasks/{workflow['steps'][1]['task_id']}/execute")
+        blocked = client.post(f"/tasks/{workflow['steps'][1]['task_id']}/execute?business_id=digital-products")
         assert blocked.status_code == 409
-        queued = client.post(f"/tasks/{workflow['steps'][0]['task_id']}/execute")
+        queued = client.post(f"/tasks/{workflow['steps'][0]['task_id']}/execute?business_id=digital-products")
         assert queued.status_code == 202
 
 
