@@ -216,6 +216,58 @@ class LearningRepository(SharedRepository):
         return [json.loads(row["payload"]) for row in rows]
 
 
+class FinanceRepository(SharedRepository):
+    """Internal finance records only; this repository cannot initiate payments."""
+    def __init__(self,db,lock):
+        super().__init__(db,lock)
+        with lock:
+            db.executescript("""
+            CREATE TABLE IF NOT EXISTS opencompany_finance_entries(
+              id TEXT PRIMARY KEY,business_id TEXT NOT NULL,entry_type TEXT NOT NULL,
+              amount_minor INTEGER NOT NULL,currency TEXT NOT NULL,description TEXT NOT NULL,
+              recorded_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS opencompany_finance_reviews(
+              id TEXT PRIMARY KEY,entry_id TEXT NOT NULL UNIQUE,action TEXT NOT NULL,
+              rationale TEXT NOT NULL,created_at TEXT NOT NULL);
+            """)
+            db.commit()
+
+    def create_entry(self,entry):
+        with self._lock:
+            self._db.execute("INSERT INTO opencompany_finance_entries VALUES(?,?,?,?,?,?,?)",
+                (entry["id"],entry["business_id"],entry["entry_type"],entry["amount_minor"],
+                 entry["currency"],entry["description"],entry["recorded_at"]))
+            self._db.commit()
+        return entry
+
+    def get_entry(self,entry_id):
+        with self._lock:
+            row=self._db.execute("SELECT * FROM opencompany_finance_entries WHERE id=?",(str(entry_id),)).fetchone()
+            review=self._db.execute("SELECT * FROM opencompany_finance_reviews WHERE entry_id=?",(str(entry_id),)).fetchone()
+        if not row:return None
+        result=dict(row)
+        result["latest_review_action"]=review["action"] if review else None
+        return result
+
+    def save_review(self,review):
+        with self._lock:
+            try:
+                self._db.execute("INSERT INTO opencompany_finance_reviews VALUES(?,?,?,?,?)",
+                    (review["id"],review["entry_id"],review["action"],review["rationale"],review["created_at"]))
+            except sqlite3.IntegrityError:
+                return False
+            self._db.commit()
+        return True
+
+    def list_entries(self,business_id=None):
+        with self._lock:
+            if business_id:
+                rows=self._db.execute("SELECT id FROM opencompany_finance_entries WHERE business_id=? ORDER BY rowid",(business_id,)).fetchall()
+            else:
+                rows=self._db.execute("SELECT id FROM opencompany_finance_entries ORDER BY rowid").fetchall()
+        return [self.get_entry(row["id"]) for row in rows]
+
+
 class WorkQueue(SharedRepository):
     def __init__(self,db,lock,store):
         super().__init__(db,lock); self.store=store; self._leases={}
@@ -311,7 +363,7 @@ class Runtime:
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.learning=LearningRepository(self.sqlite._connection,self.sqlite._lock)
-        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock)
+        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock)
         self.queue=WorkQueue(self.sqlite._connection,self.sqlite._lock,self.store)
         self.fleet=WorkerFleet();self.gateway=ModelGateway.configure(())
         self.worker=DeterministicWorker(self);self.github_evolution=None
