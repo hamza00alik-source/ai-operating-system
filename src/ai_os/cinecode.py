@@ -57,8 +57,6 @@ def initialize_cinecode() -> None:
             )
         """)
         db.execute("CREATE INDEX IF NOT EXISTS idx_cinecode_jobs_status_created ON cinecode_jobs(status, created_at)")
-        db.commit()
-
 
 def _job(row) -> dict:
     item = dict(row)
@@ -122,7 +120,7 @@ def create_cinecode_job(payload: CinecodeJobCreate):
             (job_id, payload.brief.strip(), payload.mode, payload.music_source,
              "pending_approval", now, now, "Waiting for owner approval"),
         )
-        db.commit()
+
     return _job(_get_job(job_id))
 
 
@@ -154,7 +152,7 @@ def approve_cinecode_job(job_id: str):
                WHERE id=? AND status='pending_approval'""",
             (now, now, job_id),
         )
-        db.commit()
+
     if result.rowcount != 1:
         row = _get_job(job_id)
         if row is None:
@@ -172,7 +170,7 @@ def reject_cinecode_job(job_id: str):
             "UPDATE cinecode_jobs SET status='rejected',updated_at=?,finished_at=?,progress='Rejected by owner' WHERE id=? AND status='pending_approval'",
             (now, now, job_id),
         )
-        db.commit()
+
     if result.rowcount != 1:
         row = _get_job(job_id)
         if row is None:
@@ -192,7 +190,7 @@ def cancel_cinecode_job(job_id: str):
                WHERE id=? AND status IN ('approved','running')""",
             (now, job_id),
         )
-        db.commit()
+
     if result.rowcount != 1:
         row = _get_job(job_id)
         if row is None:
