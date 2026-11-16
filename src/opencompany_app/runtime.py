@@ -1,6 +1,6 @@
 """OpenCompany application runtime and shared SQLite repositories."""
 from __future__ import annotations
-import json, sqlite3, threading
+import json, os, sqlite3, threading
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +8,8 @@ from typing import Any
 from uuid import UUID, uuid4
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.business_assets import BusinessAssetRegistry
+from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
+from opencompany_core.asset_scanning import ClamAVUnixSocketScanner
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.model_gateway import ModelGateway
 from opencompany_core.persistence import SQLiteStore
@@ -484,14 +486,20 @@ class Runtime:
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.learning=LearningRepository(self.sqlite._connection,self.sqlite._lock)
-        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock);self.business=BusinessRepository(self.sqlite._connection,self.sqlite._lock);self.asset_registry=BusinessAssetRegistry(self.sqlite._connection,self.sqlite._lock);self.asset_storage=None
+        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock);self.business=BusinessRepository(self.sqlite._connection,self.sqlite._lock);self.asset_registry=BusinessAssetRegistry(self.sqlite._connection,self.sqlite._lock);self.asset_storage=None;self.asset_scanner=None
         self.queue=WorkQueue(self.sqlite._connection,self.sqlite._lock,self.store)
         self.fleet=WorkerFleet();self.gateway=ModelGateway.configure(())
         self.worker=DeterministicWorker(self);self.github_evolution=None
         self.github_evolution_tested_at=None;self.unorouter_tested_at=None
         self.provider_test_jobs={}
         self.secret_vault=SharedRepository(self.sqlite._connection,self.sqlite._lock)
-        self.asset_storage=None;self.agents={}
+        storage_root=os.getenv("OPENCOMPANY_ASSET_STORAGE_ROOT","").strip()
+        scanner_socket=os.getenv("OPENCOMPANY_CLAMAV_SOCKET","").strip()
+        if storage_root:
+            self.asset_storage=PrivateFilesystemAssetStorage(storage_root)
+        if scanner_socket:
+            self.asset_scanner=ClamAVUnixSocketScanner(scanner_socket)
+        self.agents={}
     def close(self):self.sqlite.close()
 
 def create_runtime(database_path):
