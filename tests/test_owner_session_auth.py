@@ -68,7 +68,7 @@ def test_owner_dashboard_office_uses_live_twelve_department_data():
 
 
 
-def test_owner_dashboard_exposes_read_only_video_engine_and_job_status():
+def test_owner_dashboard_exposes_video_job_controls_and_status():
     response = TestClient(app).get("/owner")
     assert response.status_code == 200
     html = response.text
@@ -78,4 +78,7 @@ def test_owner_dashboard_exposes_read_only_video_engine_and_job_status():
     assert '"/video/status?provider=cinecode"' in html
     assert '"/video/status?provider=longcat-video"' in html
     assert '"/video/jobs"' in html
-    assert "This panel is read-only" in html
+    assert 'id="videoJobForm"' in html
+    assert "video-decision" in html
+    assert "video-cancel" in html
+    assert "Submit for owner approval" in html
