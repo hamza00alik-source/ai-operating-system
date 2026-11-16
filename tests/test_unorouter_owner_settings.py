@@ -55,7 +55,7 @@ def test_owner_triggered_connection_test_uses_only_saved_free_route(monkeypatch,
         def __exit__(self, *args): return False
         def read(self, limit):
             return json.dumps({
-                "model": "unorouter/free-catalog:free",
+                "model": "qwen/model:free",
                 "choices": [{"message": {"content": "OPENCOMPANY_UNOROUTER_OK"}}],
                 "usage": {"prompt_tokens": 5, "completion_tokens": 4, "cost": 0},
             }).encode()
