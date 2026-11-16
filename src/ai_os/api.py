@@ -1020,6 +1020,50 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
 
 
 
+@app.put("/video/worker/jobs/{job_id}/report", dependencies=[Depends(require_video_worker)])
+async def put_video_worker_report(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+    import uuid as _uuid
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != "cinecode":
+        raise HTTPException(status_code=403, detail="Production reports are only accepted for Cinecode jobs.")
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "text/markdown":
+        raise HTTPException(status_code=415, detail="Only text/markdown production reports are accepted.")
+    try:
+        lease_state = video_jobs.heartbeat(job_id, x_job_lease, progress=92, message="Uploading production report")
+        if lease_state.get("cancel_requested"):
+            raise HTTPException(status_code=409, detail="Cancellation was requested.")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    job_uuid = _uuid.UUID(job_id)
+    destination = directory / f"{job_uuid}.report.md"
+    temporary = directory / f".{job_uuid}.{_uuid.uuid4().hex}.report.tmp"
+    size = 0
+    try:
+        with temporary.open("wb") as output:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > 64 * 1024:
+                    raise HTTPException(status_code=413, detail="Production report exceeds 64 KB.")
+                output.write(chunk)
+        report_text = temporary.read_text(encoding="utf-8")
+        if not report_text.strip() or "\x00" in report_text:
+            raise HTTPException(status_code=422, detail="Production report is empty or invalid.")
+        temporary.replace(destination)
+    except UnicodeDecodeError as exc:
+        temporary.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="Production report must be valid UTF-8.") from exc
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return {"stored": True, "size_bytes": size}
+
+
 @app.put("/video/worker/jobs/{job_id}/artifact", dependencies=[Depends(require_video_worker)])
 async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
     import uuid as _uuid
@@ -1042,6 +1086,9 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
     directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     job_uuid = _uuid.UUID(job_id)
+    report_path = directory / f"{job_uuid}.report.md"
+    if item["provider"] == "cinecode" and not report_path.is_file():
+        raise HTTPException(status_code=409, detail="Cinecode production report must be uploaded before the MP4.")
     destination = directory / f"{job_uuid}.mp4"
     temporary = directory / f".{job_uuid}.{_uuid.uuid4().hex}.tmp"
     size = 0
@@ -1075,14 +1122,28 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
         raise
     uri = f"{public_base}/video/artifacts/{job_id}"
     try:
+        metadata = {"content_type":"video/mp4","size_bytes":size,"storage":"api-artifact-volume"}
+        if item["provider"] == "cinecode":
+            metadata["production_report_uri"] = f"{public_base}/video/reports/{job_id}"
         completed = video_jobs.complete_job(
-            job_id, x_job_lease, result_uri=uri,
-            metadata={"content_type":"video/mp4","size_bytes":size,"storage":"api-artifact-volume"},
+            job_id, x_job_lease, result_uri=uri, metadata=metadata,
         )
     except Exception:
         destination.unlink(missing_ok=True)
         raise
     return completed
+
+
+@app.get("/video/reports/{job_id}", dependencies=[Depends(require_owner_key)])
+def get_video_production_report(job_id: str):
+    item = video_jobs.get_job(job_id)
+    if item is None or item["status"] != "succeeded" or item["provider"] != "cinecode":
+        raise HTTPException(status_code=404, detail="Production report not found.")
+    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
+    path = directory / f"{job_id}.report.md"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Production report storage is unavailable.")
+    return FileResponse(path, media_type="text/markdown; charset=utf-8", filename=f"cinecode-{job_id}-report.md")
 
 
 @app.get("/video/artifacts/{job_id}", dependencies=[Depends(require_owner_key)])
