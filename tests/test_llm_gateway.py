@@ -24,21 +24,21 @@ def test_provider_is_blocked_by_default(monkeypatch):
 
 
 def test_provider_status_never_exposes_secret(monkeypatch):
-    monkeypatch.setenv("AI_OS_GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-    monkeypatch.setenv("AI_OS_GROQ_MODEL", "example-model")
-    monkeypatch.setenv("AI_OS_GROQ_API_KEY", "do-not-leak-this-secret")
-    monkeypatch.setenv("AI_OS_GROQ_FREE_CONFIRMED", "true")
-    status = next(p for p in llm_gateway.list_providers() if p["id"] == "groq")
+    monkeypatch.setenv("AI_OS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("AI_OS_OPENROUTER_MODEL", "provider/model:free")
+    monkeypatch.setenv("AI_OS_OPENROUTER_API_KEY", "do-not-leak-this-secret")
+    monkeypatch.setenv("AI_OS_OPENROUTER_FREE_CONFIRMED", "true")
+    status = next(p for p in llm_gateway.list_providers() if p["id"] == "openrouter")
     assert status["eligible"] is True
     assert "do-not-leak-this-secret" not in json.dumps(status)
     assert "api_key" not in json.dumps(status).lower()
 
 
 def test_gateway_executes_real_adapter_path_with_mocked_transport(monkeypatch):
-    monkeypatch.setenv("AI_OS_GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-    monkeypatch.setenv("AI_OS_GROQ_MODEL", "example-model")
-    monkeypatch.setenv("AI_OS_GROQ_API_KEY", "test-secret")
-    monkeypatch.setenv("AI_OS_GROQ_FREE_CONFIRMED", "true")
+    monkeypatch.setenv("AI_OS_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("AI_OS_OPENROUTER_MODEL", "provider/model:free")
+    monkeypatch.setenv("AI_OS_OPENROUTER_API_KEY", "test-secret")
+    monkeypatch.setenv("AI_OS_OPENROUTER_FREE_CONFIRMED", "true")
     captured = {}
 
     def fake_post(url, payload, headers, timeout=35):
@@ -47,11 +47,11 @@ def test_gateway_executes_real_adapter_path_with_mocked_transport(monkeypatch):
                 "usage": {"prompt_tokens": 7, "completion_tokens": 4, "total_tokens": 11}}
 
     monkeypatch.setattr(llm_gateway, "_post", fake_post)
-    result = llm_gateway.test_provider("groq")
+    result = llm_gateway.test_provider("openrouter")
     assert result["test_passed"] is True
     assert result["live"] is True
     assert result["usage"]["total_tokens"] == 11
-    assert captured["url"] == "https://api.groq.com/openai/v1/chat/completions"
+    assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer test-secret"
 
 
@@ -100,7 +100,7 @@ def test_llm_endpoint_blocks_unconfigured_provider(monkeypatch):
 
 def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
     def fake_config(provider):
-        eligible = provider.key in {"openrouter", "groq"}
+        eligible = provider.key in {"openrouter", "unorouter"}
         return {"eligible": eligible, "configured": eligible, "free_confirmed": eligible}
 
     def fake_generate(provider_id, prompt):
@@ -115,7 +115,7 @@ def test_fallback_error_identifies_each_provider_without_secrets(monkeypatch):
     except RuntimeError as exc:
         message = str(exc)
         assert "openrouter: unavailable (HTTP 403)" in message
-        assert "groq: unavailable (HTTP 403)" in message
+        assert "unorouter: unavailable (HTTP 403)" in message
         assert "No paid fallback was attempted" in message
         assert "secret" not in message.lower()
 
@@ -204,24 +204,26 @@ def test_unorouter_personal_test_is_separate_and_never_company_eligible(monkeypa
         "secret": "uno-test-secret", "model": "sample-model:free",
         "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
     } if provider == "unorouter" else None)
-    class FakeResponse:
-        def __enter__(self): return self
-        def __exit__(self, *args): return False
-        def read(self, limit):
-            return json.dumps({"model":"sample-model:free","choices":[{"message":{"content":"This is a valid personal test response."}}],"usage":{"prompt_tokens":5,"completion_tokens":8,"total_tokens":13}}).encode()
-    monkeypatch.setattr(llm_gateway.urllib.request, "urlopen", lambda *a, **k: FakeResponse())
+    captured = {}
+    def fake_post(url, payload, headers, timeout=35):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {"model": "sample-model:free",
+                "choices": [{"message": {"content": "This is a valid personal test response."}}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 8, "total_tokens": 13}}
+    monkeypatch.setattr(llm_gateway, "_post", fake_post)
     result = llm_gateway.test_unorouter_personal("Explain a harmless programming concept.")
     assert result["mode"] == "owner_personal_test_only"
     assert result["company_task_routing"] is False
     assert result["response"].startswith("This is a valid")
-    assert next(p for p in llm_gateway.list_providers() if p["id"] == "unorouter")["eligible"] is True
+    assert captured["payload"]["model"] == "sample-model:free"
 
-def test_unorouter_personal_test_rejects_paid_model(monkeypatch):
+
+def test_unorouter_personal_test_rejects_paid_model_without_explicit_approval(monkeypatch):
     monkeypatch.setattr(llm_gateway, "get_provider_credential", lambda provider: {
         "secret": "uno-test-secret", "model": "paid-model",
         "base_url": "https://api.unorouter.com/v1", "free_confirmed": True
-    })
-    with pytest.raises(PermissionError):
+    } if provider == "unorouter" else None)
+    with pytest.raises(PermissionError, match="Explicitly approve"):
         llm_gateway.test_unorouter_personal("test")
 
 
