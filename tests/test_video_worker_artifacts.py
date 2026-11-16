@@ -200,6 +200,18 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         assert wrong_report.status_code == 403
 
         report_text = b"# Cinecode production report\n\nMode: Quick\nLicence: original generated assets\n"
+        monkeypatch.setenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", "1")
+        quota_rejected = client.put(
+            f"/video/worker/jobs/{job_id}/report",
+            content=report_text,
+            headers={
+                **cinecode_headers,
+                "X-Job-Lease": lease,
+                "Content-Type": "text/markdown; charset=utf-8",
+            },
+        )
+        assert quota_rejected.status_code == 507
+        monkeypatch.setenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", str(400 * 1024 * 1024))
         report_upload = client.put(
             f"/video/worker/jobs/{job_id}/report",
             content=report_text,
