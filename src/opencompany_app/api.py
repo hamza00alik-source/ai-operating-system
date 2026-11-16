@@ -586,6 +586,9 @@ def review_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),owner
     state=TaskState.COMPLETED if payload.get("approved") else TaskState.FAILED
     changed=replace(item,state=state)
     runtime.store.save_work_item_with_audit(changed,_audit("owner.review",item.id,"owner"))
+    auto_queue_enabled=os.getenv("OPENCOMPANY_AUTO_QUEUE_APPROVED_WORK","false").lower()=="true"
+    provider_ready=bool(runtime.gateway.eligible_providers(request_budget_usd=0.0)) if auto_queue_enabled else False
+    queued_ids=[]
     if state==TaskState.COMPLETED:
         for dependent in runtime.store.list_work_items():
             if item.id in dependent.depends_on and dependent.state==TaskState.DRAFT and dependent.assigned_agent_id:
@@ -595,7 +598,20 @@ def review_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),owner
                     runtime.store.save_work_item_with_audit(
                         ready_parent,_audit("workflow.dependencies_completed",dependent.id,"system"),
                     )
-    return {"state":state.value,"evaluation_recorded":True,"evaluation_id":str(uuid4())}
+                    if auto_queue_enabled and provider_ready:
+                        manager=next((value for value in runtime.agents.values()
+                                      if value["id"]==str(ready_parent.assigned_agent_id)),None)
+                        if manager and manager.get("state")=="active":
+                            runtime.queue.admit(ready_parent.id,ready_parent.assigned_agent_id,ready_parent.assigned_role_key)
+                            queued_parent=replace(ready_parent,state=TaskState.QUEUED)
+                            runtime.store.save_work_item_with_audit(
+                                queued_parent,_audit("queue.auto_admitted",queued_parent.id,"owner"),
+                            )
+                            queued_ids.append(str(queued_parent.id))
+    return {
+        "state":state.value,"evaluation_recorded":True,"evaluation_id":str(uuid4()),
+        "auto_queue":{"enabled":auto_queue_enabled,"provider_ready":provider_ready,"queued_work_item_ids":queued_ids},
+    }
 @app.get("/work-items/{item_id}/deliverables")
 def deliverables(item_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
     items=runtime.store.list_deliverables(UUID(item_id));return {"count":len(items),"deliverables":list(items)}
