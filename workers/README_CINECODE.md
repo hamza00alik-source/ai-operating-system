@@ -81,7 +81,7 @@ The repository includes a reproducible Linux worker image and Compose profile:
 
 On a dedicated Linux workstation with Docker Compose:
 
-1. Create a separate Codex home used only by this worker, authenticate Codex CLI into it, and make the directory readable by container UID 10001. Do not mount your everyday developer home or other provider credentials.
+1. Create a separate Codex home used only by this worker, authenticate Codex CLI into it, and make the dedicated directory writable by container UID 10001. Do not mount your everyday developer home or other provider credentials.
 2. Copy `workers/.env.cinecode.example` to `workers/.env.cinecode`; set the AIOS HTTPS URL and the unique Cinecode worker token. Keep both execution gates set to `false` initially.
 3. Export the two Compose build/runtime values in the shell: `CODEX_VERSION` (an exact pinned `@openai/codex` package version) and `CODEX_HOME_HOST` (the dedicated Codex home directory).
 4. Build and start the worker:
