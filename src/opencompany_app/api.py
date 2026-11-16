@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_app.runtime import Runtime, create_runtime, WorkItem, _audit
 from opencompany_app.catalogue import ROLE_CATALOGUE, DEPARTMENT_CATALOGUE, DEPARTMENTS
+from opencompany_core.asset_storage import AssetStorageError
 
 app=FastAPI(title="OpenCompany")
 _default_runtime_instance=None
@@ -408,6 +409,87 @@ def forget_business_memory(business_id:str,memory_key:str,payload:dict,runtime=D
     forgotten=runtime.business.forget_memory(business_id,memory_key)
     if not forgotten:raise HTTPException(404,"Active business memory not found.")
     return {"forgotten":True,"historical_versions_retained":True,"agent_writes_enabled":False}
+
+
+def _public_asset(asset):
+    allowed=("asset_id","business_id","asset_key","title","asset_type","filename","media_type",
+             "checksum_sha256","byte_size","source","storage_state","status","file_bytes_received","created_at")
+    return {key:asset[key] for key in allowed if key in asset}
+
+
+@app.post("/business-units/{business_id}/assets")
+def declare_business_asset(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_declaration") is not True:
+        raise HTTPException(422,"Owner confirmation is required to declare a business asset.")
+    try:
+        asset=runtime.asset_registry.declare(
+            business_id,asset_key=payload.get("asset_key"),title=payload.get("title"),
+            asset_type=payload.get("asset_type"),filename=payload.get("filename"),
+            media_type=payload.get("media_type"),checksum_sha256=payload.get("checksum_sha256"),
+            byte_size=payload.get("byte_size"),source=payload.get("source"),
+            audit=_audit("asset.declared",uuid4(),"owner"),
+        )
+    except (ValueError,PermissionError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return {"asset":_public_asset(asset),"file_bytes_received":False,"message":"Asset declared. No file was uploaded."}
+
+
+@app.get("/business-units/{business_id}/assets")
+def list_business_assets(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    assets=[_public_asset(asset) for asset in runtime.asset_registry.list(business_id)]
+    return {"count":len(assets),"assets":assets,"download_enabled":False}
+
+
+@app.get("/business-units/{business_id}/assets/{asset_id}/events")
+def business_asset_events(business_id:str,asset_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    try:
+        events=runtime.asset_registry.events(business_id,asset_id)
+    except ValueError as exc:
+        raise HTTPException(404,"Business asset not found.") from exc
+    if not events:raise HTTPException(404,"Business asset not found.")
+    return {"count":len(events),"events":events}
+
+
+@app.put("/business-units/{business_id}/assets/{asset_id}/content")
+async def upload_business_asset_content(business_id:str,asset_id:str,request:Request,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if request.headers.get("x-confirm-owner-upload","").lower()!="true":
+        raise HTTPException(422,"Explicit owner confirmation is required before uploading asset bytes.")
+    if runtime.asset_storage is None:
+        raise HTTPException(503,"Private asset storage is not configured.")
+    try:
+        declaration=runtime.asset_registry.storage_declaration(business_id,asset_id)
+        body=await request.body()
+        stored=runtime.asset_storage.store(
+            business_id=declaration["business_id"],asset_scope_id=declaration["asset_scope_id"],
+            asset_id=declaration["asset_id"],expected_sha256=declaration["checksum_sha256"],
+            expected_size=declaration["byte_size"],chunks=(body,),
+            expected_media_type=declaration["media_type"],
+        )
+        try:
+            asset=runtime.asset_registry.record_storage(
+                business_id,asset_id,storage_key=stored["storage_key"],
+                checksum_sha256=stored["checksum_sha256"],byte_size=stored["byte_size"],
+                audit=_audit("asset.stored",UUID(asset_id),"owner"),
+            )
+        except Exception:
+            runtime.asset_storage.discard_uncommitted(
+                business_id=business_id,asset_scope_id=declaration["asset_scope_id"],
+                asset_id=asset_id,storage_key=stored["storage_key"],
+            )
+            raise
+    except AssetStorageError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    except ValueError as exc:
+        status=409 if "already" in str(exc) else 422
+        raise HTTPException(status,str(exc)) from exc
+    return {
+        "asset":_public_asset(asset),"checksum_verified":True,
+        "malware_scan_completed":False,"download_enabled":False,
+    }
 
 
 @app.post("/finance/entries")
