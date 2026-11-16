@@ -123,3 +123,10 @@ def test_unknown_specialist_department_gets_safe_local_brief():
     assert "OpenCompany's Operations Analyst" in brief
     assert "sound professional practice" in brief
     assert "You have no authority to spend money" in brief
+
+def test_execution_runtime_has_no_legacy_external_workforce_manifests():
+    from pathlib import Path
+
+    repository_root = Path(__file__).resolve().parents[1]
+    assert not (repository_root / "data" / "agency_agents_manifest.json").exists()
+    assert not (repository_root / "data" / "company_departments.json").exists()
