@@ -13,6 +13,7 @@ def test_cinecode_and_longcat_workers_only_claim_their_own_jobs(monkeypatch, tmp
         "approved_budget_minor": 0,
         "currency": "USD",
         "cost_basis": "Owner-managed local worker; no hosted compute",
+        "parameters": {"music_source": "none"},
     }
     cine = video_jobs.create_job(
         **common, provider="cinecode", idempotency_key="cinecode-job-1"
