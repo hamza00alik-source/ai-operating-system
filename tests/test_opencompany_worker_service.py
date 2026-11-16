@@ -83,10 +83,13 @@ def test_worker_iteration_ignores_inactive_specialists_and_processes_active_ones
         def run_once(self, agent_id, role_key):
             self.calls.append((str(agent_id), role_key))
             return "completed_review_required"
+    class FakeQueue:
+        def counts(self): return {"queued": 1}
     class FakeRuntime:
         def __init__(self):
             self.agents = FakeAgents()
             self.worker = FakeWorker()
+            self.queue = FakeQueue()
     runtime = FakeRuntime()
     assert run_active_specialists_once(runtime) == 1
     assert runtime.worker.calls == [(active_id, "researcher")]

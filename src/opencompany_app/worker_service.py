@@ -10,7 +10,7 @@ import os
 import signal
 import time
 from collections.abc import Callable
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from opencompany_app.runtime import create_runtime
 
@@ -56,7 +56,7 @@ def main() -> None:
     if not database_path or database_path == ":memory:":
         raise SystemExit("Set OPENCOMPANY_DATABASE_PATH to the same persistent SQLite file used by the API.")
     runtime = create_runtime(database_path)
-    worker_id = str(__import__("uuid").uuid4())
+    worker_id = str(uuid4())
     if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
         runtime.close()
         raise SystemExit("No owner-confirmed zero-cost provider configured; worker did not start.")
