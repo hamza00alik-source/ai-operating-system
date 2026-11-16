@@ -129,6 +129,25 @@ def test_worker_cannot_upload_after_owner_cancellation(monkeypatch, tmp_path):
 
 
 
+def test_cinecode_job_requires_explicit_music_choice(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'cinecode-music.db'}")
+    with TestClient(app) as client:
+        response = client.post("/video/jobs", headers={"X-API-Key": "test-owner-key"}, json={
+            "prompt": "A short original film",
+            "provider": "cinecode",
+            "idempotency_key": "cinecode-music-required",
+            "parameters": {},
+            "estimated_cost_minor": 0,
+            "approved_budget_minor": 0,
+            "currency": "USD",
+            "cost_basis": "No paid services; music choice validation test",
+        })
+        assert response.status_code == 422
+        assert "music_source" in response.json()["detail"]
+
+
 def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_OS_ENV", "production")
     monkeypatch.setenv("AI_OS_API_KEY", "test-owner-key")
