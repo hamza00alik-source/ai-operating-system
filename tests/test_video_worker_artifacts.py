@@ -224,6 +224,18 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
             headers={**longcat_headers, "Content-Type": "text/markdown"},
         )
         assert wrong_report.status_code == 403
+        wrong_complete = client.post(
+            f"/video/worker/jobs/{job_id}/complete",
+            headers=longcat_headers,
+            json={"result_uri": "https://untrusted.example/fake.mp4", "metadata": {}},
+        )
+        assert wrong_complete.status_code == 403
+        wrong_fail = client.post(
+            f"/video/worker/jobs/{job_id}/fail",
+            headers=longcat_headers,
+            json={"error": "cross-provider attempt", "retryable": False},
+        )
+        assert wrong_fail.status_code == 403
 
         report_text = b"# Cinecode production report\n\nMode: Quick\nLicence: original generated assets\n"
         monkeypatch.setenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", "1")
