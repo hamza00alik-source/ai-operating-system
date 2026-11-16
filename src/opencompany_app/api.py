@@ -717,6 +717,77 @@ def list_learning_notes(role_key:str,runtime=Depends(get_runtime),owner=Depends(
     return {"role_key":role_key,"count":len(notes),"notes":notes}
 
 
+@app.get("/code-evolution/config-status")
+def code_evolution_config_status(runtime=Depends(get_runtime),owner=Depends(_owner)):
+    client=runtime.github_evolution
+    enabled=bool(client and runtime.github_evolution_tested_at)
+    return {
+        "enabled":enabled,
+        "repository":getattr(client,"repository",None) if enabled else None,
+        "base_branch":getattr(client,"base_branch",None) if enabled else None,
+        "tested_at":runtime.github_evolution_tested_at if enabled else None,
+        "draft_pull_requests_only":True,"merge_requires_owner":True,"deployment_enabled":False,
+    }
+
+
+@app.post("/code-evolution/proposals")
+def create_code_evolution_proposal(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    client=runtime.github_evolution
+    if not client or not runtime.github_evolution_tested_at:
+        raise HTTPException(503,"GitHub code-evolution access must be verified before drafting changes.")
+    problem=str(payload.get("problem","")).strip()
+    paths=payload.get("file_paths",[])
+    if not problem or not isinstance(paths,list) or not paths or len(paths)>10:
+        raise HTTPException(422,"A problem statement and one to ten file paths are required.")
+    normalized=[]
+    for value in paths:
+        path=str(value)
+        if path.startswith("/") or ".." in path.split("/") or not path.startswith(("src/","tests/","docs/")):
+            raise HTTPException(422,"Code evolution may only draft changes inside src/, tests/, or docs/.")
+        if any(secret in path.casefold() for secret in (".env","secret","credential","private_key")):
+            raise HTTPException(422,"Sensitive paths are not eligible for code evolution.")
+        normalized.append(path)
+    try:
+        existing=client.read_files(normalized)
+        request={
+            "task":"draft_isolated_code_improvement",
+            "problem":problem,"requested_paths":normalized,"existing_files":existing,
+            "constraints":{"draft_pull_request_only":True,"no_merge":True,"no_deploy":True,
+                           "no_secrets":True,"preserve_unrelated_changes":True,"tests_required":True},
+        }
+        result=runtime.gateway.generate(request,request_budget_usd=0.0)
+        decision=json.loads(result.text)
+        title=str(decision["title"]).strip()
+        summary=str(decision["summary"]).strip()
+        files=decision["files"]
+        if not title or not summary or not isinstance(files,list) or not files or len(files)>10:
+            raise ValueError("The proposed change set is incomplete.")
+        safe_files={}
+        for entry in files:
+            file_path=str(entry["path"])
+            content=str(entry["content"])
+            if file_path not in normalized or not content or len(content)>100000:
+                raise ValueError("The model proposed an unrequested or invalid file.")
+            safe_files[file_path]=content
+        if len(safe_files)!=len(files):
+            raise ValueError("Duplicate file paths are not allowed.")
+        pull_request=client.create_pull_request(title=title,summary=summary,files=safe_files)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503,"A safe draft pull request could not be created.") from exc
+    runtime.usage.record({
+        "request_id":str(uuid4()),"work_item_id":None,"role_key":"code_evolution_reviewer",
+        "provider":result.provider,"model":result.model,"input_tokens":result.input_tokens,
+        "output_tokens":result.output_tokens,"cost_usd":result.cost_usd,
+    })
+    return {
+        "pull_request_number":pull_request.number,"pull_request_url":pull_request.url,
+        "branch":pull_request.branch,"commit":pull_request.commit,"title":pull_request.title,
+        "draft":True,"merged":False,"deployed":False,"owner_merge_review_required":True,
+    }
+
+
 @app.get("/work-items/{item_id}/deliverables")
 def deliverables(item_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
     items=runtime.store.list_deliverables(UUID(item_id));return {"count":len(items),"deliverables":list(items)}
