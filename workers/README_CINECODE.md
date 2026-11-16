@@ -18,9 +18,11 @@ The worker refuses to start unless both are explicitly set:
 - `CINECODE_BILLING_CONFIRMED=true`
 
 The second flag is an operator assertion that Codex account usage and any other
-metered services are understood and covered by the job's owner-approved budget.
-Do not set it if usage may create an unapproved charge. No provider key, payment
-method, or paid narrator is configured by this worker.
+metered services have been reviewed and explicitly accepted. Codex subscription/API
+usage is separate from the AIOS job's estimated-cost field and is not automatically
+measured or charged against that per-job budget. Do not set the flag while usage or
+billing is unknown. The worker does not configure separate narrator/provider API
+keys or payment methods; it uses the dedicated, separately authenticated Codex CLI account.
 
 ## Provisioning
 
@@ -53,7 +55,7 @@ method, or paid narrator is configured by this worker.
 Optional controls: `VIDEO_POLL_SECONDS` (5), `VIDEO_LEASE_SECONDS` (180),
 `VIDEO_HEARTBEAT_SECONDS` (15), `CINECODE_JOB_TIMEOUT_SECONDS` (3600),
 `CINECODE_MAX_DURATION_SECONDS` (900), `CINECODE_MAX_ARTIFACT_BYTES`
-(300 MB, matching the API artifact endpoint), `CODEX_BIN`, `FFPROBE_BIN`, `PYTHON_BIN`, and `CHROME_BIN`.
+(250 MiB, matching the API artifact endpoint), `CODEX_BIN`, `FFPROBE_BIN`, `PYTHON_BIN`, and `CHROME_BIN`.
 
 ## Run
 
