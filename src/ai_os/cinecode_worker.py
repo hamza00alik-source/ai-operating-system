@@ -61,11 +61,24 @@ def _source_checkout() -> Path:
 
 def _make_read_only(root: Path) -> None:
     """Prevent the render agent from modifying the pinned Cinecode kit."""
-    for current, _directories, files in os.walk(root):
+    for current, directories, files in os.walk(root):
         for name in files:
             (Path(current) / name).chmod(0o444)
-    # Keep directories writable so TemporaryDirectory can reliably clean up;
-    # the copied source files themselves cannot be modified in place.
+        for name in directories:
+            (Path(current) / name).chmod(0o555)
+    root.chmod(0o555)
+
+
+class _CleanupTemporaryDirectory(tempfile.TemporaryDirectory):
+    """Restore directory permissions before deleting a read-only source copy."""
+    def cleanup(self) -> None:
+        root = Path(self.name) if self.name else None
+        if root is not None and root.exists():
+            for current, directories, _files in os.walk(root):
+                for name in directories:
+                    (Path(current) / name).chmod(0o700)
+                Path(current).chmod(0o700)
+        super().cleanup()
 
 
 def _worker_environment() -> dict[str, str]:
@@ -142,7 +155,7 @@ def _run_render(job: dict, source: Path, env: dict[str, str]) -> None:
     storage = Path(os.getenv("AI_OS_CINECODE_STORAGE_DIR", "/data/cinecode")).resolve()
     storage.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(storage, 0o700)
-    with tempfile.TemporaryDirectory(prefix="aios-cinecode-") as temp:
+    with _CleanupTemporaryDirectory(prefix="aios-cinecode-") as temp:
         root = Path(temp).resolve()
         kit = root / "cinecode-kit"
         project = root / "film-project"
