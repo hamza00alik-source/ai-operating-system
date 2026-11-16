@@ -190,7 +190,7 @@ def provider_status():
         out[name]={"configured":bool(key and model and confirmed),"partial_configuration_detected":bool(key or model),"model":model if key and model and confirmed else None,"billing_mode":"free_confirmed" if key and model and confirmed else "disabled"}
     enabled=any(x["configured"] for x in out.values())
     selected="unorouter" if out["unorouter"]["configured"] else "openrouter" if out["openrouter"]["configured"] else None
-    return {"gateway_enabled":enabled,"provider":selected,"providers":out,"billing_mode":"free_confirmed" if enabled else "disabled","paid_fallback":False,"real_inference_verified":False}
+    return {"gateway_enabled":enabled,"partial_configuration_detected":any(x["partial_configuration_detected"] for x in out.values()),"provider":selected,"providers":out,"billing_mode":"free_confirmed" if enabled else "disabled","paid_fallback":False,"real_inference_verified":False}
 
 @app.get("/providers/candidates")
 def provider_candidates():return {"gateway_enabled":False,"candidates":[{"provider":"unorouter","configured":False},{"provider":"openrouter","configured":False}]}
