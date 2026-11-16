@@ -738,6 +738,30 @@ def test_durable_queue_lease_recovers_after_runtime_restart(tmp_path):
     restarted.close()
 
 
+
+def test_queue_admission_is_idempotent_and_failed_work_requires_explicit_retry():
+    runtime = create_runtime(":memory:")
+    agent_id, item_id = uuid4(), uuid4()
+    role_key = "market_intelligence_analyst"
+    item = WorkItem(
+        id=item_id, title="Idempotent admission", objective="Avoid duplicate queue resets",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    runtime.store.create_work_item(item)
+    assert runtime.queue.admit(item_id, agent_id, role_key) is True
+    lease = runtime.queue.claim(agent_id, role_key)
+    assert lease is not None
+    with pytest.raises(ValueError, match="running or completed"):
+        runtime.queue.admit(item_id, agent_id, role_key)
+    runtime.queue.fail(lease)
+    assert runtime.queue.admit(item_id, agent_id, role_key) is True
+    assert runtime.queue.counts()["queued"] == 1
+    assert runtime.queue.admit(item_id, agent_id, role_key) is False
+    assert runtime.queue.counts()["queued"] == 1
+    runtime.close()
+
+
 def test_queue_rejects_mismatched_assigned_role():
     runtime = create_runtime(":memory:")
     agent_id, item_id = uuid4(), uuid4()

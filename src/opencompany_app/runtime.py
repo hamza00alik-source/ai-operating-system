@@ -412,13 +412,27 @@ class WorkQueue(SharedRepository):
             if (not item or not item.assigned_agent_id or item.assigned_agent_id!=agent_id
                     or item.assigned_role_key!=role_key):
                 raise ValueError("work must be assigned to this agent and role")
-            self._db.execute("""INSERT INTO opencompany_queue
-              (work_item_id,agent_id,role_key,state,lease_id,claimed_at,attempts)
-              VALUES(?,?,?,'queued',NULL,NULL,0)
-              ON CONFLICT(work_item_id) DO UPDATE SET agent_id=excluded.agent_id,
-              role_key=excluded.role_key,state='queued',lease_id=NULL,claimed_at=NULL""",
-              (str(item_id),str(agent_id),role_key))
+            existing=self._db.execute(
+                "SELECT agent_id,role_key,state FROM opencompany_queue WHERE work_item_id=?",
+                (str(item_id),),
+            ).fetchone()
+            if existing:
+                if existing["agent_id"]!=str(agent_id) or existing["role_key"]!=role_key:
+                    raise ValueError("an admitted work item cannot be reassigned in the queue")
+                if existing["state"]=="queued":
+                    return False
+                if existing["state"]!="failed":
+                    raise ValueError("work item already has a running or completed queue record")
+                self._db.execute("""UPDATE opencompany_queue
+                  SET state='queued',lease_id=NULL,claimed_at=NULL
+                  WHERE work_item_id=? AND state='failed'""",(str(item_id),))
+            else:
+                self._db.execute("""INSERT INTO opencompany_queue
+                  (work_item_id,agent_id,role_key,state,lease_id,claimed_at,attempts)
+                  VALUES(?,?,?,'queued',NULL,NULL,0)""",
+                  (str(item_id),str(agent_id),role_key))
             self._db.commit()
+            return True
 
     def recover_expired_leases(self,lease_seconds=DEFAULT_LEASE_SECONDS,now=None):
         """Return abandoned running jobs to the queue after their durable lease expires."""
