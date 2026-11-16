@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv \
     && npm install --global @openai/codex@0.169.0 \
+    && codex --version \
+    && codex exec --help > /tmp/codex-exec-help \
+    && for flag in --sandbox --ignore-user-config --ephemeral --json --output-last-message --skip-git-repo-check --cd; do grep -q -- "$flag" /tmp/codex-exec-help || exit 1; done \
+    && rm -f /tmp/codex-exec-help \
     && useradd --create-home --uid 10001 aios \
     && mkdir -p /data/cinecode /codex /opt/cinecode \
     && chown -R aios:aios /data/cinecode /codex /home/aios
