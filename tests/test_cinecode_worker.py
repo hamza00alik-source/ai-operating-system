@@ -38,6 +38,10 @@ def test_prompt_treats_job_brief_as_untrusted_and_requires_fixed_output():
     assert "untrusted creative input" in prompt
     assert "output/final.mp4" in prompt
     assert "A cinematic mountain film" in prompt
+    assert "non-interactive" in prompt
+    assert "Quick mode" in prompt
+    assert "AskUserQuestion" in prompt
+    assert "output/report.md" in prompt
 
 
 def test_copy_cinecode_skips_git_and_symlinks(tmp_path):
@@ -54,9 +58,11 @@ def test_copy_cinecode_skips_git_and_symlinks(tmp_path):
     except OSError:
         pytest.skip("symlinks are unavailable on this platform")
     worker._copy_cinecode(source, workspace)
-    assert (workspace / "project.md").read_text(encoding="utf-8") == "Cinecode instructions"
-    assert not (workspace / ".git").exists()
-    assert not (workspace / "private-link").exists()
+    assert (workspace / "cinecode-kit" / "project.md").read_text(encoding="utf-8") == "Cinecode instructions"
+    assert (workspace / "AGENTS.md").is_file()
+    assert "non-interactive" in (workspace / "AGENTS.md").read_text(encoding="utf-8")
+    assert not (workspace / "cinecode-kit" / ".git").exists()
+    assert not (workspace / "cinecode-kit" / "private-link").exists()
 
 
 def test_validate_mp4_requires_video_stream_and_enforces_duration(tmp_path, monkeypatch):
