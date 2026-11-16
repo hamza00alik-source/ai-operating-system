@@ -23,7 +23,7 @@ def test_workflow_starts_with_one_queued_step_and_gates_the_rest(monkeypatch, tm
         assert any(item["id"] == workflow["id"] for item in instances.json())
         blocked = client.post(f"/tasks/{workflow['steps'][1]['task_id']}/execute?business_id=digital-products")
         assert blocked.status_code == 409
-        queued = client.post(f"/tasks/{workflow['steps'][0]['task_id']}/execute")
+        queued = client.post(f"/tasks/{workflow['steps'][0]['task_id']}/execute?business_id=digital-products")
         assert queued.status_code == 202
 
 
