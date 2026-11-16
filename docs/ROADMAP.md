@@ -1,57 +1,102 @@
-# Roadmap
+# OpenCompany roadmap
 
-A feature is complete only when tested and its operating limits are documented.
+A capability is marked complete only when its implementation is present in this
+repository and the relevant tests pass. A repository feature is not considered
+production-ready merely because code or a deployment preview exists.
 
-## Phase 1 — Core foundation
-- [x] FastAPI application and Python package
-- [x] SQLite persistence for tasks and approvals
-- [x] Human decision endpoints
-- [x] CI test execution (GitHub Actions)
-- [x] API-key authentication for operational endpoints outside development
-- [ ] Role-based authorization and broader security review
+## Current status
 
-## Phase 2 — Orchestration
-- [x] Initial GitHub discovery scan queue, candidate persistence, metadata evaluation, and separate worker
-- [x] Dashboard UI for scan status, evidence, and owner review
-- [x] Persistent owner browser sessions (HttpOnly, Secure, SameSite=Strict; 14-day expiry)
-- [x] Agency workforce catalog: 283 specialist definitions across 18 source categories
-- [x] Company department registry: 12 business departments mapped to source specialist categories
-- [x] Department-aware task routing from company department IDs to specialist catalogue pools
-- [x] Owner-visible inventory of 12 reference/workforce repositories
-- [ ] Worker lease/claim safety for multiple worker instances
-- [ ] CEO-led agent orchestration beyond discovery
-- [ ] Load specialist instruction files into bounded execution contexts
-- [x] Initial department workflow templates with persisted workflow instances and ordered task dependencies
-- [x] Owner-triggered workflow creation; first step queued and downstream steps blocked by default
-- [x] Dependency-gated task execution and automatic next-step handoff after successful completion
-- [ ] Workflow-level artifact aggregation, cancellation, parallel branches, and specialist-specific deliverable schemas
-- [ ] Task dependencies and assignment
-- [x] Static specialist registry sourced from Agency Agents
-- [ ] Live agent runtime and worker registry
-- [ ] Retry policy, timeouts, execution logs
-- [x] In-service discovery polling worker (single service)
-- [ ] Durable agent worker queue, scheduler, leases, and retries
+OpenCompany is an independently designed, human-supervised operating-system
+foundation. It is not yet a fully autonomous or production-operated company.
+The current implementation is built around OpenCompany-owned role definitions,
+SQLite persistence, explicit owner approval, and fail-closed execution controls.
 
-## Phase 3 — Memory and learning
-- [ ] Source-attributed company knowledge
-- [ ] Retrieval and access controls
-- [ ] Evaluation datasets and regression checks
-- [ ] Improvement proposals requiring human approval
+## Completed and covered by repository tests
 
-## Phase 4 — Integrations
-- [ ] Provider-neutral LLM adapter
-- [ ] WooCommerce
-- [x] Social/video department registry and persistent content/brief workspace\n- [x] Draft-to-owner-approval lifecycle with explicit no-publish boundary\n- [ ] Metricool publishing/analytics adapter with mandatory approval\n- [ ] Canva media creation/export adapter\n- [x] Provider-neutral SQLite video-job queue, owner approval, budget gate, idempotency, and status API
-- [x] Authenticated worker claim/lease protocol, heartbeat, cancellation, bounded retries, event audit, and result reporting
-- [x] Optional single-GPU LongCat text-to-video worker and private MP4 artifact path
-- [ ] End-to-end GPU inference verification and multi-GPU/image-to-video/continuation adapters
-- [ ] Email and support adapters
-- [ ] Payment-status verification only
+### Core application and business boundaries
+- [x] OpenCompany FastAPI application, API launcher, owner console, and Python package.
+- [x] Owner authentication, session protections, request security headers, and owner-only operational routes.
+- [x] SQLite persistence for work items, delegation proposals, usage, business records, assets, agent profiles, and worker presence.
+- [x] Three distinct business units: physical-products agency, own physical-products brand, and digital products.
+- [x] Append-only hash-linked work-item audit history and verification.
+- [x] Private asset upload streaming, bounded reads, checksum verification, and private filesystem storage support.
+- [x] Owner-confirmed ClamAV scan workflow with fail-closed scanner handling and scan-event history.
+- [x] No public asset download route; clean assets still require separate delivery approval.
 
-## Phase 5 — Operations
-- [x] Owner Control Center with company overview, workforce, repository sources, tasks, approvals, discovery, and model gateway
-- [ ] Deployment profiles, backups
-- [ ] Security review and end-to-end tests
-- [ ] Beginner-friendly setup guide
+### OpenCompany workforce
+- [x] Original OpenCompany catalogue with 10 departments, 10 department managers, one CEO orchestrator, and 500 specialist roles (511 role definitions total).
+- [x] 100 department teams; five named specialist playbooks in each department's first team (50 total).
+- [x] Capability-based templates for the remaining 450 specialist positions.
+- [x] Department-aware routing previews and role/capability matching.
+- [x] Durable SQLite agent registry; profiles and owner-controlled active/paused/draft state survive runtime restarts.
+- [x] Owner-controlled provisioning and role-state changes with revision checks.
 
-No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases.
+### Supervised orchestration and execution
+- [x] Work-item creation, assignment, dependency validation, and owner-controlled queue admission.
+- [x] CEO draft plans and delegation proposals with owner review before child work is created or queued.
+- [x] Idempotent queue admission and explicit retry of failed work.
+- [x] Durable queue leases, 15-minute abandoned-lease recovery, and stale-worker fencing.
+- [x] Role and assigned-agent identity checks before work is claimed or executed.
+- [x] Gateway-backed specialist draft generation; outputs enter owner review and do not trigger external actions.
+- [x] Owner-triggered single-task execution endpoint.
+- [x] Optional separate `opencompany-worker` process, persistent process heartbeats, owner-only worker status, and a transactional single-instance startup guard.
+- [x] Worker only processes work already admitted to the owner-controlled queue and assigned to an active specialist.
+
+### Model gateway and operating safety
+- [x] Provider-neutral gateway interface with explicit zero-cost eligibility checks.
+- [x] UnoRouter OpenAI-compatible adapter restricted to owner-confirmed model IDs ending in `:free`.
+- [x] Fixed HTTPS endpoint, bounded response size and request timeout, token usage recording, and no paid fallback.
+- [x] Provider configuration is fail-closed: absent credentials or owner confirmation means no eligible provider.
+- [x] No automatic publishing, external customer contact, purchases, payments, or customer commitments.
+
+### Developer experience and verification
+- [x] Separate `opencompany-api` and `opencompany-worker` launch commands.
+- [x] OpenCompany quick-start and worker deployment documentation.
+- [x] GitHub Actions full test suite: 205 passed, 1 warning on commit `cd0a8c169a57fb4b9dc7a4a60e79648b10d28837`.
+- [x] OpenCompany core tests passed on that commit.
+- [x] Vercel prebuilt build validation passed; this is not a production deployment.
+
+## Remaining engineering work
+
+### Orchestration maturity
+- [ ] Full CEO-led execution loop that plans, delegates, evaluates, and advances work across departments.
+- [ ] Parallel branch scheduling, workflow-level artifact aggregation, cancellation, and specialist-specific deliverable schemas.
+- [ ] Durable execution logs, bounded retry/backoff policy, per-task timeouts, and owner-visible failure recovery.
+- [ ] Idempotent deliverable persistence across a process crash between saving a result and completing its queue lease.
+- [ ] Queue lease renewal/heartbeat for long-running model calls and work.
+- [ ] Multi-worker and multi-replica support; current worker is intentionally single-instance.
+
+### Intelligence, memory, and quality
+- [ ] Source-attributed company knowledge base with retrieval and per-business access controls.
+- [ ] Shared team context and long-lived memory with retention, review, and provenance controls.
+- [ ] Evaluation datasets, role-specific quality rubrics, and regression benchmarks for generated work.
+- [ ] Better model routing and live validation of current free-model availability, quotas, privacy terms, and commercial-use permissions.
+- [ ] More individually authored specialist playbooks beyond the first 50 named templates.
+
+### Integrations and business operations
+- [ ] Official, permissioned CRM, email, marketplace, ecommerce, analytics, and support adapters.
+- [ ] Owner-approved customer enquiry and order workflows with auditable handoff boundaries.
+- [ ] Product catalogue, pricing, inventory, supplier, and fulfilment workflows for each business unit.
+- [ ] Payment-status verification only; no autonomous movement of funds.
+- [ ] Publishing and customer communication remain disabled until an explicit approval workflow and connector-specific safeguards are implemented.
+
+### Production readiness
+- [ ] Select and validate a host that supports a persistent writable database and a separately supervised long-running worker process.
+- [ ] Configure encrypted backups, restore tests, monitoring, log retention, and disaster recovery.
+- [ ] Configure the owner's API key and a personally verified zero-cost provider through private hosting environment variables.
+- [ ] Run an end-to-end live inference and worker test against the owner's own account without paid fallback.
+- [ ] Complete role-based authorization, threat modelling, dependency review, and an independent security review.
+- [ ] Verify deployment, restart recovery, worker supervision, and database persistence on the actual production host.
+
+## Explicit operational limits
+
+The worker is opt-in and will not start without a file-backed shared database,
+an explicit enable flag, and a confirmed zero-cost provider. Its provider
+request timeout is shorter than the 15-minute queue lease, but queue lease
+renewal is not implemented. The single-instance guard is not a substitute for
+a production process supervisor.
+
+No provider credentials are stored in the repository. No live provider request,
+worker process, customer action, purchase, publishing action, or production
+deployment is performed by these code changes. The PR remains draft and
+unmerged until the owner reviews and authorizes those steps.
