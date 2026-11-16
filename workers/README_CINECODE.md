@@ -71,6 +71,30 @@ policy.
 The worker's default maximum artifact size is 300 MB, matching the API endpoint. Larger renders are rejected before upload. The worker does not publish or schedule videos. Publishing remains a separate
 owner-approved operation.
 
+## Optional hardened Linux Docker profile
+
+The repository includes a reproducible Linux worker image and Compose profile:
+
+- `workers/Dockerfile.cinecode` installs Node 22, Python 3, Chromium, FFmpeg/ffprobe, Git, and a pinned Codex CLI release.
+- `workers/docker-compose.cinecode.yml` runs as an unprivileged UID, with a read-only container root, dropped Linux capabilities, no-new-privileges, bounded PIDs/memory/CPU, a private writable job volume, and a dedicated Codex home mount.
+- `workers/.env.cinecode.example` is the environment template. Copy it to `workers/.env.cinecode` and enter real secrets only on the worker host; never commit that file.
+
+On a dedicated Linux workstation with Docker Compose:
+
+1. Create a separate Codex home used only by this worker, authenticate Codex CLI into it, and make the directory readable by container UID 10001. Do not mount your everyday developer home or other provider credentials.
+2. Copy `workers/.env.cinecode.example` to `workers/.env.cinecode`; set the AIOS HTTPS URL and the unique Cinecode worker token. Keep both execution gates set to `false` initially.
+3. Export the two Compose build/runtime values in the shell: `CODEX_VERSION` (an exact pinned `@openai/codex` package version) and `CODEX_HOME_HOST` (the dedicated Codex home directory).
+4. Build and start the worker:
+
+   `docker compose -f workers/docker-compose.cinecode.yml build`
+
+   `docker compose -f workers/docker-compose.cinecode.yml up -d`
+
+5. Check container logs and the AIOS Owner Console. The worker must appear online and report the pinned source commit, installed versions, and available disk before enabling any job.
+6. Only after the Codex account's billing/usage and the host firewall have been reviewed, set `CINECODE_EXECUTION_ENABLED=true` and `CINECODE_BILLING_CONFIRMED=true` in the private `.env.cinecode`, then recreate the container.
+
+The container profile does not create a cloud machine, GPU, Codex subscription, or API quota. Host firewall rules should restrict outbound traffic to the AIOS HTTPS API and the required Codex service endpoints; omit optional research/CDN access for the Quick-mode zero-external-assets profile. GPU passthrough through `/dev/dri` is optional and must be enabled only on a compatible Linux host. Without it, Chromium may fall back to slow software rendering.
+
 ## Verification boundary
 
 Unit tests cover workspace path validation, secret filtering, symlink exclusion,
