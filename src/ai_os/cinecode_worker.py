@@ -24,6 +24,9 @@ from ai_os.db import connect
 logger = logging.getLogger("ai_os.cinecode_worker")
 STOP = False
 MAX_RENDER_SECONDS = 3600
+MAX_STORAGE_BYTES = 300 * 1024 * 1024
+MIN_FREE_BYTES = 64 * 1024 * 1024
+MAX_REPORT_BYTES = 2 * 1024 * 1024
 POLL_SECONDS = 5
 
 
@@ -192,11 +195,23 @@ def _run_render(job: dict, source: Path, env: dict[str, str]) -> None:
             raise RuntimeError("Codex render process failed: " + "\n".join(output_lines[-20:]))
         mp4 = project / "output" / "final.mp4"
         report = project / "production-report.md"
-        if not mp4.is_file() or not report.is_file():
-            raise RuntimeError("Cinecode did not produce both final.mp4 and production-report.md.")
+        project_root = project.resolve()
+        if (not mp4.is_file() or not report.is_file()
+                or mp4.is_symlink() or report.is_symlink()
+                or project_root not in mp4.resolve().parents
+                or project_root not in report.resolve().parents):
+            raise RuntimeError("Cinecode must produce regular in-workspace MP4 and report files.")
         size = mp4.stat().st_size
+        report_size = report.stat().st_size
         if size <= 0 or size > MAX_ARTIFACT_BYTES:
-            raise RuntimeError("Rendered MP4 is empty or exceeds the 250 MiB artifact limit.")
+            raise RuntimeError("Rendered MP4 is empty or exceeds the 250 MiB per-file limit.")
+        if report_size <= 0 or report_size > MAX_REPORT_BYTES:
+            raise RuntimeError("Production report is empty or exceeds the 2 MiB limit.")
+        existing_bytes = sum(p.stat().st_size for p in storage.iterdir() if p.is_file() and not p.is_symlink())
+        if existing_bytes + size + report_size > MAX_STORAGE_BYTES:
+            raise RuntimeError("Private Cinecode storage would exceed its 300 MiB aggregate limit.")
+        if shutil.disk_usage(storage).free - size - report_size < MIN_FREE_BYTES:
+            raise RuntimeError("Render artifact storage would consume the 64 MiB free-space reserve.")
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0",
              "-show_entries", "stream=codec_type,width,height",
@@ -204,8 +219,9 @@ def _run_render(job: dict, source: Path, env: dict[str, str]) -> None:
             check=True, capture_output=True, text=True, timeout=30,
         )
         metadata = json.loads(probe.stdout)
-        if not metadata.get("streams") or not metadata.get("format", {}).get("duration"):
-            raise RuntimeError("ffprobe could not verify a video stream and duration.")
+        duration = float(metadata.get("format", {}).get("duration") or 0)
+        if not metadata.get("streams") or duration <= 0:
+            raise RuntimeError("ffprobe could not verify a video stream and positive duration.")
         target = storage / f"{job_id}.mp4"
         report_target = storage / f"{job_id}.production-report.md"
         shutil.copyfile(mp4, target)
