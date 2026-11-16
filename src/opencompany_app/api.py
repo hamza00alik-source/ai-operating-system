@@ -217,6 +217,63 @@ def save_unorouter(payload:dict,owner=Depends(_owner)):
 @app.get("/settings/providers/unorouter")
 def get_unorouter(owner=Depends(_owner)):return {"configured":False}
 
+@app.post("/settings/providers/unorouter/test")
+def start_unorouter_test(runtime=Depends(get_runtime),owner=Depends(_owner)):
+    job_id=str(uuid4())
+    runtime.unorouter_tested_at=None
+    try:
+        if hasattr(runtime.gateway,"set_usage_recorder"):
+            runtime.gateway.set_usage_recorder(runtime.usage.record)
+        result=runtime.gateway.generate(
+            {"task":"verify_zero_cost_provider","prompt":"Reply exactly OPENCOMPANY_UNOROUTER_OK."},
+            request_budget_usd=0.0,
+        )
+        if result.cost_usd!=0.0:
+            raise RuntimeError("Provider returned a non-zero cost.")
+        runtime.unorouter_tested_at=datetime.now(timezone.utc).isoformat()
+        job={
+            "status":"succeeded","success":True,"provider":result.provider,"model":result.model,
+            "cost_usd":result.cost_usd,"output_preview":result.text[:160],
+            "worker_autostart_enabled":os.getenv("OPENCOMPANY_WORKER_AUTOSTART","false").lower()=="true",
+            "worker_started":runtime.fleet.status().running,"paid_fallback":False,
+        }
+    except Exception as exc:
+        job={
+            "status":"failed","success":False,
+            "error":"UnoRouter test failed safely: "+str(exc),
+            "paid_fallback":False,"worker_autostart_enabled":os.getenv("OPENCOMPANY_WORKER_AUTOSTART","false").lower()=="true",
+            "worker_started":runtime.fleet.status().running,
+        }
+    runtime.provider_test_jobs[job_id]=job
+    return Response(
+        content=json.dumps({"job_id":job_id}),status_code=202,
+        media_type="application/json",
+    )
+
+
+@app.get("/settings/providers/unorouter/test/{job_id}")
+def get_unorouter_test(job_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    job=runtime.provider_test_jobs.get(job_id)
+    if not job:raise HTTPException(404,"Provider test job not found.")
+    return job
+
+
+@app.get("/settings/providers/unorouter/models")
+def get_unorouter_models(runtime=Depends(get_runtime),owner=Depends(_owner)):
+    saved=runtime.secret_vault.get("unorouter")
+    api_key=saved.get("api_key") if isinstance(saved,dict) else None
+    models=discover_free_models(api_key,force_refresh=True) if api_key else ()
+    free_models=sorted({
+        str(value.get("id")) if isinstance(value,dict) else str(value)
+        for value in models
+        if (str(value.get("id","")) if isinstance(value,dict) else str(value)).endswith(":free")
+    })
+    return {
+        "routing_mode":"automatic_all_free_models","models":free_models,
+        "paid_fallback":False,"configured":bool(api_key),
+    }
+
+
 @app.get("/usage/model")
 def model_usage(runtime=Depends(get_runtime),owner=Depends(_owner)):return runtime.usage.summary()
 
