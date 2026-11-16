@@ -185,6 +185,11 @@ def claim_job(worker_id, lease_seconds=120, provider="longcat-video", capabiliti
     initialize(); now=_now(); now_s=now.isoformat(); expires=(now+timedelta(seconds=lease_seconds)).isoformat()
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        existing_presence = db.execute(
+            "SELECT provider FROM video_worker_presence WHERE worker_id=?", (worker_id,)
+        ).fetchone()
+        if existing_presence and existing_presence["provider"] != provider:
+            raise ValueError("worker_id is already registered to a different video provider.")
         db.execute("""INSERT INTO video_worker_presence(worker_id,last_seen_at,capabilities_json,provider)
             VALUES(?,?,?,?) ON CONFLICT(worker_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,
             capabilities_json=excluded.capabilities_json,provider=excluded.provider""",
