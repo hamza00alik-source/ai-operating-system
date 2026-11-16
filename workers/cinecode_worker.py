@@ -150,7 +150,8 @@ class AIOSClient:
 
 def _validate_api_url(value: str) -> str:
     parsed = urlsplit(value.strip())
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
         raise WorkerError("AIOS_API_URL must be a public HTTPS URL without embedded credentials")
     return value.strip().rstrip("/")
 
