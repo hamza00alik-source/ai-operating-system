@@ -511,7 +511,7 @@ class DeterministicWorker:
 
     def run_once(self,agent_id,role_key):
         lease=self.runtime.queue.claim(agent_id,role_key)
-        if not lease:return {"status":"idle","deliverable":None}
+        if not lease:return "idle"
         item=self.runtime.store.get_work_item(lease.work_item_id)
         from dataclasses import replace
         try:
@@ -524,9 +524,7 @@ class DeterministicWorker:
                 replace(current,state=TaskState.REVIEW),
                 _audit("worker.review",item.id,"worker"))
             self.runtime.queue.complete(lease)
-            return {"status":"completed_review_required","deliverable_id":str(deliverable.id),
-                    "work_item_id":str(item.id),"provider":deliverable.provider,
-                    "model":deliverable.model,"cost_usd":deliverable.cost_usd}
+            return "completed_review_required"
         except Exception:
             current=self.runtime.store.get_work_item(lease.work_item_id)
             if current and current.state in (TaskState.QUEUED,TaskState.IN_PROGRESS):
