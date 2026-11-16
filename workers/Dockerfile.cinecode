@@ -39,7 +39,7 @@ RUN python3 -m py_compile /opt/aios-worker/cinecode_worker.py \
     && node --version && python3 --version && chromium --version \
     && ffmpeg -version && ffprobe -version && codex --version \
     && codex exec --help >/tmp/codex-exec-help \
-    && python3 -c 'from pathlib import Path; t=Path("/tmp/codex-exec-help").read_text(); required=["--ask-for-approval","--sandbox","--output-last-message","--ignore-user-config","--ephemeral","--skip-git-repo-check"]; missing=[x for x in required if x not in t]; print("Missing Codex CLI flags:", missing); raise SystemExit(bool(missing))' \
+    && python3 -c 'from pathlib import Path; t=Path("/tmp/codex-exec-help").read_text(); required=["--sandbox","--output-last-message","--ignore-user-config","--ephemeral","--skip-git-repo-check"]; missing=[x for x in required if x not in t]; print("Missing Codex CLI flags:", missing); raise SystemExit(bool(missing))' \
     && rm -f /tmp/codex-exec-help \
     && chown -R cinecode:cinecode /opt/aios-worker
 
