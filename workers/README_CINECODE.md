@@ -93,7 +93,7 @@ On a dedicated Linux workstation with Docker Compose:
    `docker compose -f workers/docker-compose.cinecode.yml up -d`
 
 5. Check container logs. With both safety gates false, the worker intentionally exits without connecting to or claiming jobs; this confirms the default-disabled behavior.
-6. Only after the Codex account's billing/usage, dedicated credentials, host firewall, and isolation have been reviewed, set `CINECODE_EXECUTION_ENABLED=true` and `CINECODE_BILLING_CONFIRMED=true` in the private `.env.cinecode`, then recreate the container. The worker should now appear online in the AIOS Owner Console and report its pinned source commit, installed versions, and available disk before you approve a Cinecode job.
+6. Only after the Codex account's billing/usage, dedicated credentials, host firewall, and isolation have been reviewed, set `CINECODE_EXECUTION_ENABLED=true` and `CINECODE_BILLING_CONFIRMED=true` in the private `.env.cinecode`, then run `docker compose -f workers/docker-compose.cinecode.yml up -d --force-recreate`. The worker should now appear online in the AIOS Owner Console and report its pinned source commit, installed versions, and available disk before you approve a Cinecode job.
 
 The container profile does not create a cloud machine, GPU, Codex subscription, or API quota. Host firewall rules should restrict outbound traffic to the AIOS HTTPS API and the required Codex service endpoints; omit optional research/CDN access for the Quick-mode zero-external-assets profile. GPU passthrough through `/dev/dri` is optional and must be enabled only on a compatible Linux host. Without it, Chromium may fall back to slow software rendering.
 
