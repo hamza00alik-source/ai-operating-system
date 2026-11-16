@@ -11,6 +11,7 @@ from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_app.runtime import Runtime, create_runtime, WorkItem, _audit
 from opencompany_app.catalogue import ROLE_CATALOGUE, DEPARTMENT_CATALOGUE, DEPARTMENTS
 from opencompany_core.asset_storage import AssetStorageError
+from opencompany_core.asset_scanning import AssetScanError
 
 app=FastAPI(title="OpenCompany")
 _default_runtime_instance=None
@@ -462,11 +463,10 @@ async def upload_business_asset_content(business_id:str,asset_id:str,request:Req
         raise HTTPException(503,"Private asset storage is not configured.")
     try:
         declaration=runtime.asset_registry.storage_declaration(business_id,asset_id)
-        body=await request.body()
-        stored=runtime.asset_storage.store(
+        stored=await runtime.asset_storage.store_stream(
             business_id=declaration["business_id"],asset_scope_id=declaration["asset_scope_id"],
             asset_id=declaration["asset_id"],expected_sha256=declaration["checksum_sha256"],
-            expected_size=declaration["byte_size"],chunks=(body,),
+            expected_size=declaration["byte_size"],chunks=request.stream(),
             expected_media_type=declaration["media_type"],
         )
         try:
@@ -492,6 +492,36 @@ async def upload_business_asset_content(business_id:str,asset_id:str,request:Req
     return {
         "asset":_public_asset(asset),"checksum_verified":True,
         "malware_scan_completed":False,"download_enabled":False,
+    }
+
+
+@app.post("/business-units/{business_id}/assets/{asset_id}/scan")
+def scan_business_asset(business_id:str,asset_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_scan") is not True:
+        raise HTTPException(422,"Owner confirmation is required before scanning this asset.")
+    if runtime.asset_storage is None or runtime.asset_scanner is None:
+        raise HTTPException(503,"Private storage and a local ClamAV scanner must both be configured.")
+    try:
+        declaration=runtime.asset_registry.scan_declaration(business_id,asset_id)
+        result=runtime.asset_scanner.scan(runtime.asset_storage.read_chunks(declaration["storage_key"]))
+        if result["checksum_sha256"]!=declaration["checksum_sha256"] or result["byte_size"]!=declaration["byte_size"]:
+            raise HTTPException(409,"Scanned bytes do not match the stored asset declaration.")
+        asset=runtime.asset_registry.record_scan_result(
+            business_id,asset_id,scanner_key=result["scanner_key"],status=result["status"],
+            checksum_sha256=result["checksum_sha256"],byte_size=result["byte_size"],
+            verdict=result["verdict"],audit=_audit("asset.scan",UUID(asset_id),"system"),
+        )
+    except AssetScanError as exc:
+        raise HTTPException(503,"Malware scanner could not provide a definitive verdict; asset remains unavailable.") from exc
+    except AssetStorageError as exc:
+        raise HTTPException(503,"Private asset could not be read safely for scanning.") from exc
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from exc
+    return {
+        "asset":_public_asset(asset),"scan_status":result["status"],
+        "malware_scan_completed":True,"download_enabled":False,
+        "delivery_approval_required":result["status"]=="clean",
     }
 
 
