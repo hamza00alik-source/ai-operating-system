@@ -107,3 +107,11 @@ def test_worker_capabilities_are_sanitized_and_visible(monkeypatch, tmp_path):
         "disk_free_bytes": 123456,
     }
     assert "api_key" not in str(status)
+
+
+
+def test_worker_identity_cannot_be_reused_across_video_providers(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_OS_DATABASE_URL", f"sqlite:///{tmp_path / 'provider-worker-id.db'}")
+    video_jobs.claim_job("shared-worker-id", provider="cinecode")
+    with pytest.raises(ValueError, match="different video provider"):
+        video_jobs.claim_job("shared-worker-id", provider="longcat-video")
