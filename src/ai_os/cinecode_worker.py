@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import selectors
 import os
 import shutil
 import signal
@@ -155,30 +156,38 @@ def _run_render(job: dict, source: Path, env: dict[str, str]) -> None:
         _set_progress(job_id, "Rendering locally with the isolated Codex service identity")
         process = subprocess.Popen(
             command, cwd=root, env=env, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True,
+            stderr=subprocess.STDOUT, text=False, bufsize=0,
         )
         started = time.monotonic()
         output_lines: list[str] = []
-        while process.poll() is None:
-            if _cancelled(job_id):
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
+        selector = selectors.DefaultSelector()
+        if process.stdout is not None:
+            selector.register(process.stdout, selectors.EVENT_READ)
+        try:
+            while process.poll() is None:
+                if _cancelled(job_id):
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                    _finish(job_id, status="cancelled")
+                    return
+                if time.monotonic() - started > MAX_RENDER_SECONDS:
                     process.kill()
-                _finish(job_id, status="cancelled")
-                return
-            if time.monotonic() - started > MAX_RENDER_SECONDS:
+                    _finish(job_id, status="failed", error="Render exceeded the one-hour worker limit.")
+                    return
+                for key, _ in selector.select(timeout=0.5):
+                    chunk = key.fileobj.readline()
+                    if chunk:
+                        output_lines.append(chunk.decode("utf-8", errors="replace").rstrip()[:2000])
+                        if len(output_lines) > 500:
+                            output_lines = output_lines[-500:]
+        finally:
+            selector.close()
+            if process.poll() is None:
                 process.kill()
-                _finish(job_id, status="failed", error="Render exceeded the one-hour worker limit.")
-                return
-            line = process.stdout.readline() if process.stdout else ""
-            if line:
-                output_lines.append(line.rstrip()[:2000])
-                if len(output_lines) > 500:
-                    output_lines = output_lines[-500:]
-            else:
-                time.sleep(0.25)
+                process.wait(timeout=10)
         if process.returncode != 0:
             raise RuntimeError("Codex render process failed: " + "\n".join(output_lines[-20:]))
         mp4 = project / "output" / "final.mp4"
