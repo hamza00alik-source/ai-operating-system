@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from opencompany_core.model_gateway import gateway_from_environment, ProviderUnavailable, UnoRouterFreeAdapter
@@ -113,3 +114,19 @@ def test_worker_presence_survives_runtime_restart_and_records_stop(tmp_path):
     restarted.worker_presence.stop(worker_id)
     assert restarted.worker_presence.list_instances()[0]["state"] == "stopped"
     restarted.close()
+
+
+def test_worker_presence_rejects_a_second_recent_worker_and_allows_stale_recovery(tmp_path):
+    database = tmp_path / "single-worker.sqlite3"
+    runtime = create_runtime(str(database))
+    now = datetime.now(timezone.utc)
+    runtime.worker_presence.start("worker-one", now)
+    try:
+        runtime.worker_presence.start("worker-two", now + timedelta(seconds=30))
+    except RuntimeError as exc:
+        assert "only one instance" in str(exc)
+    else:
+        raise AssertionError("a second active worker was allowed")
+    runtime.worker_presence.start("worker-two", now + timedelta(seconds=121))
+    assert len(runtime.worker_presence.list_instances()) == 2
+    runtime.close()

@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json, os, sqlite3, threading
 from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -631,15 +631,28 @@ class WorkerPresenceRepository(SharedRepository):
             db.commit()
 
     def start(self,worker_id,now=None):
-        stamp=(now or datetime.now(timezone.utc)).isoformat()
+        moment=now or datetime.now(timezone.utc)
+        stamp=moment.isoformat()
+        cutoff=(moment-timedelta(seconds=120)).isoformat()
         with self._lock:
-            self._db.execute("""INSERT INTO opencompany_worker_instances
-              (worker_id,started_at,last_seen_at,stopped_at,state,processed_count)
-              VALUES(?,?,?,NULL,'running',0)
-              ON CONFLICT(worker_id) DO UPDATE SET started_at=excluded.started_at,
-              last_seen_at=excluded.last_seen_at,stopped_at=NULL,state='running',processed_count=0""",
-              (str(worker_id),stamp,stamp))
-            self._db.commit()
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                active=self._db.execute("""SELECT worker_id FROM opencompany_worker_instances
+                  WHERE state='running' AND last_seen_at>=? AND worker_id<>? LIMIT 1""",
+                  (cutoff,str(worker_id))).fetchone()
+                if active:
+                    raise RuntimeError("An OpenCompany worker is already active; only one instance is supported.")
+                self._db.execute("""INSERT INTO opencompany_worker_instances
+                  (worker_id,started_at,last_seen_at,stopped_at,state,processed_count)
+                  VALUES(?,?,?,NULL,'running',0)
+                  ON CONFLICT(worker_id) DO UPDATE SET started_at=excluded.started_at,
+                  last_seen_at=excluded.last_seen_at,stopped_at=NULL,state='running',processed_count=0""",
+                  (str(worker_id),stamp,stamp))
+                self._db.commit()
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.rollback()
+                raise
 
     def heartbeat(self,worker_id,processed=0,now=None):
         if processed < 0:
