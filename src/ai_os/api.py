@@ -1042,7 +1042,7 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
 
 def _ensure_video_artifact_capacity(directory: Path) -> None:
     import shutil
-    limit = int(os.getenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", str(400 * 1024 * 1024)))
+    limit = int(os.getenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", str(300 * 1024 * 1024)))
     used = sum(
         item.stat().st_size for item in directory.iterdir()
         if item.is_file() and (item.suffix == ".mp4" or item.name.endswith(".report.md") or item.name.endswith(".tmp"))
@@ -1136,8 +1136,8 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
             last_lease_refresh = time.monotonic()
             async for chunk in request.stream():
                 size += len(chunk)
-                if size > 300 * 1024 * 1024:
-                    raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
+                if size > 250 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Artifact exceeds 250 MiB limit.")
                 import shutil
                 if shutil.disk_usage(directory).free < 64 * 1024 * 1024:
                     raise HTTPException(status_code=507, detail="Private video artifact volume must retain at least 64 MB free.")
