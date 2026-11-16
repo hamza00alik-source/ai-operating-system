@@ -78,6 +78,11 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert "<style nonce=" in response.text
     assert response.headers["x-frame-options"] == "DENY"
 
+    assert 'id="videoJobForm"' in response.text
+    assert "video-decision" in response.text
+    assert "video-cancel" in response.text
+    assert "Submit for owner approval" in response.text
+    assert "CINECODE_EXECUTION_ENABLED" not in response.text
 
 
 def test_health_reports_owner_authenticated_mode():
