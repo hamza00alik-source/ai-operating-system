@@ -53,7 +53,7 @@ method, or paid narrator is configured by this worker.
 Optional controls: `VIDEO_POLL_SECONDS` (5), `VIDEO_LEASE_SECONDS` (180),
 `VIDEO_HEARTBEAT_SECONDS` (15), `CINECODE_JOB_TIMEOUT_SECONDS` (3600),
 `CINECODE_MAX_DURATION_SECONDS` (900), `CINECODE_MAX_ARTIFACT_BYTES`
-(2 GB), `CODEX_BIN`, `FFPROBE_BIN`, `PYTHON_BIN`, and `CHROME_BIN`.
+(300 MB, matching the API artifact endpoint), `CODEX_BIN`, `FFPROBE_BIN`, `PYTHON_BIN`, and `CHROME_BIN`.
 
 ## Run
 
@@ -68,7 +68,7 @@ result with ffprobe, and streams the MP4 to AIOS private artifact storage.
 Cancellation is checked on every heartbeat. Failed jobs use AIOS's bounded retry
 policy.
 
-The worker does not publish or schedule videos. Publishing remains a separate
+The worker's default maximum artifact size is 300 MB, matching the API endpoint. Larger renders are rejected before upload. The worker does not publish or schedule videos. Publishing remains a separate
 owner-approved operation.
 
 ## Verification boundary
