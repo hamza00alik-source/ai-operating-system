@@ -11,17 +11,17 @@ def _enable(monkeypatch, prefix, base, model):
 
 
 def test_free_provider_failover_after_rate_limit(monkeypatch):
-    _enable(monkeypatch, "GROQ", "https://api.groq.com/openai/v1", "free-model")
-    _enable(monkeypatch, "GEMINI", "https://generativelanguage.googleapis.com", "gemini-flash")
+    _enable(monkeypatch, "OPENROUTER", "https://openrouter.ai/api/v1", "provider/model:free")
+    _enable(monkeypatch, "UNOROUTER", "https://api.unorouter.com/v1", "backup/model:free")
     calls = []
 
     def fake_generate(provider_id, prompt):
         calls.append(provider_id)
-        if provider_id == "groq":
+        if provider_id == "openrouter":
             raise llm_gateway.ProviderHTTPError(429, "rate limit reached")
         return {
             "provider": provider_id,
-            "model": "gemini-flash",
+            "model": "backup/model:free",
             "response": "A valid response from the backup provider.",
             "latency_ms": 12,
             "usage": {},
@@ -29,10 +29,10 @@ def test_free_provider_failover_after_rate_limit(monkeypatch):
         }
 
     monkeypatch.setattr(llm_gateway, "generate", fake_generate)
-    result = llm_gateway.generate_with_fallback("test prompt", preferred_provider="groq")
+    result = llm_gateway.generate_with_fallback("test prompt", preferred_provider="openrouter")
 
-    assert calls == ["groq", "gemini"]
-    assert result["provider"] == "gemini"
+    assert calls == ["openrouter", "unorouter"]
+    assert result["provider"] == "unorouter"
     assert result["fallback_used"] is True
     assert result["provider_attempts"][0]["http_status"] == 429
 
@@ -55,8 +55,8 @@ def test_fallback_never_uses_unconfirmed_provider(monkeypatch):
 
 
 def test_bad_request_does_not_rotate_providers(monkeypatch):
-    _enable(monkeypatch, "GROQ", "https://api.groq.com/openai/v1", "free-model")
-    _enable(monkeypatch, "GEMINI", "https://generativelanguage.googleapis.com", "gemini-flash")
+    _enable(monkeypatch, "OPENROUTER", "https://openrouter.ai/api/v1", "provider/model:free")
+    _enable(monkeypatch, "UNOROUTER", "https://api.unorouter.com/v1", "backup/model:free")
     calls = []
 
     def fake_generate(provider_id, prompt):
@@ -65,22 +65,22 @@ def test_bad_request_does_not_rotate_providers(monkeypatch):
 
     monkeypatch.setattr(llm_gateway, "generate", fake_generate)
     with pytest.raises(llm_gateway.ProviderHTTPError):
-        llm_gateway.generate_with_fallback("test prompt", preferred_provider="groq")
-    assert calls == ["groq"]
+        llm_gateway.generate_with_fallback("test prompt", preferred_provider="openrouter")
+    assert calls == ["openrouter"]
 
 
 def test_empty_or_placeholder_output_uses_free_fallback(monkeypatch):
-    _enable(monkeypatch, "GROQ", "https://api.groq.com/openai/v1", "free-model")
-    _enable(monkeypatch, "GEMINI", "https://generativelanguage.googleapis.com", "gemini-flash")
+    _enable(monkeypatch, "OPENROUTER", "https://openrouter.ai/api/v1", "provider/model:free")
+    _enable(monkeypatch, "UNOROUTER", "https://api.unorouter.com/v1", "backup/model:free")
     calls = []
 
     def fake_generate(provider_id, prompt):
         calls.append(provider_id)
-        if provider_id == "groq":
+        if provider_id == "openrouter":
             raise RuntimeError("Groq returned empty or placeholder text; refusing to mark this agent stage complete")
         return {
             "provider": provider_id,
-            "model": "gemini-flash",
+            "model": "backup/model:free",
             "response": "A valid CEO review from the backup free provider.",
             "latency_ms": 12,
             "usage": {},
@@ -88,9 +88,9 @@ def test_empty_or_placeholder_output_uses_free_fallback(monkeypatch):
         }
 
     monkeypatch.setattr(llm_gateway, "generate", fake_generate)
-    result = llm_gateway.generate_with_fallback("CEO review prompt", preferred_provider="groq")
+    result = llm_gateway.generate_with_fallback("CEO review prompt", preferred_provider="openrouter")
 
-    assert calls == ["groq", "gemini"]
-    assert result["provider"] == "gemini"
+    assert calls == ["openrouter", "unorouter"]
+    assert result["provider"] == "unorouter"
     assert result["fallback_used"] is True
     assert result["provider_attempts"][0]["status"] == "invalid_or_empty_output"
