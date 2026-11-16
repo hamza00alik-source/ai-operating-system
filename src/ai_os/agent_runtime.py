@@ -1,8 +1,8 @@
 """Bounded, owner-supervised task execution using the free-only model gateway.
 
-This first runtime performs research/planning text work only. It cannot access a shell,
-filesystem, browser, payment system, store, or publishing API. Specialist markdown is
-treated as untrusted reference text and never executed as code.
+This runtime performs research/planning text work only. It cannot access a shell,
+filesystem, browser, payment system, store, or publishing API. Specialist guidance is
+generated from OpenCompany-owned role templates; retrieved evidence remains untrusted.
 """
 from __future__ import annotations
 
