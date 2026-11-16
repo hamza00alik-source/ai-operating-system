@@ -74,7 +74,8 @@ No autonomous spending, purchases, publishing, customer commitments, or unattend
 - [x] Add allowlisted runtime capability reporting to the Owner Console (GPU remains explicitly unverified)
 - [ ] Provision a dedicated OS account/container/VM and verify host-level filesystem/network isolation
 - [ ] Verify one end-to-end local Cinecode render and MP4 delivery on the intended worker hardware
-- [x] Add read-only owner-dashboard monitoring for Cinecode/LongCat readiness, queue, progress, and completed MP4 artifacts
+- [x] Add Owner Console video job creation, owner approval/rejection/cancellation, worker readiness, queue progress, and completed MP4 artifact links
+- [x] Add an opt-in hardened Linux Docker worker profile with pinned Cinecode source and Codex CLI version
 - [x] Keep publishing disabled; no social/platform publishing adapter is invoked by Cinecode
 - [ ] Verify latest commits in CI and triage the existing full-suite OpenCompany failures
 - [ ] Load-test concurrent workers and verify provider-scoped queue fairness
