@@ -182,7 +182,7 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         assert claim.json()["id"] == job_id
         lease = claim.json()["lease_token"]
 
-        report_text = b"# Cinecode production report\\n\\nMode: Quick\\nLicence: original generated assets\\n"
+        report_text = b"# Cinecode production report\n\nMode: Quick\nLicence: original generated assets\n"
         report_upload = client.put(
             f"/video/worker/jobs/{job_id}/report",
             content=report_text,
