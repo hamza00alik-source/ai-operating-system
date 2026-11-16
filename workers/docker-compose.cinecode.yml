@@ -11,8 +11,6 @@ services:
     env_file:
       - .env.cinecode
     environment:
-      CINECODE_EXECUTION_ENABLED: ${CINECODE_EXECUTION_ENABLED:-false}
-      CINECODE_BILLING_CONFIRMED: ${CINECODE_BILLING_CONFIRMED:-false}
       CINECODE_SOURCE_DIR: /opt/cinecode-source
       CINECODE_EXPECTED_COMMIT: c8a3e7552699360a2b0142c9620882af2069eedb
       CINECODE_WORK_ROOT: /var/lib/cinecode-work
