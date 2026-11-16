@@ -302,7 +302,7 @@ def _validate_mp4(path: Path, workspace: Path, ffprobe_bin: str,
         raise WorkerError("MP4 metadata is missing or invalid") from exc
     streams = metadata.get("streams", [])
     video = next((item for item in streams if item.get("codec_type") == "video"), None)
-    if not video or duration <= 0 or duration > max_duration:
+    if not video or duration <= 0 or duration > max_duration or "mp4" not in metadata.get("format", {}).get("format_name", "").lower():
         raise WorkerError("MP4 must contain a video stream and fit the duration limit")
     return {
         "content_type": "video/mp4",
@@ -379,7 +379,7 @@ def main() -> None:
     heartbeat_seconds = min(60, max(5, int(os.getenv("VIDEO_HEARTBEAT_SECONDS", "15"))))
     timeout_seconds = max(60, int(os.getenv("CINECODE_JOB_TIMEOUT_SECONDS", "3600")))
     max_duration = max(1, int(os.getenv("CINECODE_MAX_DURATION_SECONDS", "900")))
-    max_bytes = max(1_000_000, int(os.getenv("CINECODE_MAX_ARTIFACT_BYTES", str(2_000_000_000))))
+    max_bytes = max(1_000_000, int(os.getenv("CINECODE_MAX_ARTIFACT_BYTES", str(300 * 1024 * 1024))))
     client = AIOSClient(base_url, token)
     if not source.is_dir() or not (source / ".git").is_dir():
         raise WorkerError("CINECODE_SOURCE_DIR must be a Git checkout of the pinned upstream project")
