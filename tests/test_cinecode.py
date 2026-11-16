@@ -85,3 +85,11 @@ def test_cinecode_worker_requires_both_explicit_execution_gates(monkeypatch):
     assert cinecode_worker._enabled() is False
     monkeypatch.setenv("AI_OS_CINECODE_BILLING_CONFIRMED", "true")
     assert cinecode_worker._enabled() is True
+
+
+def test_owner_console_exposes_cinecode_studio_link():
+    with TestClient(app) as client:
+        response = client.get("/owner")
+    assert response.status_code == 200
+    assert 'href="/cinecode"' in response.text
+    assert "Cinecode Studio" in response.text
