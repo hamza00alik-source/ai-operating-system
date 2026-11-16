@@ -1186,7 +1186,9 @@ def test_api_startup_never_starts_workers_without_live_owner_provider_test(monke
             return (object(),) if self.ready else ()
 
     class Store:
-        pass
+        def activate_all_draft_agents_with_audit(self):
+            # Startup may activate saved profiles, but must never start inference.
+            return 0
 
     class Runtime:
         fleet = Fleet()
