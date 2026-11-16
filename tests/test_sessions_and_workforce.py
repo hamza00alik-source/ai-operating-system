@@ -32,28 +32,35 @@ def test_owner_login_creates_persistent_cookie_session(monkeypatch, tmp_path):
         assert client.get("/tasks").status_code == 401
 
 
-def test_company_department_registry_exposes_thirteen_departments():
+def test_company_department_registry_exposes_ten_opencompany_departments():
     with TestClient(app) as client:
         response = client.get("/company/departments")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["department_count"] == 13
-    assert payload["catalogued_agent_count"] == 283
-    assert payload["runtime_model"].startswith("one shared worker")
+    assert payload["department_count"] == 10
+    assert payload["catalogued_agent_count"] == 511
+    assert payload["runtime_model"].startswith("OpenCompany-owned")
     ids = {item["id"] for item in payload["departments"]}
-    assert {"executive", "research", "design", "customer-support", "legal-compliance",
-            "quality-assurance", "people-workforce", "social-media-video"} <= ids
-    assert all(item["workflow_status"] == "catalogue-only" for item in payload["departments"] if item["id"] != "social-media-video")
-    social = next(item for item in payload["departments"] if item["id"] == "social-media-video")
-    assert social["workflow_status"] == "supervised-draft-workspace"
+    assert {
+        "intelligence-research", "product-innovation", "engineering",
+        "design-creative", "marketing-growth", "sales-marketplace",
+        "customer-operations", "finance-operations", "legal-compliance",
+        "quality-workforce",
+    } <= ids
+    assert all(item["workflow_status"] == "catalogue-only" for item in payload["departments"])
 
 
-def test_workforce_manifest_has_full_agency_roster():
+def test_workforce_manifest_endpoint_serves_only_opencompany_roles():
     with TestClient(app) as client:
         response = client.get("/workforce/agents")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["agent_count"] == 283
-    assert payload["department_count"] == 18
-    assert payload["roles_including_ceo"] == 284
-    assert len(payload["agents"]) == 283
+    assert payload["catalogue"] == "opencompany-original"
+    assert payload["agent_count"] == 511
+    assert payload["department_count"] == 10
+    assert payload["roles_including_ceo"] == 511
+    assert payload["specialist_count"] == 500
+    assert payload["leadership_role_count"] == 11
+    assert len(payload["agents"]) == 511
+    assert all(role["prohibited_actions"] for role in payload["agents"])
+    assert all(role["playbook"]["workflow_steps"] for role in payload["agents"])
