@@ -620,6 +620,53 @@ class DeterministicWorker:
 def _audit(action,subject_id,actor):
     return AuditRecord(uuid4(),datetime.now(timezone.utc),actor,actor,action,"work_item",str(subject_id),"recorded",str(uuid4()))
 
+class WorkerPresenceRepository(SharedRepository):
+    """Durable process heartbeats visible to the owner API."""
+    def __init__(self,db,lock):
+        super().__init__(db,lock)
+        with lock:
+            db.execute("""CREATE TABLE IF NOT EXISTS opencompany_worker_instances(
+              worker_id TEXT PRIMARY KEY,started_at TEXT NOT NULL,last_seen_at TEXT NOT NULL,
+              stopped_at TEXT,state TEXT NOT NULL,processed_count INTEGER NOT NULL DEFAULT 0)""")
+            db.commit()
+
+    def start(self,worker_id,now=None):
+        stamp=(now or datetime.now(timezone.utc)).isoformat()
+        with self._lock:
+            self._db.execute("""INSERT INTO opencompany_worker_instances
+              (worker_id,started_at,last_seen_at,stopped_at,state,processed_count)
+              VALUES(?,?,?,NULL,'running',0)
+              ON CONFLICT(worker_id) DO UPDATE SET started_at=excluded.started_at,
+              last_seen_at=excluded.last_seen_at,stopped_at=NULL,state='running',processed_count=0""",
+              (str(worker_id),stamp,stamp))
+            self._db.commit()
+
+    def heartbeat(self,worker_id,processed=0,now=None):
+        if processed < 0:
+            raise ValueError("processed count cannot be negative")
+        stamp=(now or datetime.now(timezone.utc)).isoformat()
+        with self._lock:
+            cursor=self._db.execute("""UPDATE opencompany_worker_instances
+              SET last_seen_at=?,processed_count=processed_count+?
+              WHERE worker_id=? AND state='running'""",(stamp,int(processed),str(worker_id)))
+            self._db.commit()
+            return cursor.rowcount==1
+
+    def stop(self,worker_id,now=None):
+        stamp=(now or datetime.now(timezone.utc)).isoformat()
+        with self._lock:
+            self._db.execute("""UPDATE opencompany_worker_instances
+              SET last_seen_at=?,stopped_at=?,state='stopped' WHERE worker_id=?""",
+              (stamp,stamp,str(worker_id)))
+            self._db.commit()
+
+    def list_instances(self):
+        with self._lock:
+            rows=self._db.execute("""SELECT worker_id,started_at,last_seen_at,stopped_at,
+              state,processed_count FROM opencompany_worker_instances ORDER BY started_at DESC""").fetchall()
+        return [dict(row) for row in rows]
+
+
 class AgentRepository:
     """Durable registry for owner-managed specialist and leadership profiles."""
     def __init__(self,db,lock):
@@ -698,6 +745,7 @@ class Runtime:
         if scanner_socket:
             self.asset_scanner=ClamAVUnixSocketScanner(scanner_socket)
         self.agents=AgentRepository(self.sqlite._connection,self.sqlite._lock)
+        self.worker_presence=WorkerPresenceRepository(self.sqlite._connection,self.sqlite._lock)
         self.gateway.set_usage_recorder(self.usage.record)
     def close(self):self.sqlite.close()
 

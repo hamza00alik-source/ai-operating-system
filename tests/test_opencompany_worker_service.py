@@ -90,3 +90,22 @@ def test_worker_iteration_ignores_inactive_specialists_and_processes_active_ones
     runtime = FakeRuntime()
     assert run_active_specialists_once(runtime) == 1
     assert runtime.worker.calls == [(active_id, "researcher")]
+
+
+def test_worker_presence_survives_runtime_restart_and_records_stop(tmp_path):
+    database = tmp_path / "worker-presence.sqlite3"
+    first = create_runtime(str(database))
+    worker_id = str(uuid4())
+    first.worker_presence.start(worker_id)
+    assert first.worker_presence.heartbeat(worker_id, 2) is True
+    first.close()
+
+    restarted = create_runtime(str(database))
+    records = restarted.worker_presence.list_instances()
+    assert len(records) == 1
+    assert records[0]["worker_id"] == worker_id
+    assert records[0]["state"] == "running"
+    assert records[0]["processed_count"] == 2
+    restarted.worker_presence.stop(worker_id)
+    assert restarted.worker_presence.list_instances()[0]["state"] == "stopped"
+    restarted.close()

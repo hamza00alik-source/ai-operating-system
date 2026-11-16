@@ -595,6 +595,21 @@ def model_usage(runtime=Depends(get_runtime),owner=Depends(_owner)):return runti
 @app.get("/workers/status")
 def workers_status(runtime=Depends(get_runtime),owner=Depends(_owner)):
     status=runtime.fleet.status();return {"running":status.running,"worker_count":status.worker_count,"execution_mode":"owner_triggered_single_task","background_loop_enabled":False}
+@app.get("/workers/service-status")
+def workers_service_status(runtime=Depends(get_runtime),owner=Depends(_owner)):
+    now=datetime.now(timezone.utc)
+    instances=[]
+    for record in runtime.worker_presence.list_instances():
+        last=datetime.fromisoformat(record["last_seen_at"])
+        if last.tzinfo is None:
+            last=last.replace(tzinfo=timezone.utc)
+        age=max(0,int((now-last).total_seconds()))
+        instances.append({**record,"heartbeat_age_seconds":age,
+                          "stale":record["state"]=="running" and age>30})
+    return {"worker_instances":instances,"single_instance_mode":True,
+            "multi_replica_supported":False}
+
+
 @app.get("/workers/queue")
 def workers_queue(runtime=Depends(get_runtime),owner=Depends(_owner)):
     counts=runtime.queue.counts();return {"counts":counts,"total":sum(counts.values())}
