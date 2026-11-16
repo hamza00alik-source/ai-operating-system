@@ -70,7 +70,7 @@ result with ffprobe, and uploads the production report as a private sidecar, the
 Cancellation is checked on every heartbeat. Failed jobs use AIOS's bounded retry
 policy.
 
-The worker's default maximum artifact size is 300 MB, matching the API endpoint. Larger renders are rejected before upload. The worker does not publish or schedule videos. Publishing remains a separate
+The worker's default maximum artifact size is 250 MiB, matching the API endpoint. The aggregate artifact directory is capped at 300 MiB by default, with a 64 MiB free-space reserve. Larger renders are rejected before upload. The worker does not publish or schedule videos. Publishing remains a separate
 owner-approved operation.
 
 ## Optional hardened Linux Docker profile
