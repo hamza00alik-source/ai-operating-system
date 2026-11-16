@@ -622,7 +622,7 @@ def workers_run_once(payload:dict,runtime=Depends(get_runtime),owner=Depends(_ow
         result=runtime.worker.run_once(UUID(agent_id),role_key)
     except (ProviderUnavailable,ValueError) as exc:
         raise HTTPException(503,"Specialist execution failed safely: "+str(exc)) from exc
-    return result
+    return {"status":result,"execution_mode":"single_task_owner_triggered","background_loop_enabled":False}
 
 
 
