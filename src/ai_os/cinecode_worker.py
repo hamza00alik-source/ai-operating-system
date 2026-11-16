@@ -55,6 +55,16 @@ def _source_checkout() -> Path:
     return source
 
 
+def _make_read_only(root: Path) -> None:
+    """Prevent the render agent from modifying the pinned Cinecode kit."""
+    for current, directories, files in os.walk(root):
+        for name in files:
+            (Path(current) / name).chmod(0o444)
+        for name in directories:
+            (Path(current) / name).chmod(0o555)
+    root.chmod(0o555)
+
+
 def _worker_environment() -> dict[str, str]:
     codex_home = Path(os.environ.get("CODEX_HOME", "")).resolve()
     if not codex_home.is_dir():
@@ -134,6 +144,7 @@ def _run_render(job: dict, source: Path, env: dict[str, str]) -> None:
         kit = root / "cinecode-kit"
         project = root / "film-project"
         shutil.copytree(source, kit, ignore=shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules"))
+        _make_read_only(kit)
         project.mkdir(mode=0o700)
         prompt = (
             "You are rendering one owner-approved film brief using the Cinecode kit in ./cinecode-kit. "
