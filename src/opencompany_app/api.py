@@ -454,6 +454,16 @@ def business_asset_events(business_id:str,asset_id:str,runtime=Depends(get_runti
     return {"count":len(events),"events":events}
 
 
+@app.get("/business-units/{business_id}/assets/{asset_id}/scan-events")
+def business_asset_scan_events(business_id:str,asset_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    try:
+        events=runtime.asset_registry.scan_events(business_id,asset_id)
+    except ValueError as exc:
+        raise HTTPException(404,"Business asset not found.") from exc
+    return {"count":len(events),"events":events}
+
+
 @app.put("/business-units/{business_id}/assets/{asset_id}/content")
 async def upload_business_asset_content(business_id:str,asset_id:str,request:Request,runtime=Depends(get_runtime),owner=Depends(_owner)):
     business_id=_business_id(business_id)
