@@ -433,7 +433,7 @@ def main() -> None:
     ffprobe_bin = os.getenv("FFPROBE_BIN", "ffprobe")
     poll_seconds = max(2, int(os.getenv("VIDEO_POLL_SECONDS", "5")))
     lease_seconds = min(900, max(30, int(os.getenv("VIDEO_LEASE_SECONDS", "180"))))
-    heartbeat_seconds = min(60, max(5, int(os.getenv("VIDEO_HEARTBEAT_SECONDS", "15"))))
+    heartbeat_seconds = min(15, max(5, int(os.getenv("VIDEO_HEARTBEAT_SECONDS", "15"))))
     timeout_seconds = max(60, int(os.getenv("CINECODE_JOB_TIMEOUT_SECONDS", "3600")))
     max_duration = max(1, int(os.getenv("CINECODE_MAX_DURATION_SECONDS", "900")))
     max_bytes = min(300 * 1024 * 1024, max(1_000_000, int(os.getenv("CINECODE_MAX_ARTIFACT_BYTES", str(300 * 1024 * 1024)))))
