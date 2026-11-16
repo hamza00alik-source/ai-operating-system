@@ -95,3 +95,22 @@ def test_validate_mp4_rejects_overlong_video(tmp_path, monkeypatch):
     monkeypatch.setattr(worker.subprocess, "run", lambda *args, **kwargs: fake)
     with pytest.raises(worker.WorkerError, match="fit the duration limit"):
         worker._validate_mp4(artifact, workspace, "ffprobe", 60, 1024)
+
+
+
+def test_validate_mp4_rejects_non_mp4_container_even_with_video_stream(tmp_path, monkeypatch):
+    workspace = tmp_path / "job"
+    output = workspace / "output"
+    output.mkdir(parents=True)
+    artifact = output / "final.mp4"
+    artifact.write_bytes(b"test-media")
+    fake = SimpleNamespace(
+        returncode=0,
+        stdout=json.dumps({
+            "format": {"duration": "12.5", "format_name": "matroska,webm"},
+            "streams": [{"codec_type": "video", "width": 1280, "height": 720}],
+        }),
+    )
+    monkeypatch.setattr(worker.subprocess, "run", lambda *args, **kwargs: fake)
+    with pytest.raises(worker.WorkerError, match="video stream and fit the duration limit"):
+        worker._validate_mp4(artifact, workspace, "ffprobe", 60, 1024)
