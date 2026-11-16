@@ -22,7 +22,7 @@ services:
       CODEX_BIN: codex
     volumes:
       - cinecode-work:/var/lib/cinecode-work
-      - ${CODEX_HOME_HOST:?Set CODEX_HOME_HOST to a dedicated worker Codex auth directory}:/home/cinecode/.codex:ro
+      - ${CODEX_HOME_HOST:?Set CODEX_HOME_HOST to a dedicated worker Codex auth directory}:/home/cinecode/.codex:rw
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=1g
