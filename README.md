@@ -77,7 +77,7 @@ The gateway is an inference transport layer; it does not yet constitute a full m
 
 ## OpenCompany workforce catalogue and owner console
 
-OpenCompany's active workforce is defined by its own local catalogue: 10 departments, 10 department-manager roles, one CEO orchestrator role, and 500 specialist positions (511 role entries total). The first team in each department has named capability templates; additional positions are generated from department-specific generic templates and are not yet 500 individually authored specialist playbooks. Catalogue entries are role definitions, not 511 running processes.
+OpenCompany's active workforce is defined by its own local catalogue: 10 departments, 10 department-manager roles, one CEO orchestrator role, and 500 specialist positions (511 role entries total). The first team in each department has five original named specialist templates (50 total); the other 450 positions are generated from department-specific capability templates and are not yet individually authored playbooks. Catalogue entries are role definitions, not 511 running processes.
 
 The historical `hamza00alik-source/agency-agents` repository is now recorded only as a provenance reference; its copied 283-role manifest has been removed from the active repository. The task execution path, workforce API, and owner-console workforce view use OpenCompany-owned role definitions and do not download or execute third-party specialist prompts.
 
