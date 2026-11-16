@@ -79,7 +79,7 @@ The gateway is an inference transport layer; it does not yet constitute a full m
 
 OpenCompany's active workforce is defined by its own local catalogue: 10 departments, 10 department-manager roles, one CEO orchestrator role, and 500 specialist positions (511 role entries total). The first team in each department has named capability templates; additional positions are generated from department-specific generic templates and are not yet 500 individually authored specialist playbooks. Catalogue entries are role definitions, not 511 running processes.
 
-The historical `hamza00alik-source/agency-agents` manifest and repository inventory are retained temporarily for provenance and audit only. The active task execution path, workforce API, and owner-console workforce view use OpenCompany-owned role definitions; they do not download or execute third-party specialist prompts. The reference archive is not the runtime architecture and remains scheduled for a separate reviewed cleanup.
+The historical `hamza00alik-source/agency-agents` repository is now recorded only as a provenance reference; its copied 283-role manifest has been removed from the active repository. The task execution path, workforce API, and owner-console workforce view use OpenCompany-owned role definitions and do not download or execute third-party specialist prompts.
 
 The Owner Console supports a secure browser session: sign in once with \`AI_OS_API_KEY\`, then use the HttpOnly, Secure, SameSite=Strict session cookie for up to 14 days (or until logout/cookie clearing). The raw owner key is not saved in browser storage. API-key header authentication remains available for external clients.
 
