@@ -182,6 +182,18 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         assert claim.json()["id"] == job_id
         lease = claim.json()["lease_token"]
 
+        report_text = b"# Cinecode production report\\n\\nMode: Quick\\nLicence: original generated assets\\n"
+        report_upload = client.put(
+            f"/video/worker/jobs/{job_id}/report",
+            content=report_text,
+            headers={
+                **cinecode_headers,
+                "X-Job-Lease": lease,
+                "Content-Type": "text/markdown; charset=utf-8",
+            },
+        )
+        assert report_upload.status_code == 200
+
         mp4 = b"\x00\x00\x00\x18ftypisom" + b"cinecode-test-payload"
         uploaded = client.put(
             f"/video/worker/jobs/{job_id}/artifact",
@@ -198,3 +210,6 @@ def test_cinecode_worker_can_upload_private_mp4_with_its_own_credential(monkeypa
         downloaded = client.get(f"/video/artifacts/{job_id}", headers=owner_headers)
         assert downloaded.status_code == 200
         assert downloaded.content == mp4
+        report_download = client.get(f"/video/reports/{job_id}", headers=owner_headers)
+        assert report_download.status_code == 200
+        assert "Licence: original generated assets" in report_download.text
