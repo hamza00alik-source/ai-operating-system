@@ -61,7 +61,9 @@ From the AIOS repository root:
 
 `python workers/cinecode_worker.py`
 
-For each job, the worker copies the pinned kit into a separate cinecode-kit/ folder and creates the film-project/ as its sibling, then reads the upstream AGENTS.md and SKILL.md. It runs Quick mode by default (Film mode and purpose can be set in job parameters), uses the recommended defaults without interactive questions after owner approval, and uploads the production report to private AIOS storage before the MP4. Both downloads require owner authentication; terminal failed jobs clean up report sidecars. Codex is started with --skip-git-repo-check because the disposable workspace is not a Git repository.\n\nThe worker reports sanitized runtime capabilities (agent/runtime/browser versions, free disk space, and pinned source revision) on each poll. GPU is deliberately reported as unverified until a real render succeeds. It claims only owner-approved Cinecode jobs, creates a fresh UUID-named
+For each job, the worker copies the pinned kit into a separate cinecode-kit/ folder and creates the film-project/ as its sibling, then reads the upstream AGENTS.md and SKILL.md. It runs Quick mode by default (Film mode and purpose can be set in job parameters), uses the recommended defaults without interactive questions after owner approval, and uploads the production report to private AIOS storage before the MP4. Both downloads require owner authentication; terminal failed jobs clean up report sidecars. Codex is started with --skip-git-repo-check because the disposable workspace is not a Git repository.
+
+The worker reports sanitized runtime capabilities (agent/runtime/browser versions, free disk space, and pinned source revision) on each poll. GPU is deliberately reported as unverified until a real render succeeds. It claims only owner-approved Cinecode jobs, creates a fresh UUID-named
 workspace, copies the pinned Cinecode source without Git metadata or symlinks,
 runs Codex with workspace-write sandboxing, sends lease heartbeats, checks the
 result with ffprobe, and uploads the production report as a private sidecar, then streams the MP4 to AIOS private artifact storage.
