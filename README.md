@@ -180,3 +180,30 @@ The LongCat-Video fork is tracked as an optional upstream video engine, not as O
 ## Optional LongCat GPU worker
 
 OpenCompany's video queue remains operational without a GPU worker. The optional separate LongCat worker uses authenticated claims, per-job leases, heartbeats, bounded retries, cancellation signals, and private MP4 artifact reporting. The first adapter supports single-GPU text-to-video; no hosted GPU is provisioned automatically. See [worker deployment instructions](workers/README_LONGCAT.md) and the [integration design](docs/LONGCAT_VIDEO_INTEGRATION.md). Configure a persistent artifact volume and HTTPS API origin before accepting generated videos.
+
+
+## OpenCompany persistent specialist worker
+
+The OpenCompany task executor can run as a separate process from the API. Both
+processes must point to the exact same persistent SQLite file using
+`OPENCOMPANY_DATABASE_PATH`. Install the project, configure the owner-approved
+provider variables below, then start one worker with `opencompany-worker`.
+The worker is opt-in (`OPENCOMPANY_WORKER_ENABLED=true`), exits without making
+requests if no confirmed-free provider is configured, and only claims work
+already admitted to the owner-controlled queue for an active specialist.
+
+For UnoRouter, set `OPENCOMPANY_UNOROUTER_API_KEY`,
+`OPENCOMPANY_UNOROUTER_FREE_MODEL` to a currently callable model ID ending
+in `:free`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true` only after checking
+your own account's current model pricing, quota and billing settings. The
+adapter calls the fixed HTTPS UnoRouter chat-completions endpoint; it does not
+discover or silently select paid models. A `:free` model ID and owner
+confirmation are safeguards, not a guarantee of provider availability or
+unchanging terms. No paid fallback exists.
+
+Run a single worker instance only. Queue leases expire after 15 minutes; the
+current provider request timeout is at most 60 seconds. Multi-replica worker
+operation, lease heartbeats, and production service supervision still require
+separate validation. The API's `/workers/run-once` endpoint remains a separate
+owner-triggered execution path; this process does not mark the API's in-memory
+worker-fleet flag as running.

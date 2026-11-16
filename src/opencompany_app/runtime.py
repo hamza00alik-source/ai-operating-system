@@ -679,6 +679,7 @@ class Runtime:
         if scanner_socket:
             self.asset_scanner=ClamAVUnixSocketScanner(scanner_socket)
         self.agents=AgentRepository(self.sqlite._connection,self.sqlite._lock)
+        self.gateway.set_usage_recorder(self.usage.record)
     def close(self):self.sqlite.close()
 
 def create_runtime(database_path):
