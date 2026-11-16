@@ -483,7 +483,7 @@ window.reviewCandidate=async(url,decision)=>{const label=decision==="approved-fo
 async function loadCompanyDepartments(){
  try{
   const data=await api("/company/departments");
-  $("companyDepartmentCards").innerHTML=data.departments.map(d=>'<article class="metric"><strong style="font-size:17px">'+esc(d.name)+'</strong><span>'+esc(d.owner_role)+'</span><div class="small" style="margin-top:8px">'+esc(d.specialist_count)+' mapped catalogue roles · '+(d.roles_available?'roles available on demand':'no mapped roles')+'</div><div class="small" style="margin-top:6px">Workflow: not yet implemented</div><div class="small" style="margin-top:6px">'+esc(d.responsibilities.slice(0,2).join(' · '))+'</div></article>').join("");
+  $("companyDepartmentCards").innerHTML=data.departments.map(d=>'<article class="metric"><strong style="font-size:17px">'+esc(d.name)+'</strong><span>'+esc(d.manager_role_key)+'</span><div class="small" style="margin-top:8px">'+esc(d.specialist_count)+' mapped catalogue roles · '+(d.roles_available?'roles available on demand':'no mapped roles')+'</div><div class="small" style="margin-top:6px">Workflow: not yet implemented</div><div class="small" style="margin-top:6px">'+esc(d.approval_boundaries.slice(0,2).join(' · '))+'</div></article>').join("");
  }catch(e){$("companyDepartmentCards").innerHTML='<div class="metric">'+esc(e.message)+'</div>'}
 }
 
@@ -499,8 +499,8 @@ async function loadAgents(){
   $("departmentChips").innerHTML=data.departments.map(d=>'<span class="pill">'+esc(d.name)+': '+esc(d.agent_count)+'</span>').join("");
   const stageAgents=data.agents.slice(0,4);
   $("employeeStage").innerHTML=stageAgents.length?stageAgents.map((a,i)=>'<article class="employee-card"><div class="avatar-scene" aria-hidden="true"><div class="avatar-halo"></div><div class="avatar-body"></div><div class="avatar-neck"></div><div class="avatar-head"></div><div class="avatar-hair"></div><div class="avatar-visor"></div><div class="avatar-badge">'+(i+1)+'</div></div><div class="employee-copy"><div class="employee-name">'+esc(a.name)+'</div><div class="employee-dept">'+esc(a.department)+'</div><div class="employee-state">Available on demand</div></div></article>').join(""):'<div class="stage-empty">No matching role records returned by the workforce API.</div>';
-  $("agentRows").innerHTML=data.agents.map(a=>'<tr><td><strong>'+esc(a.name)+'</strong><div class="small">'+esc(a.id)+'</div></td><td>'+esc(a.department)+'</td><td><span class="pill warn">Available on demand</span></td><td><a href="'+esc(a.source_url)+'" target="_blank" rel="noopener">Agent instructions</a></td></tr>').join("")||'<tr><td colspan="4">No matching specialists.</td></tr>';
-  $("companyStatus").textContent="Source: "+data.source_repository+" · License: "+data.license+" · 283 specialist definitions indexed. Shared agent worker: invokes the best-matched specialist instructions for each task, then performs CEO review. Check worker health in Company operations.";
+  $("agentRows").innerHTML=data.agents.map(a=>'<tr><td><strong>'+esc(a.name)+'</strong><div class="small">'+esc(a.id)+'</div></td><td>'+esc(a.department)+'</td><td><span class="pill warn">Available on demand</span></td><td><span class="small">Capabilities: '+esc((a.capabilities||[]).join(" · "))+"</span></td></tr>').join("")||'<tr><td colspan="4">No matching specialists.</td></tr>';
+  $("companyStatus").textContent="OpenCompany original catalogue · "+data.specialist_count+" specialist roles and "+data.leadership_role_count+" leadership roles. Shared supervised worker selects local role templates and performs a separate quality review.";
  }catch(e){$("agentRows").innerHTML='<tr><td colspan="4">'+esc(e.message)+'</td></tr>'}
 }
 
