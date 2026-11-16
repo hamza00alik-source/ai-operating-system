@@ -129,7 +129,7 @@ def roles():
     for department,name,manager in DEPARTMENTS:
         templates=_SPECIALISTS.get(department,_GENERIC)
         for team in range(1,11):
-            team_key=f"{department.replace('-', '_')}__team_{team:02d}"
+            team_key=f"{department}__team_{team:02d}"
             for slot in range(5):
                 if team==1 and department in _SPECIALISTS:
                     role_key,title,caps=templates[slot]
