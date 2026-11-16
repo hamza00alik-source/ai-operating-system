@@ -777,9 +777,11 @@ def executive_plan(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owne
     title=str(payload.get("title","")).strip()
     objective=str(payload.get("objective","")).strip()
     if not title or not objective:raise HTTPException(422,"Plan title and objective are required.")
+    business_id=_business_id(str(payload.get("business_id","physical-agency")))
     max_tasks=max(1,min(int(payload.get("max_tasks",8)),20))
     request={
         "task":"draft_executive_plan","title":title,"objective":objective,
+        "business_id":business_id,
         "departments":[{"id":d["department"],"name":d["name"]} for d in DEPARTMENT_CATALOGUE],
         "constraints":{"max_tasks":max_tasks,"draft_only":True,"no_queue":True,"no_execution":True,"zero_cost_only":True},
     }
@@ -815,7 +817,7 @@ def executive_plan(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owne
     for index,entry in enumerate(normalized):
         item=WorkItem(
             ids[index],entry["title"],entry["objective"],entry["department"],TaskState.DRAFT,
-            "physical-agency",tuple(ids[dependency] for dependency in entry["depends_on"]),
+            business_id,tuple(ids[dependency] for dependency in entry["depends_on"]),
         )
         runtime.store.create_work_item(item,_audit("ceo.plan_item_drafted",item.id,"ceo"))
         created.append(_item_dict(item))
