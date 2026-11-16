@@ -130,3 +130,23 @@ def test_execution_runtime_has_no_legacy_external_workforce_manifests():
     repository_root = Path(__file__).resolve().parents[1]
     assert not (repository_root / "data" / "agency_agents_manifest.json").exists()
     assert not (repository_root / "data" / "company_departments.json").exists()
+
+def test_all_ten_departments_have_five_original_named_specialist_templates():
+    from ai_os.agent_runtime import _load_opencompany_catalogue
+
+    catalogue = _load_opencompany_catalogue()
+    department_ids = {
+        "intelligence-research", "product-innovation", "engineering",
+        "design-creative", "marketing-growth", "sales-marketplace",
+        "customer-operations", "finance-operations", "legal-compliance",
+        "quality-workforce",
+    }
+    for department in department_ids:
+        team_key = department.replace("-", "_") + "__team_01"
+        first_team = [
+            role for role in catalogue["agents"]
+            if role.get("department") == department and role.get("team_key") == team_key
+        ]
+        assert len(first_team) == 5
+        assert all("Team 1 Specialist" not in role["name"] for role in first_team)
+        assert len({role["id"] for role in first_team}) == 5
