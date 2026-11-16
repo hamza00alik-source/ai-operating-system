@@ -755,6 +755,8 @@ def create_code_evolution_proposal(payload:dict,runtime=Depends(get_runtime),own
             "constraints":{"draft_pull_request_only":True,"no_merge":True,"no_deploy":True,
                            "no_secrets":True,"preserve_unrelated_changes":True,"tests_required":True},
         }
+        if hasattr(runtime.gateway,"set_usage_recorder"):
+            runtime.gateway.set_usage_recorder(runtime.usage.record)
         result=runtime.gateway.generate(request,request_budget_usd=0.0)
         decision=json.loads(result.text)
         title=str(decision["title"]).strip()
@@ -776,11 +778,6 @@ def create_code_evolution_proposal(payload:dict,runtime=Depends(get_runtime),own
         raise
     except Exception as exc:
         raise HTTPException(503,"A safe draft pull request could not be created.") from exc
-    runtime.usage.record({
-        "request_id":str(uuid4()),"work_item_id":None,"role_key":"code_evolution_reviewer",
-        "provider":result.provider,"model":result.model,"input_tokens":result.input_tokens,
-        "output_tokens":result.output_tokens,"cost_usd":result.cost_usd,
-    })
     return {
         "pull_request_number":pull_request.number,"pull_request_url":pull_request.url,
         "branch":pull_request.branch,"commit":pull_request.commit,"title":pull_request.title,
