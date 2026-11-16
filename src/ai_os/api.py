@@ -1014,6 +1014,11 @@ def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_
         raise HTTPException(status_code=404, detail="Video job not found.")
     if item["provider"] != x_video_provider:
         raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
+    if item["provider"] == "cinecode":
+        raise HTTPException(
+            status_code=409,
+            detail="Cinecode jobs complete only through validated private MP4 artifact upload.",
+        )
     try:
         return video_jobs.complete_job(job_id, x_job_lease, result_uri=payload.result_uri, metadata=payload.metadata)
     except LookupError as exc:
