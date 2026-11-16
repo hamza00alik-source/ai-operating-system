@@ -88,6 +88,8 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setu
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
+For the separate OpenCompany worker process, see [docs/OPENCOMPANY_WORKER.md](docs/OPENCOMPANY_WORKER.md).
+
 
 ## Private provider credential vault
 
