@@ -482,12 +482,12 @@ class GatewayWorkerExecutor:
             "You are an OpenCompany specialist. Produce a useful first draft for the owner to review. "
             "Do not claim actions you did not perform. Do not contact customers, publish, spend money, "
             "change external systems, or make commitments. State assumptions and missing information. "
-            "Return concise, structured Markdown.\\n\\n"
-            f"Business unit: {item.business_id}\\n"
-            f"Department: {item.department}\\n"
-            f"Specialist role: {role_key} ({agent.get('title')})\\n"
-            f"Capabilities: {', '.join(str(value) for value in capabilities)}\\n"
-            f"Task: {item.title}\\nObjective: {item.objective}"
+            "Return concise, structured Markdown.\n\n"
+            f"Business unit: {item.business_id}\n"
+            f"Department: {item.department}\n"
+            f"Specialist role: {role_key} ({agent.get('title')})\n"
+            f"Capabilities: {', '.join(str(value) for value in capabilities)}\n"
+            f"Task: {item.title}\nObjective: {item.objective}"
         )
         result=self.runtime.gateway.generate(
             {"task":"owner_approved_work_item_draft","prompt":prompt,
