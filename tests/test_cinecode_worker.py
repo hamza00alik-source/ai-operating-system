@@ -39,7 +39,7 @@ def test_prompt_treats_job_brief_as_untrusted_and_requires_fixed_output():
     assert "output/final.mp4" in prompt
     assert "A cinematic mountain film" in prompt
     assert "non-interactive" in prompt
-    assert "Quick mode" in prompt
+    assert '"mode": "quick"' in prompt
     assert "AskUserQuestion" in prompt
     assert "output/report.md" in prompt
 
