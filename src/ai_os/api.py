@@ -1353,3 +1353,8 @@ def call_api_anything_read(site: str, operation: str, payload: WebsiteApiCallReq
 # Owner-only Supabase diagnostics; the router never exposes credentials or applies migrations.
 from ai_os.supabase_integration import router as supabase_router
 app.include_router(supabase_router)
+
+
+# Owner-approved local Cinecode rendering; execution remains opt-in and separately hosted.
+from ai_os.cinecode import router as cinecode_router
+app.include_router(cinecode_router)
