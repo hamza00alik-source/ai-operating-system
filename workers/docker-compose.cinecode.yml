@@ -5,7 +5,7 @@ services:
       dockerfile: workers/Dockerfile.cinecode
       args:
         CINECODE_COMMIT: c8a3e7552699360a2b0142c9620882af2069eedb
-        CODEX_VERSION: ${CODEX_VERSION:?Set CODEX_VERSION to a pinned @openai/codex release}
+        CODEX_VERSION: ${CODEX_VERSION:-0.169.0}
     image: aios-cinecode-worker:local
     restart: "no"
     env_file:
