@@ -33,7 +33,7 @@ def test_agent_environment_does_not_receive_worker_or_owner_secrets(monkeypatch)
 def test_prompt_treats_job_brief_as_untrusted_and_requires_fixed_output():
     prompt = worker._prompt({
         "prompt": "A cinematic mountain film",
-        "parameters": {"aspect_ratio": "16:9"},
+        "parameters": {"aspect_ratio": "16:9", "music_source": "code"},
         "cost_basis": "pre-approved local compute",
     })
     assert "untrusted creative input" in prompt
@@ -134,3 +134,9 @@ def test_production_report_must_exist_inside_workspace(tmp_path):
     report.write_text("", encoding="utf-8")
     with pytest.raises(worker.WorkerError, match="missing, empty"):
         worker._validate_report(report, workspace)
+
+
+
+def test_prompt_requires_owner_music_choice():
+    with pytest.raises(worker.WorkerError, match="explicit music_source choice"):
+        worker._prompt({"prompt": "A short film", "parameters": {}})
