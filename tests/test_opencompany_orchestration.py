@@ -2,9 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from uuid import UUID, uuid4
 
-from opencompany_app.api import app, get_runtime
+from opencompany_app.api import app, get_runtime\nfrom opencompany_app.catalogue import DEPARTMENT_CATALOGUE, ROLE_CATALOGUE
 from opencompany_app.runtime import WorkItem, create_runtime, _audit
-from opencompany_core.domain import TaskState
+from opencompany_core.domain import TaskState\nfrom opencompany_core.model_gateway import ModelResult
 
 
 @pytest.fixture
@@ -107,4 +107,80 @@ def test_ceo_orchestration_requires_active_ceo_and_never_queues(owner_client):
         "/executive/orchestration/advance", headers=headers, json={}
     )
     assert response.status_code == 409
+    assert runtime.queue.counts() == {}
+
+
+def test_ceo_can_coordinate_active_managers_to_draft_delegations_without_assigning_or_queueing(owner_client):
+    client, runtime = owner_client
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime.agents["chief_executive_orchestrator"] = _profile(
+        "chief_executive_orchestrator", "active", "leadership"
+    )
+    department = next(
+        value for value in DEPARTMENT_CATALOGUE
+        if value["department"] == "intelligence-research"
+    )
+    manager_role = next(
+        value for value in ROLE_CATALOGUE
+        if value["role_key"] == department["manager_role_key"]
+    )
+    manager = {
+        **_profile(manager_role["role_key"], "active", "leadership"),
+        "title": manager_role["title"],
+        "department": manager_role["department"],
+    }
+    runtime.agents[manager_role["role_key"]] = manager
+
+    specialist_roles = [
+        role for role in ROLE_CATALOGUE
+        if role["department"] == "intelligence-research"
+        and role["kind"] == "specialist"
+        and role["team_key"] == "intelligence-research__team_01"
+    ][:5]
+    assert len(specialist_roles) == 5
+    for role in specialist_roles:
+        runtime.agents[role["role_key"]] = {
+            **_profile(role["role_key"], "draft", "specialist"),
+            "title": role["title"],
+            "department": role["department"],
+            "team_key": role["team_key"],
+            "capabilities": role["capabilities"],
+        }
+
+    item = WorkItem(
+        id=uuid4(), title="Research target market", objective="Prepare a sourced market opportunity brief",
+        department="intelligence-research", state=TaskState.DRAFT,
+        business_id="digital-products",
+    )
+    runtime.store.create_work_item(item, _audit("test.created", item.id, "owner"))
+
+    class FreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),) if request_budget_usd == 0.0 else ()
+
+        def generate(self, request, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            assert request["task"] == "propose_specialist_team"
+            return ModelResult(
+                text='{"required_capabilities":["market research"],"rationale":"A small specialist team can divide source discovery and synthesis."}',
+                provider="test-free", model="test-model:free", cost_usd=0.0,
+            )
+
+    runtime.gateway = FreeGateway()
+    response = client.post(
+        "/executive/orchestration/draft-delegations",
+        headers=headers,
+        json={"business_id": "digital-products", "max_items": 3, "max_specialists": 5},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["drafted_count"] == 1
+    assert payload["owner_approval_required"] is True
+    assert payload["assignment_performed"] is False
+    assert payload["queue_entries_created"] is False
+    assert payload["execution_started"] is False
+    proposal = payload["drafted"][0]["proposal"]
+    assert proposal["status"] == "draft"
+    assert len(proposal["children"]) == 5
+    assert runtime.store.get_work_item(item.id).assigned_agent_id is None
     assert runtime.queue.counts() == {}
