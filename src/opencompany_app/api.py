@@ -964,6 +964,62 @@ def manager_proposal(item_id:str,payload:dict,runtime=Depends(get_runtime),owner
     }
 
 
+@app.post("/executive/orchestration/draft-delegations")
+def executive_draft_delegations(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Ask active department managers for draft team proposals; owner approval remains separate."""
+    ceo=runtime.agents.get("chief_executive_orchestrator")
+    if not ceo or ceo.get("state")!="active":
+        raise HTTPException(409,"The CEO orchestrator must be explicitly active before coordinating managers.")
+    if not runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        raise HTTPException(503,"No confirmed zero-cost provider is ready for manager proposals.")
+    business_id=payload.get("business_id")
+    if business_id is not None:
+        _business_id(business_id)
+    try:
+        max_items=int(payload.get("max_items",5))
+        max_specialists=int(payload.get("max_specialists",5))
+    except (TypeError,ValueError) as exc:
+        raise HTTPException(422,"max_items and max_specialists must be integers.") from exc
+    max_items=max(1,min(max_items,10))
+    max_specialists=max(1,min(max_specialists,5))
+    drafted=[]
+    skipped=[]
+    for item in runtime.store.list_work_items(business_id):
+        if len(drafted)>=max_items:
+            break
+        if item.state!=TaskState.DRAFT or item.assigned_agent_id:
+            continue
+        existing=runtime.delegations.list_proposals(item.id)
+        if existing:
+            skipped.append({"work_item_id":str(item.id),"reason":"delegation_proposal_already_exists"})
+            continue
+        department=next((d for d in DEPARTMENT_CATALOGUE if d["department"]==item.department),None)
+        manager=runtime.agents.get(department["manager_role_key"]) if department else None
+        if not manager or manager.get("state")!="active":
+            skipped.append({"work_item_id":str(item.id),"reason":"department_manager_not_active"})
+            continue
+        try:
+            result=manager_proposal(
+                str(item.id),{"max_specialists":max_specialists},runtime,"owner",
+            )
+            drafted.append({
+                "work_item_id":str(item.id),
+                "proposal":result["proposal"],
+                "manager_ai":result["manager_ai"],
+            })
+        except HTTPException as exc:
+            skipped.append({"work_item_id":str(item.id),"reason":str(exc.detail)[:300]})
+    return {
+        "drafted_count":len(drafted),
+        "drafted":drafted,
+        "skipped":skipped,
+        "owner_approval_required":True,
+        "assignment_performed":False,
+        "queue_entries_created":False,
+        "execution_started":False,
+    }
+
+
 @app.get("/work-items/{item_id}/delegation-proposals")
 def list_delegation_proposals(item_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
     item=runtime.store.get_work_item(UUID(item_id))
