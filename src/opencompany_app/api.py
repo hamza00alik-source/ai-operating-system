@@ -1117,7 +1117,7 @@ def enqueue_work_item(item_id:str,runtime=Depends(get_runtime),owner=Depends(_ow
 def list_work_items(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
     items=runtime.store.list_work_items(business_id);return {"count":len(items),"items":[_item_dict(x) for x in items]}
 def _item_dict(item):
-    return {"id":str(item.id),"item_id":str(item.id),"title":item.title,"objective":item.objective,"department":item.department,"state":item.state.value,"business_id":item.business_id,"depends_on":[str(x) for x in item.depends_on],"assigned_agent_id":str(item.assigned_agent_id) if item.assigned_agent_id else None,"assigned_role_key":item.assigned_role_key}
+    return {"id":str(item.id),"item_id":str(item.id),"title":item.title,"objective":item.objective,"department":item.department,"state":item.state.value,"business_id":item.business_id,"depends_on":[str(x) for x in item.depends_on],"assigned_agent_id":str(item.assigned_agent_id) if item.assigned_agent_id else None,"assigned_role_key":item.assigned_role_key,"revision":item.revision}
 @app.post("/work-items/{item_id}/transition")
 def transition_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
     item=runtime.store.get_work_item(UUID(item_id))
