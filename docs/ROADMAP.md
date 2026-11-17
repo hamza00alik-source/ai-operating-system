@@ -11,7 +11,7 @@ foundation. It is not yet a fully autonomous or production-operated company.
 The current implementation is built around OpenCompany-owned role definitions,
 SQLite persistence, explicit owner approval, and fail-closed execution controls.
 
-## Latest orchestration increment — awaiting fresh CI
+## Latest orchestration increment — verified by GitHub Actions
 
 Implemented on the current draft PR branch, but not marked complete until the
 new GitHub Actions run passes:
