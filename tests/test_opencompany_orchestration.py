@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from opencompany_app.api import app, get_runtime
 from opencompany_app.runtime import WorkItem, create_runtime, _audit
@@ -53,7 +53,7 @@ def test_ceo_orchestration_advances_only_assigned_active_dependency_ready_work(o
     eligible = WorkItem(
         id=uuid4(), title="Synthesize evidence", objective="Prepare an evidence brief",
         department="intelligence-research", state=TaskState.DRAFT,
-        depends_on=(prerequisite.id,), assigned_agent_id=__import__("uuid").UUID(specialist["id"]),
+        depends_on=(prerequisite.id,), assigned_agent_id=UUID(specialist["id"]),
         assigned_role_key="research_specialist",
     )
     blocked_dependency = WorkItem(
