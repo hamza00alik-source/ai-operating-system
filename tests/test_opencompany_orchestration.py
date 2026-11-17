@@ -2,9 +2,11 @@ import pytest
 from fastapi.testclient import TestClient
 from uuid import UUID, uuid4
 
-from opencompany_app.api import app, get_runtime\nfrom opencompany_app.catalogue import DEPARTMENT_CATALOGUE, ROLE_CATALOGUE
+from opencompany_app.api import app, get_runtime
+from opencompany_app.catalogue import DEPARTMENT_CATALOGUE, ROLE_CATALOGUE
 from opencompany_app.runtime import WorkItem, create_runtime, _audit
-from opencompany_core.domain import TaskState\nfrom opencompany_core.model_gateway import ModelResult
+from opencompany_core.domain import TaskState
+from opencompany_core.model_gateway import ModelResult
 
 
 @pytest.fixture
