@@ -768,6 +768,95 @@ def create_delegation_proposal(item_id:str,payload:dict,runtime=Depends(get_runt
     return proposal
 
 
+def _executive_orchestration_snapshot(runtime, business_id=None):
+    """Evaluate dependency and assignment readiness without changing work."""
+    items=runtime.store.list_work_items(business_id)
+    by_id={item.id:item for item in items}
+    agents={agent.get("id"):agent for agent in runtime.agents.values()}
+    eligible=[]
+    blocked=[]
+    counts={}
+    for item in items:
+        state=item.state.value
+        counts[state]=counts.get(state,0)+1
+        if item.state!=TaskState.DRAFT:
+            continue
+        reasons=[]
+        for dependency_id in item.depends_on:
+            dependency=by_id.get(dependency_id) or runtime.store.get_work_item(dependency_id)
+            if dependency is None:
+                reasons.append("dependency_missing:"+str(dependency_id))
+            elif dependency.state!=TaskState.COMPLETED:
+                reasons.append("dependency_not_completed:"+str(dependency_id))
+        agent=agents.get(str(item.assigned_agent_id)) if item.assigned_agent_id else None
+        if not item.assigned_agent_id or not item.assigned_role_key:
+            reasons.append("specialist_assignment_required")
+        elif not agent:
+            reasons.append("assigned_specialist_missing")
+        elif agent.get("role_key")!=item.assigned_role_key:
+            reasons.append("assigned_role_mismatch")
+        elif agent.get("state")!="active":
+            reasons.append("assigned_specialist_not_active")
+        if reasons:
+            blocked.append({"work_item_id":str(item.id),"title":item.title,"reasons":reasons})
+        else:
+            eligible.append({"work_item_id":str(item.id),"title":item.title,
+                             "department":item.department,"assigned_role_key":item.assigned_role_key})
+    return {
+        "business_id":business_id,
+        "work_item_count":len(items),
+        "state_counts":counts,
+        "eligible_to_advance":eligible,
+        "blocked_draft_items":blocked,
+        "queue_counts":runtime.queue.counts(),
+        "execution_started":False,
+        "queue_admission_performed":False,
+    }
+
+
+@app.get("/executive/orchestration/status")
+def executive_orchestration_status(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if business_id is not None:
+        _business_id(business_id)
+    return _executive_orchestration_snapshot(runtime,business_id)
+
+
+@app.post("/executive/orchestration/advance")
+def executive_orchestration_advance(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Advance only fully assigned, active, dependency-satisfied drafts to READY.
+
+    This owner-triggered coordinator never admits queue work or starts execution.
+    """
+    ceo=runtime.agents.get("chief_executive_orchestrator")
+    if not ceo or ceo.get("state")!="active":
+        raise HTTPException(409,"The CEO orchestrator must be explicitly active before advancing work.")
+    business_id=payload.get("business_id")
+    if business_id is not None:
+        _business_id(business_id)
+    limit=max(1,min(int(payload.get("max_items",10)),20))
+    snapshot=_executive_orchestration_snapshot(runtime,business_id)
+    eligible_ids=[entry["work_item_id"] for entry in snapshot["eligible_to_advance"][:limit]]
+    from dataclasses import replace
+    advanced=[]
+    for item_id in eligible_ids:
+        item=runtime.store.get_work_item(UUID(item_id))
+        if not item or item.state!=TaskState.DRAFT:
+            continue
+        changed=replace(item,state=TaskState.READY,revision=item.revision+1)
+        runtime.store.save_work_item_with_audit(
+            changed,_audit("ceo.orchestration_ready",changed.id,"ceo"),
+        )
+        advanced.append(_item_dict(changed))
+    return {
+        "advanced_count":len(advanced),
+        "items":advanced,
+        "remaining_eligible_count":max(0,len(snapshot["eligible_to_advance"])-len(advanced)),
+        "queue_admission_performed":False,
+        "execution_started":False,
+        "owner_approval_required_for_queue_admission":True,
+    }
+
+
 @app.post("/executive/plan")
 def executive_plan(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
     """Draft an atomic multi-department plan; never queue or execute its work items."""
