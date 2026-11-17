@@ -801,7 +801,7 @@ def _executive_orchestration_snapshot(runtime, business_id=None):
             blocked.append({"work_item_id":str(item.id),"title":item.title,"reasons":reasons})
         else:
             eligible.append({"work_item_id":str(item.id),"title":item.title,
-                             "department":item.department,"assigned_role_key":item.assigned_role_key})
+                             "department":item.department,"assigned_role_key":item.assigned_role_key,"revision":item.revision})
     return {
         "business_id":business_id,
         "work_item_count":len(items),
