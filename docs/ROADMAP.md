@@ -11,6 +11,28 @@ foundation. It is not yet a fully autonomous or production-operated company.
 The current implementation is built around OpenCompany-owned role definitions,
 SQLite persistence, explicit owner approval, and fail-closed execution controls.
 
+## Latest orchestration increment — awaiting fresh CI
+
+Implemented on the current draft PR branch, but not marked complete until the
+new GitHub Actions run passes:
+
+- CEO-triggered manager coordination can ask active department managers to
+  prepare specialist-team delegation proposals for unassigned draft work.
+- Proposals remain drafts and require owner approval before assignment or child
+  task materialization.
+- The orchestration status endpoint reports dependency and specialist blockers.
+- The owner-triggered readiness pass advances only drafts whose dependencies
+  are complete and whose assigned specialist is active and role-matched.
+- The readiness pass does not admit queue work or start execution.
+- Regression tests cover authorization, CEO activation, dependency blockers,
+  active-specialist checks, repeat-safe advancement, and no queue side effects.
+
+The first Actions run for this increment reported 207 passed and one failed
+because the work-item response omitted its revision field. The serializer was
+corrected in commit `20f4cf9caeeb8b21187e69f51a06c17bd7a2afca`; a fresh
+GitHub Actions run is still required before these additions can be marked
+verified.
+
 ## Completed and covered by repository tests
 
 ### Core application and business boundaries
