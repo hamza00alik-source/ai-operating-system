@@ -1076,11 +1076,23 @@ def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_
     materialized=[]
     from dataclasses import replace
     for child,agent in zip(proposal["children"],specialists):
-        work_item=WorkItem(
-            uuid4(),child["title"],child["objective"],child["department"],TaskState.READY,
-            item.business_id,(),UUID(agent["id"]),child["role_key"],
-        )
-        runtime.store.create_work_item(work_item,_audit("delegation.child_approved",work_item.id,"owner"))
+        # Derive a stable child ID from the proposal and child definition. If a
+        # request is interrupted after inserting a child but before saving the
+        # proposal, a retry finds and reuses that same work item.
+        stable_child_id=UUID(child["materialized_work_item_id"]) if child.get("materialized_work_item_id") else __import__("uuid").uuid5(UUID(proposal["id"]),str(child["id"]))
+        work_item=runtime.store.get_work_item(stable_child_id)
+        if work_item is None:
+            work_item=WorkItem(
+                stable_child_id,child["title"],child["objective"],child["department"],TaskState.READY,
+                item.business_id,(),UUID(agent["id"]),child["role_key"],
+            )
+            runtime.store.create_work_item(work_item,_audit("delegation.child_approved",work_item.id,"owner"))
+        else:
+            # Never adopt an unrelated item if persisted proposal metadata is corrupt.
+            if (work_item.title!=child["title"] or work_item.objective!=child["objective"]
+                    or work_item.assigned_agent_id!=UUID(agent["id"])
+                    or work_item.assigned_role_key!=child["role_key"]):
+                raise HTTPException(409,"A previously materialized child does not match this proposal.")
         child["state"]="approved"
         child["materialized_work_item_id"]=str(work_item.id)
         materialized.append(_item_dict(work_item))
