@@ -243,7 +243,7 @@ def test_reject_delegation_proposal_requires_rationale_and_draft_state(owner_cli
     runtime.store.create_work_item(item, _audit("test.created", item.id, "owner"))
     proposal = {
         "id": str(uuid4()), "work_item_id": str(item.id),
-        "status": "rejected", "children": [],
+        "status": "draft", "children": [],
         "created_at": "2026-11-18T00:00:00+00:00",
         "updated_at": "2026-11-18T00:00:00+00:00",
     }
@@ -251,5 +251,7 @@ def test_reject_delegation_proposal_requires_rationale_and_draft_state(owner_cli
     url = f"/work-items/{item.id}/delegation-proposals/{proposal['id']}/reject"
     missing_rationale = client.post(url, headers=headers, json={"rationale": " "})
     assert missing_rationale.status_code == 422
+    proposal["status"] = "rejected"
+    runtime.delegations.save_proposal(proposal)
     already_decided = client.post(url, headers=headers, json={"rationale": "No longer needed."})
     assert already_decided.status_code == 409
