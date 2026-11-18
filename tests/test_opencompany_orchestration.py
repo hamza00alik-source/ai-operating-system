@@ -186,3 +186,70 @@ def test_ceo_can_coordinate_active_managers_to_draft_delegations_without_assigni
     assert len(proposal["children"]) == 5
     assert runtime.store.get_work_item(item.id).assigned_agent_id is None
     assert runtime.queue.counts() == {}
+
+
+def test_owner_can_reject_delegation_proposal_without_materializing_or_queueing(owner_client):
+    client, runtime = owner_client
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    item = WorkItem(
+        id=uuid4(), title="Prepare campaign analysis",
+        objective="Assess the campaign opportunity",
+        department="intelligence-research", state=TaskState.DRAFT,
+        business_id="digital-products",
+    )
+    runtime.store.create_work_item(item, _audit("test.created", item.id, "owner"))
+    proposal = {
+        "id": str(uuid4()), "work_item_id": str(item.id),
+        "department": item.department, "manager_role_key": "research_manager",
+        "manager_agent_id": None, "status": "draft",
+        "children": [{
+            "id": str(uuid4()), "title": "Research source",
+            "objective": item.objective, "department": item.department,
+            "role_key": "research_specialist", "assigned_agent_id": str(uuid4()),
+            "team_key": "intelligence-research__team_01", "state": "draft",
+            "materialized_work_item_id": None,
+        }],
+        "queue_entries_created": False, "execution_started": False,
+        "created_at": "2026-11-18T00:00:00+00:00",
+        "updated_at": "2026-11-18T00:00:00+00:00",
+    }
+    runtime.delegations.save_proposal(proposal)
+
+    response = client.post(
+        f"/work-items/{item.id}/delegation-proposals/{proposal['id']}/reject",
+        headers=headers, json={"rationale": "The proposed team is too broad."},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["status"] == "rejected"
+    assert result["owner_approval_required"] is False
+    assert result["decision_rationale"] == "The proposed team is too broad."
+    assert result["materialized_work_items"] == []
+    assert result["queue_entries_created"] is False
+    assert result["execution_started"] is False
+    assert runtime.delegations.get_proposal(item.id, proposal["id"])["status"] == "rejected"
+    assert len(runtime.store.list_work_items()) == 1
+    assert runtime.queue.counts() == {}
+
+
+def test_reject_delegation_proposal_requires_rationale_and_draft_state(owner_client):
+    client, runtime = owner_client
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    item = WorkItem(
+        id=uuid4(), title="Prepare campaign analysis",
+        objective="Assess the campaign opportunity",
+        department="intelligence-research", state=TaskState.DRAFT,
+    )
+    runtime.store.create_work_item(item, _audit("test.created", item.id, "owner"))
+    proposal = {
+        "id": str(uuid4()), "work_item_id": str(item.id),
+        "status": "rejected", "children": [],
+        "created_at": "2026-11-18T00:00:00+00:00",
+        "updated_at": "2026-11-18T00:00:00+00:00",
+    }
+    runtime.delegations.save_proposal(proposal)
+    url = f"/work-items/{item.id}/delegation-proposals/{proposal['id']}/reject"
+    missing_rationale = client.post(url, headers=headers, json={"rationale": " "})
+    assert missing_rationale.status_code == 422
+    already_decided = client.post(url, headers=headers, json={"rationale": "No longer needed."})
+    assert already_decided.status_code == 409
