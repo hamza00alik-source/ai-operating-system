@@ -1028,6 +1028,35 @@ def list_delegation_proposals(item_id:str,runtime=Depends(get_runtime),owner=Dep
     return {"count":len(proposals),"proposals":proposals}
 
 
+@app.post("/work-items/{item_id}/delegation-proposals/{proposal_id}/reject")
+def reject_delegation_proposal(item_id:str,proposal_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Record an explicit owner rejection without materializing or queueing child work."""
+    item=runtime.store.get_work_item(UUID(item_id))
+    if not item:raise HTTPException(404,"Work item not found.")
+    proposal=runtime.delegations.get_proposal(item.id,proposal_id)
+    if not proposal:raise HTTPException(404,"Delegation proposal not found.")
+    if proposal["status"]!="draft":raise HTTPException(409,"Only draft delegation proposals can be rejected.")
+    rationale=str(payload.get("rationale","")).strip()
+    if not rationale:raise HTTPException(422,"Owner rejection rationale is required.")
+    proposal["status"]="rejected"
+    proposal["owner_approval_required"]=False
+    proposal["decision_rationale"]=rationale[:1200]
+    proposal["decided_at"]=datetime.now(timezone.utc).isoformat()
+    proposal["updated_at"]=proposal["decided_at"]
+    proposal["queue_entries_created"]=False
+    proposal["execution_started"]=False
+    runtime.delegations.save_proposal(proposal)
+    runtime.store.save_work_item_with_audit(
+        item,_audit("delegation.proposal_rejected",item.id,"owner"),
+    )
+    return {
+        **proposal,
+        "materialized_work_items":[],
+        "queue_entries_created":False,
+        "execution_started":False,
+    }
+
+
 @app.post("/work-items/{item_id}/delegation-proposals/{proposal_id}/approve")
 def approve_delegation_proposal(item_id:str,proposal_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
     item=runtime.store.get_work_item(UUID(item_id))
