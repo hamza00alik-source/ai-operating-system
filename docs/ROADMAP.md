@@ -13,8 +13,7 @@ SQLite persistence, explicit owner approval, and fail-closed execution controls.
 
 ## Latest orchestration increment — verified by GitHub Actions
 
-Implemented on the current draft PR branch, but not marked complete until the
-new GitHub Actions run passes:
+Implemented on the current draft PR branch and verified by GitHub Actions:
 
 - CEO-triggered manager coordination can ask active department managers to
   prepare specialist-team delegation proposals for unassigned draft work.
@@ -29,9 +28,11 @@ new GitHub Actions run passes:
 
 The first Actions run for this increment reported 207 passed and one failed
 because the work-item response omitted its revision field. The serializer was
-corrected in commit `20f4cf9caeeb8b21187e69f51a06c17bd7a2afca`; a fresh
-GitHub Actions run is still required before these additions can be marked
-verified.
+corrected in commit `20f4cf9caeeb8b21187e69f51a06c17bd7a2afca`. The corrected
+branch passed the full GitHub Actions suite on commit
+`7b78fbc1d715f3c001bee69ed2b5935f116d2179`: **208 passed, 1 warning**.
+OpenCompany core tests passed, and Vercel prebuilt build validation passed.
+These are CI/build checks, not a live production deployment.
 
 ## Completed and covered by repository tests
 
@@ -74,7 +75,7 @@ verified.
 ### Developer experience and verification
 - [x] Separate `opencompany-api` and `opencompany-worker` launch commands.
 - [x] OpenCompany quick-start and worker deployment documentation.
-- [x] GitHub Actions full test suite: 205 passed, 1 warning on commit `cd0a8c169a57fb4b9dc7a4a60e79648b10d28837`.
+- [x] GitHub Actions full test suite: 208 passed, 1 warning on commit `7b78fbc1d715f3c001bee69ed2b5935f116d2179`.
 - [x] OpenCompany core tests passed on that commit.
 - [x] Vercel prebuilt build validation passed; this is not a production deployment.
 
