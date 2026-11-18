@@ -58,6 +58,7 @@ These are CI/build checks, not a live production deployment.
 - [x] Work-item creation, assignment, dependency validation, and owner-controlled queue admission.
 - [x] CEO draft plans and delegation proposals with owner review before child work is created or queued.
 - [x] Idempotent queue admission and explicit retry of failed work.
+- [x] Delegation child materialization uses stable proposal-derived IDs so an approval retry can reuse children created before an interrupted proposal save.
 - [x] Durable queue leases, 15-minute abandoned-lease recovery, and stale-worker fencing.
 - [x] Role and assigned-agent identity checks before work is claimed or executed.
 - [x] Gateway-backed specialist draft generation; outputs enter owner review and do not trigger external actions.
