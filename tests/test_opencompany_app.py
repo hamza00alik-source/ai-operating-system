@@ -570,6 +570,18 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
     )
     assert manager_active.status_code == 200
 
+    # Simulate a process interruption after the first child insert but before
+    # the proposal payload is updated. Approval must reuse this deterministic ID.
+    runtime = get_runtime()
+    first_child = proposal["children"][0]
+    stable_orphan_id = __import__("uuid").uuid5(UUID(proposal["id"]), str(first_child["id"]))
+    orphan = WorkItem(
+        stable_orphan_id, first_child["title"], first_child["objective"],
+        first_child["department"], TaskState.READY, "digital-products", (),
+        UUID(first_child["assigned_agent_id"]), first_child["role_key"],
+    )
+    runtime.store.create_work_item(orphan)
+
     approved = owner_client.post(
         f"/work-items/{item_id}/delegation-proposals/{proposal['id']}/approve",
         headers=headers,
@@ -578,6 +590,8 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
     payload = approved.json()
     assert payload["status"] == "approved"
     assert len(payload["materialized_work_items"]) == 5
+    assert payload["materialized_work_items"][0]["id"] == str(stable_orphan_id)
+    assert len(runtime.store.list_work_items()) == 6
     assert all(task["state"] == "ready" for task in payload["materialized_work_items"])
     assert payload["queue_entries_created"] is False
     assert payload["execution_started"] is False
