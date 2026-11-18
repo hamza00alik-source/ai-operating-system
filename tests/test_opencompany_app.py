@@ -572,7 +572,7 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
 
     # Simulate a process interruption after the first child insert but before
     # the proposal payload is updated. Approval must reuse this deterministic ID.
-    runtime = get_runtime()
+    runtime = owner_client.app.dependency_overrides[get_runtime]()
     first_child = proposal["children"][0]
     stable_orphan_id = __import__("uuid").uuid5(UUID(proposal["id"]), str(first_child["id"]))
     orphan = WorkItem(
