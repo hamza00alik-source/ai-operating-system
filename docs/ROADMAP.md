@@ -82,6 +82,7 @@ These are CI/build checks, not a live production deployment.
 ## Remaining engineering work
 
 ### Orchestration maturity
+- [x] Owner can explicitly reject a draft delegation proposal with a required rationale; rejection is persisted and creates no child tasks or queue entries.
 - [ ] Full CEO-led execution loop that plans, delegates, evaluates, and advances work across departments.
 - [ ] Parallel branch scheduling, workflow-level artifact aggregation, cancellation, and specialist-specific deliverable schemas.
 - [ ] Durable execution logs, bounded retry/backoff policy, per-task timeouts, and owner-visible failure recovery.
