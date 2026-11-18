@@ -577,7 +577,8 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
     stable_orphan_id = __import__("uuid").uuid5(UUID(proposal["id"]), str(first_child["id"]))
     orphan = WorkItem(
         stable_orphan_id, first_child["title"], first_child["objective"],
-        first_child["department"], TaskState.READY, "digital-products", (),
+        first_child["department"], TaskState.READY,
+        runtime.store.get_work_item(UUID(item_id)).business_id, (),
         UUID(first_child["assigned_agent_id"]), first_child["role_key"],
     )
     runtime.store.create_work_item(orphan)
