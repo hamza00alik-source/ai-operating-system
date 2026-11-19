@@ -173,7 +173,19 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <div id="tasks" class="stack"></div><div id="task-detail" class="stack"></div></section>
 <section><h2>Execution & resources</h2><div class="actions"><button id="advance-work">Advance CEO-ready work</button><button id="worker-start">Start worker (zero-cost only)</button><button id="worker-stop">Stop worker</button></div><div id="worker-status" class="stack"></div><div id="usage" class="stack"></div><p class="muted">Worker start requires an eligible owner-confirmed zero-cost provider. No paid fallback. No automatic customer contact, publishing or payments.</p></section>
 <section><h2>Finance & business controls</h2><div id="finance" class="stack"></div><p class="muted">Finance entries are owner-recorded. This console does not move money or authorize spending.</p></section>
-<section><h2>Departments</h2><div id="departments" class="stack"></div></section>
+<section><h2>Departments</h2><div id="departments" class="stack"></div></section><section><h2>Business memory & integrations</h2>
+<p class="muted">Memory is isolated by business unit and can only be written by the owner. Integration records remain pending review; listing them does not connect external services.</p>
+<select id="memory-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
+<form id="memory-form" class="stack">
+<input id="memory-key" placeholder="Memory key" required maxlength="100">
+<input id="memory-category" placeholder="Category" required maxlength="80">
+<input id="memory-source" placeholder="Source / evidence reference" required maxlength="500">
+<textarea id="memory-content" placeholder="Business memory content" required rows="3"></textarea>
+<label><input id="memory-confirm" type="checkbox" required> I confirm this owner-written memory is accurate and belongs to this business unit.</label>
+<button class="primary" type="submit">Save business memory</button></form>
+<h3>Saved memories</h3><div id="memory-list" class="stack"></div>
+<h3>Integration registry</h3><div id="integration-list" class="stack"></div>
+<h3>Stored credential references</h3><div id="credential-list" class="stack"></div></section>
 </div></div></main>
 <script nonce="__NONCE__">
 (()=> {
@@ -206,6 +218,7 @@ async function refreshAll(){
   ]);
   renderAgents(agents.agents||[]);renderTasks(tasks.items||[]);renderDepartments(depts.departments||[]);
   renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[]);
+  await refreshBusinessContext();
   const aa=agents.agents||[],tt=tasks.items||[],fc=finance.entries||[],qc=queue.counts||{};
   setText("metric-agents",aa.length);setText("metric-active",aa.filter(a=>a.state==="active").length+" active · "+aa.filter(a=>a.state==="paused").length+" paused");
   setText("metric-work",tt.length);setText("metric-work-detail",tt.filter(x=>x.state!=="completed").length+" not completed");
@@ -328,6 +341,27 @@ function renderFinance(entries){
  if(!entries.length){root.append(node("p","No finance entries recorded.","muted"));return;}
  entries.slice().reverse().slice(0,20).forEach(x=>root.append(node("div",(x.entry_type||"")+" · "+x.amount_minor+" "+x.currency+" · "+x.business_id,"rowitem")));
 }
+async function refreshBusinessContext(){
+ const business=el("memory-business").value;
+ const [memory,integrations,credentials]=await Promise.all([
+  api("/business-units/"+encodeURIComponent(business)+"/memory"),
+  api("/business-units/"+encodeURIComponent(business)+"/integrations"),
+  api("/business-units/"+encodeURIComponent(business)+"/credentials")
+ ]);
+ const memories=el("memory-list");memories.replaceChildren();
+ if(!memory.memories.length)memories.append(node("p","No saved memories for this business unit.","muted"));
+ memory.memories.forEach(item=>{
+  const card=node("div",undefined,"rowitem");
+  const left=node("div"),title=node("strong",item.memory_key+" · "+item.category),body=node("p",item.content,"muted"),source=node("p","Source: "+item.source,"muted");
+  left.append(title,body,source);card.append(left);memories.append(card);
+ });
+ const registry=el("integration-list");registry.replaceChildren();
+ if(!integrations.integrations.length)registry.append(node("p","No integration registrations.","muted"));
+ integrations.integrations.forEach(item=>registry.append(node("div",item.display_name+" · "+item.provider_key+" · "+item.status+" · permissions: "+(item.permissions||[]).join(", "),"rowitem")));
+ const refs=el("credential-list");refs.replaceChildren();
+ if(!credentials.credentials.length)refs.append(node("p","No stored credential references.","muted"));
+ credentials.credentials.forEach(item=>refs.append(node("div",item.credential_key+" · stored "+(item.created_at||"date unavailable"),"rowitem")));
+}
 async function bootstrap(path){try{const r=await api(path,{method:"POST",body:{}});notice("Provisioning complete: "+(r.count??"done")+" profiles. They remain draft until activated.");await refreshAll();}catch(e){notice(e.message,true);}}
 async function createTask(event){event.preventDefault();try{const r=await api("/work-items",{method:"POST",body:{title:el("task-title").value,objective:el("task-objective").value,business_id:el("task-business").value,department:el("task-department").value}});el("task-form").reset();notice("Draft work item created: "+r.id+". No execution was started.");await refreshAll();}catch(e){notice(e.message,true);}}
 el("login-form").addEventListener("submit",signIn);el("logout").addEventListener("click",signOut);el("refresh").addEventListener("click",refreshAll);el("task-form").addEventListener("submit",createTask);
@@ -337,6 +371,8 @@ el("bootstrap-specialists").addEventListener("click",()=>bootstrap("/agents/boot
 el("advance-work").addEventListener("click",async()=>{try{const result=await api("/executive/orchestration/advance",{method:"POST",body:{}});notice("CEO readiness pass: "+result.advanced_count+" work items advanced. Queue admission and execution were not started.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("worker-start").addEventListener("click",async()=>{try{const result=await api("/workers/start",{method:"POST",body:{}});notice(result.running?"Worker started. It can process only owner-admitted tasks through a confirmed zero-cost provider.":"Worker did not start.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("worker-stop").addEventListener("click",async()=>{try{const result=await api("/workers/stop",{method:"POST",body:{}});notice(result.running?"Worker remains running.":"Worker stopped.");await refreshAll();}catch(e){notice(e.message,true);}});
+el("memory-business").addEventListener("change",()=>refreshBusinessContext().catch(e=>notice(e.message,true)));
+el("memory-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("memory-business").value;await api("/business-units/"+encodeURIComponent(business)+"/memory",{method:"POST",body:{memory_key:el("memory-key").value,category:el("memory-category").value,source:el("memory-source").value,content:el("memory-content").value,confirm_owner_write:el("memory-confirm").checked}});el("memory-form").reset();notice("Owner-written memory saved within "+business+". Agent writes remain disabled.");await refreshBusinessContext();}catch(e){notice(e.message,true);}});
 checkSession();
 })();
 </script></body></html>""".replace("__NONCE__",nonce)
