@@ -1231,6 +1231,55 @@ def executive_orchestration_status(business_id:str|None=None,runtime=Depends(get
     return _executive_orchestration_snapshot(runtime,business_id)
 
 
+@app.post("/executive/orchestration/cycle")
+def executive_orchestration_cycle(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Run one bounded CEO coordination cycle; never queues or executes work."""
+    ceo=runtime.agents.get("chief_executive_orchestrator")
+    if not ceo or ceo.get("state")!="active":
+        raise HTTPException(409,"The CEO orchestrator must be explicitly active before coordinating a cycle.")
+    business_id=payload.get("business_id")
+    if business_id is not None:
+        _business_id(business_id)
+    has_title=bool(str(payload.get("title","")).strip())
+    has_objective=bool(str(payload.get("objective","")).strip())
+    if has_title!=has_objective:
+        raise HTTPException(422,"Provide both title and objective to request a new CEO plan.")
+    plan_result=None
+    if has_title:
+        plan_result=executive_plan({
+            "title":payload["title"],"objective":payload["objective"],
+            "business_id":business_id or "physical-agency",
+            "max_tasks":payload.get("max_tasks",8),
+        },runtime,"owner")
+    delegation_result={
+        "drafted_count":0,"drafted":[],"skipped":[],
+        "owner_approval_required":True,"assignment_performed":False,
+        "queue_entries_created":False,"execution_started":False,
+    }
+    if runtime.gateway.eligible_providers(request_budget_usd=0.0):
+        delegation_result=executive_draft_delegations({
+            "business_id":business_id,"max_items":payload.get("max_items",5),
+            "max_specialists":payload.get("max_specialists",5),
+        },runtime,"owner")
+    else:
+        delegation_result["skipped"].append({
+            "reason":"no_confirmed_zero_cost_provider",
+            "detail":"Manager proposal generation was skipped; no paid fallback was attempted.",
+        })
+    advance_result=executive_orchestration_advance({
+        "business_id":business_id,"max_items":payload.get("max_advance",10),
+    },runtime,"owner")
+    return {
+        "plan":plan_result,
+        "delegations":delegation_result,
+        "readiness":advance_result,
+        "owner_approval_required_for_delegations":True,
+        "queue_admission_performed":False,
+        "execution_started":False,
+        "parallel_execution_enabled":False,
+    }
+
+
 @app.post("/executive/orchestration/advance")
 def executive_orchestration_advance(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
     """Advance only fully assigned, active, dependency-satisfied drafts to READY.
