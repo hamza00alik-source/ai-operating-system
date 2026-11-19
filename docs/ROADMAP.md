@@ -58,7 +58,7 @@ These are CI/build checks, not a live production deployment.
 - [ ] Live preview acceptance remains blocked by the legacy Vercel configuration: `vercel.json` rewrites all paths to the existing Railway production AIOS host, and `pyproject.toml` still identifies `src.ai_os.api:app` as the Vercel entrypoint. This preview must not be treated as OpenCompany staging. No production configuration was changed.
 - [ ] The complete operating-company requirements and acceptance gates are documented in [OPENCOMPANY_OPERATING_COMPANY_SPEC.md](OPENCOMPANY_OPERATING_COMPANY_SPEC.md).
 
-On commit `73abfcfaae0a546aa747a7ac329129527f851e17`:
+On commit `452e274d9437bc2367280ca0816c557818ac79f1`:
 - **GitHub Actions full suite: 218 passed, 1 warning.**
 - **OpenCompany core tests: 18 passed.**
 - **OpenCompany isolated staging smoke test: passed.** Docker image built; `/health`, `/ready`, owner console and protected API checks passed; a draft work item survived container restart on the dedicated volume.
