@@ -1388,6 +1388,11 @@ def enqueue_work_item(item_id:str,runtime=Depends(get_runtime),owner=Depends(_ow
     item=runtime.store.get_work_item(UUID(item_id))
     if not item:raise HTTPException(404,"Work item not found.")
     if item.state!=TaskState.READY:raise HTTPException(409,"Only owner-ready work items can be queued.")
+    for dependency_id in item.depends_on:
+        dependency=runtime.store.get_work_item(dependency_id)
+        if (dependency is None or dependency.business_id!=item.business_id
+                or dependency.state!=TaskState.COMPLETED):
+            raise HTTPException(409,"Every prerequisite must be completed in the same business unit before queue admission.")
     if not item.assigned_agent_id or not item.assigned_role_key:
         raise HTTPException(409,"Work must be assigned to an active specialist before queue admission.")
     agent=next((value for value in runtime.agents.values() if value["id"]==str(item.assigned_agent_id)),None)
@@ -1421,7 +1426,12 @@ def transition_work_item(item_id:str,payload:dict,runtime=Depends(get_runtime),o
         raise HTTPException(409,"Completion requires an owner review of a saved deliverable.")
     if target in ("queued","in_progress"):raise HTTPException(409,"This lifecycle transition requires queue admission or worker execution.")
     if target not in ("ready","cancelled","failed"):raise HTTPException(422,"Invalid transition.")
-    if target=="ready" and any(runtime.store.get_work_item(dep).state!=TaskState.COMPLETED for dep in item.depends_on):pass
+    if target=="ready":
+        for dependency_id in item.depends_on:
+            dependency=runtime.store.get_work_item(dependency_id)
+            if (dependency is None or dependency.business_id!=item.business_id
+                    or dependency.state!=TaskState.COMPLETED):
+                raise HTTPException(409,"Every prerequisite must be completed in the same business unit before work can be marked ready.")
     from dataclasses import replace
     changed=replace(item,state=TaskState(target))
     runtime.store.save_work_item_with_audit(changed,_audit("owner.transition",item.id,"owner"))
