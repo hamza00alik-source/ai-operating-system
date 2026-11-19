@@ -51,8 +51,8 @@ These are CI/build checks, not a live production deployment.
 On commit `f9515db0d8618e47aade3c6dca191d951a94f992`:
 - **GitHub Actions full suite: 213 passed, 1 warning.**
 - **OpenCompany core tests: 18 passed.**
-- **Vercel prebuilt build-validation workflow: 213 passed, 1 warning.**
-- **Vercel preview deployment: READY**, but protected by Vercel SSO; this is not production deployment or live application acceptance.
+- **Vercel prebuilt-validation workflow: successful; its `Test AIOS` step passed 213 tests, but `Build Vercel output (no deployment)` was skipped.**
+- **Vercel preview deployment: READY**, but protected by Vercel SSO and routed by the checked-in configuration to the legacy Railway production AIOS host; this is not an OpenCompany staging deployment or live application acceptance.
 - GitHub's separate CircleCI status remained pending and was not independently dispatched from this session.
 
 ## Completed and covered by repository tests
