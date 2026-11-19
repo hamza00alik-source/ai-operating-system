@@ -232,6 +232,15 @@ class FinanceRepository(SharedRepository):
             CREATE TABLE IF NOT EXISTS opencompany_finance_reviews(
               id TEXT PRIMARY KEY,entry_id TEXT NOT NULL UNIQUE,action TEXT NOT NULL,
               rationale TEXT NOT NULL,created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS opencompany_finance_budgets(
+              business_id TEXT NOT NULL,currency TEXT NOT NULL,monthly_expense_limit_minor INTEGER NOT NULL,
+              updated_at TEXT NOT NULL,PRIMARY KEY(business_id,currency));
+            CREATE TABLE IF NOT EXISTS opencompany_finance_reconciliations(
+              id TEXT PRIMARY KEY,business_id TEXT NOT NULL,currency TEXT NOT NULL,
+              period_start TEXT NOT NULL,period_end TEXT NOT NULL,opening_balance_minor INTEGER NOT NULL,
+              statement_closing_minor INTEGER NOT NULL,ledger_movement_minor INTEGER NOT NULL,
+              expected_closing_minor INTEGER NOT NULL,difference_minor INTEGER NOT NULL,
+              status TEXT NOT NULL,created_at TEXT NOT NULL);
             """)
             db.commit()
 
@@ -269,6 +278,73 @@ class FinanceRepository(SharedRepository):
             else:
                 rows=self._db.execute("SELECT id FROM opencompany_finance_entries ORDER BY rowid").fetchall()
         return [self.get_entry(row["id"]) for row in rows]
+
+    def set_budget(self,business_id,currency,limit_minor):
+        now=datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO opencompany_finance_budgets VALUES(?,?,?,?) "
+                "ON CONFLICT(business_id,currency) DO UPDATE SET monthly_expense_limit_minor=excluded.monthly_expense_limit_minor,updated_at=excluded.updated_at",
+                (business_id,currency,limit_minor,now),
+            )
+            self._db.commit()
+        return {"business_id":business_id,"currency":currency,"monthly_expense_limit_minor":limit_minor,"updated_at":now}
+
+    def list_budgets(self,business_id=None):
+        with self._lock:
+            if business_id:
+                rows=self._db.execute("SELECT * FROM opencompany_finance_budgets WHERE business_id=? ORDER BY currency",(business_id,)).fetchall()
+            else:
+                rows=self._db.execute("SELECT * FROM opencompany_finance_budgets ORDER BY business_id,currency").fetchall()
+        return [dict(row) for row in rows]
+
+    def budget_status(self,business_id,currency,period_start,period_end):
+        with self._lock:
+            row=self._db.execute(
+                "SELECT COALESCE(SUM(CASE WHEN entry_type='expense' THEN amount_minor ELSE 0 END),0) AS expenses,"
+                "COALESCE(SUM(CASE WHEN entry_type='revenue' THEN amount_minor ELSE 0 END),0) AS revenue "
+                "FROM opencompany_finance_entries WHERE business_id=? AND currency=? AND recorded_at>=? AND recorded_at<=?",
+                (business_id,currency,period_start,period_end),
+            ).fetchone()
+            budget=self._db.execute(
+                "SELECT monthly_expense_limit_minor FROM opencompany_finance_budgets WHERE business_id=? AND currency=?",
+                (business_id,currency),
+            ).fetchone()
+        expenses=int(row["expenses"] or 0);revenue=int(row["revenue"] or 0)
+        limit=int(budget["monthly_expense_limit_minor"]) if budget else None
+        return {"business_id":business_id,"currency":currency,"period_start":period_start,
+                "period_end":period_end,"expenses_minor":expenses,"revenue_minor":revenue,
+                "net_minor":revenue-expenses,"monthly_expense_limit_minor":limit,
+                "remaining_budget_minor":(limit-expenses) if limit is not None else None,
+                "budget_status":("over_limit" if expenses>limit else "within_limit") if limit is not None else "not_configured",
+                "spending_authorized":False}
+
+    def create_reconciliation(self,record):
+        with self._lock:
+            self._db.execute("INSERT INTO opencompany_finance_reconciliations VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(
+                record["id"],record["business_id"],record["currency"],record["period_start"],record["period_end"],
+                record["opening_balance_minor"],record["statement_closing_minor"],record["ledger_movement_minor"],
+                record["expected_closing_minor"],record["difference_minor"],record["status"],record["created_at"],
+            ))
+            self._db.commit()
+        return record
+
+    def list_reconciliations(self,business_id=None):
+        with self._lock:
+            if business_id:
+                rows=self._db.execute("SELECT * FROM opencompany_finance_reconciliations WHERE business_id=? ORDER BY created_at DESC",(business_id,)).fetchall()
+            else:
+                rows=self._db.execute("SELECT * FROM opencompany_finance_reconciliations ORDER BY created_at DESC").fetchall()
+        return [dict(row) for row in rows]
+
+    def calculate_ledger_movement(self,business_id,currency,period_start,period_end):
+        with self._lock:
+            row=self._db.execute(
+                "SELECT COALESCE(SUM(CASE WHEN entry_type='revenue' THEN amount_minor ELSE -amount_minor END),0) AS movement "
+                "FROM opencompany_finance_entries WHERE business_id=? AND currency=? AND recorded_at>=? AND recorded_at<=?",
+                (business_id,currency,period_start,period_end),
+            ).fetchone()
+        return int(row["movement"] or 0)
 
 
 class BusinessRepository(SharedRepository):
