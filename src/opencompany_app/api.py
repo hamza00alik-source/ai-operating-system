@@ -929,7 +929,10 @@ def set_finance_budget(payload:dict,runtime=Depends(get_runtime),owner=Depends(_
         raise HTTPException(422,"Monthly budget must be a non-negative integer in minor currency units.")
     if payload.get("confirm_owner_budget") is not True:
         raise HTTPException(422,"Owner confirmation is required to set a budget.")
-    record=runtime.finance.set_budget(business_id,currency,limit)
+    rationale=str(payload.get("rationale","")).strip()
+    if not rationale:
+        raise HTTPException(422,"A rationale is required for the budget decision.")
+    record=runtime.finance.set_budget(business_id,currency,limit,rationale)
     return {**record,"spending_authorized":False,"automatic_spend_blocking":False}
 
 
@@ -939,6 +942,14 @@ def list_finance_budgets(business_id:str|None=None,runtime=Depends(get_runtime),
         raise HTTPException(422,"Unknown business unit.")
     budgets=runtime.finance.list_budgets(business_id)
     return {"count":len(budgets),"budgets":budgets,"spending_authorized":False}
+
+
+@app.get("/finance/budgets/history")
+def finance_budget_history(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if business_id and business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    events=runtime.finance.list_budget_events(business_id)
+    return {"count":len(events),"events":events,"spending_authorized":False}
 
 
 @app.get("/finance/budgets/status")
