@@ -55,13 +55,19 @@ jobs:
           fi
       - name: Verify SQLite persistence after restart
         run: |
+          created=$(curl -fsS -H "X-OpenCompany-API-Key: ci-only-owner-key-not-for-production" \
+            -H "Content-Type: application/json" \
+            -d '{"title":"Staging persistence check","objective":"Verify SQLite survives container restart","department":"intelligence-research","business_id":"digital-products"}' \
+            http://127.0.0.1:8000/work-items)
+          item_id=$(echo "$created" | python -c 'import json,sys; print(json.load(sys.stdin)["item_id"])')
           docker restart opencompany-staging
           for attempt in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:8000/ready; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8000/ready >/dev/null; then break; fi
             sleep 2
           done
-          docker logs opencompany-staging
-          exit 1
+          listed=$(curl -fsS -H "X-OpenCompany-API-Key: ci-only-owner-key-not-for-production" \
+            http://127.0.0.1:8000/work-items)
+          echo "$listed" | python -c 'import json,sys; d=json.load(sys.stdin); expected=sys.argv[1]; assert any(x["id"]==expected for x in d["items"]), "SQLite data did not survive restart"' "$item_id"
       - name: Collect logs on failure
         if: failure()
         run: docker logs opencompany-staging || true
