@@ -34,6 +34,12 @@ branch passed the full GitHub Actions suite on commit
 OpenCompany core tests passed, and Vercel prebuilt build validation passed.
 These are CI/build checks, not a live production deployment.
 
+## Recently implemented — runtime acceptance pending
+
+- [ ] Initial mobile-friendly owner control center: secure owner sign-in, company refresh, workforce provisioning and state controls, draft work creation, department visibility, worker/queue status, model usage, and finance-ledger visibility. The interface is committed but has not yet been runtime-verified.
+- [ ] Full dashboard workflows for delegation approvals, task review, queue admission, finance reconciliation, integration management, memory review, and failure recovery remain outstanding.
+- [ ] The complete operating-company requirements and acceptance gates are documented in [OPENCOMPANY_OPERATING_COMPANY_SPEC.md](OPENCOMPANY_OPERATING_COMPANY_SPEC.md).
+
 ## Completed and covered by repository tests
 
 ### Core application and business boundaries
