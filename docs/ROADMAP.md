@@ -64,6 +64,7 @@ On commit `2eddb28c12da0d00e3355f5ea76c8577554a1a16`:
 - **OpenCompany isolated staging smoke test: passed.** Docker image built; `/health`, `/ready`, owner console and protected API checks passed; a draft work item survived container restart on the dedicated volume.
 - **Vercel prebuilt validation: test step passed; output build/deployment step was skipped.** This is not a Vercel deployment.
 - CI warnings include GitHub Actions Node.js action deprecation notices; no test failures were reported.
+- GitHub's separate `ci/circleci: test` status currently reports failure on the latest PR head. Its CircleCI job page is inaccessible through the connected GitHub integration, so the cause remains unverified and this external check is unresolved.
 
 ## Completed and covered by repository tests
 
