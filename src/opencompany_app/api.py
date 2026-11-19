@@ -241,7 +241,7 @@ async function signOut(){try{await api("/auth/logout",{method:"POST",body:{}});}
 async function refreshAll(){
  clearNotice();
  try{
-  const [agents,tasks,queue,workers,service,usage,finance,depts,orchestration]=await Promise.all([
+  const [agents,tasks,queue,workers,service,usage,finance,budgets,reconciliations,budgetEvents,depts,orchestration]=await Promise.all([
    api("/agents"),api("/work-items"),api("/workers/queue"),api("/workers/status"),api("/workers/service-status"),api("/usage/model"),api("/finance/entries"),api("/finance/budgets"),api("/finance/reconciliations"),api("/finance/budgets/history"),api("/organization/departments"),api("/executive/orchestration/status")
   ]);
   renderAgents(agents.agents||[]);renderTasks(tasks.items||[]);renderDepartments(depts.departments||[]);
