@@ -170,8 +170,8 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <textarea id="task-objective" placeholder="Objective and expected deliverable" required rows="3"></textarea>
 <select id="task-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
 <select id="task-department" required></select><button class="primary" type="submit">Create draft work item</button></form>
-<div id="tasks" class="stack"></div></section>
-<section><h2>Execution & resources</h2><div id="worker-status" class="stack"></div><div id="usage" class="stack"></div><p class="muted">No paid fallback. No automatic customer contact, publishing or payments.</p></section>
+<div id="tasks" class="stack"></div><div id="task-detail" class="stack"></div></section>
+<section><h2>Execution & resources</h2><div class="actions"><button id="advance-work">Advance CEO-ready work</button><button id="worker-start">Start worker (zero-cost only)</button><button id="worker-stop">Stop worker</button></div><div id="worker-status" class="stack"></div><div id="usage" class="stack"></div><p class="muted">Worker start requires an eligible owner-confirmed zero-cost provider. No paid fallback. No automatic customer contact, publishing or payments.</p></section>
 <section><h2>Finance & business controls</h2><div id="finance" class="stack"></div><p class="muted">Finance entries are owner-recorded. This console does not move money or authorize spending.</p></section>
 <section><h2>Departments</h2><div id="departments" class="stack"></div></section>
 </div></div></main>
@@ -224,12 +224,90 @@ function renderAgents(agents){
  });
  if(agents.length>80)root.append(node("p","Showing first 80 of "+agents.length+" profiles. Use workforce APIs for the full catalogue.","muted"));
 }
+function actionButton(parent,label,handler){
+ const button=node("button",label);button.addEventListener("click",async()=>{button.disabled=true;try{await handler();}catch(e){notice(e.message,true);}finally{button.disabled=false;}});parent.append(button);return button;
+}
+async function showTaskWorkflow(item,container){
+ const data=await api("/work-items/"+encodeURIComponent(item.id)+"/workflow");
+ container.replaceChildren();
+ const heading=node("h3","Workflow · "+item.title);container.append(heading);
+ container.append(node("p","State: "+data.work_item.state+" · Next action: "+data.next_action,"muted"));
+ container.append(node("p","Prerequisites: "+(data.prerequisites||[]).map(x=>x.title+" ("+x.state+")").join(" · ")||"None"));
+ container.append(node("p","Dependent work: "+(data.dependents||[]).map(x=>x.title+" ("+x.state+")").join(" · ")||"None"));
+ (data.deliverables||[]).forEach((d,index)=>{
+  container.append(node("h3","Deliverable "+(index+1)+" · "+(d.role_key||"specialist")));
+  container.append(node("pre",String(d.content||"").slice(0,10000),"muted"));
+ });
+ if(item.state==="review"){
+  const actions=node("div",undefined,"actions");
+  actionButton(actions,"Approve deliverable",async()=>{
+   const rationale=window.prompt("Owner review rationale","Reviewed and accepted");
+   if(rationale===null||!rationale.trim())return;
+   await api("/work-items/"+encodeURIComponent(item.id)+"/review",{method:"POST",body:{approved:true,rationale}});
+   notice("Deliverable accepted and evaluation recorded.");await refreshAll();
+  });
+  actionButton(actions,"Reject deliverable",async()=>{
+   const rationale=window.prompt("Explain what must be corrected","Revision required");
+   if(rationale===null||!rationale.trim())return;
+   await api("/work-items/"+encodeURIComponent(item.id)+"/review",{method:"POST",body:{approved:false,rationale}});
+   notice("Deliverable rejected; task moved to failed for explicit retry.");await refreshAll();
+  });
+  container.append(actions);
+ }
+}
+async function showDelegationProposals(item,container){
+ const data=await api("/work-items/"+encodeURIComponent(item.id)+"/delegation-proposals");
+ container.replaceChildren(node("h3","Delegation proposals · "+item.title));
+ if(!data.proposals.length){container.append(node("p","No proposals saved.","muted"));return;}
+ data.proposals.slice().reverse().forEach(proposal=>{
+  const card=node("section"),heading=node("strong","Proposal · "+proposal.status),manager=node("p","Manager: "+proposal.manager_role_key+" · "+(proposal.children||[]).length+" specialists","muted");
+  card.append(heading,manager);
+  (proposal.children||[]).forEach(child=>card.append(node("p",child.title+" · "+child.role_key+" · "+child.state,"muted")));
+  if(proposal.status==="draft"){
+   const actions=node("div",undefined,"actions");
+   actionButton(actions,"Approve & create child tasks",async()=>{
+    const result=await api("/work-items/"+encodeURIComponent(item.id)+"/delegation-proposals/"+encodeURIComponent(proposal.id)+"/approve",{method:"POST",body:{}});
+    notice("Delegation approved. "+(result.materialized_work_items||[]).length+" child tasks created; queue admission "+(result.queue_entries_created?"occurred":"did not occur")+".");await refreshAll();
+   });
+   actionButton(actions,"Reject proposal",async()=>{
+    const rationale=window.prompt("Why are you rejecting this proposal?");
+    if(rationale===null||!rationale.trim())return;
+    await api("/work-items/"+encodeURIComponent(item.id)+"/delegation-proposals/"+encodeURIComponent(proposal.id)+"/reject",{method:"POST",body:{rationale}});
+    notice("Delegation proposal rejected.");await refreshAll();
+   });
+   card.append(actions);
+  }
+  container.append(card);
+ });
+}
 function renderTasks(items){
  const root=el("tasks");root.replaceChildren();
  if(!items.length){root.append(node("p","No work items yet.","muted"));return;}
- items.slice().reverse().slice(0,30).forEach(item=>{
-  const row=node("div",undefined,"rowitem"),left=node("div"),title=node("strong",item.title),meta=node("div",(item.department||"")+" · "+(item.business_id||"")+" · "+(item.state||"draft"),"muted");
-  left.append(title,meta);const right=node("span",item.assigned_role_key||"Unassigned","pill");row.append(left,right);root.append(row);
+ items.slice().reverse().slice(0,50).forEach(item=>{
+  const card=node("section"),heading=node("strong",item.title),meta=node("p",(item.department||"")+" · "+(item.business_id||"")+" · "+(item.state||"draft")+" · "+(item.assigned_role_key||"Unassigned"),"muted");
+  const actions=node("div",undefined,"actions");
+  actionButton(actions,"Workflow details",()=>showTaskWorkflow(item,el("task-detail")));
+  if(item.state==="draft"){
+   actionButton(actions,"Create team proposal",async()=>{
+    await api("/work-items/"+encodeURIComponent(item.id)+"/delegation-proposals",{method:"POST",body:{max_specialists:5,required_capabilities:[]}});
+    notice("Draft delegation proposal created. Activate its manager and all proposed specialists before owner approval.");await showDelegationProposals(item,el("task-detail"));
+   });
+   actionButton(actions,"Show proposals",()=>showDelegationProposals(item,el("task-detail")));
+  }
+  if(item.state==="ready"&&item.assigned_agent_id){
+   actionButton(actions,"Admit to queue",async()=>{
+    await api("/work-items/"+encodeURIComponent(item.id)+"/enqueue",{method:"POST",body:{}});
+    notice("Task admitted to the queue. Worker execution has not been started.");await refreshAll();
+   });
+  }
+  if(item.state==="queued"&&item.assigned_agent_id&&item.assigned_role_key){
+   actionButton(actions,"Run one task",async()=>{
+    const result=await api("/workers/run-once",{method:"POST",body:{agent_id:item.assigned_agent_id,role_key:item.assigned_role_key}});
+    notice("Worker result: "+result.status);await refreshAll();
+   });
+  }
+  if(item.state==="review")actionButton(actions,"Review deliverable",()=>showTaskWorkflow(item,el("task-detail")));
+  card.append(heading,meta,actions);root.append(card);
  });
 }
 function renderDepartments(items){
@@ -256,6 +334,9 @@ el("login-form").addEventListener("submit",signIn);el("logout").addEventListener
 el("bootstrap-ceo").addEventListener("click",()=>bootstrap("/agents/bootstrap-executive"));
 el("bootstrap-managers").addEventListener("click",()=>bootstrap("/agents/bootstrap"));
 el("bootstrap-specialists").addEventListener("click",()=>bootstrap("/agents/bootstrap-specialists"));
+el("advance-work").addEventListener("click",async()=>{try{const result=await api("/executive/orchestration/advance",{method:"POST",body:{}});notice("CEO readiness pass: "+result.advanced_count+" work items advanced. Queue admission and execution were not started.");await refreshAll();}catch(e){notice(e.message,true);}});
+el("worker-start").addEventListener("click",async()=>{try{const result=await api("/workers/start",{method:"POST",body:{}});notice(result.running?"Worker started. It can process only owner-admitted tasks through a confirmed zero-cost provider.":"Worker did not start.");await refreshAll();}catch(e){notice(e.message,true);}});
+el("worker-stop").addEventListener("click",async()=>{try{const result=await api("/workers/stop",{method:"POST",body:{}});notice(result.running?"Worker remains running.":"Worker stopped.");await refreshAll();}catch(e){notice(e.message,true);}});
 checkSession();
 })();
 </script></body></html>""".replace("__NONCE__",nonce)
