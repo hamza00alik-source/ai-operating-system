@@ -2312,10 +2312,14 @@ def test_finance_budget_status_and_statement_reconciliation_are_business_scoped(
 
     budget = owner_client.post("/finance/budgets", headers=headers, json={
         "business_id": "physical-agency", "currency": "USD",
-        "monthly_expense_limit_minor": 2000, "confirm_owner_budget": True,
+        "monthly_expense_limit_minor": 2000, "rationale": "Keep monthly operating expenses below the owner-approved cap.", "confirm_owner_budget": True,
     })
     assert budget.status_code == 200
     assert budget.json()["spending_authorized"] is False
+    budget_history = owner_client.get("/finance/budgets/history?business_id=physical-agency", headers=headers)
+    assert budget_history.status_code == 200
+    assert budget_history.json()["count"] == 1
+    assert budget_history.json()["events"][0]["rationale"].startswith("Keep monthly")
 
     status = owner_client.get(
         "/finance/budgets/status?business_id=physical-agency&currency=USD",
