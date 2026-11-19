@@ -2292,3 +2292,114 @@ def test_owner_cannot_mark_or_queue_parent_work_before_prerequisites_complete(ow
     assert enqueue.status_code == 409
     assert "prerequisite" in enqueue.json()["detail"].lower()
     assert runtime.queue.counts().get("queued", 0) == 0
+
+
+def test_finance_budget_status_and_statement_reconciliation_are_business_scoped(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    entry_base = {
+        "business_id": "physical-agency", "currency": "USD",
+        "confirm_owner_record": True,
+    }
+    revenue = owner_client.post("/finance/entries", headers=headers, json={
+        **entry_base, "entry_type": "revenue", "amount_minor": 5000,
+        "description": "Test customer receipt recorded, not payment initiated",
+    })
+    expense = owner_client.post("/finance/entries", headers=headers, json={
+        **entry_base, "entry_type": "expense", "amount_minor": 1000,
+        "description": "Test supplier cost recorded, not paid",
+    })
+    assert revenue.status_code == 200 and expense.status_code == 200
+
+    budget = owner_client.post("/finance/budgets", headers=headers, json={
+        "business_id": "physical-agency", "currency": "USD",
+        "monthly_expense_limit_minor": 2000, "confirm_owner_budget": True,
+    })
+    assert budget.status_code == 200
+    assert budget.json()["spending_authorized"] is False
+
+    status = owner_client.get(
+        "/finance/budgets/status?business_id=physical-agency&currency=USD",
+        headers=headers,
+    )
+    assert status.status_code == 200
+    assert status.json()["expenses_minor"] == 1000
+    assert status.json()["revenue_minor"] == 5000
+    assert status.json()["remaining_budget_minor"] == 1000
+    assert status.json()["budget_status"] == "within_limit"
+
+    start = "2026-11-01T00:00:00+00:00"
+    end = "2026-11-30T23:59:59+00:00"
+    reconciled = owner_client.post("/finance/reconciliations", headers=headers, json={
+        "business_id": "physical-agency", "currency": "USD",
+        "period_start": start, "period_end": end,
+        "opening_balance_minor": 10000, "statement_closing_minor": 14000,
+        "confirm_owner_reconciliation": True,
+    })
+    assert reconciled.status_code == 200
+    assert reconciled.json()["ledger_movement_minor"] == 4000
+    assert reconciled.json()["difference_minor"] == 0
+    assert reconciled.json()["status"] == "balanced"
+    assert reconciled.json()["funds_moved"] is False
+
+    discrepancy = owner_client.post("/finance/reconciliations", headers=headers, json={
+        "business_id": "physical-agency", "currency": "USD",
+        "period_start": start, "period_end": end,
+        "opening_balance_minor": 10000, "statement_closing_minor": 14500,
+        "confirm_owner_reconciliation": True,
+    })
+    assert discrepancy.status_code == 200
+    assert discrepancy.json()["difference_minor"] == 500
+    assert discrepancy.json()["status"] == "discrepancy"
+
+    isolated = owner_client.get(
+        "/finance/budgets?business_id=physical-brand", headers=headers,
+    )
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    history = owner_client.get(
+        "/finance/reconciliations?business_id=physical-agency", headers=headers,
+    )
+    assert history.status_code == 200 and history.json()["count"] == 2
+
+
+def test_business_integration_owner_review_is_audited_and_never_connects(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    credential = owner_client.post(
+        "/business-units/digital-products/credentials", headers=headers,
+        json={"credential_key": "store-readonly", "secret": {"token": "not-returned"},
+              "confirm_owner_storage": True},
+    )
+    assert credential.status_code == 200
+    registered = owner_client.post(
+        "/business-units/digital-products/integrations", headers=headers,
+        json={"provider_key": "store-api", "display_name": "Digital Store",
+              "credential_key": "store-readonly", "permissions": ["products:read"],
+              "rationale": "Read-only product catalogue sync review",
+              "confirm_owner_registration": True},
+    )
+    assert registered.status_code == 200
+    integration_id = registered.json()["integration"]["integration_id"]
+    unconfirmed = owner_client.post(
+        f"/business-units/digital-products/integrations/{integration_id}/review",
+        headers=headers, json={"decision": "approve", "rationale": "Reviewed"},
+    )
+    assert unconfirmed.status_code == 422
+    approved = owner_client.post(
+        f"/business-units/digital-products/integrations/{integration_id}/review",
+        headers=headers, json={"decision": "approve", "rationale": "Read-only scope verified.",
+                               "confirm_owner_decision": True},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved_pending_connection"
+    assert approved.json()["external_connection_attempted"] is False
+    duplicate = owner_client.post(
+        f"/business-units/digital-products/integrations/{integration_id}/review",
+        headers=headers, json={"decision": "reject", "rationale": "Duplicate decision",
+                               "confirm_owner_decision": True},
+    )
+    assert duplicate.status_code == 409
+    events = owner_client.get(
+        f"/business-units/digital-products/integrations/{integration_id}/events",
+        headers=headers,
+    )
+    assert [event["action"] for event in events.json()["events"]] == ["registered", "owner_approve"]
