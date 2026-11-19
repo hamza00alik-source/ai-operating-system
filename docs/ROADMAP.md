@@ -41,14 +41,17 @@ These are CI/build checks, not a live production deployment.
 - [x] Persisted specialist-team proposal creation, owner approval/rejection, and child-task materialization through existing guarded APIs.
 - [x] Owner review of generated deliverables with explicit approve/reject rationale and evaluation recording.
 - [x] CEO readiness advancement, separate owner-controlled queue admission, and explicit worker start/stop/single-task controls. Worker start and queue admission fail closed unless a confirmed zero-cost provider is eligible.
+- [x] Business-unit-scoped owner-written memory creation and inspection, source attribution, and read-only integration/credential registry visibility. Agent memory writes remain disabled.
+- [x] Worker execution now includes only the current business unit's active owner-written memories and completed prerequisite deliverables; manager roles receive explicit synthesis guidance.
+- [x] Readiness advancement, queue admission, and worker execution reject incomplete or cross-business prerequisites.
 - [ ] Finance reconciliation, integration management, shared-memory review, and full failure-recovery controls still need dedicated owner-console workflows.
 - [ ] Live preview acceptance is blocked by deployment routing and Vercel SSO. Unauthenticated `/health`, `/ready`, and `/owner` requests redirect to Vercel login. The checked-in `vercel.json` rewrites all paths to the existing Railway production AIOS host, and `pyproject.toml` still identifies `src.ai_os.api:app` as the Vercel entrypoint. This preview must not be treated as an OpenCompany staging runtime. No production configuration was changed.
 - [ ] The complete operating-company requirements and acceptance gates are documented in [OPENCOMPANY_OPERATING_COMPANY_SPEC.md](OPENCOMPANY_OPERATING_COMPANY_SPEC.md).
 
-On commit `af4894d41d6fb78615266feb72f4aaed1ab22465`:
-- **GitHub Actions full suite: 210 passed, 1 warning.**
+On commit `f9515db0d8618e47aade3c6dca191d951a94f992`:
+- **GitHub Actions full suite: 213 passed, 1 warning.**
 - **OpenCompany core tests: 18 passed.**
-- **Vercel prebuilt build-validation workflow: 210 passed, 1 warning.**
+- **Vercel prebuilt build-validation workflow: 213 passed, 1 warning.**
 - **Vercel preview deployment: READY**, but protected by Vercel SSO; this is not production deployment or live application acceptance.
 - GitHub's separate CircleCI status remained pending and was not independently dispatched from this session.
 
