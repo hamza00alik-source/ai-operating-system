@@ -214,6 +214,36 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <button class="primary" type="submit">Register for review</button></form>
 <div id="integration-list" class="stack"></div>
 <h3>Stored credential references</h3><div id="credential-list" class="stack"></div></section>
+<section><h2>Products, suppliers, customers & orders</h2>
+<p class="muted">Internal records only. Product activation does not publish a listing. Order status is an owner-maintained workflow; payment verification is an owner attestation against evidence, not an independent bank check. No customer contact, payment, inventory reservation, or fulfillment action occurs here.</p>
+<select id="ops-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
+<form id="counterparty-form" class="stack">
+<select id="counterparty-kind"><option value="supplier">Supplier</option><option value="customer">Customer</option></select>
+<input id="counterparty-name" placeholder="Supplier/customer name" required>
+<input id="counterparty-country" placeholder="Country" required>
+<input id="counterparty-reference" placeholder="Internal reference (optional)">
+<label><input id="counterparty-confirm" type="checkbox" required> I confirm this internal business record is accurate.</label>
+<button class="primary" type="submit">Add supplier/customer</button></form>
+<h3>Product catalogue</h3>
+<form id="product-form" class="stack">
+<input id="product-sku" placeholder="SKU" required>
+<input id="product-name" placeholder="Product name" required>
+<textarea id="product-description" placeholder="Product description" rows="2" required></textarea>
+<input id="product-price" type="number" min="0" step="1" placeholder="Unit price (minor currency units)" required>
+<input id="product-currency" value="USD" maxlength="3" required>
+<input id="product-supplier" placeholder="Supplier record ID (optional)">
+<label><input id="product-confirm" type="checkbox" required> I confirm this is a draft product record.</label>
+<button class="primary" type="submit">Create draft product</button></form>
+<div id="product-list" class="stack"></div>
+<h3>Draft orders</h3>
+<form id="order-form" class="stack">
+<input id="order-customer" placeholder="Customer record ID" required>
+<input id="order-product" placeholder="Active product ID" required>
+<input id="order-quantity" type="number" min="1" max="100000" value="1" required>
+<input id="order-currency" value="USD" maxlength="3" required>
+<label><input id="order-confirm" type="checkbox" required> I confirm this creates an internal draft order only.</label>
+<button class="primary" type="submit">Create draft order</button></form>
+<div id="order-list" class="stack"></div></section>
 </div></div></main>
 <script nonce="__NONCE__">
 (()=> {
@@ -247,6 +277,7 @@ async function refreshAll(){
   renderAgents(agents.agents||[]);renderTasks(tasks.items||[]);renderDepartments(depts.departments||[]);
   renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[],budgets.budgets||[],reconciliations.reconciliations||[],budgetEvents.events||[]);
   await refreshBusinessContext();
+  await refreshBusinessOperations();
   const aa=agents.agents||[],tt=tasks.items||[],fc=finance.entries||[],qc=queue.counts||{};
   setText("metric-agents",aa.length);setText("metric-active",aa.filter(a=>a.state==="active").length+" active · "+aa.filter(a=>a.state==="paused").length+" paused");
   setText("metric-work",tt.length);setText("metric-work-detail",tt.filter(x=>x.state!=="completed").length+" not completed");
@@ -415,6 +446,41 @@ async function refreshBusinessContext(){
  if(!credentials.credentials.length)refs.append(node("p","No stored credential references.","muted"));
  credentials.credentials.forEach(item=>refs.append(node("div",item.credential_key+" · stored "+(item.created_at||"date unavailable"),"rowitem")));
 }
+async function refreshBusinessOperations(){
+ const business=el("ops-business").value;
+ const [products,counterparties,orders]=await Promise.all([
+  api("/business-units/"+encodeURIComponent(business)+"/products"),
+  api("/business-units/"+encodeURIComponent(business)+"/counterparties"),
+  api("/business-units/"+encodeURIComponent(business)+"/orders")
+ ]);
+ const productRoot=el("product-list");productRoot.replaceChildren();
+ if(!products.products.length)productRoot.append(node("p","No products recorded.","muted"));
+ products.products.forEach(item=>{
+  const card=node("div",undefined,"rowitem"),left=node("div"),title=node("strong",item.name+" · "+item.sku),meta=node("p",item.status+" · "+item.unit_price_minor+" "+item.currency+" minor units · supplier "+(item.supplier_id||"not linked"),"muted");
+  left.append(title,meta);card.append(left);
+  if(item.status==="draft"){const activate=node("button","Activate internally");activate.addEventListener("click",async()=>{const rationale=window.prompt("Why is this product ready for internal order drafting?");if(!rationale||!rationale.trim())return;try{await api("/business-units/"+encodeURIComponent(business)+"/products/"+encodeURIComponent(item.id)+"/activate",{method:"POST",body:{confirm_owner_decision:true,rationale}});notice("Product activated for internal order drafting; it was not published.");await refreshBusinessOperations();}catch(e){notice(e.message,true);}});card.append(activate);}
+  productRoot.append(card);
+ });
+ const orderRoot=el("order-list");orderRoot.replaceChildren();
+ if(!orders.orders.length)orderRoot.append(node("p","No internal orders recorded.","muted"));
+ const next={
+  draft:["owner_approved","cancelled"],
+  owner_approved:["awaiting_payment_verification","cancelled"],
+  awaiting_payment_verification:["payment_verified_owner_attested","cancelled"],
+  payment_verified_owner_attested:["fulfilling"],
+  fulfilling:["fulfilled"]
+ };
+ orders.orders.forEach(item=>{
+  const card=node("div",undefined,"rowitem"),left=node("div"),title=node("strong",item.order_reference+" · "+item.status),meta=node("p",item.total_minor+" "+item.currency+" minor units · "+item.items.length+" line(s)","muted");
+  left.append(title,meta);const actions=node("div");
+  (next[item.status]||[]).forEach(target=>{
+   const button=node("button",target.replaceAll("_"," "));
+   button.addEventListener("click",async()=>{const rationale=window.prompt("Reason for order transition to "+target+":");if(!rationale||!rationale.trim())return;const body={target_status:target,rationale,confirm_owner_decision:true};if(target==="payment_verified_owner_attested"){const evidence=window.prompt("Enter the statement/receipt evidence reference. This records your attestation; it does not independently verify payment.");if(!evidence||!evidence.trim())return;body.evidence_reference=evidence;body.confirm_payment_verification=window.confirm("Confirm that you personally reviewed this payment evidence?");if(!body.confirm_payment_verification)return;}try{await api("/business-units/"+encodeURIComponent(business)+"/orders/"+encodeURIComponent(item.id)+"/transition",{method:"POST",body});notice("Internal order status updated. No external customer, payment, or fulfillment action occurred.");await refreshBusinessOperations();}catch(e){notice(e.message,true);}});
+   actions.append(button);
+  });
+  card.append(left,actions);orderRoot.append(card);
+ });
+}
 async function bootstrap(path){try{const r=await api(path,{method:"POST",body:{}});notice("Provisioning complete: "+(r.count??"done")+" profiles. They remain draft until activated.");await refreshAll();}catch(e){notice(e.message,true);}}
 async function createTask(event){event.preventDefault();try{const r=await api("/work-items",{method:"POST",body:{title:el("task-title").value,objective:el("task-objective").value,business_id:el("task-business").value,department:el("task-department").value}});el("task-form").reset();notice("Draft work item created: "+r.id+". No execution was started.");await refreshAll();}catch(e){notice(e.message,true);}}
 el("login-form").addEventListener("submit",signIn);el("logout").addEventListener("click",signOut);el("refresh").addEventListener("click",refreshAll);el("task-form").addEventListener("submit",createTask);
@@ -426,6 +492,11 @@ el("advance-work").addEventListener("click",async()=>{try{const result=await api
 el("worker-start").addEventListener("click",async()=>{try{const result=await api("/workers/start",{method:"POST",body:{}});notice(result.running?"Worker started. It can process only owner-admitted tasks through a confirmed zero-cost provider.":"Worker did not start.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("worker-stop").addEventListener("click",async()=>{try{const result=await api("/workers/stop",{method:"POST",body:{}});notice(result.running?"Worker remains running.":"Worker stopped.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("memory-business").addEventListener("change",()=>refreshBusinessContext().catch(e=>notice(e.message,true)));
+el("ops-business").addEventListener("change",()=>refreshBusinessOperations().catch(e=>notice(e.message,true)));
+el("counterparty-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("ops-business").value;await api("/business-units/"+encodeURIComponent(business)+"/counterparties",{method:"POST",body:{kind:el("counterparty-kind").value,name:el("counterparty-name").value,country:el("counterparty-country").value,reference:el("counterparty-reference").value,confirm_owner_record:el("counterparty-confirm").checked}});el("counterparty-form").reset();notice("Internal supplier/customer record created. No external contact occurred.");}catch(e){notice(e.message,true);}});
+el("product-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("ops-business").value;await api("/business-units/"+encodeURIComponent(business)+"/products",{method:"POST",body:{sku:el("product-sku").value,name:el("product-name").value,description:el("product-description").value,unit_price_minor:Number(el("product-price").value),currency:el("product-currency").value,supplier_id:el("product-supplier").value||null,confirm_owner_product:el("product-confirm").checked}});el("product-form").reset();notice("Draft product saved. It is not published.");await refreshBusinessOperations();}catch(e){notice(e.message,true);}});
+el("order-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("ops-business").value;await api("/business-units/"+encodeURIComponent(business)+"/orders",{method:"POST",body:{customer_id:el("order-customer").value,currency:el("order-currency").value,items:[{product_id:el("order-product").value,quantity:Number(el("order-quantity").value)}],confirm_owner_order:el("order-confirm").checked}});el("order-form").reset();notice("Internal draft order created. No customer contact or payment request occurred.");await refreshBusinessOperations();}catch(e){notice(e.message,true);}});
+
 el("budget-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("/finance/budgets",{method:"POST",body:{business_id:el("budget-business").value,currency:el("budget-currency").value,monthly_expense_limit_minor:Number(el("budget-limit").value),rationale:el("budget-rationale").value,confirm_owner_budget:el("budget-confirm").checked}});notice("Budget limit saved for "+result.business_id+". It does not authorize spending.");el("budget-form").reset();await refreshAll();}catch(e){notice(e.message,true);}});
 el("reconciliation-form").addEventListener("submit",async event=>{event.preventDefault();try{const iso=v=>new Date(v).toISOString();const result=await api("/finance/reconciliations",{method:"POST",body:{business_id:el("recon-business").value,currency:el("recon-currency").value,period_start:iso(el("recon-start").value),period_end:iso(el("recon-end").value),opening_balance_minor:Number(el("recon-opening").value),statement_closing_minor:Number(el("recon-closing").value),confirm_owner_reconciliation:el("recon-confirm").checked}});notice("Reconciliation result: "+result.status+" · difference "+result.difference_minor+" "+result.currency+" minor units. No bank connection or funds movement occurred.");el("reconciliation-form").reset();await refreshAll();}catch(e){notice(e.message,true);}});
 el("integration-form").addEventListener("submit",async event=>{event.preventDefault();try{const permissions=el("integration-permissions").value.split(",").map(x=>x.trim()).filter(Boolean);const business=el("memory-business").value;const result=await api("/business-units/"+encodeURIComponent(business)+"/integrations",{method:"POST",body:{provider_key:el("integration-provider").value,display_name:el("integration-name").value,credential_key:el("integration-credential").value,permissions,rationale:el("integration-rationale").value,confirm_owner_registration:el("integration-confirm").checked}});notice("Integration registration saved as "+result.integration.status+". No external connection was attempted.");el("integration-form").reset();await refreshBusinessContext();}catch(e){notice(e.message,true);}});
