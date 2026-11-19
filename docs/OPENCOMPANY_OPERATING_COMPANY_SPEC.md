@@ -228,13 +228,21 @@ acceptance gate in section 11 has been met.
 - Bank/payment-status adapters, invoice and payout matching, fees/refunds/COGS,
   and verified cash/profit reporting remain outstanding.
 
-### Integrations
+### Integrations and internal business records
 - Business-unit-scoped integration registrations require an existing credential
   reference and explicit permission list. Owner approve/reject decisions are
   recorded in the integration event history.
 - Approved registrations remain `approved_pending_connection`. No API adapter
   is activated, no external request is made, and no credential is exposed by
   the registry.
+- Owner-only internal records now cover suppliers, customers, draft products,
+  product activation for internal order drafting, draft orders, and guarded
+  order-state transitions. Payment verification is explicitly an owner
+  attestation tied to an evidence reference, not an independent payment check.
+- These records do not publish listings, contact customers or suppliers,
+  reserve stock, request payment, initiate a purchase, or execute fulfillment.
+  Official marketplace/ecommerce/CRM/email/payment/fulfillment adapters and
+  stock/order synchronization remain outstanding.
 
 ### Isolated staging
 - Added `Dockerfile.opencompany`, `compose.staging.yml`,
@@ -244,7 +252,7 @@ acceptance gate in section 11 has been met.
   workflow builds and runs it, verifies readiness and owner-only access, and
   verifies that a work item persists across a container restart.
 - GitHub Actions passed on commit
-  `6d52e325042515d63eb9b18be82f431932b0c9d7`: 217 full-suite tests, 18 core
+  `2eddb28c12da0d00e3355f5ea76c8577554a1a16`: 218 full-suite tests, 18 core
   tests, and the isolated-container smoke workflow.
 - This is a reproducible local/CI staging target, not a hosted staging service.
   A hosted environment still needs a separate persistent service and volume,
