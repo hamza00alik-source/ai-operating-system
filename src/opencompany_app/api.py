@@ -172,7 +172,25 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <select id="task-department" required></select><button class="primary" type="submit">Create draft work item</button></form>
 <div id="tasks" class="stack"></div><div id="task-detail" class="stack"></div></section>
 <section><h2>Execution & resources</h2><div class="actions"><button id="advance-work">Advance CEO-ready work</button><button id="worker-start">Start worker (zero-cost only)</button><button id="worker-stop">Stop worker</button></div><div id="worker-status" class="stack"></div><div id="usage" class="stack"></div><p class="muted">Worker start requires an eligible owner-confirmed zero-cost provider. No paid fallback. No automatic customer contact, publishing or payments.</p></section>
-<section><h2>Finance & business controls</h2><div id="finance" class="stack"></div><p class="muted">Finance entries are owner-recorded. This console does not move money or authorize spending.</p></section>
+<section><h2>Finance, budgets & reconciliation</h2>
+<p class="muted">Amounts use integer minor units (for example, cents). Budgets are monitoring limits, not spending authorization. Reconciliation compares owner-entered statements with recorded ledger activity; it does not connect to a bank.</p>
+<form id="budget-form" class="stack">
+<select id="budget-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
+<input id="budget-currency" value="USD" maxlength="3" placeholder="Currency code" required>
+<input id="budget-limit" type="number" min="0" step="1" placeholder="Monthly expense limit (minor units)" required>
+<label><input id="budget-confirm" type="checkbox" required> I confirm this budget is for the selected business unit.</label>
+<button class="primary" type="submit">Save budget limit</button></form>
+<form id="reconciliation-form" class="stack">
+<select id="recon-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
+<input id="recon-currency" value="USD" maxlength="3" placeholder="Currency code" required>
+<label>Period start <input id="recon-start" type="datetime-local" required></label>
+<label>Period end <input id="recon-end" type="datetime-local" required></label>
+<input id="recon-opening" type="number" step="1" placeholder="Opening balance (minor units)" required>
+<input id="recon-closing" type="number" step="1" placeholder="Statement closing balance (minor units)" required>
+<label><input id="recon-confirm" type="checkbox" required> I confirm these values were transcribed from the statement.</label>
+<button class="primary" type="submit">Reconcile statement</button></form>
+<h3>Budget status & ledger</h3><div id="finance" class="stack"></div>
+<h3>Reconciliation history</h3><div id="reconciliation-list" class="stack"></div></section>
 <section><h2>Departments</h2><div id="departments" class="stack"></div></section><section><h2>Business memory & integrations</h2>
 <p class="muted">Memory is isolated by business unit and can only be written by the owner. Integration records remain pending review; listing them does not connect external services.</p>
 <select id="memory-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
@@ -184,7 +202,16 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <label><input id="memory-confirm" type="checkbox" required> I confirm this owner-written memory is accurate and belongs to this business unit.</label>
 <button class="primary" type="submit">Save business memory</button></form>
 <h3>Saved memories</h3><div id="memory-list" class="stack"></div>
-<h3>Integration registry</h3><div id="integration-list" class="stack"></div>
+<h3>Integration registry</h3>
+<form id="integration-form" class="stack">
+<input id="integration-provider" placeholder="Provider key (e.g. shop-api)" required maxlength="80">
+<input id="integration-name" placeholder="Display name" required maxlength="120">
+<input id="integration-credential" placeholder="Existing credential key" required maxlength="100">
+<input id="integration-permissions" placeholder="Permissions, comma separated (read-only first)" required>
+<textarea id="integration-rationale" placeholder="Why is this integration needed?" rows="2" required></textarea>
+<label><input id="integration-confirm" type="checkbox" required> I confirm this registration is only a permission-review request.</label>
+<button class="primary" type="submit">Register for review</button></form>
+<div id="integration-list" class="stack"></div>
 <h3>Stored credential references</h3><div id="credential-list" class="stack"></div></section>
 </div></div></main>
 <script nonce="__NONCE__">
@@ -214,10 +241,10 @@ async function refreshAll(){
  clearNotice();
  try{
   const [agents,tasks,queue,workers,service,usage,finance,depts,orchestration]=await Promise.all([
-   api("/agents"),api("/work-items"),api("/workers/queue"),api("/workers/status"),api("/workers/service-status"),api("/usage/model"),api("/finance/entries"),api("/organization/departments"),api("/executive/orchestration/status")
+   api("/agents"),api("/work-items"),api("/workers/queue"),api("/workers/status"),api("/workers/service-status"),api("/usage/model"),api("/finance/entries"),api("/finance/budgets"),api("/finance/reconciliations"),api("/organization/departments"),api("/executive/orchestration/status")
   ]);
   renderAgents(agents.agents||[]);renderTasks(tasks.items||[]);renderDepartments(depts.departments||[]);
-  renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[]);
+  renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[],budgets.budgets||[],reconciliations.reconciliations||[]);
   await refreshBusinessContext();
   const aa=agents.agents||[],tt=tasks.items||[],fc=finance.entries||[],qc=queue.counts||{};
   setText("metric-agents",aa.length);setText("metric-active",aa.filter(a=>a.state==="active").length+" active · "+aa.filter(a=>a.state==="paused").length+" paused");
@@ -336,10 +363,20 @@ function renderWorker(workers,service,queue,orchestration){
  root.append(node("div","Blocked drafts: "+((orchestration.blocked_draft_items||[]).length)));
 }
 function renderUsage(usage){const root=el("usage");root.replaceChildren();root.append(node("h3","Model usage"));root.append(node("pre",JSON.stringify(usage,null,2),"muted"));}
-function renderFinance(entries){
+function renderFinance(entries,budgets,reconciliations){
  const root=el("finance");root.replaceChildren();
- if(!entries.length){root.append(node("p","No finance entries recorded.","muted"));return;}
- entries.slice().reverse().slice(0,20).forEach(x=>root.append(node("div",(x.entry_type||"")+" · "+x.amount_minor+" "+x.currency+" · "+x.business_id,"rowitem")));
+ if(!entries.length)root.append(node("p","No finance entries recorded.","muted"));
+ entries.slice().reverse().slice(0,20).forEach(x=>root.append(node("div",(x.entry_type||"")+" · "+x.amount_minor+" "+x.currency+" · "+x.business_id+" · "+(x.latest_review_action||"unreviewed"),"rowitem")));
+ (budgets||[]).forEach(b=>{
+  const row=node("div",undefined,"rowitem");
+  const label=node("span",b.business_id+" · "+b.currency+" · monthly limit "+b.monthly_expense_limit_minor);
+  const button=node("button","View month status");
+  button.addEventListener("click",async()=>{try{const status=await api("/finance/budgets/status?business_id="+encodeURIComponent(b.business_id)+"&currency="+encodeURIComponent(b.currency));notice("Budget "+status.budget_status+": expenses "+status.expenses_minor+" / "+status.monthly_expense_limit_minor+" "+status.currency+" minor units. This does not authorize spending.");}catch(e){notice(e.message,true);}});
+  row.append(label,button);root.append(row);
+ });
+ const history=el("reconciliation-list");history.replaceChildren();
+ if(!(reconciliations||[]).length)history.append(node("p","No reconciliation records yet.","muted"));
+ (reconciliations||[]).slice(0,20).forEach(r=>history.append(node("div",r.business_id+" · "+r.currency+" · "+r.status+" · difference "+r.difference_minor+" · "+r.period_start+" → "+r.period_end,"rowitem")));
 }
 async function refreshBusinessContext(){
  const business=el("memory-business").value;
@@ -372,6 +409,10 @@ el("advance-work").addEventListener("click",async()=>{try{const result=await api
 el("worker-start").addEventListener("click",async()=>{try{const result=await api("/workers/start",{method:"POST",body:{}});notice(result.running?"Worker started. It can process only owner-admitted tasks through a confirmed zero-cost provider.":"Worker did not start.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("worker-stop").addEventListener("click",async()=>{try{const result=await api("/workers/stop",{method:"POST",body:{}});notice(result.running?"Worker remains running.":"Worker stopped.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("memory-business").addEventListener("change",()=>refreshBusinessContext().catch(e=>notice(e.message,true)));
+el("budget-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("/finance/budgets",{method:"POST",body:{business_id:el("budget-business").value,currency:el("budget-currency").value,monthly_expense_limit_minor:Number(el("budget-limit").value),confirm_owner_budget:el("budget-confirm").checked}});notice("Budget limit saved for "+result.business_id+". It does not authorize spending.");el("budget-form").reset();await refreshAll();}catch(e){notice(e.message,true);}});
+el("reconciliation-form").addEventListener("submit",async event=>{event.preventDefault();try{const iso=v=>new Date(v).toISOString();const result=await api("/finance/reconciliations",{method:"POST",body:{business_id:el("recon-business").value,currency:el("recon-currency").value,period_start:iso(el("recon-start").value),period_end:iso(el("recon-end").value),opening_balance_minor:Number(el("recon-opening").value),statement_closing_minor:Number(el("recon-closing").value),confirm_owner_reconciliation:el("recon-confirm").checked}});notice("Reconciliation result: "+result.status+" · difference "+result.difference_minor+" "+result.currency+" minor units. No bank connection or funds movement occurred.");el("reconciliation-form").reset();await refreshAll();}catch(e){notice(e.message,true);}});
+el("integration-form").addEventListener("submit",async event=>{event.preventDefault();try{const permissions=el("integration-permissions").value.split(",").map(x=>x.trim()).filter(Boolean);const business=el("memory-business").value;const result=await api("/business-units/"+encodeURIComponent(business)+"/integrations",{method:"POST",body:{provider_key:el("integration-provider").value,display_name:el("integration-name").value,credential_key:el("integration-credential").value,permissions,rationale:el("integration-rationale").value,confirm_owner_registration:el("integration-confirm").checked}});notice("Integration registration saved as "+result.integration.status+". No external connection was attempted.");el("integration-form").reset();await refreshBusinessContext();}catch(e){notice(e.message,true);}});
+
 el("memory-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("memory-business").value;await api("/business-units/"+encodeURIComponent(business)+"/memory",{method:"POST",body:{memory_key:el("memory-key").value,category:el("memory-category").value,source:el("memory-source").value,content:el("memory-content").value,confirm_owner_write:el("memory-confirm").checked}});el("memory-form").reset();notice("Owner-written memory saved within "+business+". Agent writes remain disabled.");await refreshBusinessContext();}catch(e){notice(e.message,true);}});
 checkSession();
 })();
