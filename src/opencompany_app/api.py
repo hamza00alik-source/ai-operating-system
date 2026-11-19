@@ -840,6 +840,90 @@ def list_finance_entries(business_id:str|None=None,runtime=Depends(get_runtime),
     return {"count":len(entries),"entries":entries,"external_payment_initiated":False}
 
 
+@app.post("/finance/budgets")
+def set_finance_budget(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=str(payload.get("business_id",""))
+    currency=str(payload.get("currency","")).upper()
+    limit=payload.get("monthly_expense_limit_minor")
+    if business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    if len(currency)!=3 or not currency.isalpha():
+        raise HTTPException(422,"A three-letter currency is required.")
+    if not isinstance(limit,int) or isinstance(limit,bool) or limit<0:
+        raise HTTPException(422,"Monthly budget must be a non-negative integer in minor currency units.")
+    if payload.get("confirm_owner_budget") is not True:
+        raise HTTPException(422,"Owner confirmation is required to set a budget.")
+    record=runtime.finance.set_budget(business_id,currency,limit)
+    return {**record,"spending_authorized":False,"automatic_spend_blocking":False}
+
+
+@app.get("/finance/budgets")
+def list_finance_budgets(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if business_id and business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    budgets=runtime.finance.list_budgets(business_id)
+    return {"count":len(budgets),"budgets":budgets,"spending_authorized":False}
+
+
+@app.get("/finance/budgets/status")
+def finance_budget_status(business_id:str,currency:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    currency=currency.upper()
+    if len(currency)!=3 or not currency.isalpha():
+        raise HTTPException(422,"A three-letter currency is required.")
+    now=datetime.now(timezone.utc)
+    start=now.replace(day=1,hour=0,minute=0,second=0,microsecond=0).isoformat()
+    status=runtime.finance.budget_status(business_id,currency,start,now.isoformat())
+    return status
+
+
+@app.post("/finance/reconciliations")
+def create_finance_reconciliation(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=str(payload.get("business_id",""))
+    currency=str(payload.get("currency","")).upper()
+    period_start=str(payload.get("period_start",""))
+    period_end=str(payload.get("period_end",""))
+    opening=payload.get("opening_balance_minor")
+    closing=payload.get("statement_closing_minor")
+    if business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    if len(currency)!=3 or not currency.isalpha():
+        raise HTTPException(422,"A three-letter currency is required.")
+    try:
+        start_dt=datetime.fromisoformat(period_start)
+        end_dt=datetime.fromisoformat(period_end)
+    except (TypeError,ValueError):
+        raise HTTPException(422,"Period start and end must be ISO-8601 timestamps.")
+    if start_dt.tzinfo is None or end_dt.tzinfo is None or end_dt<start_dt:
+        raise HTTPException(422,"Reconciliation period must be timezone-aware and end after it starts.")
+    if not isinstance(opening,int) or isinstance(opening,bool) or not isinstance(closing,int) or isinstance(closing,bool):
+        raise HTTPException(422,"Opening and statement closing balances must be integer minor currency units.")
+    if payload.get("confirm_owner_reconciliation") is not True:
+        raise HTTPException(422,"Owner confirmation is required to record a reconciliation.")
+    movement=runtime.finance.calculate_ledger_movement(business_id,currency,period_start,period_end)
+    expected=opening+movement
+    difference=closing-expected
+    record={
+        "id":str(uuid4()),"business_id":business_id,"currency":currency,
+        "period_start":period_start,"period_end":period_end,
+        "opening_balance_minor":opening,"statement_closing_minor":closing,
+        "ledger_movement_minor":movement,"expected_closing_minor":expected,
+        "difference_minor":difference,"status":"balanced" if difference==0 else "discrepancy",
+        "created_at":datetime.now(timezone.utc).isoformat(),
+    }
+    runtime.finance.create_reconciliation(record)
+    return {**record,"bank_connection_attempted":False,"funds_moved":False}
+
+
+@app.get("/finance/reconciliations")
+def list_finance_reconciliations(business_id:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if business_id and business_id not in ("physical-agency","physical-brand","digital-products"):
+        raise HTTPException(422,"Unknown business unit.")
+    records=runtime.finance.list_reconciliations(business_id)
+    return {"count":len(records),"reconciliations":records,"bank_connection_attempted":False}
+
+
 @app.get("/usage/model")
 def model_usage(runtime=Depends(get_runtime),owner=Depends(_owner)):return runtime.usage.summary()
 
