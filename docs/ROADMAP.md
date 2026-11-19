@@ -42,10 +42,10 @@ These are CI/build checks, not a live production deployment.
 - [x] Owner review of generated deliverables with explicit approve/reject rationale and evaluation recording.
 - [x] CEO readiness advancement, separate owner-controlled queue admission, and explicit worker start/stop/single-task controls. Worker start and queue admission fail closed unless a confirmed zero-cost provider is eligible.
 - [ ] Finance reconciliation, integration management, shared-memory review, and full failure-recovery controls still need dedicated owner-console workflows.
-- [ ] Live preview acceptance is still blocked by Vercel SSO: the deployment is READY, but unauthenticated requests to `/health`, `/ready`, and `/owner` redirect to the Vercel login page. The preview runtime itself has not been smoke-tested.
+- [ ] Live preview acceptance is blocked by deployment routing and Vercel SSO. Unauthenticated `/health`, `/ready`, and `/owner` requests redirect to Vercel login. The checked-in `vercel.json` rewrites all paths to the existing Railway production AIOS host, and `pyproject.toml` still identifies `src.ai_os.api:app` as the Vercel entrypoint. This preview must not be treated as an OpenCompany staging runtime. No production configuration was changed.
 - [ ] The complete operating-company requirements and acceptance gates are documented in [OPENCOMPANY_OPERATING_COMPANY_SPEC.md](OPENCOMPANY_OPERATING_COMPANY_SPEC.md).
 
-On commit `926f2b3881b23841c6781597063cdf7c4e850fad`:
+On commit `af4894d41d6fb78615266feb72f4aaed1ab22465`:
 - **GitHub Actions full suite: 210 passed, 1 warning.**
 - **OpenCompany core tests: 18 passed.**
 - **Vercel prebuilt build-validation workflow: 210 passed, 1 warning.**
