@@ -241,6 +241,10 @@ class FinanceRepository(SharedRepository):
               statement_closing_minor INTEGER NOT NULL,ledger_movement_minor INTEGER NOT NULL,
               expected_closing_minor INTEGER NOT NULL,difference_minor INTEGER NOT NULL,
               status TEXT NOT NULL,created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS opencompany_finance_budget_events(
+              id TEXT PRIMARY KEY,business_id TEXT NOT NULL,currency TEXT NOT NULL,
+              previous_limit_minor INTEGER,new_limit_minor INTEGER NOT NULL,
+              rationale TEXT NOT NULL,created_at TEXT NOT NULL);
             """)
             db.commit()
 
@@ -279,16 +283,34 @@ class FinanceRepository(SharedRepository):
                 rows=self._db.execute("SELECT id FROM opencompany_finance_entries ORDER BY rowid").fetchall()
         return [self.get_entry(row["id"]) for row in rows]
 
-    def set_budget(self,business_id,currency,limit_minor):
+    def set_budget(self,business_id,currency,limit_minor,rationale):
         now=datetime.now(timezone.utc).isoformat()
         with self._lock:
+            previous=self._db.execute(
+                "SELECT monthly_expense_limit_minor FROM opencompany_finance_budgets WHERE business_id=? AND currency=?",
+                (business_id,currency),
+            ).fetchone()
+            previous_limit=int(previous["monthly_expense_limit_minor"]) if previous else None
             self._db.execute(
                 "INSERT INTO opencompany_finance_budgets VALUES(?,?,?,?) "
                 "ON CONFLICT(business_id,currency) DO UPDATE SET monthly_expense_limit_minor=excluded.monthly_expense_limit_minor,updated_at=excluded.updated_at",
                 (business_id,currency,limit_minor,now),
             )
+            self._db.execute(
+                "INSERT INTO opencompany_finance_budget_events VALUES(?,?,?,?,?,?,?)",
+                (str(uuid4()),business_id,currency,previous_limit,limit_minor,rationale[:1200],now),
+            )
             self._db.commit()
-        return {"business_id":business_id,"currency":currency,"monthly_expense_limit_minor":limit_minor,"updated_at":now}
+        return {"business_id":business_id,"currency":currency,"previous_limit_minor":previous_limit,
+                "monthly_expense_limit_minor":limit_minor,"rationale":rationale[:1200],"updated_at":now}
+
+    def list_budget_events(self,business_id=None):
+        with self._lock:
+            if business_id:
+                rows=self._db.execute("SELECT * FROM opencompany_finance_budget_events WHERE business_id=? ORDER BY created_at DESC",(business_id,)).fetchall()
+            else:
+                rows=self._db.execute("SELECT * FROM opencompany_finance_budget_events ORDER BY created_at DESC").fetchall()
+        return [dict(row) for row in rows]
 
     def list_budgets(self,business_id=None):
         with self._lock:
