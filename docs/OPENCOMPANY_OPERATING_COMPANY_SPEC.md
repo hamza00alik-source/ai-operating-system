@@ -189,3 +189,71 @@ The company-level acceptance gate requires evidence of all of the following in a
 The current branch already contains useful foundations, but its roadmap still identifies major gaps: full CEO execution loop, parallel scheduling, workflow artifact aggregation, durable execution recovery, lease renewal, multi-worker support, source-attributed knowledge, shared memory, evaluations, live provider validation, verified external integrations, product/supplier/order/fulfillment workflows, payment-status verification, and production hosting/security/backup acceptance.
 
 The owner HTML route in `src/opencompany_app/api.py` now includes owner sign-in, company refresh, workforce provisioning/state changes, business-scoped draft work creation, department visibility, worker/queue status, model usage, finance-ledger visibility, task workflow details, prerequisite/dependent and deliverable inspection, specialist-team proposal creation, owner approve/reject decisions, deliverable review, CEO readiness advancement, queue admission, explicit worker start/stop/single-task controls, owner-written business memory with source attribution, and read-only views of business-scoped integration and credential references. Worker prompts now include only the current business unit's owner-written memory and completed prerequisite deliverables; manager roles receive synthesis guidance. Readiness, queue admission, and execution reject unfinished or cross-business prerequisites. The GitHub Actions full suite passed on commit `f9515db0d8618e47aade3c6dca191d951a94f992` (213 tests) and OpenCompany core tests passed (18 tests). The Vercel prebuilt-validation workflow completed successfully and its `Test AIOS` step passed 213 tests, but its `Build Vercel output (no deployment)` step was skipped; it is not evidence of a Vercel build. Live runtime acceptance is still outstanding. The Vercel preview is READY but unauthenticated routes redirect to Vercel SSO; additionally, the checked-in `vercel.json` rewrites all routes to the existing Railway production AIOS host and `pyproject.toml` still declares `src.ai_os.api:app` as the Vercel entrypoint. The preview is therefore not an isolated OpenCompany staging runtime and must not be used to validate OpenCompany routes. No production configuration was changed. This console is still incomplete: full finance reconciliation, integration registration/permission review, shared-memory search/history/review controls, comprehensive failure recovery, and richer agent workspaces remain outstanding. The separate worker is single-instance and opt-in. The worker does not create customer-facing or financial side effects without separate owner approval. These limits must remain explicit until the corresponding functionality is implemented and verified.
+
+
+## 12. Implementation snapshot — 19 November 2026
+
+The following increments are implemented on the draft OpenCompany PR branch and
+verified by GitHub Actions. They are not evidence that the full company-level
+acceptance gate in section 11 has been met.
+
+### Orchestration
+- A bounded owner-triggered CEO coordination cycle can optionally draft an
+  executive plan, request manager delegation proposals, and advance eligible
+  work. It reports each phase and does not queue or execute work.
+- Owner approval remains required before delegation materialization and queue
+  admission. Parallel scheduling, workflow-level artifact aggregation,
+  cancellation, quality-review automation, and complete retry/recovery remain
+  outstanding.
+
+### Memory
+- Owner-written business memory is persisted with revisions and source
+  references, and worker prompts receive only memory for the current business
+  unit.
+- The owner console can inspect history and deactivate a memory while retaining
+  historical versions. Agent-written memory remains disabled.
+- Semantic retrieval, retention/expiry policies, and more granular access
+  review remain outstanding.
+
+### Finance
+- Owner-controlled monthly expense thresholds are stored separately by business
+  unit and currency. Each budget change records the previous and new limit,
+  timestamp, and owner rationale in append-only history.
+- Monthly status reports ledger-recorded expenses, revenue, net movement, and
+  remaining threshold. A threshold is not payment authorization and does not
+  block external spending because no spending executor exists.
+- Reconciliation compares owner-entered opening and statement closing balances
+  against ledger movement, stores the result, and marks balanced or discrepancy.
+  It does not connect to a bank or independently verify the statement.
+- Bank/payment-status adapters, invoice and payout matching, fees/refunds/COGS,
+  and verified cash/profit reporting remain outstanding.
+
+### Integrations
+- Business-unit-scoped integration registrations require an existing credential
+  reference and explicit permission list. Owner approve/reject decisions are
+  recorded in the integration event history.
+- Approved registrations remain `approved_pending_connection`. No API adapter
+  is activated, no external request is made, and no credential is exposed by
+  the registry.
+
+### Isolated staging
+- Added `Dockerfile.opencompany`, `compose.staging.yml`,
+  `.env.staging.example`, and [OPENCOMPANY_STAGING.md](OPENCOMPANY_STAGING.md).
+- The staging container has a dedicated persistent volume, separate staging
+  secrets, and worker execution disabled by default. A GitHub Actions smoke
+  workflow builds and runs it, verifies readiness and owner-only access, and
+  verifies that a work item persists across a container restart.
+- GitHub Actions passed on commit
+  `6d52e325042515d63eb9b18be82f431932b0c9d7`: 217 full-suite tests, 18 core
+  tests, and the isolated-container smoke workflow.
+- This is a reproducible local/CI staging target, not a hosted staging service.
+  A hosted environment still needs a separate persistent service and volume,
+  HTTPS, private secret provisioning, backups/restore, monitoring, and an
+  owner-approved hosting/cost decision.
+- The existing Vercel configuration still routes to the legacy Railway AIOS
+  service and must not be used as OpenCompany staging. It was deliberately not
+  changed to avoid modifying production routing.
+
+No provider credentials were configured, no live model inference was run, no
+worker was enabled, no bank or marketplace connection was made, and no customer
+or financial external action was performed. The PR remains draft and unmerged.
