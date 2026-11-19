@@ -700,6 +700,139 @@ def review_business_integration(business_id:str,integration_id:str,payload:dict,
     return result
 
 
+@app.post("/business-units/{business_id}/counterparties")
+def create_business_counterparty(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_record") is not True:
+        raise HTTPException(422,"Owner confirmation is required to create a counterparty.")
+    kind=str(payload.get("kind",""))
+    name=str(payload.get("name","")).strip()
+    country=str(payload.get("country","")).strip()
+    reference=str(payload.get("reference","")).strip()
+    if kind not in ("supplier","customer") or not name or not country:
+        raise HTTPException(422,"Counterparty kind, name, and country are required.")
+    record={
+        "id":str(uuid4()),"business_id":business_id,"kind":kind,
+        "name":name[:180],"country":country[:80],"reference":reference[:300],
+        "status":"active","created_at":datetime.now(timezone.utc).isoformat(),
+    }
+    runtime.business_ops.create_counterparty(record)
+    return {**record,"external_contact_attempted":False}
+
+
+@app.get("/business-units/{business_id}/counterparties")
+def list_business_counterparties(business_id:str,kind:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if kind and kind not in ("supplier","customer"):
+        raise HTTPException(422,"Counterparty kind must be supplier or customer.")
+    records=runtime.business_ops.list_counterparties(business_id,kind)
+    return {"count":len(records),"counterparties":records,"external_contact_attempted":False}
+
+
+@app.post("/business-units/{business_id}/products")
+def create_business_product(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_product") is not True:
+        raise HTTPException(422,"Owner confirmation is required to create a product record.")
+    sku=str(payload.get("sku","")).strip()
+    name=str(payload.get("name","")).strip()
+    description=str(payload.get("description","")).strip()
+    currency=str(payload.get("currency","")).upper()
+    price=payload.get("unit_price_minor")
+    supplier_id=payload.get("supplier_id")
+    if not sku or not name or not description or len(currency)!=3 or not currency.isalpha():
+        raise HTTPException(422,"SKU, name, description, and three-letter currency are required.")
+    if not isinstance(price,int) or isinstance(price,bool) or price<0:
+        raise HTTPException(422,"Unit price must be a non-negative integer in minor currency units.")
+    if supplier_id:
+        supplier=runtime.business_ops.get_counterparty(business_id,supplier_id)
+        if not supplier or supplier["kind"]!="supplier" or supplier["status"]!="active":
+            raise HTTPException(422,"Supplier must be an active supplier in the same business unit.")
+    now=datetime.now(timezone.utc).isoformat()
+    record={
+        "id":str(uuid4()),"business_id":business_id,"sku":sku[:100],
+        "name":name[:180],"description":description[:3000],
+        "unit_price_minor":price,"currency":currency,
+        "supplier_id":str(supplier_id) if supplier_id else None,
+        "status":"draft","created_at":now,"updated_at":now,
+    }
+    try:
+        runtime.business_ops.create_product(record)
+    except Exception as exc:
+        if "UNIQUE" in str(exc).upper():
+            raise HTTPException(409,"A product with this SKU already exists in this business unit.") from exc
+        raise
+    return {**record,"published_externally":False,"inventory_reserved":False}
+
+
+@app.get("/business-units/{business_id}/products")
+def list_business_products(business_id:str,status:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if status and status not in ("draft","active","archived"):
+        raise HTTPException(422,"Unknown product status.")
+    records=runtime.business_ops.list_products(business_id,status)
+    return {"count":len(records),"products":records,"published_externally":False}
+
+
+@app.post("/business-units/{business_id}/products/{product_id}/activate")
+def activate_business_product(business_id:str,product_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_decision") is not True:
+        raise HTTPException(422,"Owner confirmation is required to activate a product.")
+    rationale=str(payload.get("rationale","")).strip()
+    if not rationale:raise HTTPException(422,"A rationale is required to activate a product.")
+    try:
+        result=runtime.business_ops.activate_product(business_id,product_id,rationale)
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from exc
+    if result is None:raise HTTPException(404,"Product not found in this business unit.")
+    return result
+
+
+@app.post("/business-units/{business_id}/orders")
+def create_business_order(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_order") is not True:
+        raise HTTPException(422,"Owner confirmation is required to create an internal draft order.")
+    customer_id=payload.get("customer_id")
+    currency=str(payload.get("currency","")).upper()
+    items=payload.get("items")
+    if not customer_id or len(currency)!=3 or not currency.isalpha() or not isinstance(items,list):
+        raise HTTPException(422,"Customer, three-letter currency, and order items are required.")
+    try:
+        result=runtime.business_ops.create_order(business_id,customer_id,currency,items)
+    except (ValueError,TypeError,KeyError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return result
+
+
+@app.get("/business-units/{business_id}/orders")
+def list_business_orders(business_id:str,status:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    records=runtime.business_ops.list_orders(business_id,status)
+    return {"count":len(records),"orders":records,"external_customer_contact":False}
+
+
+@app.post("/business-units/{business_id}/orders/{order_id}/transition")
+def transition_business_order(business_id:str,order_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_decision") is not True:
+        raise HTTPException(422,"Owner confirmation is required for an order state change.")
+    target=str(payload.get("target_status",""))
+    rationale=str(payload.get("rationale","")).strip()
+    evidence=str(payload.get("evidence_reference","")).strip()
+    if not rationale:raise HTTPException(422,"A rationale is required for an order state change.")
+    if target=="payment_verified_owner_attested" and payload.get("confirm_payment_verification") is not True:
+        raise HTTPException(422,"Explicit owner attestation is required to mark payment status as verified.")
+    try:
+        result=runtime.business_ops.transition_order(business_id,order_id,target,rationale,evidence)
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from exc
+    if result is None:raise HTTPException(404,"Order not found in this business unit.")
+    return {**result,"payment_status_independently_verified":False,
+            "external_customer_contact":False,"funds_moved":False,"fulfillment_executed":False}
+
+
 @app.post("/business-units/{business_id}/memory")
 def save_business_memory(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
     business_id=_business_id(business_id)
