@@ -38,32 +38,36 @@ def owner_client(tmp_path, monkeypatch):
 def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_headers():
     response = client.get("/owner")
     assert response.status_code == 200
-    assert "OpenCompany Owner Console" in response.text
+    assert "OpenCompany · Owner Control Center" in response.text
+    assert "Owner sign in" in response.text
+    assert 'id="login-form"' in response.text
+    assert 'id="owner-key"' in response.text
+    assert 'id="dashboard"' in response.text
+    assert 'id="refresh"' in response.text
+    assert 'id="bootstrap-ceo"' in response.text
+    assert 'id="bootstrap-managers"' in response.text
+    assert 'id="bootstrap-specialists"' in response.text
+    assert 'id="task-form"' in response.text
+    assert 'id="task-business"' in response.text
+    assert 'id="task-department"' in response.text
+    assert 'id="worker-status"' in response.text
+    assert 'id="usage"' in response.text
+    assert 'id="finance"' in response.text
+    assert 'id="departments"' in response.text
+    assert 'api("/executive/orchestration/status")' in response.text
+    assert 'api("/workers/service-status")' in response.text
+    assert 'api("/usage/model")' in response.text
+    assert 'api("/finance/entries")' in response.text
+    assert "Create draft work item" in response.text
+    assert "No execution was started" in response.text
+    assert "No paid fallback" in response.text
+    assert "No automatic customer contact, publishing or payments" in response.text
+    assert "textContent" in response.text
     assert "sessionStorage" not in response.text
-    assert "session storage only" not in response.text
-    assert "provision-executive" in response.text
-    assert "provision-specialists" in response.text
-    assert "Specialist roles" in response.text
-    assert "View draft" in response.text
-    assert "Approve draft" in response.text
-    assert "Request revision" in response.text
-    assert "Workflow details" in response.text
-    assert 'id="executive-business"' in response.text
-    assert 'id="business-filter"' in response.text
-    assert "Retry failed task" in response.text
-    assert "Cancel task" in response.text
-    assert 'request("/work-items/"+w.id+"/workflow")' in response.text
-    assert "AI usage &amp; cost ledger" in response.text or "AI usage & cost ledger" in response.text
-    assert "loadModelUsage" in response.text
-    assert 'id="unorouter-discover"' in response.text
-    assert 'id="unorouter-model"' in response.text
-    assert "automatic rotation across confirmed-free models" in response.text
-    assert 'id="unorouter-model"' in response.text
-    assert "discover all free models" in response.text.lower()
-    assert "payload.detail" in response.text
-    assert 'id="github-evolution-token"' in response.text
-    assert "draft pull requests only" in response.text
-    assert "loadGitHubEvolutionSettings" in response.text
+    assert "localStorage" not in response.text
+    assert "OPENCOMPANY_OWNER_API_KEY" not in response.text
+    assert "onclick=" not in response.text
+    assert "@media(max-width:560px)" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
@@ -77,8 +81,6 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert " style=" not in response.text
     assert "<style nonce=" in response.text
     assert response.headers["x-frame-options"] == "DENY"
-
-
 
 def test_health_reports_owner_authenticated_mode():
     response = client.get("/health")
