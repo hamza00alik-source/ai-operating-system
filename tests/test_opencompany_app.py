@@ -2459,3 +2459,90 @@ def test_ceo_coordination_cycle_requires_both_plan_title_and_objective(owner_cli
         json={"title": "Incomplete request"},
     )
     assert result.status_code == 422
+
+
+def test_business_unit_product_supplier_customer_and_order_workflow_is_internal_and_isolated(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    supplier = owner_client.post(
+        "/business-units/physical-agency/counterparties", headers=headers,
+        json={"kind": "supplier", "name": "Synthetic Supplier", "country": "Pakistan",
+              "reference": "supplier-test-record", "confirm_owner_record": True},
+    )
+    customer = owner_client.post(
+        "/business-units/physical-agency/counterparties", headers=headers,
+        json={"kind": "customer", "name": "Synthetic Buyer", "country": "United Kingdom",
+              "reference": "buyer-test-record", "confirm_owner_record": True},
+    )
+    assert supplier.status_code == 200 and customer.status_code == 200
+
+    product = owner_client.post(
+        "/business-units/physical-agency/products", headers=headers,
+        json={"sku": "SALT-TEST-01", "name": "Test Salt Pack",
+              "description": "Synthetic test product record.", "unit_price_minor": 2500,
+              "currency": "USD", "supplier_id": supplier.json()["id"],
+              "confirm_owner_product": True},
+    )
+    assert product.status_code == 200
+    assert product.json()["status"] == "draft"
+    assert product.json()["published_externally"] is False
+    product_id = product.json()["id"]
+
+    not_active = owner_client.post(
+        "/business-units/physical-agency/orders", headers=headers,
+        json={"customer_id": customer.json()["id"], "currency": "USD",
+              "items": [{"product_id": product_id, "quantity": 2}],
+              "confirm_owner_order": True},
+    )
+    assert not_active.status_code == 422
+
+    activated = owner_client.post(
+        f"/business-units/physical-agency/products/{product_id}/activate",
+        headers=headers,
+        json={"confirm_owner_decision": True, "rationale": "Approved for internal order drafting."},
+    )
+    assert activated.status_code == 200
+    assert activated.json()["published_externally"] is False
+
+    order = owner_client.post(
+        "/business-units/physical-agency/orders", headers=headers,
+        json={"customer_id": customer.json()["id"], "currency": "USD",
+              "items": [{"product_id": product_id, "quantity": 2}],
+              "confirm_owner_order": True},
+    )
+    assert order.status_code == 200
+    body = order.json()
+    assert body["total_minor"] == 5000
+    assert body["status"] == "draft"
+    assert body["customer_contacted"] is False
+    order_id = body["id"]
+
+    transitions = [
+        ("owner_approved", {"confirm_owner_decision": True, "rationale": "Owner approved internal order record."}),
+        ("awaiting_payment_verification", {"confirm_owner_decision": True, "rationale": "Awaiting evidence review."}),
+        ("payment_verified_owner_attested", {"confirm_owner_decision": True, "confirm_payment_verification": True,
+                                              "rationale": "Owner reviewed supplied receipt reference.",
+                                              "evidence_reference": "synthetic-receipt-001"}),
+        ("fulfilling", {"confirm_owner_decision": True, "rationale": "Internal fulfillment coordination started."}),
+        ("fulfilled", {"confirm_owner_decision": True, "rationale": "Owner recorded fulfillment completion."}),
+    ]
+    for target, extra in transitions:
+        result = owner_client.post(
+            f"/business-units/physical-agency/orders/{order_id}/transition",
+            headers=headers, json={"target_status": target, **extra},
+        )
+        assert result.status_code == 200
+        assert result.json()["status"] == target
+        assert result.json()["external_customer_contact"] is False
+        assert result.json()["funds_moved"] is False
+        assert result.json()["fulfillment_executed"] is False
+    assert result.json()["payment_status_independently_verified"] is False
+
+    isolated = owner_client.get("/business-units/physical-brand/orders", headers=headers)
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    cross_business = owner_client.post(
+        "/business-units/digital-products/orders", headers=headers,
+        json={"customer_id": customer.json()["id"], "currency": "USD",
+              "items": [{"product_id": product_id, "quantity": 1}],
+              "confirm_owner_order": True},
+    )
+    assert cross_business.status_code == 422
