@@ -58,13 +58,13 @@ These are CI/build checks, not a live production deployment.
 - [ ] Live preview acceptance remains blocked by the legacy Vercel configuration: `vercel.json` rewrites all paths to the existing Railway production AIOS host, and `pyproject.toml` still identifies `src.ai_os.api:app` as the Vercel entrypoint. This preview must not be treated as OpenCompany staging. No production configuration was changed.
 - [ ] The complete operating-company requirements and acceptance gates are documented in [OPENCOMPANY_OPERATING_COMPANY_SPEC.md](OPENCOMPANY_OPERATING_COMPANY_SPEC.md).
 
-On commit `2eddb28c12da0d00e3355f5ea76c8577554a1a16`:
+On commit `73abfcfaae0a546aa747a7ac329129527f851e17`:
 - **GitHub Actions full suite: 218 passed, 1 warning.**
 - **OpenCompany core tests: 18 passed.**
 - **OpenCompany isolated staging smoke test: passed.** Docker image built; `/health`, `/ready`, owner console and protected API checks passed; a draft work item survived container restart on the dedicated volume.
 - **Vercel prebuilt validation: test step passed; output build/deployment step was skipped.** This is not a Vercel deployment.
 - CI warnings include GitHub Actions Node.js action deprecation notices; no test failures were reported.
-- GitHub's separate `ci/circleci: test` status currently reports failure on the latest PR head. Its CircleCI job page is inaccessible through the connected GitHub integration, so the cause remains unverified and this external check is unresolved.
+- GitHub's separate `ci/circleci: test` status reported a failure on an earlier PR head; it is pending on the latest head. Its CircleCI job page is inaccessible through the connected GitHub integration, so the earlier failure cause remains unverified.
 
 ## Completed and covered by repository tests
 
