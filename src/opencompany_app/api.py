@@ -389,12 +389,26 @@ async function refreshBusinessContext(){
  if(!memory.memories.length)memories.append(node("p","No saved memories for this business unit.","muted"));
  memory.memories.forEach(item=>{
   const card=node("div",undefined,"rowitem");
-  const left=node("div"),title=node("strong",item.memory_key+" · "+item.category),body=node("p",item.content,"muted"),source=node("p","Source: "+item.source,"muted");
-  left.append(title,body,source);card.append(left);memories.append(card);
+  const left=node("div"),title=node("strong",item.memory_key+" · "+item.category),body=node("p",item.content,"muted"),source=node("p","Source: "+item.source+" · revision "+item.revision,"muted");
+  left.append(title,body,source);
+  const actions=node("div");const historyButton=node("button","History"),forgetButton=node("button","Forget");
+  historyButton.addEventListener("click",async()=>{try{const history=await api("/business-units/"+encodeURIComponent(business)+"/memory/"+encodeURIComponent(item.memory_key)+"/history");const details=node("pre",JSON.stringify(history.history,null,2),"muted");card.append(details);}catch(e){notice(e.message,true);}});
+  forgetButton.addEventListener("click",async()=>{if(!window.confirm("Deactivate this memory for "+business+"? Historical versions remain in the audit history."))return;try{await api("/business-units/"+encodeURIComponent(business)+"/memory/"+encodeURIComponent(item.memory_key),{method:"DELETE",body:{confirm_owner_forget:true}});notice("Memory deactivated. Historical versions are retained.");await refreshBusinessContext();}catch(e){notice(e.message,true);}});
+  actions.append(historyButton,forgetButton);card.append(left,actions);memories.append(card);
  });
  const registry=el("integration-list");registry.replaceChildren();
  if(!integrations.integrations.length)registry.append(node("p","No integration registrations.","muted"));
- integrations.integrations.forEach(item=>registry.append(node("div",item.display_name+" · "+item.provider_key+" · "+item.status+" · permissions: "+(item.permissions||[]).join(", "),"rowitem")));
+ integrations.integrations.forEach(item=>{
+  const card=node("div",undefined,"rowitem");
+  const left=node("div"),title=node("strong",item.display_name+" · "+item.provider_key),meta=node("p",item.status+" · permissions: "+(item.permissions||[]).join(", ")+" · credential "+(item.credential_available?"available":"missing"),"muted");
+  left.append(title,meta);const actions=node("div");
+  const eventsButton=node("button","History");eventsButton.addEventListener("click",async()=>{try{const result=await api("/business-units/"+encodeURIComponent(business)+"/integrations/"+encodeURIComponent(item.integration_id)+"/events");card.append(node("pre",JSON.stringify(result.events,null,2),"muted"));}catch(e){notice(e.message,true);}});
+  actions.append(eventsButton);
+  if(item.status==="pending_review"){
+   for(const decision of ["approve","reject"]){const button=node("button",decision==="approve"?"Approve":"Reject");button.addEventListener("click",async()=>{const rationale=window.prompt("Reason for "+decision+"ing this integration permission request:");if(!rationale||!rationale.trim())return;try{const result=await api("/business-units/"+encodeURIComponent(business)+"/integrations/"+encodeURIComponent(item.integration_id)+"/review",{method:"POST",body:{decision,rationale,confirm_owner_decision:true}});notice("Integration "+result.status+". External connection remains disabled.");await refreshBusinessContext();}catch(e){notice(e.message,true);}});actions.append(button);}
+  }
+  card.append(left,actions);registry.append(card);
+ });
  const refs=el("credential-list");refs.replaceChildren();
  if(!credentials.credentials.length)refs.append(node("p","No stored credential references.","muted"));
  credentials.credentials.forEach(item=>refs.append(node("div",item.credential_key+" · stored "+(item.created_at||"date unavailable"),"rowitem")));
