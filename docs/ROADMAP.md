@@ -34,11 +34,23 @@ branch passed the full GitHub Actions suite on commit
 OpenCompany core tests passed, and Vercel prebuilt build validation passed.
 These are CI/build checks, not a live production deployment.
 
-## Recently implemented — runtime acceptance pending
+## Recently implemented — CI verified, live runtime acceptance pending
 
-- [ ] Initial mobile-friendly owner control center: secure owner sign-in, company refresh, workforce provisioning and state controls, draft work creation, department visibility, worker/queue status, model usage, and finance-ledger visibility. The interface is committed but has not yet been runtime-verified.
-- [ ] Full dashboard workflows for delegation approvals, task review, queue admission, finance reconciliation, integration management, memory review, and failure recovery remain outstanding.
+- [x] Mobile-friendly owner control center: secure owner sign-in, company refresh, workforce provisioning and state controls, draft work creation, department visibility, worker/queue status, model usage, and finance-ledger visibility.
+- [x] Task workflow detail view with prerequisite/dependent visibility and deliverable inspection.
+- [x] Persisted specialist-team proposal creation, owner approval/rejection, and child-task materialization through existing guarded APIs.
+- [x] Owner review of generated deliverables with explicit approve/reject rationale and evaluation recording.
+- [x] CEO readiness advancement, separate owner-controlled queue admission, and explicit worker start/stop/single-task controls. Worker start and queue admission fail closed unless a confirmed zero-cost provider is eligible.
+- [ ] Finance reconciliation, integration management, shared-memory review, and full failure-recovery controls still need dedicated owner-console workflows.
+- [ ] Live preview acceptance is still blocked by Vercel SSO: the deployment is READY, but unauthenticated requests to `/health`, `/ready`, and `/owner` redirect to the Vercel login page. The preview runtime itself has not been smoke-tested.
 - [ ] The complete operating-company requirements and acceptance gates are documented in [OPENCOMPANY_OPERATING_COMPANY_SPEC.md](OPENCOMPANY_OPERATING_COMPANY_SPEC.md).
+
+On commit `926f2b3881b23841c6781597063cdf7c4e850fad`:
+- **GitHub Actions full suite: 210 passed, 1 warning.**
+- **OpenCompany core tests: 18 passed.**
+- **Vercel prebuilt build-validation workflow: 210 passed, 1 warning.**
+- **Vercel preview deployment: READY**, but protected by Vercel SSO; this is not production deployment or live application acceptance.
+- GitHub's separate CircleCI status remained pending and was not independently dispatched from this session.
 
 ## Completed and covered by repository tests
 
@@ -82,8 +94,8 @@ These are CI/build checks, not a live production deployment.
 ### Developer experience and verification
 - [x] Separate `opencompany-api` and `opencompany-worker` launch commands.
 - [x] OpenCompany quick-start and worker deployment documentation.
-- [x] GitHub Actions full test suite: 208 passed, 1 warning on commit `7b78fbc1d715f3c001bee69ed2b5935f116d2179`.
-- [x] OpenCompany core tests passed on that commit.
+- [x] GitHub Actions full test suite: 210 passed, 1 warning on commit `926f2b3881b23841c6781597063cdf7c4e850fad`.
+- [x] OpenCompany core tests: 18 passed on that commit.
 - [x] Vercel prebuilt build validation passed; this is not a production deployment.
 
 ## Remaining engineering work
