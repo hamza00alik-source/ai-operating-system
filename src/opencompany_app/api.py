@@ -118,13 +118,147 @@ def ready():
 @app.get("/owner",response_class=HTMLResponse)
 def owner_dashboard():
     nonce=secrets.token_urlsafe(18)
-    page=f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>OpenCompany Owner Console</title><style nonce="{nonce}">body{{font:16px system-ui;margin:2rem;max-width:1100px}}section{{padding:1rem;border:1px solid #bbb;margin:1rem 0}}button{{padding:.6rem}}</style></head><body>
-<h1>OpenCompany Owner Console</h1><section><h2>Executive & workforce</h2><button id="provision-executive">Provision executive</button><button id="provision-specialists">Provision specialists</button><h3>Specialist roles</h3><p>View draft · Approve draft · Request revision</p></section>
-<section><h2>Work items</h2><p>Workflow details · Retry failed task · Cancel task</p><div id="executive-business"></div><div id="business-filter"></div><p>AI usage &amp; cost ledger</p><button onclick="void(0)">Load usage</button></section>
-<section><h2>UnoRouter</h2><input id="unorouter-discover"><input id="unorouter-model"><p>automatic rotation across confirmed-free models · discover all free models</p></section>
-<section><h2>Code evolution</h2><input id="github-evolution-token"><p>draft pull requests only</p></section>
-<script nonce="{nonce}">async function request(path,options={{}}){{const response=await fetch(path,options);const payload=await response.json();if(!response.ok)throw new Error(payload.detail);return payload}}async function loadModelUsage(){{return request("/usage/model")}}async function loadGitHubEvolutionSettings(){{return request("/code-evolution/config-status")}}async function loadWorkItemWorkflow(w){{return request("/work-items/"+w.id+"/workflow")}}void loadModelUsage;void loadGitHubEvolutionSettings;void loadWorkItemWorkflow;</script></body></html>"""
+    page="""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>OpenCompany · Owner Control Center</title>
+<style nonce="__NONCE__">
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark}
+*{box-sizing:border-box}body{margin:0;background:Canvas;color:CanvasText}
+header{padding:22px max(18px,calc((100vw - 1180px)/2));border-bottom:1px solid #8885;display:flex;justify-content:space-between;gap:16px;align-items:center}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:1.55rem;margin:0}h2{font-size:1.08rem;margin:0 0 14px}h3{font-size:.95rem;margin:0 0 8px}
+.muted{opacity:.7;font-size:.88rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:16px 0}
+.card,section{border:1px solid #8885;border-radius:14px;padding:16px;background:Canvas}
+.metric{font-size:1.8rem;font-weight:700;display:block;margin-top:8px}
+.columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
+button,input,select,textarea{font:inherit;border:1px solid #8888;border-radius:8px;padding:9px;background:Canvas;color:CanvasText}
+button{cursor:pointer}button.primary{background:#2563eb;color:white;border-color:#2563eb}button:disabled{opacity:.5;cursor:not-allowed}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+form.inline{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}form.inline input,form.inline select{flex:1;min-width:130px}
+table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #8884;vertical-align:top}
+.scroll{overflow-x:auto}.pill{display:inline-block;border:1px solid #8888;border-radius:20px;padding:2px 8px;font-size:.78rem}
+.stack{display:grid;gap:8px}.rowitem{padding:9px 0;border-bottom:1px solid #8884;display:flex;justify-content:space-between;gap:10px;align-items:center}
+#login{max-width:420px;margin:12vh auto;padding:22px;border:1px solid #8885;border-radius:14px}
+#login form{display:grid;gap:12px}#login input{width:100%}
+#notice{padding:10px 12px;border-radius:9px;background:#8882;margin:12px 0;display:none}
+#dashboard[hidden],#login[hidden]{display:none!important}
+@media(max-width:560px){header{align-items:flex-start;flex-direction:column}main{padding:14px 10px 40px}.card,section{padding:13px}h1{font-size:1.3rem}}
+</style></head>
+<body>
+<header><div><h1>OpenCompany</h1><div class="muted">Owner control center · supervised company operations</div></div><button id="logout" hidden>Sign out</button></header>
+<main>
+<div id="notice" role="status" aria-live="polite"></div>
+<section id="login" hidden><h2>Owner sign in</h2><p class="muted">Use your private OpenCompany owner key. It is sent only to this server and is not saved in browser storage.</p>
+<form id="login-form"><input id="owner-key" type="password" autocomplete="current-password" placeholder="Owner API key" required><button class="primary" type="submit">Sign in</button></form></section>
+<div id="dashboard" hidden>
+<div class="actions"><button id="refresh" class="primary">Refresh company status</button><span class="muted" id="updated"></span></div>
+<div class="grid">
+<div class="card"><span class="muted">Provisioned agents</span><strong class="metric" id="metric-agents">—</strong><span class="muted" id="metric-active"></span></div>
+<div class="card"><span class="muted">Work items</span><strong class="metric" id="metric-work">—</strong><span class="muted" id="metric-work-detail"></span></div>
+<div class="card"><span class="muted">Queue</span><strong class="metric" id="metric-queue">—</strong><span class="muted" id="metric-queue-detail"></span></div>
+<div class="card"><span class="muted">Finance records</span><strong class="metric" id="metric-finance">—</strong><span class="muted">Ledger entries, not verified cash balance</span></div>
+</div>
+<div class="columns">
+<section><h2>Organization & workforce</h2><p class="muted">Role catalogue entries are templates; only provisioned profiles appear below. Activating a profile does not start a worker.</p>
+<div class="actions"><button id="bootstrap-ceo">Provision CEO</button><button id="bootstrap-managers">Provision department managers</button><button id="bootstrap-specialists">Provision 500 specialists</button></div>
+<div id="agents" class="stack"></div></section>
+<section><h2>Company objectives & work</h2><p class="muted">Create draft work. Planning, delegation, queue admission and execution remain separate owner-controlled steps.</p>
+<form id="task-form" class="stack"><input id="task-title" placeholder="Work item title" required maxlength="180">
+<textarea id="task-objective" placeholder="Objective and expected deliverable" required rows="3"></textarea>
+<select id="task-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
+<select id="task-department" required></select><button class="primary" type="submit">Create draft work item</button></form>
+<div id="tasks" class="stack"></div></section>
+<section><h2>Execution & resources</h2><div id="worker-status" class="stack"></div><div id="usage" class="stack"></div><p class="muted">No paid fallback. No automatic customer contact, publishing or payments.</p></section>
+<section><h2>Finance & business controls</h2><div id="finance" class="stack"></div><p class="muted">Finance entries are owner-recorded. This console does not move money or authorize spending.</p></section>
+<section><h2>Departments</h2><div id="departments" class="stack"></div></section>
+</div></div></main>
+<script nonce="__NONCE__">
+(()=> {
+"use strict";
+let csrfToken="";
+const el=id=>document.getElementById(id);
+function notice(message,isError=false){const n=el("notice");n.textContent=message;n.style.display="block";n.style.border=isError?"1px solid #dc2626":"1px solid #8885";}
+function clearNotice(){el("notice").style.display="none";}
+async function api(path,options={}){
+ const method=(options.method||"GET").toUpperCase();
+ const headers={"Accept":"application/json",...(options.headers||{})};
+ if(options.body!==undefined){headers["Content-Type"]="application/json";options.body=JSON.stringify(options.body);}
+ if(method!=="GET"&&csrfToken)headers["X-CSRF-Token"]=csrfToken;
+ const response=await fetch(path,{...options,method,headers,credentials:"same-origin"});
+ const raw=await response.text();let data={};try{data=raw?JSON.parse(raw):{};}catch(_){data={detail:raw||"Unexpected server response"};}
+ if(!response.ok)throw new Error(data.detail||("Request failed ("+response.status+")"));
+ return data;
+}
+function node(tag,text,className){const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(className)n.className=className;return n;}
+function setText(id,value){el(id).textContent=value===undefined||value===null?"—":String(value);}
+function showDashboard(authenticated){el("login").hidden=authenticated;el("dashboard").hidden=!authenticated;el("logout").hidden=!authenticated;}
+async function checkSession(){try{const s=await api("/auth/session");csrfToken=s.csrf_token||"";showDashboard(true);await refreshAll();}catch(_){showDashboard(false);}}
+async function signIn(event){event.preventDefault();clearNotice();try{const result=await api("/auth/session",{method:"POST",body:{api_key:el("owner-key").value}});csrfToken=result.csrf_token||"";el("owner-key").value="";showDashboard(true);notice("Signed in. Loading company status.");await refreshAll();}catch(e){notice(e.message,true);}}
+async function signOut(){try{await api("/auth/logout",{method:"POST",body:{}});}catch(_){}csrfToken="";showDashboard(false);notice("Signed out.");}
+async function refreshAll(){
+ clearNotice();
+ try{
+  const [agents,tasks,queue,workers,service,usage,finance,depts,orchestration]=await Promise.all([
+   api("/agents"),api("/work-items"),api("/workers/queue"),api("/workers/status"),api("/workers/service-status"),api("/usage/model"),api("/finance/entries"),api("/organization/departments"),api("/executive/orchestration/status")
+  ]);
+  renderAgents(agents.agents||[]);renderTasks(tasks.items||[]);renderDepartments(depts.departments||[]);
+  renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[]);
+  const aa=agents.agents||[],tt=tasks.items||[],fc=finance.entries||[],qc=queue.counts||{};
+  setText("metric-agents",aa.length);setText("metric-active",aa.filter(a=>a.state==="active").length+" active · "+aa.filter(a=>a.state==="paused").length+" paused");
+  setText("metric-work",tt.length);setText("metric-work-detail",tt.filter(x=>x.state!=="completed").length+" not completed");
+  setText("metric-queue",queue.total||0);setText("metric-queue-detail",Object.entries(qc).map(([k,v])=>k+": "+v).join(" · ")||"No queue records");
+  setText("metric-finance",fc.length);setText("updated","Updated "+new Date().toLocaleTimeString());
+ }catch(e){notice("Could not load all company data: "+e.message,true);}
+}
+function renderAgents(agents){
+ const root=el("agents");root.replaceChildren();
+ if(!agents.length){root.append(node("p","No profiles provisioned yet.","muted"));return;}
+ agents.slice(0,80).forEach(a=>{
+  const row=node("div",undefined,"rowitem"),left=node("div"),name=node("strong",a.title||a.name||a.role_key),meta=node("div",(a.department||"")+" · "+a.role_key,"muted");
+  left.append(name,meta);const right=node("div"),state=node("span",a.state,"pill"),btn=node("button",a.state==="active"?"Pause":a.state==="paused"?"Activate":"Activate");
+  btn.addEventListener("click",async()=>{btn.disabled=true;try{await api("/agents/"+encodeURIComponent(a.id)+"/state",{method:"POST",body:{expected_revision:a.revision,target_state:a.state==="active"?"paused":"active"}});await refreshAll();}catch(e){notice(e.message,true);btn.disabled=false;}});
+  right.append(state,btn);row.append(left,right);root.append(row);
+ });
+ if(agents.length>80)root.append(node("p","Showing first 80 of "+agents.length+" profiles. Use workforce APIs for the full catalogue.","muted"));
+}
+function renderTasks(items){
+ const root=el("tasks");root.replaceChildren();
+ if(!items.length){root.append(node("p","No work items yet.","muted"));return;}
+ items.slice().reverse().slice(0,30).forEach(item=>{
+  const row=node("div",undefined,"rowitem"),left=node("div"),title=node("strong",item.title),meta=node("div",(item.department||"")+" · "+(item.business_id||"")+" · "+(item.state||"draft"),"muted");
+  left.append(title,meta);const right=node("span",item.assigned_role_key||"Unassigned","pill");row.append(left,right);root.append(row);
+ });
+}
+function renderDepartments(items){
+ const root=el("departments");root.replaceChildren();el("task-department").replaceChildren();
+ items.forEach(d=>{const label=d.name||d.department;root.append(node("div",label+" · "+(d.department||""),"rowitem"));const o=document.createElement("option");o.value=d.department;o.textContent=label;el("task-department").append(o);});
+}
+function renderWorker(workers,service,queue,orchestration){
+ const root=el("worker-status");root.replaceChildren();
+ root.append(node("div","In-process fleet: "+(workers.running?"running":"stopped")+" · "+workers.execution_mode));
+ root.append(node("div","Dedicated service instances: "+((service.worker_instances||[]).length)+" · single-instance mode"));
+ root.append(node("div","Queue admission: owner-controlled · background loop: "+(workers.background_loop_enabled?"enabled":"disabled")));
+ root.append(node("div","Draft tasks ready for advancement: "+((orchestration.eligible_to_advance||[]).length)));
+ root.append(node("div","Blocked drafts: "+((orchestration.blocked_draft_items||[]).length)));
+}
+function renderUsage(usage){const root=el("usage");root.replaceChildren();root.append(node("h3","Model usage"));root.append(node("pre",JSON.stringify(usage,null,2),"muted"));}
+function renderFinance(entries){
+ const root=el("finance");root.replaceChildren();
+ if(!entries.length){root.append(node("p","No finance entries recorded.","muted"));return;}
+ entries.slice().reverse().slice(0,20).forEach(x=>root.append(node("div",(x.entry_type||"")+" · "+x.amount_minor+" "+x.currency+" · "+x.business_id,"rowitem")));
+}
+async function bootstrap(path){try{const r=await api(path,{method:"POST",body:{}});notice("Provisioning complete: "+(r.count??"done")+" profiles. They remain draft until activated.");await refreshAll();}catch(e){notice(e.message,true);}}
+async function createTask(event){event.preventDefault();try{const r=await api("/work-items",{method:"POST",body:{title:el("task-title").value,objective:el("task-objective").value,business_id:el("task-business").value,department:el("task-department").value}});el("task-form").reset();notice("Draft work item created: "+r.id+". No execution was started.");await refreshAll();}catch(e){notice(e.message,true);}}
+el("login-form").addEventListener("submit",signIn);el("logout").addEventListener("click",signOut);el("refresh").addEventListener("click",refreshAll);el("task-form").addEventListener("submit",createTask);
+el("bootstrap-ceo").addEventListener("click",()=>bootstrap("/agents/bootstrap-executive"));
+el("bootstrap-managers").addEventListener("click",()=>bootstrap("/agents/bootstrap"));
+el("bootstrap-specialists").addEventListener("click",()=>bootstrap("/agents/bootstrap-specialists"));
+checkSession();
+})();
+</script></body></html>""".replace("__NONCE__",nonce)
     return HTMLResponse(page)
 
 @app.post("/auth/session")
