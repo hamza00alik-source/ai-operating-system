@@ -2241,3 +2241,51 @@ def test_worker_service_status_is_owner_authenticated_and_reports_heartbeat(owne
     assert payload["worker_instances"][0]["worker_id"] == worker_id
     assert payload["worker_instances"][0]["processed_count"] == 3
     assert payload["worker_instances"][0]["stale"] is False
+
+
+def test_owner_cannot_mark_or_queue_parent_work_before_prerequisites_complete(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    specialist_id = uuid4()
+    role_key = "intelligence-research__market_researcher"
+    runtime.agents[role_key] = {
+        "id": str(specialist_id), "role_key": role_key, "title": "Market Researcher",
+        "kind": "specialist", "state": "active", "capabilities": ["research"],
+    }
+    prerequisite = WorkItem(
+        id=uuid4(), title="Unfinished research", objective="Collect source evidence.",
+        department="intelligence-research", state=TaskState.READY,
+        business_id="digital-products",
+    )
+    parent = WorkItem(
+        id=uuid4(), title="Management synthesis", objective="Synthesize the research.",
+        department="intelligence-research", state=TaskState.DRAFT,
+        business_id="digital-products", depends_on=(prerequisite.id,),
+        assigned_agent_id=specialist_id, assigned_role_key=role_key,
+    )
+    runtime.store.create_work_item(prerequisite)
+    runtime.store.create_work_item(parent)
+
+    transition = owner_client.post(
+        f"/work-items/{parent.id}/transition",
+        headers=headers,
+        json={"target_state": "ready"},
+    )
+    assert transition.status_code == 409
+    assert "prerequisite" in transition.json()["detail"].lower()
+
+    from dataclasses import replace
+    ready_parent = replace(parent, state=TaskState.READY)
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.force_ready", subject_type="work_item",
+        subject_id=str(parent.id), outcome="recorded", correlation_id=str(uuid4()),
+    )
+    runtime.store.save_work_item_with_audit(ready_parent, audit)
+    enqueue = owner_client.post(
+        f"/work-items/{parent.id}/enqueue",
+        headers=headers,
+    )
+    assert enqueue.status_code == 409
+    assert "prerequisite" in enqueue.json()["detail"].lower()
+    assert runtime.queue.counts().get("queued", 0) == 0
