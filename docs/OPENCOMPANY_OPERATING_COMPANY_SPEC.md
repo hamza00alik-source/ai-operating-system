@@ -252,7 +252,7 @@ acceptance gate in section 11 has been met.
   workflow builds and runs it, verifies readiness and owner-only access, and
   verifies that a work item persists across a container restart.
 - GitHub Actions passed on commit
-  `73abfcfaae0a546aa747a7ac329129527f851e17`: 218 full-suite tests, 18 core
+  `452e274d9437bc2367280ca0816c557818ac79f1`: 218 full-suite tests, 18 core
   tests, and the isolated-container smoke workflow.
 - This is a reproducible local/CI staging target, not a hosted staging service.
   A hosted environment still needs a separate persistent service and volume,
