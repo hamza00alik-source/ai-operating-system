@@ -71,6 +71,16 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert '"/business-units/"+encodeURIComponent(business)+"/integrations"' in response.text
     assert '"/business-units/"+encodeURIComponent(business)+"/credentials"' in response.text
     assert "Agent writes remain disabled" in response.text
+    assert 'id="ceo-cycle"' in response.text
+    assert 'id="budget-form"' in response.text
+    assert 'id="budget-rationale"' in response.text
+    assert 'id="reconciliation-form"' in response.text
+    assert 'id="reconciliation-list"' in response.text
+    assert 'id="integration-form"' in response.text
+    assert '"/finance/budgets"' in response.text
+    assert '"/finance/reconciliations"' in response.text
+    assert '"/finance/budgets/history"' in response.text
+    assert '"/integrations/"+encodeURIComponent(item.integration_id)+"/review"' in response.text
     assert 'id="advance-work"' in response.text
     assert 'id="worker-start"' in response.text
     assert 'id="worker-stop"' in response.text
