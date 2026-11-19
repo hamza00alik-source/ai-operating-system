@@ -433,6 +433,37 @@ class BusinessRepository(SharedRepository):
                                   (integration_id,)).fetchall()
         return [dict(row) for row in rows]
 
+    def review_integration(self,business_id,integration_id,decision,rationale):
+        now=datetime.now(timezone.utc).isoformat()
+        status="approved_pending_connection" if decision=="approve" else "rejected"
+        with self._lock:
+            row=self._db.execute(
+                "SELECT status,credential_key FROM opencompany_business_integrations WHERE business_id=? AND integration_id=?",
+                (business_id,integration_id),
+            ).fetchone()
+            if not row:
+                return None
+            if row["status"]!="pending_review":
+                raise ValueError("Only integrations pending review can receive an owner decision.")
+            if decision=="approve":
+                credential=self._db.execute(
+                    "SELECT 1 FROM opencompany_business_credentials WHERE business_id=? AND credential_key=?",
+                    (business_id,row["credential_key"]),
+                ).fetchone()
+                if not credential:
+                    raise ValueError("The business-unit credential must still exist before approval.")
+            self._db.execute(
+                "UPDATE opencompany_business_integrations SET status=? WHERE business_id=? AND integration_id=?",
+                (status,business_id,integration_id),
+            )
+            self._db.execute(
+                "INSERT INTO opencompany_business_integration_events VALUES(?,?,?,?,?)",
+                (str(uuid4()),integration_id,"owner_"+decision,rationale[:1200],now),
+            )
+            self._db.commit()
+        return {"integration_id":integration_id,"business_id":business_id,"status":status,
+                "decision":decision,"created_at":now,"external_connection_attempted":False}
+
     def save_memory(self,business_id,memory):
         now=datetime.now(timezone.utc).isoformat()
         with self._lock:
