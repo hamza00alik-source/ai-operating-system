@@ -55,6 +55,22 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert 'id="finance"' in response.text
     assert 'id="departments"' in response.text
     assert 'id="task-detail"' in response.text
+    assert 'id="memory-business"' in response.text
+    assert 'id="memory-form"' in response.text
+    assert 'id="memory-key"' in response.text
+    assert 'id="memory-category"' in response.text
+    assert 'id="memory-source"' in response.text
+    assert 'id="memory-content"' in response.text
+    assert 'id="memory-confirm"' in response.text
+    assert 'id="memory-list"' in response.text
+    assert 'id="integration-list"' in response.text
+    assert 'id="credential-list"' in response.text
+    assert "confirm_owner_write" in response.text
+    assert "refreshBusinessContext" in response.text
+    assert '"/business-units/"+encodeURIComponent(business)+"/memory"' in response.text
+    assert '"/business-units/"+encodeURIComponent(business)+"/integrations"' in response.text
+    assert '"/business-units/"+encodeURIComponent(business)+"/credentials"' in response.text
+    assert "Agent writes remain disabled" in response.text
     assert 'id="advance-work"' in response.text
     assert 'id="worker-start"' in response.text
     assert 'id="worker-stop"' in response.text
