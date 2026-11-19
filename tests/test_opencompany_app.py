@@ -77,6 +77,13 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert 'id="reconciliation-form"' in response.text
     assert 'id="reconciliation-list"' in response.text
     assert 'id="integration-form"' in response.text
+    assert 'id="ops-business"' in response.text
+    assert 'id="counterparty-form"' in response.text
+    assert 'id="product-form"' in response.text
+    assert 'id="order-form"' in response.text
+    assert 'id="product-list"' in response.text
+    assert 'id="order-list"' in response.text
+    assert "refreshBusinessOperations" in response.text
     assert '"/finance/budgets"' in response.text
     assert '"/finance/reconciliations"' in response.text
     assert '"/finance/budgets/history"' in response.text
