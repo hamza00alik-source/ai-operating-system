@@ -242,10 +242,10 @@ async function refreshAll(){
  clearNotice();
  try{
   const [agents,tasks,queue,workers,service,usage,finance,depts,orchestration]=await Promise.all([
-   api("/agents"),api("/work-items"),api("/workers/queue"),api("/workers/status"),api("/workers/service-status"),api("/usage/model"),api("/finance/entries"),api("/finance/budgets"),api("/finance/reconciliations"),api("/organization/departments"),api("/executive/orchestration/status")
+   api("/agents"),api("/work-items"),api("/workers/queue"),api("/workers/status"),api("/workers/service-status"),api("/usage/model"),api("/finance/entries"),api("/finance/budgets"),api("/finance/reconciliations"),api("/finance/budgets/history"),api("/organization/departments"),api("/executive/orchestration/status")
   ]);
   renderAgents(agents.agents||[]);renderTasks(tasks.items||[]);renderDepartments(depts.departments||[]);
-  renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[],budgets.budgets||[],reconciliations.reconciliations||[]);
+  renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[],budgets.budgets||[],reconciliations.reconciliations||[],budgetEvents.events||[]);
   await refreshBusinessContext();
   const aa=agents.agents||[],tt=tasks.items||[],fc=finance.entries||[],qc=queue.counts||{};
   setText("metric-agents",aa.length);setText("metric-active",aa.filter(a=>a.state==="active").length+" active · "+aa.filter(a=>a.state==="paused").length+" paused");
@@ -364,7 +364,7 @@ function renderWorker(workers,service,queue,orchestration){
  root.append(node("div","Blocked drafts: "+((orchestration.blocked_draft_items||[]).length)));
 }
 function renderUsage(usage){const root=el("usage");root.replaceChildren();root.append(node("h3","Model usage"));root.append(node("pre",JSON.stringify(usage,null,2),"muted"));}
-function renderFinance(entries,budgets,reconciliations){
+function renderFinance(entries,budgets,reconciliations,budgetEvents){
  const root=el("finance");root.replaceChildren();
  if(!entries.length)root.append(node("p","No finance entries recorded.","muted"));
  entries.slice().reverse().slice(0,20).forEach(x=>root.append(node("div",(x.entry_type||"")+" · "+x.amount_minor+" "+x.currency+" · "+x.business_id+" · "+(x.latest_review_action||"unreviewed"),"rowitem")));
@@ -378,6 +378,7 @@ function renderFinance(entries,budgets,reconciliations){
  const history=el("reconciliation-list");history.replaceChildren();
  if(!(reconciliations||[]).length)history.append(node("p","No reconciliation records yet.","muted"));
  (reconciliations||[]).slice(0,20).forEach(r=>history.append(node("div",r.business_id+" · "+r.currency+" · "+r.status+" · difference "+r.difference_minor+" · "+r.period_start+" → "+r.period_end,"rowitem")));
+ (budgetEvents||[]).slice(0,20).forEach(b=>root.append(node("div","Budget decision · "+b.business_id+" · "+b.currency+" · "+b.previous_limit_minor+" → "+b.new_limit_minor+" · "+b.rationale,"rowitem")));
 }
 async function refreshBusinessContext(){
  const business=el("memory-business").value;
