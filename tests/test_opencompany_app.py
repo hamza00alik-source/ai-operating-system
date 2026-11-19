@@ -2403,3 +2403,45 @@ def test_business_integration_owner_review_is_audited_and_never_connects(owner_c
         headers=headers,
     )
     assert [event["action"] for event in events.json()["events"]] == ["registered", "owner_approve"]
+
+
+def test_ceo_coordination_cycle_runs_safe_phases_without_provider_or_queue_side_effects(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    bootstrapped = owner_client.post("/agents/bootstrap-executive", headers=headers)
+    assert bootstrapped.status_code == 200
+    agent = bootstrapped.json()["agent"]
+    activated = owner_client.post(
+        f"/agents/{agent['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": agent["revision"]},
+    )
+    assert activated.status_code == 200
+
+    result = owner_client.post(
+        "/executive/orchestration/cycle", headers=headers,
+        json={"business_id": "digital-products"},
+    )
+    assert result.status_code == 200
+    body = result.json()
+    assert body["plan"] is None
+    assert body["delegations"]["drafted_count"] == 0
+    assert body["delegations"]["skipped"][0]["reason"] == "no_confirmed_zero_cost_provider"
+    assert body["readiness"]["advanced_count"] == 0
+    assert body["owner_approval_required_for_delegations"] is True
+    assert body["queue_admission_performed"] is False
+    assert body["execution_started"] is False
+    assert body["parallel_execution_enabled"] is False
+
+
+def test_ceo_coordination_cycle_requires_both_plan_title_and_objective(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    bootstrapped = owner_client.post("/agents/bootstrap-executive", headers=headers)
+    agent = bootstrapped.json()["agent"]
+    owner_client.post(
+        f"/agents/{agent['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": agent["revision"]},
+    )
+    result = owner_client.post(
+        "/executive/orchestration/cycle", headers=headers,
+        json={"title": "Incomplete request"},
+    )
+    assert result.status_code == 422
