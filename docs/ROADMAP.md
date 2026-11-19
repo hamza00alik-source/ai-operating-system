@@ -49,16 +49,17 @@ These are CI/build checks, not a live production deployment.
 - [x] Finance controls include business/currency-scoped monthly expense limits, append-only budget-decision history with rationale, monthly ledger status, and owner-entered statement reconciliation with discrepancy detection. Budgets are monitoring thresholds, not spend authorization; reconciliation is not bank-connected.
 - [x] Integration registry supports owner approve/reject decisions with append-only event history. Approved records remain `approved_pending_connection`; no external connector is activated.
 - [x] An isolated OpenCompany Docker staging target uses its own persistent volume, private staging secrets, and disabled worker/provider configuration. GitHub Actions builds the image, checks readiness/owner access, and verifies a work item survives container restart.
+- [x] Business-unit-scoped internal records for suppliers, customers, draft products, owner activation, and order lifecycle through owner-attested payment evidence and fulfillment status. These are internal records only; no customer contact, payment, stock reservation, listing publication, or fulfillment action is executed.
 - [ ] Full CEO workflow aggregation, role-specific quality evaluation, parallel scheduling, cancellation, lease renewal, and durable retry/backoff remain outstanding.
 - [ ] Memory still needs retrieval/search relevance, richer provenance review, retention policies, and role-scoped access beyond the current same-business worker context.
 - [ ] Finance still needs verified bank/payment-status data adapters, invoice/payout matching, refunds/fees/COGS treatment, and complete profit reporting. Current statement balances are owner-entered inputs.
-- [ ] Official CRM, email, marketplace, ecommerce, analytics, and support adapters remain unimplemented. Integration approval is a permission-review record only, not a live connection.
+- [ ] Official CRM, email, marketplace, ecommerce, analytics, and support adapters remain unimplemented. Integration approval is a permission-review record only, not a live connection. Inventory reservation, supplier purchase orders, external listings, customer enquiries, payment processor verification, and fulfillment execution remain unimplemented.
 - [ ] Hosted staging is not provisioned. The verified Docker staging run is isolated CI/local staging, not an internet-accessible hosted environment. A persistent hosted service, backup/restore, HTTPS, secrets, monitoring, and owner-approved cost review remain required.
 - [ ] Live preview acceptance remains blocked by the legacy Vercel configuration: `vercel.json` rewrites all paths to the existing Railway production AIOS host, and `pyproject.toml` still identifies `src.ai_os.api:app` as the Vercel entrypoint. This preview must not be treated as OpenCompany staging. No production configuration was changed.
 - [ ] The complete operating-company requirements and acceptance gates are documented in [OPENCOMPANY_OPERATING_COMPANY_SPEC.md](OPENCOMPANY_OPERATING_COMPANY_SPEC.md).
 
-On commit `6d52e325042515d63eb9b18be82f431932b0c9d7`:
-- **GitHub Actions full suite: 217 passed, 1 warning.**
+On commit `2eddb28c12da0d00e3355f5ea76c8577554a1a16`:
+- **GitHub Actions full suite: 218 passed, 1 warning.**
 - **OpenCompany core tests: 18 passed.**
 - **OpenCompany isolated staging smoke test: passed.** Docker image built; `/health`, `/ready`, owner console and protected API checks passed; a draft work item survived container restart on the dedicated volume.
 - **Vercel prebuilt validation: test step passed; output build/deployment step was skipped.** This is not a Vercel deployment.
