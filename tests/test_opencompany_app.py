@@ -558,12 +558,15 @@ def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_c
         f"/work-items/{second['item_id']}/transition", headers=headers,
         json={"target_state": "ready"},
     )
-    assert ready.status_code == 200
+    assert ready.status_code == 409
+    assert "prerequisite" in ready.json()["detail"].lower()
     queued = owner_client.post(
         f"/work-items/{second['item_id']}/transition", headers=headers,
         json={"target_state": "queued"},
     )
     assert queued.status_code == 409
+    unchanged = owner_client.get("/work-items", headers=headers).json()["items"]
+    assert next(item for item in unchanged if item["id"] == second["item_id"])["state"] == "draft"
 
 
 
