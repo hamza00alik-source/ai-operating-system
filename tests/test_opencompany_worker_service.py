@@ -130,3 +130,104 @@ def test_worker_presence_rejects_a_second_recent_worker_and_allows_stale_recover
     runtime.worker_presence.start("worker-two", now + timedelta(seconds=121))
     assert len(runtime.worker_presence.list_instances()) == 2
     runtime.close()
+
+
+def test_manager_executor_receives_only_scoped_memory_and_completed_team_deliverables():
+    from opencompany_app.runtime import WorkItem
+    from opencompany_core.domain import AuditRecord, TaskState
+    from opencompany_core.execution import AgentDeliverable
+
+    runtime = create_runtime(":memory:")
+    manager_id = uuid4()
+    role_key = "intelligence_research_manager"
+    runtime.agents[role_key] = {
+        "id": str(manager_id), "role_key": role_key, "title": "Research Manager",
+        "kind": "leadership", "state": "active", "capabilities": ["synthesis"],
+    }
+    dependency = WorkItem(
+        id=uuid4(), title="Specialist market scan", objective="Collect market evidence.",
+        department="intelligence-research", state=TaskState.COMPLETED,
+        business_id="digital-products",
+    )
+    runtime.store.create_work_item(dependency)
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.deliverable", subject_type="work_item",
+        subject_id=str(dependency.id), outcome="recorded", correlation_id=str(uuid4()),
+    )
+    runtime.store.save_deliverable_with_audit(
+        AgentDeliverable(
+            id=uuid4(), work_item_id=dependency.id, role_key="market_researcher",
+            content="Evidence: target buyers prefer downloadable offline tools.",
+            provider="test", model="test", cost_usd=0.0,
+        ),
+        audit,
+    )
+    runtime.business.save_memory("digital-products", {
+        "memory_key": "buyer-profile", "category": "strategy",
+        "content": "Target customers are international PC gamers.",
+        "source": "owner-approved research note",
+    })
+    runtime.business.save_memory("physical-agency", {
+        "memory_key": "supplier-secret", "category": "supplier",
+        "content": "This must not leak into digital products.",
+        "source": "private supplier record",
+    })
+
+    parent = WorkItem(
+        id=uuid4(), title="Synthesize market scan", objective="Prepare a management synthesis.",
+        department="intelligence-research", state=TaskState.READY,
+        business_id="digital-products", depends_on=(dependency.id,),
+        assigned_agent_id=manager_id, assigned_role_key=role_key,
+    )
+
+    class FreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),)
+
+        def generate(self, request, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            captured["prompt"] = request["prompt"]
+            return ModelResult(
+                text="Manager synthesis draft for owner review.",
+                provider="test-free", model="test", cost_usd=0.0,
+            )
+
+    captured = {}
+    runtime.gateway = FreeGateway()
+    runtime.worker.executor.execute(role_key, parent)
+    prompt = captured["prompt"]
+    assert "Target customers are international PC gamers." in prompt
+    assert "owner-approved research note" in prompt
+    assert "Evidence: target buyers prefer downloadable offline tools." in prompt
+    assert "synthesize the prerequisite specialist deliverables" in prompt.lower()
+    assert "This must not leak into digital products." not in prompt
+    runtime.close()
+
+
+def test_worker_executor_refuses_uncompleted_or_cross_business_prerequisites():
+    from opencompany_app.runtime import WorkItem
+    from opencompany_core.domain import TaskState
+
+    runtime = create_runtime(":memory:")
+    manager_id = uuid4()
+    role_key = "intelligence_research_manager"
+    runtime.agents[role_key] = {
+        "id": str(manager_id), "role_key": role_key, "title": "Research Manager",
+        "kind": "leadership", "state": "active", "capabilities": ["synthesis"],
+    }
+    dependency = WorkItem(
+        id=uuid4(), title="Incomplete prerequisite", objective="Still in progress.",
+        department="intelligence-research", state=TaskState.READY,
+        business_id="digital-products",
+    )
+    runtime.store.create_work_item(dependency)
+    parent = WorkItem(
+        id=uuid4(), title="Synthesis", objective="Combine team results.",
+        department="intelligence-research", state=TaskState.READY,
+        business_id="digital-products", depends_on=(dependency.id,),
+        assigned_agent_id=manager_id, assigned_role_key=role_key,
+    )
+    with pytest.raises(ValueError, match="Every prerequisite must be completed"):
+        runtime.worker.executor.execute(role_key, parent)
+    runtime.close()
