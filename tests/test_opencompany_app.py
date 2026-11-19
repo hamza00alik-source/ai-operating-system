@@ -54,6 +54,21 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert 'id="usage"' in response.text
     assert 'id="finance"' in response.text
     assert 'id="departments"' in response.text
+    assert 'id="task-detail"' in response.text
+    assert 'id="advance-work"' in response.text
+    assert 'id="worker-start"' in response.text
+    assert 'id="worker-stop"' in response.text
+    assert "Create team proposal" in response.text
+    assert "Show proposals" in response.text
+    assert "Approve & create child tasks" in response.text
+    assert "Reject proposal" in response.text
+    assert "Admit to queue" in response.text
+    assert "Run one task" in response.text
+    assert "Approve deliverable" in response.text
+    assert "Reject deliverable" in response.text
+    assert '"/work-items/"+encodeURIComponent(item.id)+"/delegation-proposals"' in response.text
+    assert '"/workers/run-once"' in response.text
+    assert '"/executive/orchestration/advance"' in response.text
     assert 'api("/executive/orchestration/status")' in response.text
     assert 'api("/workers/service-status")' in response.text
     assert 'api("/usage/model")' in response.text
