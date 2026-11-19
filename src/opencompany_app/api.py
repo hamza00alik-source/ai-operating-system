@@ -622,6 +622,26 @@ def business_integration_events(business_id:str,integration_id:str,runtime=Depen
     return {"count":len(events),"events":events}
 
 
+@app.post("/business-units/{business_id}/integrations/{integration_id}/review")
+def review_business_integration(business_id:str,integration_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("confirm_owner_decision") is not True:
+        raise HTTPException(422,"Owner confirmation is required to review an integration.")
+    decision=str(payload.get("decision",""))
+    rationale=str(payload.get("rationale","")).strip()
+    if decision not in ("approve","reject"):
+        raise HTTPException(422,"Integration decision must be approve or reject.")
+    if not rationale:
+        raise HTTPException(422,"A review rationale is required.")
+    try:
+        result=runtime.business.review_integration(business_id,integration_id,decision,rationale)
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from exc
+    if result is None:
+        raise HTTPException(404,"Business integration not found.")
+    return result
+
+
 @app.post("/business-units/{business_id}/memory")
 def save_business_memory(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
     business_id=_business_id(business_id)
