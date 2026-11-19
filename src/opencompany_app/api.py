@@ -973,6 +973,8 @@ def create_finance_reconciliation(payload:dict,runtime=Depends(get_runtime),owne
         raise HTTPException(422,"Period start and end must be ISO-8601 timestamps.")
     if start_dt.tzinfo is None or end_dt.tzinfo is None or end_dt<start_dt:
         raise HTTPException(422,"Reconciliation period must be timezone-aware and end after it starts.")
+    period_start=start_dt.astimezone(timezone.utc).isoformat()
+    period_end=end_dt.astimezone(timezone.utc).isoformat()
     if not isinstance(opening,int) or isinstance(opening,bool) or not isinstance(closing,int) or isinstance(closing,bool):
         raise HTTPException(422,"Opening and statement closing balances must be integer minor currency units.")
     if payload.get("confirm_owner_reconciliation") is not True:
