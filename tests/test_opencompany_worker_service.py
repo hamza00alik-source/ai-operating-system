@@ -229,6 +229,30 @@ def test_worker_executor_refuses_uncompleted_or_cross_business_prerequisites():
         business_id="digital-products", depends_on=(dependency.id,),
         assigned_agent_id=manager_id, assigned_role_key=role_key,
     )
+
+    class FreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),)
+
+        def generate(self, request, *, request_budget_usd=0.0):
+            raise AssertionError("generation must not run while prerequisites are invalid")
+
+    runtime.gateway = FreeGateway()
     with pytest.raises(ValueError, match="Every prerequisite must be completed"):
         runtime.worker.executor.execute(role_key, parent)
+
+    cross_business_dependency = WorkItem(
+        id=uuid4(), title="Private agency record", objective="Do not cross business scopes.",
+        department="intelligence-research", state=TaskState.COMPLETED,
+        business_id="physical-agency",
+    )
+    runtime.store.create_work_item(cross_business_dependency)
+    cross_business_parent = WorkItem(
+        id=uuid4(), title="Invalid cross-business synthesis", objective="Must be blocked.",
+        department="intelligence-research", state=TaskState.READY,
+        business_id="digital-products", depends_on=(cross_business_dependency.id,),
+        assigned_agent_id=manager_id, assigned_role_key=role_key,
+    )
+    with pytest.raises(ValueError, match="Every prerequisite must be completed"):
+        runtime.worker.executor.execute(role_key, cross_business_parent)
     runtime.close()
