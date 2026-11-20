@@ -83,6 +83,13 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert 'id="order-form"' in response.text
     assert 'id="product-list"' in response.text
     assert 'id="order-list"' in response.text
+    assert 'id="treasury-business"' in response.text
+    assert 'id="treasury-account-form"' in response.text
+    assert 'id="treasury-spend-form"' in response.text
+    assert 'id="treasury-accounts"' in response.text
+    assert 'id="treasury-requests"' in response.text
+    assert "refreshTreasury" in response.text
+    assert "No money was transferred" in response.text
     assert "refreshBusinessOperations" in response.text
     assert '"/finance/budgets"' in response.text
     assert '"/finance/reconciliations"' in response.text
