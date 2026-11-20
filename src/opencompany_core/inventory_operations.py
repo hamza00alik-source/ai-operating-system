@@ -33,6 +33,8 @@ class InventoryOperationsRepository:
               product_id TEXT NOT NULL,quantity_received INTEGER NOT NULL,
               evidence_reference TEXT NOT NULL,created_at TEXT NOT NULL,
               UNIQUE(id,po_id,product_id));
+            CREATE UNIQUE INDEX IF NOT EXISTS oc_purchase_receipt_evidence_unique
+              ON oc_purchase_receipts(business_id,po_id,product_id,evidence_reference);
             """)
             db.commit()
 
@@ -158,6 +160,13 @@ class InventoryOperationsRepository:
             po=self._db.execute("SELECT status,currency FROM oc_purchase_orders WHERE business_id=? AND id=?",
               (business_id,str(po_id))).fetchone()
             if not po or po["status"] not in ("draft","open","partially_received"): raise ValueError("Purchase order is not receivable.")
+            prior=self._db.execute("SELECT * FROM oc_purchase_receipts WHERE business_id=? AND po_id=? AND product_id=? AND evidence_reference=?",
+              (business_id,str(po_id),str(product_id),evidence[:500])).fetchone()
+            if prior:
+                if int(prior["quantity_received"])!=quantity:
+                    raise ValueError("This receipt evidence was already used with a different quantity.")
+                return {"receipt_id":prior["id"],"purchase_order":self.get_purchase_order(business_id,po_id),
+                  "stock_balance":self.get_balance(business_id,product_id),"external_purchase_made":False,"idempotent_replay":True}
             line=self._db.execute("SELECT * FROM oc_purchase_order_lines WHERE business_id=? AND po_id=? AND product_id=?",
               (business_id,str(po_id),str(product_id))).fetchone()
             if not line: raise ValueError("Product is not part of this purchase order.")
