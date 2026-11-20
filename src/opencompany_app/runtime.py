@@ -10,6 +10,7 @@ from opencompany_core.domain import AuditRecord, TaskState
 from opencompany_core.business_assets import BusinessAssetRegistry
 from opencompany_core.business_operations import BusinessOperationsRepository
 from opencompany_core.inventory_operations import InventoryOperationsRepository
+from opencompany_core.treasury import TreasuryRepository
 from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
 from opencompany_core.asset_scanning import ClamAVUnixSocketScanner
 from opencompany_core.execution import AgentDeliverable
@@ -917,7 +918,7 @@ class Runtime:
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.learning=LearningRepository(self.sqlite._connection,self.sqlite._lock)
-        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock);self.business=BusinessRepository(self.sqlite._connection,self.sqlite._lock);self.business_ops=BusinessOperationsRepository(self.sqlite._connection,self.sqlite._lock);self.inventory=InventoryOperationsRepository(self.sqlite._connection,self.sqlite._lock);self.asset_registry=BusinessAssetRegistry(self.sqlite._connection,self.sqlite._lock);self.asset_storage=None;self.asset_scanner=None
+        self.usage=UsageRepository(self.sqlite._connection,self.sqlite._lock);self.finance=FinanceRepository(self.sqlite._connection,self.sqlite._lock);self.business=BusinessRepository(self.sqlite._connection,self.sqlite._lock);self.business_ops=BusinessOperationsRepository(self.sqlite._connection,self.sqlite._lock);self.inventory=InventoryOperationsRepository(self.sqlite._connection,self.sqlite._lock);self.treasury=TreasuryRepository(self.sqlite._connection,self.sqlite._lock);self.asset_registry=BusinessAssetRegistry(self.sqlite._connection,self.sqlite._lock);self.asset_storage=None;self.asset_scanner=None
         self.queue=WorkQueue(self.sqlite._connection,self.sqlite._lock,self.store)
         self.fleet=WorkerFleet();self.gateway=ModelGateway.configure(())
         self.worker=DeterministicWorker(self);self.github_evolution=None
