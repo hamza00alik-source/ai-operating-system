@@ -157,3 +157,16 @@ No provider credentials are stored in the repository. No live provider request,
 worker process, customer action, purchase, publishing action, or production
 deployment is performed by these code changes. The PR remains draft and
 unmerged until the owner reviews and authorizes those steps.
+
+
+## Verification refresh — 20 Nov 2026
+
+The current draft PR head `2841af9e77115cabf36967defbe53ef077a1fc0c` has fresh successful checks:
+
+- GitHub Actions `tests` job passed.
+- OpenCompany core tests passed.
+- Isolated container smoke passed, including readiness, owner-authenticated access, and SQLite persistence across restart.
+- CircleCI `ci/circleci: test` status passed.
+- Vercel prebuilt validation test job passed. Its separate build/deployment job was skipped; no Vercel deployment was performed by this verification.
+
+These checks verify code/build and isolated staging behavior only. They do not verify hosted production operation, live provider inference, or real business transactions. The PR remains draft and unmerged.
