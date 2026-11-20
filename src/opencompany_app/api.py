@@ -2092,3 +2092,56 @@ def initialize_autonomous_runtime():
     runtime=_default_runtime()
     if os.getenv("OPENCOMPANY_WORKER_AUTOSTART","false").lower()=="true" and runtime.gateway.eligible_providers(request_budget_usd=0.0):
         runtime.fleet.start()
+
+
+# Inventory and supplier purchasing: internal owner-attested records only.
+@app.get("/inventory/{business_id}")
+def inventory_list(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    return {"business_id":business_id,"balances":runtime.inventory.list_balances(business_id)}
+
+@app.get("/inventory/{business_id}/{product_id}")
+def inventory_detail(business_id:str,product_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    try:
+        return {"balance":runtime.inventory.get_balance(business_id,product_id),
+                "movements":runtime.inventory.movements(business_id,product_id)}
+    except ValueError as exc:raise HTTPException(404,str(exc)) from exc
+
+@app.post("/inventory/{business_id}/{product_id}/adjust")
+def inventory_adjust(business_id:str,product_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("owner_confirmed") is not True:raise HTTPException(403,"Owner confirmation is required.")
+    try:
+        return runtime.inventory.adjust_stock(business_id,product_id,payload.get("delta",0),
+            payload.get("reason",""),owner_confirmed=True)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+@app.post("/inventory/{business_id}/{product_id}/threshold")
+def inventory_threshold(business_id:str,product_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    try:return runtime.inventory.set_threshold(business_id,product_id,payload.get("threshold",0))
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+@app.get("/purchase-orders/{business_id}")
+def purchase_orders_list(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    return {"business_id":business_id,"purchase_orders":runtime.inventory.list_purchase_orders(business_id)}
+
+@app.post("/purchase-orders/{business_id}")
+def purchase_order_create(business_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("owner_confirmed") is not True:raise HTTPException(403,"Owner confirmation is required.")
+    try:
+        return runtime.inventory.create_purchase_order(business_id,payload.get("supplier_id",""),
+            payload.get("items",[]),payload.get("currency","USD"),payload.get("notes",""),owner_confirmed=True)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+@app.post("/purchase-orders/{business_id}/{po_id}/receive")
+def purchase_order_receive(business_id:str,po_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    if payload.get("owner_confirmed") is not True:raise HTTPException(403,"Owner confirmation is required.")
+    try:
+        return runtime.inventory.receive(business_id,po_id,payload.get("product_id",""),
+            payload.get("quantity",0),payload.get("evidence_reference",""),owner_confirmed=True)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
