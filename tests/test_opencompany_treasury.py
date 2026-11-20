@@ -63,3 +63,20 @@ def test_treasury_rejects_fractional_or_boolean_money_values(treasury):
         treasury.submit_spend_request("digital-products","agent","Vendor","Purpose",12.5,"USD")
     with pytest.raises(ValueError,match="integer"):
         treasury.submit_spend_request("digital-products","agent","Vendor","Purpose",True,"USD")
+
+
+def test_journal_reference_is_idempotent_and_does_not_duplicate_money_records(treasury):
+    cash=treasury.create_account("digital-products","Cash","USD","cash")
+    revenue=treasury.create_account("digital-products","Revenue","USD","revenue")
+    lines=[
+        {"account_id":cash["id"],"debit_minor":500,"credit_minor":0},
+        {"account_id":revenue["id"],"debit_minor":0,"credit_minor":500},
+    ]
+    first=treasury.post_journal("digital-products","USD","payment_recorded","provider-event-42","Payment recorded",lines)
+    assert len(treasury.list_journal("digital-products"))==1
+    with pytest.raises(ValueError,match="already exists"):
+        treasury.post_journal("digital-products","USD","payment_recorded","provider-event-42","Duplicate event",lines)
+    journal=treasury.list_journal("digital-products")
+    assert len(journal)==1
+    assert journal[0]["id"]==first["id"]
+    assert len(journal[0]["lines"])==2
