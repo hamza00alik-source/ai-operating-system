@@ -43,7 +43,7 @@ class InventoryOperationsRepository:
         return datetime.now(timezone.utc).isoformat()
 
     def _product(self,business_id,product_id):
-        row=self._db.execute("SELECT id,sku,name,currency,status FROM opencompany_products WHERE business_id=? AND id=?",
+        row=self._db.execute("SELECT id,sku,name,currency,status,supplier_id FROM opencompany_products WHERE business_id=? AND id=?",
                              (business_id,str(product_id))).fetchone()
         if not row: raise ValueError("Product not found in this business unit.")
         return dict(row)
