@@ -1,0 +1,2 @@
+# Optional local transcription dependency. FFmpeg and ffprobe must also be installed as system binaries.
+faster-whisper>=1.1,<2.0

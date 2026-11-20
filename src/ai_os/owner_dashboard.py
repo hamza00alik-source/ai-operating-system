@@ -370,6 +370,18 @@ th{background:#101b2c}
 <div id="socialMessage" class="status" role="status"></div>
 <h3>Content workspace</h3><div class="scroll"><table><thead><tr><th>Title</th><th>Type</th><th>Channels</th><th>Status</th><th>Actions</th></tr></thead><tbody id="socialContentRows"><tr><td colspan="5">Loading…</td></tr></tbody></table></div>
 <p class="small">Approval means “approved for scheduling” only. It does not publish or schedule content. Every actual external action requires a separately implemented and tested connector.</p>
+<div class="panel"><h3>Creator clipping · upload and review</h3>
+<p class="small">Upload a video you own or are licensed to edit. The upload is stored only when CLIPPING_INPUT_DIR is configured on the API and mounted as the same shared volume in the clipping worker. Maximum upload: 250 MiB. Creating a job does not start processing; you must approve it below.</p>
+<form id="creatorClipForm">
+ <input id="creatorClipFile" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" required style="width:100%;margin:8px 0">
+ <input name="prompt" required maxlength="1000" value="Find the strongest engaging moment and create one vertical short clip." placeholder="Clipping instructions" style="width:100%;margin:6px 0">
+ <label>Target clip length (seconds) <input name="clip_seconds" type="number" min="12" max="90" value="35" required></label>
+ <button type="submit">Upload video and create review job</button>
+</form>
+<div id="creatorClipMessage" class="status" role="status"></div>
+<div class="toolbar"><button type="button" class="secondary" id="refreshCreatorClips">Refresh jobs</button><span id="creatorWorkerStatus" class="small">Worker status not loaded.</span></div>
+<div class="scroll"><table><thead><tr><th>Job</th><th>Status</th><th>Progress</th><th>Cost estimate</th><th>Owner action</th></tr></thead><tbody id="creatorClipRows"><tr><td colspan="5">No clipping jobs loaded.</td></tr></tbody></table></div>
+</div>
 </section>
 \n<section id="business" class="panel section" data-view-panel="business">
 <h2>Business operations · financial ledger & customers</h2>
@@ -792,6 +804,34 @@ fallback.style.display="none";
  $("assetForm").addEventListener("submit",async e=>{e.preventDefault();const data=formData(e.currentTarget);data.token_estimate=data.token_estimate?Number(data.token_estimate):null;try{await send("/code-assets",data);e.currentTarget.reset();$("assetMessage").textContent="Asset registered. Ownership and dependency checks remain explicit.";await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
  $("licenseForm").addEventListener("submit",async e=>{e.preventDefault();try{const result=await send("/code-assets/license-offers",formData(e.currentTarget));$("assetMessage").textContent="Draft created. Owner approval request "+result.approval_id+" is pending. No code was shared.";e.currentTarget.reset();await loadAssets()}catch(err){$("assetMessage").textContent=err.message}});
 
+ async function loadCreatorClipping(){
+  try{
+   const [status,jobs]=await Promise.all([api("/video/status"),api("/video/jobs")]);
+   $("creatorWorkerStatus").textContent=status.worker_connected?"Clipping worker connected ("+status.active_workers+")":"No clipping worker connected · jobs wait safely in queue";
+   const clips=jobs.filter(x=>x.provider==="creator-clipping");
+   $("creatorClipRows").innerHTML=clips.map(x=>'<tr><td><strong>'+esc(x.prompt)+'</strong><br><small>'+esc(x.id.slice(0,8))+' · '+date(x.created_at)+'</small></td><td>'+esc(x.status)+'</td><td>'+esc(x.progress??0)+'% · '+esc(x.progress_message||"—")+'</td><td>'+esc(x.estimated_cost_minor)+' '+esc(x.currency)+'<br><small>'+esc(x.cost_basis)+'</small></td><td>'+(x.status==="awaiting_approval"?'<button data-id="'+esc(x.id)+'" data-decision="approved" class="clip-decision">Approve & queue</button> <button data-id="'+esc(x.id)+'" data-decision="rejected" class="clip-decision secondary">Reject</button>':x.status==="succeeded"&&x.result_uri?'<a href="'+esc(x.result_uri)+'" target="_blank" rel="noopener">Open result</a>':esc(x.error||"—"))+'</td></tr>').join("")||'<tr><td colspan="5">No creator clipping jobs yet.</td></tr>';
+   document.querySelectorAll(".clip-decision").forEach(btn=>btn.addEventListener("click",async()=>{const decision=btn.dataset.decision;const note=decision==="approved"?"Owner approved local creator clipping.":"Owner rejected clipping job.";try{await api("/video/jobs/"+encodeURIComponent(btn.dataset.id)+"/decision",{method:"POST",body:JSON.stringify({decision,approval_note:note})});$("creatorClipMessage").textContent=decision==="approved"?"Approved. Job is queued; processing begins only when a matching worker is connected.":"Job rejected.";await loadCreatorClipping()}catch(e){$("creatorClipMessage").textContent=e.message}}));
+  }catch(e){$("creatorClipMessage").textContent=e.message}
+ }
+ $("creatorClipForm").addEventListener("submit",async e=>{
+  e.preventDefault();const form=e.currentTarget;const file=$("creatorClipFile").files[0];if(!file)return;
+  if(file.size>250*1024*1024){$("creatorClipMessage").textContent="File exceeds the 250 MiB upload limit.";return}
+  const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+  try{
+   $("creatorClipMessage").textContent="Uploading source video…";
+   const uploaded=await api("/video/sources?filename="+encodeURIComponent(file.name),{method:"POST",body:file,headers:{"Content-Type":file.type||"application/octet-stream"}});
+   const data=Object.fromEntries(new FormData(form).entries());
+   const job=await api("/video/jobs",{method:"POST",body:JSON.stringify({prompt:data.prompt,provider:"creator-clipping",idempotency_key:(crypto.randomUUID?crypto.randomUUID():"clip-"+Date.now()),parameters:{source_path:uploaded.source_path,clip_seconds:Number(data.clip_seconds),max_clips:1},estimated_cost_minor:0,approved_budget_minor:0,currency:"USD",cost_basis:"Owner-provided footage; no hosted compute or paid provider authorized"})});
+   $("creatorClipMessage").textContent="Upload complete. Job "+job.id+" is awaiting your approval. No processing has started.";
+   form.reset();await loadCreatorClipping();
+  }catch(err){$("creatorClipMessage").textContent=err.message}
+  finally{submit.disabled=false}
+ });
+ $("refreshCreatorClips").addEventListener("click",loadCreatorClipping);
+ const clipLink=document.querySelector('nav.main-nav a[data-view="social-media"]');
+ clipLink?.addEventListener("click",loadCreatorClipping);
+ if(location.hash==="#social-media")loadCreatorClipping();
+ window.addEventListener("hashchange",()=>{if(location.hash==="#social-media")loadCreatorClipping()});
  async function loadSocial(){
   try{
    const [status,items]=await Promise.all([api("/social/status"),api("/social/content")]);

@@ -7,6 +7,7 @@ import json
 import hmac
 import os
 import time
+import secrets
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, Query
@@ -848,7 +849,7 @@ def decide_social_content(content_id: str, payload: SocialDecisionRequest):
 # provider, allocates compute, incurs cost, or publishes generated media.
 class VideoJobCreate(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
-    provider: str = Field(default="longcat-video", pattern="^longcat-video$")
+    provider: str = Field(default="longcat-video", pattern="^(longcat-video|creator-clipping)$")
     idempotency_key: str = Field(min_length=1, max_length=128)
     parameters: dict = Field(default_factory=dict)
     estimated_cost_minor: int = Field(ge=0)
@@ -856,6 +857,54 @@ class VideoJobCreate(BaseModel):
     currency: str = Field(default="USD", min_length=3, max_length=3)
     cost_basis: str = Field(min_length=1, max_length=300)
     max_attempts: int = Field(default=3, ge=1, le=5)
+
+
+# Owner-uploaded source footage is written only to an explicitly configured shared
+# volume. The clipping worker must mount this same directory at CLIPPING_INPUT_DIR.
+@app.post("/video/sources", status_code=201, dependencies=[Depends(require_owner_key)])
+async def upload_video_source(request: Request, filename: str = Query(min_length=1, max_length=255)):
+    input_dir = os.getenv("CLIPPING_INPUT_DIR", "").strip()
+    if not input_dir:
+        raise HTTPException(status_code=503, detail="Video source storage is not configured. Set CLIPPING_INPUT_DIR on the API and mount the same volume in the clipping worker.")
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".mp4", ".mov", ".webm"}:
+        raise HTTPException(status_code=415, detail="Only MP4, MOV and WebM source videos are supported.")
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    allowed_types = {"video/mp4", "video/quicktime", "video/webm", "application/octet-stream"}
+    if content_type not in allowed_types:
+        raise HTTPException(status_code=415, detail="Unsupported video content type.")
+    root = Path(input_dir).expanduser().resolve()
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail="Configured video source storage is unavailable.") from exc
+    token = secrets.token_hex(16)
+    temporary = root / (token + ".upload")
+    final_path = root / (token + suffix)
+    size = 0
+    prefix = bytearray()
+    try:
+        with temporary.open("xb") as output:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+                size += len(chunk)
+                if size > 250 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Video upload exceeds the 250 MiB limit.")
+                if len(prefix) < 32:
+                    prefix.extend(chunk[:32 - len(prefix)])
+                output.write(chunk)
+        valid_signature = (suffix in {".mp4", ".mov"} and len(prefix) >= 12 and prefix[4:8] == b"ftyp") or (suffix == ".webm" and prefix[:4] == bytes([0x1a, 0x45, 0xdf, 0xa3]))
+        if size < 16 or not valid_signature:
+            raise HTTPException(status_code=422, detail="Uploaded bytes do not match the selected video format.")
+        temporary.replace(final_path)
+    except HTTPException:
+        temporary.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise HTTPException(status_code=503, detail="Could not store the uploaded video.") from exc
+    return {"source_path": final_path.name, "filename": Path(filename).name, "size_bytes": size, "storage": "configured_shared_volume", "worker_provider": "creator-clipping"}
 
 
 class VideoJobDecision(BaseModel):
@@ -918,6 +967,7 @@ def decide_video_job(job_id: str, payload: VideoJobDecision):
 class VideoWorkerClaim(BaseModel):
     worker_id: str = Field(min_length=1, max_length=100)
     lease_seconds: int = Field(default=120, ge=30, le=900)
+    provider: str = Field(default="longcat-video", pattern="^(longcat-video|creator-clipping)$")
 
 
 class VideoWorkerHeartbeat(BaseModel):
@@ -962,7 +1012,7 @@ def post_video_job_cancel(job_id: str):
 @app.post("/video/worker/claim", dependencies=[Depends(require_video_worker)])
 def post_video_worker_claim(payload: VideoWorkerClaim):
     try:
-        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds)
+        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds, provider=payload.provider)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
