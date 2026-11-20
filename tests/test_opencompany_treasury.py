@@ -56,3 +56,10 @@ def test_journal_requires_balanced_same_business_currency_entries(treasury):
             {"account_id":cash["id"],"debit_minor":1,"credit_minor":0},
             {"account_id":other["id"],"debit_minor":0,"credit_minor":1},
         ])
+
+
+def test_treasury_rejects_fractional_or_boolean_money_values(treasury):
+    with pytest.raises(ValueError,match="integer"):
+        treasury.submit_spend_request("digital-products","agent","Vendor","Purpose",12.5,"USD")
+    with pytest.raises(ValueError,match="integer"):
+        treasury.submit_spend_request("digital-products","agent","Vendor","Purpose",True,"USD")
