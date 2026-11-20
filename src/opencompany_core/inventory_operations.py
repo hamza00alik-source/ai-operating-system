@@ -175,12 +175,9 @@ class InventoryOperationsRepository:
               (business_id,str(product_id),old+quantity,threshold,now))
             self._db.execute("INSERT INTO oc_inventory_movement VALUES(?,?,?,?,?,?,?,?)",
               (str(uuid4()),business_id,str(product_id),"purchase_receipt",quantity,"Owner-attested goods receipt",str(po_id),now))
-            remaining_after=int(line["quantity_ordered"])-int(line["quantity_received"])-quantity
-            newstatus="received" if remaining_after==0 else "partially_received"
             all_lines=self._db.execute("SELECT quantity_ordered,quantity_received FROM oc_purchase_order_lines WHERE po_id=?",
               (str(po_id),)).fetchall()
-            if all(int(x["quantity_ordered"])==int(x["quantity_received"])+(quantity if x is line else 0) for x in all_lines):
-                newstatus="received"
+            newstatus="received" if all(int(x["quantity_ordered"])==int(x["quantity_received"]) for x in all_lines) else "partially_received"
             self._db.execute("UPDATE oc_purchase_orders SET status=?,updated_at=? WHERE id=?",
               (newstatus,now,str(po_id)))
             self._db.commit()
