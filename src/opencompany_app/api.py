@@ -192,6 +192,26 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <button class="primary" type="submit">Reconcile statement</button></form>
 <h3>Budget status & ledger</h3><div id="finance" class="stack"></div>
 <h3>Reconciliation history</h3><div id="reconciliation-list" class="stack"></div></section>
+<section><h2>Treasury & agent spending</h2>
+<p class="muted">Offline financial records only. No bank, wallet, checkout, or payment transfer is connected. All values are integer minor units.</p>
+<label>Business unit <select id="treasury-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select></label>
+<h3>Account registry</h3><form id="treasury-account-form" class="stack">
+<input id="treasury-account-name" placeholder="Account label (e.g. Operating cash)" required>
+<input id="treasury-account-currency" placeholder="Currency (PKR, USD)" maxlength="3" required>
+<select id="treasury-account-type"><option value="cash">Cash record</option><option value="bank">Bank account reference</option><option value="wallet">Wallet reference</option><option value="clearing">Clearing account</option><option value="revenue">Revenue account</option><option value="expense">Expense account</option></select>
+<input id="treasury-account-mask" placeholder="Masked reference only (never enter credentials)">
+<label><input id="treasury-account-confirm" type="checkbox" required> I confirm this is an internal account record, not a live connection.</label>
+<button class="primary" type="submit">Register account record</button></form><div id="treasury-accounts" class="stack"></div>
+<h3>Spending requests</h3><form id="treasury-spend-form" class="stack">
+<input id="treasury-requester" placeholder="Requesting agent ID / owner" value="owner" required>
+<input id="treasury-payee" placeholder="Payee / supplier" required>
+<input id="treasury-purpose" placeholder="Purpose and evidence" required>
+<input id="treasury-amount" type="number" min="1" step="1" placeholder="Amount in minor units" required>
+<input id="treasury-currency" value="PKR" maxlength="3" required>
+<input id="treasury-category" value="general" placeholder="Budget category">
+<label><input id="treasury-spend-confirm" type="checkbox" required> I confirm this records a request only; no money will be sent.</label>
+<button class="primary" type="submit">Record spending request</button></form><div id="treasury-requests" class="stack"></div>
+</section>
 <section><h2>Departments</h2><div id="departments" class="stack"></div></section><section><h2>Business memory & integrations</h2>
 <p class="muted">Memory is isolated by business unit and can only be written by the owner. Integration records remain pending review; listing them does not connect external services.</p>
 <select id="memory-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
@@ -268,6 +288,33 @@ function showDashboard(authenticated){el("login").hidden=authenticated;el("dashb
 async function checkSession(){try{const s=await api("/auth/session");csrfToken=s.csrf_token||"";showDashboard(true);await refreshAll();}catch(_){showDashboard(false);}}
 async function signIn(event){event.preventDefault();clearNotice();try{const result=await api("/auth/session",{method:"POST",body:{api_key:el("owner-key").value}});csrfToken=result.csrf_token||"";el("owner-key").value="";showDashboard(true);notice("Signed in. Loading company status.");await refreshAll();}catch(e){notice(e.message,true);}}
 async function signOut(){try{await api("/auth/logout",{method:"POST",body:{}});}catch(_){}csrfToken="";showDashboard(false);notice("Signed out.");}
+async function refreshTreasury(){
+ const business=el("treasury-business").value;
+ const [accounts,requests]=await Promise.all([
+  api("/treasury/accounts/"+encodeURIComponent(business)),
+  api("/treasury/spend-requests/"+encodeURIComponent(business))
+ ]);
+ const accountRoot=el("treasury-accounts");accountRoot.replaceChildren();
+ if(!accounts.accounts.length)accountRoot.append(node("p","No account records for this business unit.","muted"));
+ accounts.accounts.forEach(item=>accountRoot.append(node("div",item.name+" · "+item.currency+" · "+item.account_type+" · "+item.status+(item.masked_reference?" · "+item.masked_reference:""),"rowitem")));
+ const requestRoot=el("treasury-requests");requestRoot.replaceChildren();
+ if(!requests.requests.length)requestRoot.append(node("p","No spending requests.","muted"));
+ requests.requests.forEach(item=>{
+  const card=node("div",undefined,"rowitem"),left=node("div"),title=node("strong",item.payee+" · "+item.status);
+  const meta=node("p",item.amount_minor+" "+item.currency+" minor units · "+item.purpose+" · requester "+item.requester_id,"muted");
+  left.append(title,meta);card.append(left);
+  if(item.status==="pending_approval"){
+   const actions=node("div");
+   for(const [label,approve] of [["Approve request",true],["Reject request",false]]){
+    const button=node("button",label);
+    button.addEventListener("click",async()=>{if(!window.confirm((approve?"Approve":"Reject")+" this request? Approval does not transfer money."))return;try{await api("/treasury/spend-requests/"+encodeURIComponent(business)+"/"+encodeURIComponent(item.id)+"/decision",{method:"POST",body:{approve,note:"Owner reviewed in Treasury panel"}});notice("Request "+(approve?"approved for planning":"rejected")+". No money was transferred.");await refreshTreasury();}catch(e){notice(e.message,true);}});
+    actions.append(button);
+   }
+   card.append(actions);
+  }
+  requestRoot.append(card);
+ });
+}
 async function refreshAll(){
  clearNotice();
  try{
@@ -278,6 +325,7 @@ async function refreshAll(){
   renderWorker(workers,service,queue,orchestration);renderUsage(usage);renderFinance(finance.entries||[],budgets.budgets||[],reconciliations.reconciliations||[],budgetEvents.events||[]);
   await refreshBusinessContext();
   await refreshBusinessOperations();
+  await refreshTreasury();
   const aa=agents.agents||[],tt=tasks.items||[],fc=finance.entries||[],qc=queue.counts||{};
   setText("metric-agents",aa.length);setText("metric-active",aa.filter(a=>a.state==="active").length+" active · "+aa.filter(a=>a.state==="paused").length+" paused");
   setText("metric-work",tt.length);setText("metric-work-detail",tt.filter(x=>x.state!=="completed").length+" not completed");
@@ -499,6 +547,9 @@ el("order-form").addEventListener("submit",async event=>{event.preventDefault();
 
 el("budget-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("/finance/budgets",{method:"POST",body:{business_id:el("budget-business").value,currency:el("budget-currency").value,monthly_expense_limit_minor:Number(el("budget-limit").value),rationale:el("budget-rationale").value,confirm_owner_budget:el("budget-confirm").checked}});notice("Budget limit saved for "+result.business_id+". It does not authorize spending.");el("budget-form").reset();await refreshAll();}catch(e){notice(e.message,true);}});
 el("reconciliation-form").addEventListener("submit",async event=>{event.preventDefault();try{const iso=v=>new Date(v).toISOString();const result=await api("/finance/reconciliations",{method:"POST",body:{business_id:el("recon-business").value,currency:el("recon-currency").value,period_start:iso(el("recon-start").value),period_end:iso(el("recon-end").value),opening_balance_minor:Number(el("recon-opening").value),statement_closing_minor:Number(el("recon-closing").value),confirm_owner_reconciliation:el("recon-confirm").checked}});notice("Reconciliation result: "+result.status+" · difference "+result.difference_minor+" "+result.currency+" minor units. No bank connection or funds movement occurred.");el("reconciliation-form").reset();await refreshAll();}catch(e){notice(e.message,true);}});
+el("treasury-business").addEventListener("change",()=>refreshTreasury().catch(e=>notice(e.message,true)));
+el("treasury-account-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("treasury-business").value;await api("/treasury/accounts",{method:"POST",body:{owner_confirmed:el("treasury-account-confirm").checked,business_id:business,name:el("treasury-account-name").value,currency:el("treasury-account-currency").value,account_type:el("treasury-account-type").value,masked_reference:el("treasury-account-mask").value}});el("treasury-account-form").reset();notice("Internal account record created. No account was connected.");await refreshTreasury();}catch(e){notice(e.message,true);}});
+el("treasury-spend-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("treasury-business").value;await api("/treasury/spend-requests",{method:"POST",body:{owner_confirmed:el("treasury-spend-confirm").checked,business_id:business,requester_id:el("treasury-requester").value,payee:el("treasury-payee").value,purpose:el("treasury-purpose").value,amount_minor:Number(el("treasury-amount").value),currency:el("treasury-currency").value,budget_category:el("treasury-category").value}});el("treasury-spend-form").reset();notice("Spending request recorded for review. No money was transferred.");await refreshTreasury();}catch(e){notice(e.message,true);}});
 el("integration-form").addEventListener("submit",async event=>{event.preventDefault();try{const permissions=el("integration-permissions").value.split(",").map(x=>x.trim()).filter(Boolean);const business=el("memory-business").value;const result=await api("/business-units/"+encodeURIComponent(business)+"/integrations",{method:"POST",body:{provider_key:el("integration-provider").value,display_name:el("integration-name").value,credential_key:el("integration-credential").value,permissions,rationale:el("integration-rationale").value,confirm_owner_registration:el("integration-confirm").checked}});notice("Integration registration saved as "+result.integration.status+". No external connection was attempted.");el("integration-form").reset();await refreshBusinessContext();}catch(e){notice(e.message,true);}});
 
 el("memory-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("memory-business").value;await api("/business-units/"+encodeURIComponent(business)+"/memory",{method:"POST",body:{memory_key:el("memory-key").value,category:el("memory-category").value,source:el("memory-source").value,content:el("memory-content").value,confirm_owner_write:el("memory-confirm").checked}});el("memory-form").reset();notice("Owner-written memory saved within "+business+". Agent writes remain disabled.");await refreshBusinessContext();}catch(e){notice(e.message,true);}});
