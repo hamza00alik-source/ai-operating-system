@@ -2145,3 +2145,55 @@ def purchase_order_receive(business_id:str,po_id:str,payload:dict,runtime=Depend
         return runtime.inventory.receive(business_id,po_id,payload.get("product_id",""),
             payload.get("quantity",0),payload.get("evidence_reference",""),owner_confirmed=True)
     except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+
+# Treasury foundation: owner-controlled offline records. No live payment rail.
+@app.post("/treasury/accounts")
+def treasury_create_account(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if payload.get("owner_confirmed") is not True:
+        raise HTTPException(400,"Owner confirmation is required to register an account.")
+    business_id=_business_id(payload.get("business_id"))
+    try:
+        return runtime.treasury.create_account(
+            business_id,payload.get("name",""),payload.get("currency",""),
+            payload.get("account_type","cash"),payload.get("provider_key","internal"),
+            payload.get("masked_reference",""))
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+@app.get("/treasury/accounts/{business_id}")
+def treasury_list_accounts(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    return {"business_id":business_id,"accounts":runtime.treasury.list_accounts(business_id),
+            "live_provider_balance_available":False}
+
+@app.post("/treasury/spend-requests")
+def treasury_submit_spend_request(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if payload.get("owner_confirmed") is not True:
+        raise HTTPException(400,"Owner confirmation is required to record this spend request.")
+    business_id=_business_id(payload.get("business_id"))
+    try:
+        return runtime.treasury.submit_spend_request(
+            business_id,payload.get("requester_id","owner"),payload.get("payee",""),
+            payload.get("purpose",""),payload.get("amount_minor",0),payload.get("currency",""),
+            payload.get("budget_category","general"))
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+@app.get("/treasury/spend-requests/{business_id}")
+def treasury_list_spend_requests(business_id:str,status:str|None=None,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    return {"business_id":business_id,"requests":runtime.treasury.list_spend_requests(business_id,status),
+            "money_movement_enabled":False}
+
+@app.post("/treasury/spend-requests/{business_id}/{request_id}/decision")
+def treasury_decide_spend_request(business_id:str,request_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    approve=payload.get("approve")
+    if not isinstance(approve,bool):raise HTTPException(422,"A boolean approve decision is required.")
+    try:
+        record=runtime.treasury.decide_spend_request(business_id,request_id,"owner",approve,payload.get("note",""))
+    except ValueError as exc:
+        raise HTTPException(409,str(exc)) from exc
+    if record is None:raise HTTPException(404,"Spend request not found.")
+    return {**record,"payment_executed":False,"funds_moved":False}
