@@ -39,6 +39,15 @@ class TreasuryRepository:
         return datetime.now(timezone.utc).isoformat()
 
     @staticmethod
+    def _minor_units(value):
+        if isinstance(value,bool) or not isinstance(value,(int,str)):
+            raise ValueError("Money must be supplied as an integer number of minor units.")
+        raw=str(value).strip()
+        if not raw or not raw.isdigit():
+            raise ValueError("Money must be supplied as a positive integer number of minor units.")
+        return int(raw)
+
+    @staticmethod
     def _business(business_id):
         if business_id not in BUSINESSES:
             raise ValueError("Unknown business unit.")
@@ -69,7 +78,7 @@ class TreasuryRepository:
 
     def submit_spend_request(self,business_id,requester_id,payee,purpose,amount_minor,currency,budget_category="general"):
         business_id=self._business(business_id)
-        amount=int(amount_minor);currency=str(currency).upper()
+        amount=self._minor_units(amount_minor);currency=str(currency).upper()
         requester_id=str(requester_id).strip();payee=str(payee).strip();purpose=str(purpose).strip()
         if amount<=0: raise ValueError("Spend amount must be positive.")
         if len(currency)!=3 or not currency.isalpha(): raise ValueError("Currency must be a 3-letter code.")
@@ -131,7 +140,7 @@ class TreasuryRepository:
                                        (str(line["account_id"]),)).fetchone()
                 if not account or account["business_id"]!=business_id or account["currency"]!=currency:
                     raise ValueError("Journal account must belong to this business and currency.")
-                debit=int(line.get("debit_minor",0));credit=int(line.get("credit_minor",0))
+                debit=self._minor_units(line.get("debit_minor",0));credit=self._minor_units(line.get("credit_minor",0))
                 if debit<0 or credit<0 or (debit and credit): raise ValueError("Each line must have nonnegative debit or credit, not both.")
                 if debit==credit: raise ValueError("Each journal line must have exactly one nonzero side.")
                 debits+=debit;credits+=credit
