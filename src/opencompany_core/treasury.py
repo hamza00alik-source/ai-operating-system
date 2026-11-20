@@ -20,18 +20,20 @@ class TreasuryRepository:
               provider_key TEXT NOT NULL DEFAULT 'internal',masked_reference TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,UNIQUE(business_id,name,currency));
             CREATE TABLE IF NOT EXISTS oc_treasury_spend_requests(
-              id TEXT PRIMARY PRIMARY KEY,business_id TEXT NOT NULL,requester_id TEXT NOT NULL,
+              id TEXT PRIMARY KEY,business_id TEXT NOT NULL,requester_id TEXT NOT NULL,
               payee TEXT NOT NULL,purpose TEXT NOT NULL,amount_minor INTEGER NOT NULL,
               currency TEXT NOT NULL,budget_category TEXT NOT NULL,status TEXT NOT NULL,
               approver_id TEXT,approval_note TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS oc_treasury_journal(
-              id TEXT PRIMARY PRIMARY KEY,business_id TEXT NOT NULL,currency TEXT NOT NULL,
+              id TEXT PRIMARY KEY,business_id TEXT NOT NULL,currency TEXT NOT NULL,
               event_type TEXT NOT NULL,reference_id TEXT NOT NULL,description TEXT NOT NULL,
               created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS oc_treasury_journal_lines(
-              id TEXT PRIMARY PRIMARY KEY,journal_id TEXT NOT NULL,account_id TEXT NOT NULL,
+              id TEXT PRIMARY KEY,journal_id TEXT NOT NULL,account_id TEXT NOT NULL,
               debit_minor INTEGER NOT NULL,credit_minor INTEGER NOT NULL);
-            """.replace("TEXT PRIMARY PRIMARY KEY","TEXT PRIMARY KEY"))
+            """)
+            db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS oc_treasury_journal_reference_unique
+              ON oc_treasury_journal(business_id,event_type,reference_id)""")
             db.commit()
 
     @staticmethod
@@ -132,6 +134,11 @@ class TreasuryRepository:
         """Post balanced immutable journal entry. Lines: account_id/debit_minor/credit_minor."""
         business_id=self._business(business_id);currency=str(currency).upper()
         if len(currency)!=3 or not currency.isalpha(): raise ValueError("Currency must be a 3-letter code.")
+        event_type=str(event_type).strip()
+        reference_id=str(reference_id).strip()
+        description=str(description).strip()
+        if not event_type or not reference_id or not description:
+            raise ValueError("Journal event type, reference, and description are required.")
         if not lines or len(lines)<2: raise ValueError("Journal requires at least two lines.")
         normalized=[];debits=credits=0
         with self._lock:
@@ -147,12 +154,23 @@ class TreasuryRepository:
                 normalized.append({"account_id":str(line["account_id"]),"debit_minor":debit,"credit_minor":credit})
             if debits!=credits: raise ValueError("Journal debits and credits must balance.")
             journal_id=str(uuid4());now=self._now()
-            self._db.execute("INSERT INTO oc_treasury_journal VALUES(?,?,?,?,?,?,?)",
-              (journal_id,business_id,currency,str(event_type)[:100],str(reference_id)[:200],str(description)[:1200],now))
-            for line in normalized:
-                self._db.execute("INSERT INTO oc_treasury_journal_lines VALUES(?,?,?,?,?)",
-                  (str(uuid4()),journal_id,line["account_id"],line["debit_minor"],line["credit_minor"]))
-            self._db.commit()
+            try:
+                self._db.execute("SAVEPOINT treasury_post")
+                self._db.execute("INSERT INTO oc_treasury_journal VALUES(?,?,?,?,?,?,?)",
+                  (journal_id,business_id,currency,event_type[:100],reference_id[:200],description[:1200],now))
+                for line in normalized:
+                    self._db.execute("INSERT INTO oc_treasury_journal_lines VALUES(?,?,?,?,?)",
+                      (str(uuid4()),journal_id,line["account_id"],line["debit_minor"],line["credit_minor"]))
+                self._db.execute("RELEASE SAVEPOINT treasury_post")
+                self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                self._db.execute("ROLLBACK TO SAVEPOINT treasury_post")
+                self._db.execute("RELEASE SAVEPOINT treasury_post")
+                raise ValueError("A journal entry with this business, event type, and reference already exists.") from exc
+            except Exception:
+                self._db.execute("ROLLBACK TO SAVEPOINT treasury_post")
+                self._db.execute("RELEASE SAVEPOINT treasury_post")
+                raise
         return {"id":journal_id,"business_id":business_id,"currency":currency,"event_type":event_type,
                 "reference_id":reference_id,"description":description,"total_debits_minor":debits,
                 "total_credits_minor":credits,"posted":True,"funds_moved":False}
