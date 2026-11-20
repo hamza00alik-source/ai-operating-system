@@ -119,6 +119,8 @@ class InventoryOperationsRepository:
             if not supplier: raise ValueError("Active supplier not found in this business unit.")
             for item in items:
                 p=self._product(business_id,item["product_id"])
+                if p["supplier_id"] and str(p["supplier_id"])!=str(supplier_id):
+                    raise ValueError("Purchase order supplier must match the product's linked supplier.")
                 qty=int(item["quantity"]);cost=int(item["unit_cost_minor"])
                 if qty<1 or qty>100000 or cost<0: raise ValueError("Invalid PO quantity or unit cost.")
                 if p["currency"]!=currency: raise ValueError("Product currency must match purchase order currency.")
