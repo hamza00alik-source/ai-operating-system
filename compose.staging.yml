@@ -1,0 +1,25 @@
+services:
+  opencompany-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.opencompany
+    restart: unless-stopped
+    ports:
+      - "${OPENCOMPANY_STAGING_PORT:-8000}:8000"
+    environment:
+      PORT: "8000"
+      OPENCOMPANY_DATABASE_PATH: /var/lib/opencompany/opencompany.sqlite3
+      OPENCOMPANY_OWNER_API_KEY: ${OPENCOMPANY_OWNER_API_KEY:?Set a private staging owner key}
+      OPENCOMPANY_SECRET_ENCRYPTION_KEY: ${OPENCOMPANY_SECRET_ENCRYPTION_KEY:?Set a private staging encryption secret}
+      OPENCOMPANY_WORKER_ENABLED: "false"
+    volumes:
+      - opencompany_staging_data:/var/lib/opencompany
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  opencompany_staging_data:

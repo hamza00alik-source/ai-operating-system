@@ -4,11 +4,11 @@
   "sources": [
     {
       "repository": "hamza00alik-source/agency-agents",
-      "role": "Specialist workforce catalog",
-      "status": "catalogued",
-      "purpose": "283 specialist role definitions across 18 departments; instructions and runbooks, not executable workers.",
+      "role": "Historical workforce catalogue provenance",
+      "status": "archived-reference",
+      "purpose": "Historical source attribution for the retired 283-role catalogue. No role prompts or manifest data are used by the active OpenCompany runtime.",
       "license": "MIT",
-      "priority": "core-workforce"
+      "priority": "provenance-only"
     },
     {
       "repository": "hamza00alik-source/automaton",

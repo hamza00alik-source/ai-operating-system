@@ -32,42 +32,42 @@ def test_owner_can_queue_bounded_agent_run(monkeypatch, tmp_path):
 
 
 
-def test_general_market_research_routes_to_research_role():
-    from ai_os.agent_runtime import _select_specialist
+def test_general_market_research_routes_to_opencompany_research_role():
+    from ai_os.agent_runtime import _select_specialist, _load_opencompany_catalogue
 
-    manifest = {
-        "agents": [
-            {"id": "marketing/global-podcast-strategist", "name": "Global Podcast Strategist",
-             "department": "marketing", "source_path": ""},
-            {"id": "research/research-synthesist", "name": "Research Synthesist",
-             "department": "research", "source_path": ""},
-        ]
-    }
+    catalogue = _load_opencompany_catalogue()
     selected = _select_specialist(
         {"title": "Prepare a global market research brief on downloadable PC gaming utilities",
          "description": "", "department": "general"},
-        manifest,
+        catalogue,
     )
-    assert selected["id"] == "research/research-synthesist"
+    assert selected["department"] == "intelligence-research"
+    assert selected["id"] == "market_demand_researcher"
 
 
+def test_company_department_routes_to_opencompany_customer_operations_role():
+    from ai_os.agent_runtime import _select_specialist, _load_opencompany_catalogue
 
-def test_company_department_routes_to_mapped_specialist():
-    from ai_os.agent_runtime import _select_specialist
-
-    manifest = {
-        "agents": [
-            {"id": "engineering/backend-developer", "name": "Backend Developer",
-             "department": "engineering", "source_path": ""},
-            {"id": "support/customer-support-specialist", "name": "Customer Support Specialist",
-             "department": "support", "source_path": ""},
-        ]
-    }
     selected = _select_specialist(
         {"title": "Prepare a customer response workflow", "description": "", "department": "customer-support"},
-        manifest,
+        _load_opencompany_catalogue(),
     )
-    assert selected["id"] == "support/customer-support-specialist"
+    assert selected["department"] == "customer-operations"
+    assert selected["id"] == "customer_support_analyst"
+
+
+def test_execution_catalogue_is_opencompany_owned_and_contains_511_roles():
+    from ai_os.agent_runtime import _load_opencompany_catalogue
+
+    catalogue = _load_opencompany_catalogue()
+    assert len(catalogue["agents"]) == 511
+    assert all("source_path" not in role and "source_url" not in role for role in catalogue["agents"])
+    assert {role["department"] for role in catalogue["agents"]} >= {
+        "intelligence-research", "product-innovation", "engineering",
+        "design-creative", "marketing-growth", "sales-marketplace",
+        "customer-operations", "finance-operations", "legal-compliance",
+        "quality-workforce",
+    }
 
 
 def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist(monkeypatch, tmp_path):
@@ -98,3 +98,70 @@ def test_partial_agent_run_can_be_resumed_without_repeating_completed_specialist
     with connect() as db:
         assert db.execute("SELECT status FROM tasks WHERE id='task-1'").fetchone()["status"] == "queued"
         assert db.execute("SELECT output FROM agent_run_steps WHERE run_id='run-1' AND sequence_no=1").fetchone()["output"] == "Saved specialist report"
+
+def test_specialist_role_briefs_are_opencompany_owned_and_local():
+    from ai_os.agent_runtime import _load_specialist
+
+    brief = _load_specialist({
+        "id": "research/research-synthesist",
+        "name": "Research Synthesist",
+        "department": "research",
+        "source_path": "ignored/third-party-prompt.md",
+    })
+
+    assert "OpenCompany's Research Synthesist" in brief
+    assert "separate evidence from inference" in brief
+    assert "never fetch third-party prompts" not in brief
+    assert "request owner approval" in brief
+
+
+def test_unknown_specialist_department_gets_safe_local_brief():
+    from ai_os.agent_runtime import _load_specialist
+
+    brief = _load_specialist({"name": "Operations Analyst", "department": "operations"})
+
+    assert "OpenCompany's Operations Analyst" in brief
+    assert "sound professional practice" in brief
+    assert "You have no authority to spend money" in brief
+
+def test_execution_runtime_has_no_legacy_external_workforce_manifests():
+    from pathlib import Path
+
+    repository_root = Path(__file__).resolve().parents[1]
+    assert not (repository_root / "data" / "agency_agents_manifest.json").exists()
+    assert not (repository_root / "data" / "company_departments.json").exists()
+
+def test_all_ten_departments_have_five_original_named_specialist_templates():
+    from ai_os.agent_runtime import _load_opencompany_catalogue
+
+    catalogue = _load_opencompany_catalogue()
+    department_ids = {
+        "intelligence-research", "product-innovation", "engineering",
+        "design-creative", "marketing-growth", "sales-marketplace",
+        "customer-operations", "finance-operations", "legal-compliance",
+        "quality-workforce",
+    }
+    for department in department_ids:
+        team_key = department + "__team_01"
+        first_team = [
+            role for role in catalogue["agents"]
+            if role.get("department") == department and role.get("team_key") == team_key
+        ]
+        assert len(first_team) == 5
+        assert all("Team 1 Specialist" not in role["name"] for role in first_team)
+        assert len({role["id"] for role in first_team}) == 5
+
+def test_every_opencompany_department_receives_specific_local_role_guidance():
+    from ai_os.agent_runtime import _load_specialist
+
+    departments = [
+        "intelligence-research", "product-innovation", "engineering",
+        "design-creative", "marketing-growth", "sales-marketplace",
+        "customer-operations", "finance-operations", "legal-compliance",
+        "quality-workforce",
+    ]
+    for department in departments:
+        brief = _load_specialist({"name": "Department Specialist", "department": department})
+        assert "ROLE FOCUS:" in brief
+        assert "sound professional practice for the assigned function" not in brief
+        assert "request owner approval" in brief

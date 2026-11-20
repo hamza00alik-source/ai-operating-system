@@ -1,0 +1,76 @@
+name: OpenCompany isolated staging smoke test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dockerfile.opencompany"
+      - "compose.staging.yml"
+      - ".github/workflows/opencompany-staging-smoke.yml"
+      - "pyproject.toml"
+      - "src/opencompany_app/**"
+      - "src/opencompany_core/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build OpenCompany container
+        run: docker build -f Dockerfile.opencompany -t opencompany-staging:${{ github.sha }} .
+      - name: Start isolated staging container
+        run: |
+          mkdir -p "$RUNNER_TEMP/opencompany-staging"
+          docker run -d --name opencompany-staging \
+            -p 8000:8000 \
+            -e PORT=8000 \
+            -e OPENCOMPANY_DATABASE_PATH=/var/lib/opencompany/opencompany.sqlite3 \
+            -e OPENCOMPANY_OWNER_API_KEY=ci-only-owner-key-not-for-production \
+            -e OPENCOMPANY_SECRET_ENCRYPTION_KEY=ci-only-encryption-secret-never-reuse \
+            -e OPENCOMPANY_WORKER_ENABLED=false \
+            -v "$RUNNER_TEMP/opencompany-staging:/var/lib/opencompany" \
+            opencompany-staging:${{ github.sha }}
+      - name: Wait for readiness
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/ready; then exit 0; fi
+            sleep 2
+          done
+          docker logs opencompany-staging
+          exit 1
+      - name: Verify owner console and protected API
+        run: |
+          curl -fsS http://127.0.0.1:8000/health
+          curl -fsS http://127.0.0.1:8000/owner | grep -q "OpenCompany"
+          curl -fsS -H "X-OpenCompany-API-Key: ci-only-owner-key-not-for-production" \
+            http://127.0.0.1:8000/agents
+          if curl -fsS http://127.0.0.1:8000/agents; then
+            echo "Owner endpoint unexpectedly allowed anonymous access"
+            exit 1
+          fi
+      - name: Verify SQLite persistence after restart
+        run: |
+          created=$(curl -fsS -H "X-OpenCompany-API-Key: ci-only-owner-key-not-for-production" \
+            -H "Content-Type: application/json" \
+            -d '{"title":"Staging persistence check","objective":"Verify SQLite survives container restart","department":"intelligence-research","business_id":"digital-products"}' \
+            http://127.0.0.1:8000/work-items)
+          item_id=$(echo "$created" | python -c 'import json,sys; print(json.load(sys.stdin)["item_id"])')
+          docker restart opencompany-staging
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/ready >/dev/null; then break; fi
+            sleep 2
+          done
+          listed=$(curl -fsS -H "X-OpenCompany-API-Key: ci-only-owner-key-not-for-production" \
+            http://127.0.0.1:8000/work-items)
+          echo "$listed" | python -c 'import json,sys; d=json.load(sys.stdin); expected=sys.argv[1]; assert any(x["id"]==expected for x in d["items"]), "SQLite data did not survive restart"' "$item_id"
+      - name: Collect logs on failure
+        if: failure()
+        run: docker logs opencompany-staging || true
+      - name: Stop staging container
+        if: always()
+        run: docker rm -f opencompany-staging || true

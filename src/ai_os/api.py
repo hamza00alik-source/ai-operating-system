@@ -275,58 +275,82 @@ def post_llm_run(payload: ModelRunRequest):
 
 @app.get("/company/departments", dependencies=[Depends(require_api_key)])
 def get_company_departments():
-    """Return the business department registry enriched with source-catalogue counts."""
-    registry_path = Path(__file__).resolve().parents[2] / "data" / "company_departments.json"
-    manifest_path = Path(__file__).resolve().parents[2] / "data" / "agency_agents_manifest.json"
-    if not registry_path.exists() or not manifest_path.exists():
-        raise HTTPException(status_code=503, detail="Company department registry or workforce manifest is unavailable.")
-    registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    source_counts = {item["id"]: item["agent_count"] for item in manifest.get("departments", [])}
+    """Expose OpenCompany's own ten-department operating structure."""
+    from opencompany_app.catalogue import DEPARTMENT_CATALOGUE, ROLE_CATALOGUE
+
     departments = []
-    for item in registry.get("departments", []):
-        specialist_count = sum(source_counts.get(source, 0) for source in item.get("source_departments", []))
+    for item in DEPARTMENT_CATALOGUE:
+        roles = [role for role in ROLE_CATALOGUE if role["department"] == item["department"]]
         departments.append({
-            **item,
-            "specialist_count": specialist_count,
-            "roles_available": specialist_count > 0 or bool(item.get("built_in_roles")),
-            "execution_status": "available-on-demand" if specialist_count > 0 or item.get("built_in_roles") else "not-catalogued",
-            "workflow_status": item.get("workflow_state", "catalogue-only"),
+            "id": item["department"],
+            "name": item["name"],
+            "manager_role_key": item["manager_role_key"],
+            "specialist_count": sum(role["kind"] == "specialist" for role in roles),
+            "roles_available": bool(roles),
+            "execution_status": "catalogue-only",
+            "workflow_status": "catalogue-only",
+            "approval_boundaries": item["approval_boundaries"],
         })
     return {
         "department_count": len(departments),
-        "source_department_count": manifest.get("department_count", 0),
-        "catalogued_agent_count": manifest.get("agent_count", 0),
-        "runtime_model": "one shared worker invokes selected specialist instructions on demand; no dedicated always-on department processes",
+        "source_department_count": len(departments),
+        "catalogued_agent_count": len(ROLE_CATALOGUE),
+        "runtime_model": "OpenCompany-owned role templates are selected by the shared supervised worker; catalogue entries are not resident processes.",
         "departments": departments,
     }
 
 
 @app.get("/workforce/agents", dependencies=[Depends(require_api_key)])
 def get_workforce_agents(department: str | None = None, q: str | None = None):
-    """Return the complete catalogued Agency workforce; catalog entries are not live workers."""
-    manifest_path = Path(__file__).resolve().parents[2] / "data" / "agency_agents_manifest.json"
-    if not manifest_path.exists():
-        raise HTTPException(status_code=503, detail="Workforce manifest is unavailable.")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    agents = manifest["agents"]
+    """Return OpenCompany-owned role templates, not imported third-party agent prompts."""
+    from opencompany_app.catalogue import ROLE_CATALOGUE
+
+    roles = [
+        {
+            "id": role["role_key"],
+            "name": role["title"],
+            "department": role["department"],
+            "kind": role["kind"],
+            "team_key": role["team_key"],
+            "capabilities": role["capabilities"],
+            "prohibited_actions": role["prohibited_actions"],
+            "playbook": role["playbook"],
+            "execution_status": "catalogue-only",
+        }
+        for role in ROLE_CATALOGUE
+    ]
     if department:
-        agents = [a for a in agents if a["department"] == department]
+        roles = [role for role in roles if role["department"] == department]
     if q:
         term = q.casefold()
-        agents = [a for a in agents if term in a["name"].casefold() or term in a["department"].casefold() or term in a["id"].casefold()]
+        roles = [
+            role for role in roles
+            if term in role["name"].casefold()
+            or term in role["department"].casefold()
+            or term in role["id"].casefold()
+            or any(term in capability.casefold() for capability in role["capabilities"])
+        ]
+    from opencompany_app.catalogue import DEPARTMENT_CATALOGUE
+    departments = [
+        {
+            "id": item["department"],
+            "name": item["name"],
+            "agent_count": sum(role["department"] == item["department"] for role in ROLE_CATALOGUE),
+        }
+        for item in DEPARTMENT_CATALOGUE
+    ]
     return {
-        "source_repository": manifest["source_repository"],
-        "license": manifest["license"],
-        "agent_count": manifest["agent_count"],
-        "department_count": manifest["department_count"],
-        "roles_including_ceo": manifest["roles_including_ceo"],
-        "departments": manifest["departments"],
-        "catalog_status": "on-demand-invocation",
-        "runtime_model": "one shared worker invokes selected role instructions per task; roles are not resident processes",
-        "agents": [{**a, "execution_status": "available-on-demand"} for a in agents],
+        "departments": departments,
+        "catalogue": "opencompany-original",
+        "agent_count": len(roles),
+        "department_count": 10,
+        "roles_including_ceo": len(ROLE_CATALOGUE),
+        "specialist_count": sum(role["kind"] == "specialist" for role in roles),
+        "leadership_role_count": sum(role["kind"] == "leadership" for role in roles),
+        "catalog_status": "catalogue-only",
+        "runtime_model": "OpenCompany role templates are selected on demand by the shared supervised worker.",
+        "agents": roles,
     }
-
 
 
 @app.get("/company/sources", dependencies=[Depends(require_api_key)])

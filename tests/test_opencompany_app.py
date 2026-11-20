@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import opencompany_app.api as api_module
 from opencompany_app.api import app, get_store, get_delegation_store, get_runtime
-from opencompany_app.runtime import create_runtime
+from opencompany_app.runtime import WorkItem, create_runtime
 from opencompany_core.persistence import SQLiteStore
 from opencompany_core.asset_storage import PrivateFilesystemAssetStorage
 from opencompany_core.domain import AuditRecord, TaskState
@@ -38,32 +38,91 @@ def owner_client(tmp_path, monkeypatch):
 def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_headers():
     response = client.get("/owner")
     assert response.status_code == 200
-    assert "OpenCompany Owner Console" in response.text
+    assert "OpenCompany · Owner Control Center" in response.text
+    assert "Owner sign in" in response.text
+    assert 'id="login-form"' in response.text
+    assert 'id="owner-key"' in response.text
+    assert 'id="dashboard"' in response.text
+    assert 'id="refresh"' in response.text
+    assert 'id="bootstrap-ceo"' in response.text
+    assert 'id="bootstrap-managers"' in response.text
+    assert 'id="bootstrap-specialists"' in response.text
+    assert 'id="task-form"' in response.text
+    assert 'id="task-business"' in response.text
+    assert 'id="task-department"' in response.text
+    assert 'id="worker-status"' in response.text
+    assert 'id="usage"' in response.text
+    assert 'id="finance"' in response.text
+    assert 'id="departments"' in response.text
+    assert 'id="task-detail"' in response.text
+    assert 'id="memory-business"' in response.text
+    assert 'id="memory-form"' in response.text
+    assert 'id="memory-key"' in response.text
+    assert 'id="memory-category"' in response.text
+    assert 'id="memory-source"' in response.text
+    assert 'id="memory-content"' in response.text
+    assert 'id="memory-confirm"' in response.text
+    assert 'id="memory-list"' in response.text
+    assert 'id="integration-list"' in response.text
+    assert 'id="credential-list"' in response.text
+    assert "confirm_owner_write" in response.text
+    assert "refreshBusinessContext" in response.text
+    assert '"/business-units/"+encodeURIComponent(business)+"/memory"' in response.text
+    assert '"/business-units/"+encodeURIComponent(business)+"/integrations"' in response.text
+    assert '"/business-units/"+encodeURIComponent(business)+"/credentials"' in response.text
+    assert "Agent writes remain disabled" in response.text
+    assert 'id="ceo-cycle"' in response.text
+    assert 'id="budget-form"' in response.text
+    assert 'id="budget-rationale"' in response.text
+    assert 'id="reconciliation-form"' in response.text
+    assert 'id="reconciliation-list"' in response.text
+    assert 'id="integration-form"' in response.text
+    assert 'id="ops-business"' in response.text
+    assert 'id="counterparty-form"' in response.text
+    assert 'id="product-form"' in response.text
+    assert 'id="order-form"' in response.text
+    assert 'id="product-list"' in response.text
+    assert 'id="order-list"' in response.text
+    assert 'id="treasury-business"' in response.text
+    assert 'id="treasury-account-form"' in response.text
+    assert 'id="treasury-spend-form"' in response.text
+    assert 'id="treasury-accounts"' in response.text
+    assert 'id="treasury-requests"' in response.text
+    assert "refreshTreasury" in response.text
+    assert "No money was transferred" in response.text
+    assert "refreshBusinessOperations" in response.text
+    assert '"/finance/budgets"' in response.text
+    assert '"/finance/reconciliations"' in response.text
+    assert '"/finance/budgets/history"' in response.text
+    assert '"/integrations/"+encodeURIComponent(item.integration_id)+"/review"' in response.text
+    assert 'id="advance-work"' in response.text
+    assert 'id="worker-start"' in response.text
+    assert 'id="worker-stop"' in response.text
+    assert "Create team proposal" in response.text
+    assert "Show proposals" in response.text
+    assert "Approve & create child tasks" in response.text
+    assert "Reject proposal" in response.text
+    assert "Admit to queue" in response.text
+    assert "Run one task" in response.text
+    assert "Approve deliverable" in response.text
+    assert "Reject deliverable" in response.text
+    assert '"/work-items/"+encodeURIComponent(item.id)+"/delegation-proposals"' in response.text
+    assert '"/workers/run-once"' in response.text
+    assert '"/executive/orchestration/advance"' in response.text
+    assert 'api("/executive/orchestration/status")' in response.text
+    assert 'api("/workers/service-status")' in response.text
+    assert 'api("/usage/model")' in response.text
+    assert 'api("/finance/entries")' in response.text
+    assert "Create draft work item" in response.text
+    assert "No execution was started" in response.text
+    assert "No paid fallback" in response.text
+    assert "No automatic customer contact, publishing or payments" in response.text
+    assert "textContent" in response.text
     assert "sessionStorage" not in response.text
-    assert "session storage only" not in response.text
-    assert "provision-executive" in response.text
-    assert "provision-specialists" in response.text
-    assert "Specialist roles" in response.text
-    assert "View draft" in response.text
-    assert "Approve draft" in response.text
-    assert "Request revision" in response.text
-    assert "Workflow details" in response.text
-    assert 'id="executive-business"' in response.text
-    assert 'id="business-filter"' in response.text
-    assert "Retry failed task" in response.text
-    assert "Cancel task" in response.text
-    assert 'request("/work-items/"+w.id+"/workflow")' in response.text
-    assert "AI usage &amp; cost ledger" in response.text or "AI usage & cost ledger" in response.text
-    assert "loadModelUsage" in response.text
-    assert 'id="unorouter-discover"' in response.text
-    assert 'id="unorouter-model"' in response.text
-    assert "automatic rotation across confirmed-free models" in response.text
-    assert 'id="unorouter-model"' in response.text
-    assert "discover all free models" in response.text.lower()
-    assert "payload.detail" in response.text
-    assert 'id="github-evolution-token"' in response.text
-    assert "draft pull requests only" in response.text
-    assert "loadGitHubEvolutionSettings" in response.text
+    assert "localStorage" not in response.text
+    assert "OPENCOMPANY_OWNER_API_KEY" not in response.text
+    assert "onclick=" not in response.text
+    assert "@media(max-width:560px)" in response.text
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "no-referrer"
@@ -77,8 +136,6 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert " style=" not in response.text
     assert "<style nonce=" in response.text
     assert response.headers["x-frame-options"] == "DENY"
-
-
 
 def test_health_reports_owner_authenticated_mode():
     response = client.get("/health")
@@ -525,12 +582,15 @@ def test_owner_cannot_queue_dependent_work_before_prerequisite_completes(owner_c
         f"/work-items/{second['item_id']}/transition", headers=headers,
         json={"target_state": "ready"},
     )
-    assert ready.status_code == 200
+    assert ready.status_code == 409
+    assert "prerequisite" in ready.json()["detail"].lower()
     queued = owner_client.post(
         f"/work-items/{second['item_id']}/transition", headers=headers,
         json={"target_state": "queued"},
     )
     assert queued.status_code == 409
+    unchanged = owner_client.get("/work-items", headers=headers).json()["items"]
+    assert next(item for item in unchanged if item["id"] == second["item_id"])["state"] == "draft"
 
 
 
@@ -570,6 +630,19 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
     )
     assert manager_active.status_code == 200
 
+    # Simulate a process interruption after the first child insert but before
+    # the proposal payload is updated. Approval must reuse this deterministic ID.
+    runtime = owner_client.app.dependency_overrides[get_runtime]()
+    first_child = proposal["children"][0]
+    stable_orphan_id = __import__("uuid").uuid5(UUID(proposal["id"]), str(first_child["id"]))
+    orphan = WorkItem(
+        stable_orphan_id, first_child["title"], first_child["objective"],
+        first_child["department"], TaskState.READY,
+        runtime.store.get_work_item(UUID(item_id)).business_id, (),
+        UUID(first_child["assigned_agent_id"]), first_child["role_key"],
+    )
+    runtime.store.create_work_item(orphan)
+
     approved = owner_client.post(
         f"/work-items/{item_id}/delegation-proposals/{proposal['id']}/approve",
         headers=headers,
@@ -578,6 +651,8 @@ def test_owner_approves_delegation_into_ready_tasks_without_queueing(owner_clien
     payload = approved.json()
     assert payload["status"] == "approved"
     assert len(payload["materialized_work_items"]) == 5
+    assert payload["materialized_work_items"][0]["id"] == str(stable_orphan_id)
+    assert len(runtime.store.list_work_items()) == 6
     assert all(task["state"] == "ready" for task in payload["materialized_work_items"])
     assert payload["queue_entries_created"] is False
     assert payload["execution_started"] is False
@@ -704,6 +779,76 @@ def test_session_login_uses_http_only_cookie_and_restores_across_tabs(owner_clie
         assert reopened.get("/agents").status_code == 401
         assert second_tab.get("/auth/session").status_code == 401
 
+
+
+def test_durable_queue_lease_recovers_after_runtime_restart(tmp_path):
+    database = str(tmp_path / "lease-recovery.sqlite3")
+    runtime = create_runtime(database)
+    agent_id, item_id = uuid4(), uuid4()
+    role_key = "market_intelligence_analyst"
+    item = WorkItem(
+        id=item_id, title="Recover abandoned work", objective="Resume safely after worker crash",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    runtime.store.create_work_item(item)
+    runtime.queue.admit(item_id, agent_id, role_key)
+    first_lease = runtime.queue.claim(agent_id, role_key)
+    assert first_lease is not None
+    runtime.close()
+
+    restarted = create_runtime(database)
+    recovered = restarted.queue.recover_expired_leases(
+        lease_seconds=1,
+        now=datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year + 1),
+    )
+    assert recovered == (item_id,)
+    second_lease = restarted.queue.claim(agent_id, role_key)
+    assert second_lease is not None
+    assert second_lease.lease_id != first_lease.lease_id
+    with pytest.raises(ValueError, match="stale"):
+        restarted.queue.complete(first_lease)
+    assert restarted.queue.complete(second_lease) is True
+    assert restarted.queue.counts()["done"] == 1
+    restarted.close()
+
+
+
+def test_queue_admission_is_idempotent_and_failed_work_requires_explicit_retry():
+    runtime = create_runtime(":memory:")
+    agent_id, item_id = uuid4(), uuid4()
+    role_key = "market_intelligence_analyst"
+    item = WorkItem(
+        id=item_id, title="Idempotent admission", objective="Avoid duplicate queue resets",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    runtime.store.create_work_item(item)
+    assert runtime.queue.admit(item_id, agent_id, role_key) is True
+    lease = runtime.queue.claim(agent_id, role_key)
+    assert lease is not None
+    with pytest.raises(ValueError, match="running or completed"):
+        runtime.queue.admit(item_id, agent_id, role_key)
+    runtime.queue.fail(lease)
+    assert runtime.queue.admit(item_id, agent_id, role_key) is True
+    assert runtime.queue.counts()["queued"] == 1
+    assert runtime.queue.admit(item_id, agent_id, role_key) is False
+    assert runtime.queue.counts()["queued"] == 1
+    runtime.close()
+
+
+def test_queue_rejects_mismatched_assigned_role():
+    runtime = create_runtime(":memory:")
+    agent_id, item_id = uuid4(), uuid4()
+    item = WorkItem(
+        id=item_id, title="Role mismatch", objective="Must not be routed to another role",
+        department="intelligence-research", state=TaskState.READY,
+        assigned_agent_id=agent_id, assigned_role_key="market_intelligence_analyst",
+    )
+    runtime.store.create_work_item(item)
+    with pytest.raises(ValueError, match="assigned to this agent and role"):
+        runtime.queue.admit(item_id, agent_id, "sales_representative")
+    runtime.close()
 
 def test_atomic_owner_queue_admission_and_worker_claim(owner_client):
     headers = {"X-OpenCompany-API-Key": "test-owner-key"}
@@ -897,6 +1042,7 @@ def test_active_ceo_creates_atomic_draft_department_plan(owner_client):
     response = owner_client.post("/executive/plan", headers=headers, json={
         "title": "Build a new international digital business",
         "objective": "Research buyers, validate a product opportunity, and prepare a launch plan.",
+        "business_id": "digital-products",
         "max_tasks": 8,
     })
     assert response.status_code == 200
@@ -906,6 +1052,7 @@ def test_active_ceo_creates_atomic_draft_department_plan(owner_client):
     assert payload["queue_entries_created"] is False
     assert payload["execution_started"] is False
     assert all(item["state"] == "draft" for item in payload["items"])
+    assert all(item["business_id"] == "digital-products" for item in payload["items"])
     assert payload["items"][1]["depends_on"] == [payload["items"][0]["id"]]
     after = owner_client.get("/work-items", headers=headers).json()["count"]
     assert after == before + 2
@@ -1873,6 +2020,42 @@ def test_business_asset_upload_is_owner_confirmed_private_and_unavailable(owner_
     assert listed["storage_state"] == "private_stored_unscanned"
     assert listed["status"] == "pending_scan"
 
+    class CleanScanner:
+        def scan(self, chunks):
+            scanned = b"".join(chunks)
+            return {
+                "status": "clean", "scanner_key": "test-clamav",
+                "checksum_sha256": hashlib.sha256(scanned).hexdigest(),
+                "byte_size": len(scanned), "verdict": "stream: OK",
+            }
+
+    runtime.asset_scanner = CleanScanner()
+    unconfirmed_scan = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers=headers, json={"confirm_owner_scan": False},
+    )
+    assert unconfirmed_scan.status_code == 422
+    scanned = owner_client.post(
+        f"/business-units/digital-products/assets/{asset_id}/scan",
+        headers=headers, json={"confirm_owner_scan": True},
+    )
+    assert scanned.status_code == 200
+    assert scanned.json()["scan_status"] == "clean"
+    assert scanned.json()["delivery_approval_required"] is True
+    assert scanned.json()["download_enabled"] is False
+    after_scan = owner_client.get(
+        "/business-units/digital-products/assets", headers=headers
+    ).json()["assets"][0]
+    assert after_scan["storage_state"] == "private_scanned_clean"
+    assert after_scan["status"] == "pending_delivery_approval"
+    scan_events = owner_client.get(
+        f"/business-units/digital-products/assets/{asset_id}/scan-events",
+        headers=headers,
+    )
+    assert scan_events.status_code == 200
+    assert scan_events.json()["count"] == 1
+    assert scan_events.json()["events"][0]["status"] == "clean"
+
     duplicate = owner_client.put(
         f"/business-units/digital-products/assets/{asset_id}/content",
         headers={**headers, "Content-Type": "model/gltf-binary", "X-Confirm-Owner-Upload": "true"},
@@ -1935,3 +2118,483 @@ def test_business_asset_api_is_owner_confirmed_and_metadata_only(owner_client):
         f"/business-units/physical-agency/assets/{asset_id}/events", headers=headers
     )
     assert events.status_code == 200 and len(events.json()["events"]) == 1
+
+
+def test_gateway_worker_executor_creates_owner_reviewable_draft_only():
+    runtime = create_runtime(":memory:")
+    agent_id = uuid4()
+    role_key = "market_intelligence_analyst"
+    runtime.agents[role_key] = {
+        "id": str(agent_id), "role_key": role_key, "title": "Market Intelligence Analyst",
+        "state": "active", "capabilities": ["market research", "competitor analysis"],
+    }
+
+    class FreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            return (object(),)
+
+        def generate(self, request, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            assert request["task"] == "owner_approved_work_item_draft"
+            assert "Do not contact customers" in request["prompt"]
+            return ModelResult(
+                text="## Research draft\\nEvidence and assumptions for owner review.",
+                provider="test-free", model="test-model", cost_usd=0.0,
+            )
+
+    runtime.gateway = FreeGateway()
+    item = WorkItem(
+        id=uuid4(), title="Research competitors", objective="Prepare a competitor comparison.",
+        department="Marketing", state=TaskState.READY, business_id="digital-products",
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    deliverable = runtime.worker.executor.execute(role_key, item)
+    assert deliverable.work_item_id == item.id
+    assert deliverable.role_key == role_key
+    assert deliverable.provider == "test-free"
+    assert deliverable.cost_usd == 0.0
+    assert "owner review" in deliverable.content
+    runtime.close()
+
+
+def test_gateway_worker_executor_rejects_inactive_specialist():
+    runtime = create_runtime(":memory:")
+    agent_id = uuid4()
+    role_key = "market_intelligence_analyst"
+    runtime.agents[role_key] = {
+        "id": str(agent_id), "role_key": role_key, "title": "Market Intelligence Analyst",
+        "state": "draft", "capabilities": ["market research"],
+    }
+    item = WorkItem(
+        id=uuid4(), title="Research competitors", objective="Prepare a competitor comparison.",
+        department="Marketing", state=TaskState.READY, business_id="digital-products",
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    with pytest.raises(ValueError, match="not active"):
+        runtime.worker.executor.execute(role_key, item)
+    runtime.close()
+
+
+def test_owner_run_once_executes_one_zero_cost_specialist_draft(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    agent_id = uuid4()
+    role_key = "market_intelligence_analyst"
+    runtime.agents[role_key] = {
+        "id": str(agent_id), "role_key": role_key, "title": "Market Intelligence Analyst",
+        "state": "active", "capabilities": ["market research", "competitor analysis"],
+    }
+
+    class FreeGateway:
+        def eligible_providers(self, *, request_budget_usd=0.0):
+            return (object(),) if request_budget_usd == 0.0 else ()
+
+        def generate(self, request, *, request_budget_usd=0.0):
+            assert request_budget_usd == 0.0
+            return ModelResult(
+                text="## Draft\\nOwner review required.",
+                provider="test-free", model="test-model", cost_usd=0.0,
+            )
+
+    runtime.gateway = FreeGateway()
+    item = WorkItem(
+        id=uuid4(), title="Research a market", objective="Prepare a first-pass market analysis.",
+        department="Marketing", state=TaskState.READY, business_id="digital-products",
+        assigned_agent_id=agent_id, assigned_role_key=role_key,
+    )
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="owner.created", subject_type="work_item",
+        subject_id=str(item.id), outcome="recorded", correlation_id=str(uuid4()),
+    )
+    runtime.store.create_work_item(item, audit)
+    runtime.queue.admit(item.id, agent_id, role_key)
+    runtime.fleet.start()
+
+    response = owner_client.post(
+        "/workers/run-once", headers=headers,
+        json={"agent_id": str(agent_id), "role_key": role_key},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed_review_required"
+    assert response.json()["execution_mode"] == "single_task_owner_triggered"
+    assert response.json()["background_loop_enabled"] is False
+    assert runtime.store.get_work_item(item.id).state == TaskState.REVIEW
+    assert runtime.queue.counts().get("done") == 1
+
+
+def test_agent_registry_persists_profiles_and_owner_state_across_runtime_restart(tmp_path):
+    database = tmp_path / "agent-registry.sqlite3"
+    first = create_runtime(str(database))
+    profile = {
+        "id": str(uuid4()), "role_key": "intelligence-research__market_researcher",
+        "name": "Market Researcher", "title": "Market Researcher",
+        "department": "intelligence-research", "team_key": "intelligence-research__team_01",
+        "capabilities": ["market research"], "state": "draft", "revision": 1,
+        "kind": "specialist",
+    }
+    created = first.agents.setdefault(profile["role_key"], profile)
+    created["state"] = "active"
+    created["revision"] += 1
+    first.agents.save(created)
+    first.close()
+
+    restarted = create_runtime(str(database))
+    restored = restarted.agents.get(profile["role_key"])
+    assert restored["id"] == profile["id"]
+    assert restored["state"] == "active"
+    assert restored["revision"] == 2
+    assert len(restarted.agents.values()) == 1
+    restarted.close()
+
+
+
+def test_worker_service_status_is_owner_authenticated_and_reports_heartbeat(owner_client):
+    unauthorized = owner_client.get("/workers/service-status")
+    assert unauthorized.status_code == 401
+    runtime = app.dependency_overrides[get_runtime]()
+    worker_id = str(uuid4())
+    runtime.worker_presence.start(worker_id)
+    assert runtime.worker_presence.heartbeat(worker_id, 3) is True
+    response = owner_client.get(
+        "/workers/service-status",
+        headers={"X-OpenCompany-API-Key": "test-owner-key"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["single_instance_mode"] is True
+    assert payload["multi_replica_supported"] is False
+    assert payload["worker_instances"][0]["worker_id"] == worker_id
+    assert payload["worker_instances"][0]["processed_count"] == 3
+    assert payload["worker_instances"][0]["stale"] is False
+
+
+def test_owner_cannot_mark_or_queue_parent_work_before_prerequisites_complete(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    runtime = app.dependency_overrides[get_runtime]()
+    specialist_id = uuid4()
+    role_key = "intelligence-research__market_researcher"
+    runtime.agents[role_key] = {
+        "id": str(specialist_id), "role_key": role_key, "title": "Market Researcher",
+        "kind": "specialist", "state": "active", "capabilities": ["research"],
+    }
+    prerequisite = WorkItem(
+        id=uuid4(), title="Unfinished research", objective="Collect source evidence.",
+        department="intelligence-research", state=TaskState.READY,
+        business_id="digital-products",
+    )
+    parent = WorkItem(
+        id=uuid4(), title="Management synthesis", objective="Synthesize the research.",
+        department="intelligence-research", state=TaskState.DRAFT,
+        business_id="digital-products", depends_on=(prerequisite.id,),
+        assigned_agent_id=specialist_id, assigned_role_key=role_key,
+    )
+    runtime.store.create_work_item(prerequisite)
+    runtime.store.create_work_item(parent)
+
+    transition = owner_client.post(
+        f"/work-items/{parent.id}/transition",
+        headers=headers,
+        json={"target_state": "ready"},
+    )
+    assert transition.status_code == 409
+    assert "prerequisite" in transition.json()["detail"].lower()
+
+    from dataclasses import replace
+    ready_parent = replace(parent, state=TaskState.READY)
+    audit = AuditRecord(
+        id=uuid4(), occurred_at=datetime.now(timezone.utc), actor_type="owner",
+        actor_id="owner", action="test.force_ready", subject_type="work_item",
+        subject_id=str(parent.id), outcome="recorded", correlation_id=str(uuid4()),
+    )
+    runtime.store.save_work_item_with_audit(ready_parent, audit)
+    enqueue = owner_client.post(
+        f"/work-items/{parent.id}/enqueue",
+        headers=headers,
+    )
+    assert enqueue.status_code == 409
+    assert "prerequisite" in enqueue.json()["detail"].lower()
+    assert runtime.queue.counts().get("queued", 0) == 0
+
+
+def test_finance_budget_status_and_statement_reconciliation_are_business_scoped(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    entry_base = {
+        "business_id": "physical-agency", "currency": "USD",
+        "confirm_owner_record": True,
+    }
+    revenue = owner_client.post("/finance/entries", headers=headers, json={
+        **entry_base, "entry_type": "revenue", "amount_minor": 5000,
+        "description": "Test customer receipt recorded, not payment initiated",
+    })
+    expense = owner_client.post("/finance/entries", headers=headers, json={
+        **entry_base, "entry_type": "expense", "amount_minor": 1000,
+        "description": "Test supplier cost recorded, not paid",
+    })
+    assert revenue.status_code == 200 and expense.status_code == 200
+
+    budget = owner_client.post("/finance/budgets", headers=headers, json={
+        "business_id": "physical-agency", "currency": "USD",
+        "monthly_expense_limit_minor": 2000, "rationale": "Keep monthly operating expenses below the owner-approved cap.", "confirm_owner_budget": True,
+    })
+    assert budget.status_code == 200
+    assert budget.json()["spending_authorized"] is False
+    budget_history = owner_client.get("/finance/budgets/history?business_id=physical-agency", headers=headers)
+    assert budget_history.status_code == 200
+    assert budget_history.json()["count"] == 1
+    assert budget_history.json()["events"][0]["rationale"].startswith("Keep monthly")
+
+    status = owner_client.get(
+        "/finance/budgets/status?business_id=physical-agency&currency=USD",
+        headers=headers,
+    )
+    assert status.status_code == 200
+    assert status.json()["expenses_minor"] == 1000
+    assert status.json()["revenue_minor"] == 5000
+    assert status.json()["remaining_budget_minor"] == 1000
+    assert status.json()["budget_status"] == "within_limit"
+
+    start = "2026-11-01T00:00:00+00:00"
+    end = "2026-11-30T23:59:59+00:00"
+    reconciled = owner_client.post("/finance/reconciliations", headers=headers, json={
+        "business_id": "physical-agency", "currency": "USD",
+        "period_start": start, "period_end": end,
+        "opening_balance_minor": 10000, "statement_closing_minor": 14000,
+        "confirm_owner_reconciliation": True,
+    })
+    assert reconciled.status_code == 200
+    assert reconciled.json()["ledger_movement_minor"] == 4000
+    assert reconciled.json()["difference_minor"] == 0
+    assert reconciled.json()["status"] == "balanced"
+    assert reconciled.json()["funds_moved"] is False
+
+    discrepancy = owner_client.post("/finance/reconciliations", headers=headers, json={
+        "business_id": "physical-agency", "currency": "USD",
+        "period_start": start, "period_end": end,
+        "opening_balance_minor": 10000, "statement_closing_minor": 14500,
+        "confirm_owner_reconciliation": True,
+    })
+    assert discrepancy.status_code == 200
+    assert discrepancy.json()["difference_minor"] == 500
+    assert discrepancy.json()["status"] == "discrepancy"
+
+    isolated = owner_client.get(
+        "/finance/budgets?business_id=physical-brand", headers=headers,
+    )
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    history = owner_client.get(
+        "/finance/reconciliations?business_id=physical-agency", headers=headers,
+    )
+    assert history.status_code == 200 and history.json()["count"] == 2
+
+
+def test_business_integration_owner_review_is_audited_and_never_connects(owner_client, monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_SECRET_ENCRYPTION_KEY", "test-business-credential-encryption-key-32")
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    credential = owner_client.post(
+        "/business-units/digital-products/credentials", headers=headers,
+        json={"credential_key": "store-readonly", "secret": {"token": "not-returned"},
+              "confirm_owner_storage": True},
+    )
+    assert credential.status_code == 200
+    registered = owner_client.post(
+        "/business-units/digital-products/integrations", headers=headers,
+        json={"provider_key": "store-api", "display_name": "Digital Store",
+              "credential_key": "store-readonly", "permissions": ["products:read"],
+              "rationale": "Read-only product catalogue sync review",
+              "confirm_owner_registration": True},
+    )
+    assert registered.status_code == 200
+    integration_id = registered.json()["integration"]["integration_id"]
+    unconfirmed = owner_client.post(
+        f"/business-units/digital-products/integrations/{integration_id}/review",
+        headers=headers, json={"decision": "approve", "rationale": "Reviewed"},
+    )
+    assert unconfirmed.status_code == 422
+    approved = owner_client.post(
+        f"/business-units/digital-products/integrations/{integration_id}/review",
+        headers=headers, json={"decision": "approve", "rationale": "Read-only scope verified.",
+                               "confirm_owner_decision": True},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved_pending_connection"
+    assert approved.json()["external_connection_attempted"] is False
+    duplicate = owner_client.post(
+        f"/business-units/digital-products/integrations/{integration_id}/review",
+        headers=headers, json={"decision": "reject", "rationale": "Duplicate decision",
+                               "confirm_owner_decision": True},
+    )
+    assert duplicate.status_code == 409
+    events = owner_client.get(
+        f"/business-units/digital-products/integrations/{integration_id}/events",
+        headers=headers,
+    )
+    assert [event["action"] for event in events.json()["events"]] == ["registered", "owner_approve"]
+
+
+def test_ceo_coordination_cycle_runs_safe_phases_without_provider_or_queue_side_effects(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    bootstrapped = owner_client.post("/agents/bootstrap-executive", headers=headers)
+    assert bootstrapped.status_code == 200
+    agent = bootstrapped.json()["agent"]
+    activated = owner_client.post(
+        f"/agents/{agent['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": agent["revision"]},
+    )
+    assert activated.status_code == 200
+
+    result = owner_client.post(
+        "/executive/orchestration/cycle", headers=headers,
+        json={"business_id": "digital-products"},
+    )
+    assert result.status_code == 200
+    body = result.json()
+    assert body["plan"] is None
+    assert body["delegations"]["drafted_count"] == 0
+    assert body["delegations"]["skipped"][0]["reason"] == "no_confirmed_zero_cost_provider"
+    assert body["readiness"]["advanced_count"] == 0
+    assert body["owner_approval_required_for_delegations"] is True
+    assert body["queue_admission_performed"] is False
+    assert body["execution_started"] is False
+    assert body["parallel_execution_enabled"] is False
+
+
+def test_ceo_coordination_cycle_requires_both_plan_title_and_objective(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    bootstrapped = owner_client.post("/agents/bootstrap-executive", headers=headers)
+    agent = bootstrapped.json()["agent"]
+    owner_client.post(
+        f"/agents/{agent['id']}/state", headers=headers,
+        json={"target_state": "active", "expected_revision": agent["revision"]},
+    )
+    result = owner_client.post(
+        "/executive/orchestration/cycle", headers=headers,
+        json={"title": "Incomplete request"},
+    )
+    assert result.status_code == 422
+
+
+def test_business_unit_product_supplier_customer_and_order_workflow_is_internal_and_isolated(owner_client):
+    headers = {"X-OpenCompany-API-Key": "test-owner-key"}
+    supplier = owner_client.post(
+        "/business-units/physical-agency/counterparties", headers=headers,
+        json={"kind": "supplier", "name": "Synthetic Supplier", "country": "Pakistan",
+              "reference": "supplier-test-record", "confirm_owner_record": True},
+    )
+    customer = owner_client.post(
+        "/business-units/physical-agency/counterparties", headers=headers,
+        json={"kind": "customer", "name": "Synthetic Buyer", "country": "United Kingdom",
+              "reference": "buyer-test-record", "confirm_owner_record": True},
+    )
+    assert supplier.status_code == 200 and customer.status_code == 200
+
+    product = owner_client.post(
+        "/business-units/physical-agency/products", headers=headers,
+        json={"sku": "SALT-TEST-01", "name": "Test Salt Pack",
+              "description": "Synthetic test product record.", "unit_price_minor": 2500,
+              "currency": "USD", "supplier_id": supplier.json()["id"],
+              "confirm_owner_product": True},
+    )
+    assert product.status_code == 200
+    assert product.json()["status"] == "draft"
+    assert product.json()["published_externally"] is False
+    product_id = product.json()["id"]
+
+    not_active = owner_client.post(
+        "/business-units/physical-agency/orders", headers=headers,
+        json={"customer_id": customer.json()["id"], "currency": "USD",
+              "items": [{"product_id": product_id, "quantity": 2}],
+              "confirm_owner_order": True},
+    )
+    assert not_active.status_code == 422
+
+    activated = owner_client.post(
+        f"/business-units/physical-agency/products/{product_id}/activate",
+        headers=headers,
+        json={"confirm_owner_decision": True, "rationale": "Approved for internal order drafting."},
+    )
+    assert activated.status_code == 200
+    assert activated.json()["published_externally"] is False
+
+    order = owner_client.post(
+        "/business-units/physical-agency/orders", headers=headers,
+        json={"customer_id": customer.json()["id"], "currency": "USD",
+              "items": [{"product_id": product_id, "quantity": 2}],
+              "confirm_owner_order": True},
+    )
+    assert order.status_code == 200
+    body = order.json()
+    assert body["total_minor"] == 5000
+    assert body["status"] == "draft"
+    assert body["customer_contacted"] is False
+    order_id = body["id"]
+
+    transitions = [
+        ("owner_approved", {"confirm_owner_decision": True, "rationale": "Owner approved internal order record."}),
+        ("awaiting_payment_verification", {"confirm_owner_decision": True, "rationale": "Awaiting evidence review."}),
+        ("payment_verified_owner_attested", {"confirm_owner_decision": True, "confirm_payment_verification": True,
+                                              "rationale": "Owner reviewed supplied receipt reference.",
+                                              "evidence_reference": "synthetic-receipt-001"}),
+        ("fulfilling", {"confirm_owner_decision": True, "rationale": "Internal fulfillment coordination started."}),
+        ("fulfilled", {"confirm_owner_decision": True, "rationale": "Owner recorded fulfillment completion."}),
+    ]
+    for target, extra in transitions:
+        result = owner_client.post(
+            f"/business-units/physical-agency/orders/{order_id}/transition",
+            headers=headers, json={"target_status": target, **extra},
+        )
+        assert result.status_code == 200
+        assert result.json()["status"] == target
+        assert result.json()["external_customer_contact"] is False
+        assert result.json()["funds_moved"] is False
+        assert result.json()["fulfillment_executed"] is False
+    assert result.json()["payment_status_independently_verified"] is False
+
+    isolated = owner_client.get("/business-units/physical-brand/orders", headers=headers)
+    assert isolated.status_code == 200 and isolated.json()["count"] == 0
+    cross_business = owner_client.post(
+        "/business-units/digital-products/orders", headers=headers,
+        json={"customer_id": customer.json()["id"], "currency": "USD",
+              "items": [{"product_id": product_id, "quantity": 1}],
+              "confirm_owner_order": True},
+    )
+    assert cross_business.status_code == 422
+
+
+def test_treasury_owner_api_registers_accounts_and_lists_only_selected_business(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    response=owner_client.post("/treasury/accounts",headers=headers,json={
+        "owner_confirmed":True,"business_id":"digital-products","name":"Operating cash",
+        "currency":"USD","account_type":"cash","masked_reference":"***4321"})
+    assert response.status_code==200
+    assert response.json()["status"]=="record_only"
+    listed=owner_client.get("/treasury/accounts/digital-products",headers=headers)
+    assert listed.status_code==200
+    assert len(listed.json()["accounts"])==1
+    assert listed.json()["live_provider_balance_available"] is False
+    other=owner_client.get("/treasury/accounts/physical-brand",headers=headers)
+    assert other.json()["accounts"]==[]
+
+def test_treasury_api_requires_owner_confirmation_and_authentication(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    missing_confirmation=owner_client.post("/treasury/accounts",headers=headers,json={
+        "business_id":"physical-brand","name":"Cash","currency":"PKR"})
+    assert missing_confirmation.status_code==400
+    unauthenticated=owner_client.get("/treasury/accounts/physical-brand")
+    assert unauthenticated.status_code==401
+
+def test_treasury_spend_request_approval_never_moves_money(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    request=owner_client.post("/treasury/spend-requests",headers=headers,json={
+        "owner_confirmed":True,"business_id":"physical-agency","requester_id":"marketing-agent",
+        "payee":"Supplier","purpose":"Sample expense","amount_minor":250000,
+        "currency":"PKR","budget_category":"marketing"})
+    assert request.status_code==200
+    request_id=request.json()["id"]
+    decision=owner_client.post(f"/treasury/spend-requests/physical-agency/{request_id}/decision",
+        headers=headers,json={"approve":True,"note":"Approved for planning only"})
+    assert decision.status_code==200
+    assert decision.json()["status"]=="approved"
+    assert decision.json()["payment_executed"] is False
+    assert decision.json()["funds_moved"] is False
