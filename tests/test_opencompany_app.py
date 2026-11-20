@@ -2553,3 +2553,41 @@ def test_business_unit_product_supplier_customer_and_order_workflow_is_internal_
               "confirm_owner_order": True},
     )
     assert cross_business.status_code == 422
+
+
+def test_treasury_owner_api_registers_accounts_and_lists_only_selected_business(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    response=owner_client.post("/treasury/accounts",headers=headers,json={
+        "owner_confirmed":True,"business_id":"digital-products","name":"Operating cash",
+        "currency":"USD","account_type":"cash","masked_reference":"***4321"})
+    assert response.status_code==200
+    assert response.json()["status"]=="record_only"
+    listed=owner_client.get("/treasury/accounts/digital-products",headers=headers)
+    assert listed.status_code==200
+    assert len(listed.json()["accounts"])==1
+    assert listed.json()["live_provider_balance_available"] is False
+    other=owner_client.get("/treasury/accounts/physical-brand",headers=headers)
+    assert other.json()["accounts"]==[]
+
+def test_treasury_api_requires_owner_confirmation_and_authentication(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    missing_confirmation=owner_client.post("/treasury/accounts",headers=headers,json={
+        "business_id":"physical-brand","name":"Cash","currency":"PKR"})
+    assert missing_confirmation.status_code==400
+    unauthenticated=owner_client.get("/treasury/accounts/physical-brand")
+    assert unauthenticated.status_code==401
+
+def test_treasury_spend_request_approval_never_moves_money(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    request=owner_client.post("/treasury/spend-requests",headers=headers,json={
+        "owner_confirmed":True,"business_id":"physical-agency","requester_id":"marketing-agent",
+        "payee":"Supplier","purpose":"Sample expense","amount_minor":250000,
+        "currency":"PKR","budget_category":"marketing"})
+    assert request.status_code==200
+    request_id=request.json()["id"]
+    decision=owner_client.post(f"/treasury/spend-requests/physical-agency/{request_id}/decision",
+        headers=headers,json={"approve":True,"note":"Approved for planning only"})
+    assert decision.status_code==200
+    assert decision.json()["status"]=="approved"
+    assert decision.json()["payment_executed"] is False
+    assert decision.json()["funds_moved"] is False
