@@ -1,0 +1,28 @@
+# Git and local development state
+.git
+.github
+.venv
+venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Tests and local-only artifacts
+tests/
+*.sqlite
+*.sqlite3
+*.db
+
+# Legacy runtime and third-party reference catalogues
+src/ai_os/
+data/agency_agents_manifest.json
+data/repository_sources.json
+
+# Local secrets and environment files (keep the safe template)
+.env
+.env.*
+!.env.example

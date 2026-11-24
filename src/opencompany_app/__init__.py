@@ -1,1 +1,1 @@
-"""OpenCompany application package."""
+"""Standalone OpenCompany application layer, independent of legacy AIOS modules."""

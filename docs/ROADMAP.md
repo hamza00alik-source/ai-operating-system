@@ -1,57 +1,91 @@
-# Roadmap
+# OpenCompany implementation roadmap
 
-A feature is complete only when tested and its operating limits are documented.
+A capability is complete only when its implementation, acceptance tests, operational limits, and deployment behavior are verified. The standalone rebuild under `src/opencompany_app` and `src/opencompany_core` is the implementation target. The legacy `src/ai_os` application is reference-only and must not be modified as part of this rebuild.
 
-## Phase 1 — Core foundation
-- [x] FastAPI application and Python package
-- [x] SQLite persistence for tasks and approvals
-- [x] Human decision endpoints
-- [x] CI test execution (GitHub Actions)
-- [x] API-key authentication for operational endpoints outside development
-- [ ] Role-based authorization and broader security review
+## 1. Core platform
 
-## Phase 2 — Orchestration
-- [x] Initial GitHub discovery scan queue, candidate persistence, metadata evaluation, and separate worker
-- [x] Dashboard UI for scan status, evidence, and owner review
-- [x] Persistent owner browser sessions (HttpOnly, Secure, SameSite=Strict; 14-day expiry)
-- [x] Agency workforce catalog: 283 specialist definitions across 18 source categories
-- [x] Company department registry: 12 business departments mapped to source specialist categories
-- [x] Department-aware task routing from company department IDs to specialist catalogue pools
-- [x] Owner-visible inventory of 12 reference/workforce repositories
-- [ ] Worker lease/claim safety for multiple worker instances
-- [ ] CEO-led agent orchestration beyond discovery
-- [ ] Load specialist instruction files into bounded execution contexts
-- [x] Initial department workflow templates with persisted workflow instances and ordered task dependencies
-- [x] Owner-triggered workflow creation; first step queued and downstream steps blocked by default
-- [x] Dependency-gated task execution and automatic next-step handoff after successful completion
-- [ ] Workflow-level artifact aggregation, cancellation, parallel branches, and specialist-specific deliverable schemas
-- [ ] Task dependencies and assignment
-- [x] Static specialist registry sourced from Agency Agents
-- [ ] Live agent runtime and worker registry
-- [ ] Retry policy, timeouts, execution logs
-- [x] In-service discovery polling worker (single service)
-- [ ] Durable agent worker queue, scheduler, leases, and retries
+- [x] Standalone FastAPI application and composition root.
+- [x] SQLite persistence with transactional work-item changes.
+- [x] Hash-linked audit events and audit-chain verification.
+- [x] Owner API-key bootstrap and revocable HttpOnly browser sessions.
+- [x] CSRF checks, login throttling, security headers, and secret-free status responses.
+- [x] Encrypted provider-secret storage with a dedicated encryption key.
+- [x] Immutable business-unit ownership for work items, same-business dependency enforcement, inherited delegation scope, business-scoped learning notes, and per-business model-cost reporting.
+- [ ] Role-based owner/operator permissions and independent security review.
+- [ ] Documented secret-rotation and session-recovery procedures.
 
-## Phase 3 — Memory and learning
-- [ ] Source-attributed company knowledge
-- [ ] Retrieval and access controls
-- [ ] Evaluation datasets and regression checks
-- [ ] Improvement proposals requiring human approval
+## 2. End-to-end work orchestration
 
-## Phase 4 — Integrations
-- [ ] Provider-neutral LLM adapter
-- [ ] WooCommerce
-- [x] Social/video department registry and persistent content/brief workspace\n- [x] Draft-to-owner-approval lifecycle with explicit no-publish boundary\n- [ ] Metricool publishing/analytics adapter with mandatory approval\n- [ ] Canva media creation/export adapter\n- [x] Provider-neutral SQLite video-job queue, owner approval, budget gate, idempotency, and status API
-- [x] Authenticated worker claim/lease protocol, heartbeat, cancellation, bounded retries, event audit, and result reporting
-- [x] Optional single-GPU LongCat text-to-video worker and private MP4 artifact path
-- [ ] End-to-end GPU inference verification and multi-GPU/image-to-video/continuation adapters
-- [ ] Email and support adapters
-- [ ] Payment-status verification only
+- [x] Original OpenCompany organization contracts and specialist capability catalogue.
+- [x] Draft provisioning for CEO, department managers, and specialist profiles.
+- [x] CEO objective decomposition into validated draft department tasks.
+- [x] Dependency graph validation and atomic plan persistence.
+- [x] Manager-led delegation proposals with owner approval before child-task materialization.
+- [x] Atomic admission of owner-approved, assigned READY work into the durable queue.
+- [x] Atomic worker claims, expiring leases, bounded retries, dead-letter handling, and stale-lease recovery.
+- [x] Bounded worker fleet with explicit start/stop and optional owner-configured autostart.
+- [x] Specialist execution through a cost-gated model gateway; deliverables remain review-required.
+- [x] Owner review, approval, revision, failure, and safe cancellation of unqueued work; state-only cancellation of queued/running work is rejected to protect active leases.
+- [x] Owner-visible failed-task retry and workflow-detail inspection, backed by live queue/dependency/delegation/handoff/deliverable state.
+- [x] Persisted inter-agent handoffs with identity, artifact, and audit checks.
+- [x] Owner-authenticated workflow inspection endpoint for prerequisites, dependents, delegation proposals, handoffs, deliverables, queue state, and next action.
+- [ ] Workflow-level artifact aggregation and specialist-specific machine-readable deliverable schemas.
+- [ ] Dedicated workflow-level cancellation and resumable orchestration across parallel branches.
+- [ ] Durable per-attempt execution history and richer failure diagnostics.
+- [ ] Independent multi-process/multi-host worker coordination; current fleet is designed for one persistent API container and one SQLite volume.
 
-## Phase 5 — Operations
-- [x] Owner Control Center with company overview, workforce, repository sources, tasks, approvals, discovery, and model gateway
-- [ ] Deployment profiles, backups
-- [ ] Security review and end-to-end tests
-- [ ] Beginner-friendly setup guide
+### Queue re-admission change
 
-No autonomous spending, purchases, publishing, customer commitments, or unattended production code changes in the early releases.
+The implementation branch now allows an owner-reviewed READY task to reuse its terminal queue row after a completed review cycle or exhausted failure. Re-admission resets the attempt counter and stale lease/error fields, while refusing to overwrite queued or leased work. Regression tests have been added but remain unexecuted under the owner's instruction to defer CI/testing until 1 December 2026.
+
+## 3. Memory, research, and learning
+
+- [x] Role-specific operating procedures and bounded specialist prompts.
+- [x] Read-only research broker with bounded operation tiers and untrusted-source handling.
+- [x] Persisted agent handoffs and deliverable provenance.
+- [x] Outcome evaluation against reviewable deliverables.
+- [x] Owner-reviewed role-learning proposals and explicit application of approved notes.
+- [x] Evidence-based improvement proposals; no automatic code or policy mutation.
+- [ ] Cross-source knowledge library with granular access controls and retention rules.
+- [ ] Evaluation datasets and repeatable quality/regression benchmarks.
+
+## 4. Models and integrations
+
+- [x] Provider-neutral model gateway with strict zero-cost request budgets.
+- [x] UnoRouter live catalogue discovery and key-visible model intersection.
+- [x] Free-only eligibility checks, all eligible free-model rotation, response identity checks, and non-zero-cost rejection.
+- [x] Durable, secret-free model-usage ledger.
+- [x] Read-only API Anything connector with bounded tier-1 operations.
+- [x] GitHub code-evolution proposals restricted to isolated draft pull requests.
+- [ ] WooCommerce account connection and read-only product/order sync.
+- [ ] Social account connections and draft/publish workflow with owner approval.
+- [ ] Email and customer-support adapters with approval-gated external messages.
+- [ ] Payment-status verification adapter; no payment initiation.
+- [ ] Marketplace integrations and fulfillment status sync.
+
+## 5. Owner console and operations
+
+- [x] Independent mobile-friendly OpenCompany owner console.
+- [x] Workforce provisioning and activation controls.
+- [x] CEO planning, manager delegation, task queue, worker controls, and deliverable review.
+- [x] Provider catalogue/configuration and usage visibility.
+- [x] Workflow details view backed by live API data.
+- [x] Owner-triggered consistent SQLite backup export with integrity check.
+- [ ] Automated encrypted off-host backups and retention.
+- [ ] Restore rehearsal and documented recovery-point/recovery-time objectives.
+- [ ] Production monitoring, alerting, and incident runbooks.
+- [ ] Beginner-friendly setup and recovery guide.
+- [ ] Full authenticated mobile-browser acceptance pass.
+
+## Release and safety gates
+
+- No paid inference, purchases, spending, publishing, customer messages, customer commitments, withdrawals, or financial actions without explicit owner approval.
+- Free model eligibility is checked against the live catalogue and the owner's key; an unavailable free model must fail safely rather than fall back to a paid model.
+- AI-generated code remains in isolated draft PRs. No automatic merge or production deployment.
+- Keep the legacy AIOS branch unchanged and reference-only.
+- Do not change production service routing, database targets, persistent volumes, or secrets as part of branch implementation without explicit owner authorization.
+- CI/testing remains deferred until 1 December 2026 under the owner's existing instruction. Newly added tests must be reported as unrun until that date or until the owner changes that instruction.
+
+## Current implementation status
+
+The new application has a working internal CEO-to-manager-to-specialist execution path in code, including durable queueing, model-cost gates, review, handoffs, learning, and audit records. External commerce, social, email, and payment integrations are not yet connected. A successful source commit or Railway deployment alone does not prove those workflows work live; each requires an authenticated, owner-authorized acceptance test.

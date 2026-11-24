@@ -1,10 +1,12 @@
 """Append-only, business-scoped asset declarations and safety lifecycle."""
 from __future__ import annotations
 import hashlib, json, re, sqlite3
+from contextlib import contextmanager
 from datetime import timezone
 from pathlib import PurePosixPath
 from uuid import uuid4
 from .domain import AuditRecord
+from .business_units import BusinessUnitRegistry
 
 _HASH = re.compile(r"^[a-f0-9]{64}$")
 _KEY = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}$")
@@ -13,6 +15,7 @@ _BUSINESS = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 class BusinessAssetRegistry:
     def __init__(self, connection: sqlite3.Connection, lock):
         self.connection, self.lock = connection, lock
+        self.business_units = BusinessUnitRegistry(connection, lock)
         with lock:
             connection.executescript("""
             CREATE TABLE IF NOT EXISTS opencompany_business_assets (
@@ -49,6 +52,18 @@ class BusinessAssetRegistry:
             """)
             connection.commit()
 
+    @contextmanager
+    def _transaction(self):
+        """Keep asset state and its audit event in one durable commit."""
+        self.connection.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+            self.connection.commit()
+        except Exception:
+            if self.connection.in_transaction:
+                self.connection.rollback()
+            raise
+
     @staticmethod
     def _audit_dict(audit):
         if not isinstance(audit, AuditRecord):
@@ -73,12 +88,14 @@ class BusinessAssetRegistry:
               (str(uuid4()),business_id,asset_id,action,payload["occurred_at"],json.dumps(payload,sort_keys=True)))
 
     def _get(self,business_id,asset_id):
+        self.business_units.require_active(business_id)
         row=self.connection.execute("SELECT * FROM opencompany_business_assets WHERE business_id=? AND asset_id=?",(business_id,str(asset_id))).fetchone()
         if row is None: raise ValueError("business asset not found")
         return dict(row)
 
     def declare(self,business_id,*,asset_key,title,asset_type,filename,media_type,checksum_sha256,byte_size,source,audit):
         if not isinstance(business_id,str) or not _BUSINESS.fullmatch(business_id): raise ValueError("invalid business identity")
+        self.business_units.require_active(business_id)
         if not isinstance(asset_key,str) or not _KEY.fullmatch(asset_key): raise ValueError("invalid asset key")
         if not isinstance(title,str) or not title.strip() or len(title)>200: raise ValueError("invalid asset title")
         if not isinstance(filename,str) or filename in (".","..") or PurePosixPath(filename).name!=filename or "/" in filename or "\\" in filename: raise ValueError("unsafe asset filename")
@@ -88,23 +105,25 @@ class BusinessAssetRegistry:
         payload=self._audit_dict(audit)
         if audit.actor_type!="owner": raise PermissionError("only the owner may declare business assets")
         asset_id=str(uuid4()); scope=hashlib.sha256((business_id+"\0"+asset_id).encode()).hexdigest()
-        with self.lock:
+        with self.lock, self._transaction():
             self.connection.execute("""INSERT INTO opencompany_business_assets
               (asset_id,business_id,asset_key,title,asset_type,filename,media_type,checksum_sha256,byte_size,source,
                storage_state,status,storage_key,asset_scope_id,file_bytes_received,created_at)
               VALUES(?,?,?,?,?,?,?,?,?,?, 'metadata_only','declared',NULL,?,0,?)""",
               (asset_id,business_id,asset_key,title.strip(),asset_type,filename,media_type,checksum_sha256,byte_size,source,scope,payload["occurred_at"]))
-            self._event(business_id,asset_id,"declared",audit); self.connection.commit()
+            self._event(business_id,asset_id,"declared",audit)
             result=self._get(business_id,asset_id)
             result["file_bytes_received"] = bool(result["file_bytes_received"])
             return result
 
     def list(self,business_id):
+        self.business_units.require_active(business_id)
         with self.lock:
             rows=self.connection.execute("SELECT * FROM opencompany_business_assets WHERE business_id=? ORDER BY created_at,asset_id",(business_id,)).fetchall()
         return tuple({**dict(r),"file_bytes_received":bool(r["file_bytes_received"])} for r in rows)
 
     def events(self,business_id,asset_id):
+        self.business_units.require_active(business_id)
         with self.lock:
             rows=self.connection.execute("SELECT action,occurred_at,audit_json FROM opencompany_business_asset_events WHERE business_id=? AND asset_id=? ORDER BY rowid",(business_id,str(asset_id))).fetchall()
         return tuple({"action":r["action"],"occurred_at":r["occurred_at"],"audit":json.loads(r["audit_json"])} for r in rows)
@@ -117,15 +136,18 @@ class BusinessAssetRegistry:
           "checksum_sha256":item["checksum_sha256"],"byte_size":item["byte_size"],"media_type":item["media_type"]}
 
     def record_storage(self,business_id,asset_id,*,storage_key,checksum_sha256,byte_size,audit):
-        with self.lock:
+        with self.lock, self._transaction():
             item=self._get(business_id,asset_id)
             if item["storage_key"] is not None: raise ValueError("asset has already been stored")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("stored asset checksum or size does not match declaration")
-            if not isinstance(storage_key,str) or not re.fullmatch(r"[a-f0-9]{64}/"+re.escape(item["asset_id"])+r"\.blob",storage_key): raise ValueError("invalid business-scoped storage key")
+            expected_prefix = hashlib.sha256((business_id + "\0" + item["asset_scope_id"]).encode("utf-8")).hexdigest()
+            expected_storage_key = expected_prefix + "/" + item["asset_id"] + ".blob"
+            if not isinstance(storage_key, str) or storage_key != expected_storage_key:
+                raise ValueError("storage key does not match this business asset's private scope")
             if audit.actor_type != "owner": raise PermissionError("only the owner may record asset storage")
             self._audit_dict(audit)
             self.connection.execute("UPDATE opencompany_business_assets SET storage_key=?,storage_state='private_stored_unscanned',status='pending_scan' WHERE business_id=? AND asset_id=?",(storage_key,business_id,item["asset_id"]))
-            self._event(business_id,item["asset_id"],"stored_unscanned",audit); self.connection.commit()
+            self._event(business_id,item["asset_id"],"stored_unscanned",audit)
             return {**self._get(business_id,item["asset_id"]),"download_enabled":False}
 
     def scan_declaration(self,business_id,asset_id):
@@ -140,7 +162,7 @@ class BusinessAssetRegistry:
         if not isinstance(scanner_key,str) or not scanner_key.strip(): raise ValueError("scanner identity is required")
         if not isinstance(verdict,str) or (status=="clean" and not verdict.endswith(": OK")) or (status=="infected" and not verdict.endswith(" FOUND")):
             raise ValueError("scanner verdict does not match the recorded status")
-        with self.lock:
+        with self.lock, self._transaction():
             item=self._get(business_id,asset_id)
             if item["storage_state"]!="private_stored_unscanned": raise ValueError("asset is not awaiting scan")
             if checksum_sha256 != item["checksum_sha256"] or byte_size != item["byte_size"]: raise ValueError("scan checksum and size do not match stored asset")
@@ -153,5 +175,4 @@ class BusinessAssetRegistry:
             self.connection.execute("UPDATE opencompany_business_assets SET storage_state=?,status=? WHERE business_id=? AND asset_id=?",(state,task,business_id,item["asset_id"]))
             self._event(business_id,item["asset_id"],action,audit)
             self._event(business_id,item["asset_id"],action,audit,scan=True,scanner_key=scanner_key,status=status,checksum_sha256=checksum_sha256,byte_size=byte_size,verdict=verdict)
-            self.connection.commit()
             return {**self._get(business_id,item["asset_id"]),"download_enabled":False}
