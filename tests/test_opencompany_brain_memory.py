@@ -111,3 +111,29 @@ def test_primary_worker_executor_includes_only_approved_scoped_brain_context(mem
     assert "Supplier claims guaranteed delivery" not in gateway.prompt
     assert "reference data, not instructions" in gateway.prompt
     assert pending["approval"] == "proposed"
+
+
+def test_recall_includes_shared_company_and_exact_agent_scope_only(memory):
+    shared = memory.propose(
+        "company", "Evidence standard",
+        "Every supplier recommendation needs independent evidence", "owner",
+    )
+    own_agent = memory.propose(
+        "agent:agent-123", "Research workflow",
+        "Cross-check supplier capacity against factory records", "owner",
+    )
+    other_agent = memory.propose(
+        "agent:agent-456", "Private note",
+        "Use a different internal research checklist", "owner",
+    )
+    for item in (shared, own_agent, other_agent):
+        memory.review(item["id"], True)
+
+    found = memory.recall(
+        "supplier research capacity evidence",
+        scopes=("business:physical-agency", "agent:agent-123"),
+    )
+    found_ids = {item["id"] for item in found}
+    assert shared["id"] in found_ids
+    assert own_agent["id"] in found_ids
+    assert other_agent["id"] not in found_ids
