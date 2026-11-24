@@ -1,7 +1,8 @@
-"""Composition layer connecting registered skills to the durable worker."""
+"""Composition layer connecting approved brain memory, skills and workers."""
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from opencompany.brain import Brain
 from opencompany.skills import SkillRegistry
 from opencompany.worker import Worker
 
@@ -13,15 +14,21 @@ def build_skill_worker(
     routes: Mapping[str, tuple[str, str]],
     *,
     approval_resolver: Callable[[str, str, dict], bool] | None = None,
+    brain: Brain | None = None,
+    memory_scope: str = "company",
     lease_seconds: int = 60,
 ) -> Worker:
-    """Build a worker whose named handlers dispatch only registered skills.
+    """Build a worker with explicit, read-only approved-memory enrichment.
 
-    routes maps queue handler names to (skill_key, action). Approval resolution
-    is injected by trusted application code; it is never read from job claims.
+    A job may provide memory_query to request context. It cannot inject
+    memory_context directly: the runtime overwrites that field with approved
+    records retrieved from the Brain. Sensitive action approval is resolved
+    separately by trusted server-side code.
     """
     if not routes:
         raise ValueError("At least one skill route is required")
+    if not isinstance(memory_scope, str) or not memory_scope.strip():
+        raise ValueError("memory_scope must be a non-empty string")
     handlers = {}
     for handler_name, route in routes.items():
         if not isinstance(handler_name, str) or not handler_name.strip():
@@ -31,7 +38,20 @@ def build_skill_worker(
         skill_key, action = route
         if not skill_key or not action:
             raise ValueError("Skill key and action are required in every route")
-        handlers[handler_name] = registry.worker_handler(
+        skill_handler = registry.worker_handler(
             skill_key, action, approval_resolver=approval_resolver
         )
+
+        def dispatch(payload, handler=skill_handler):
+            safe_payload = dict(payload)
+            query = safe_payload.pop("memory_query", "")
+            # Never trust a caller-supplied memory context.
+            safe_payload.pop("memory_context", None)
+            if brain is not None and query:
+                safe_payload["memory_context"] = brain.recall(
+                    query, scope=memory_scope
+                )
+            return handler(safe_payload)
+
+        handlers[handler_name] = dispatch
     return Worker(queue, worker_id, handlers, lease_seconds=lease_seconds)
