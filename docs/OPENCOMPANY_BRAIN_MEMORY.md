@@ -25,6 +25,8 @@ All endpoints require owner authentication. The `/owner` control center includes
 3. Approve or reject one with `POST /brain/memories/{memory_id}/decision`.
 4. Approved records become eligible for retrieval. Rejected and pending records are never injected into agent context.
 
+The owner-only `GET /agents/{agent_id}/workspace` response also displays up to 20 approved records in that agent's exact private scope. Pending or rejected records are excluded.
+
 Example proposal:
 
 ```json
@@ -74,4 +76,5 @@ The existing owner-written business context remains a separate feature. It is no
 - No automatic memory extraction from conversations or deliverables is enabled.
 - No automatic learning or policy changes occur.
 - Memory review is available in the owner dashboard and through the owner API.
-- Dashboard filtering currently focuses on approval state; scope-specific filtering can be added later.
+- The Brain dashboard supports filtering by approval state and memory scope.
+- Agent-private memory is visible in the owner workspace; agent-to-agent messaging and agent self-service memory editing are not implemented.
