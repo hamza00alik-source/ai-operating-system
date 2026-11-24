@@ -338,9 +338,20 @@ function renderAgents(agents){
  if(!agents.length){root.append(node("p","No profiles provisioned yet.","muted"));return;}
  agents.slice(0,80).forEach(a=>{
   const row=node("div",undefined,"rowitem"),left=node("div"),name=node("strong",a.title||a.name||a.role_key),meta=node("div",(a.department||"")+" · "+a.role_key,"muted");
-  left.append(name,meta);const right=node("div"),state=node("span",a.state,"pill"),btn=node("button",a.state==="active"?"Pause":a.state==="paused"?"Activate":"Activate");
+  left.append(name,meta);const right=node("div"),state=node("span",a.state,"pill"),workspaceBtn=node("button","Workspace"),btn=node("button",a.state==="active"?"Pause":a.state==="paused"?"Activate":"Activate");
+  workspaceBtn.addEventListener("click",async()=>{workspaceBtn.disabled=true;try{
+   const data=await api("/agents/"+encodeURIComponent(a.id)+"/workspace");
+   let panel=row.querySelector(".agent-workspace");if(!panel){panel=node("div",undefined,"agent-workspace");panel.style.gridColumn="1 / -1";panel.style.padding="12px";panel.style.marginTop="10px";panel.style.border="1px solid var(--border)";panel.style.borderRadius="10px";row.append(panel);}
+   panel.replaceChildren();
+   panel.append(node("strong","Workspace · "+data.live.execution_status));
+   panel.append(node("p","Profile: "+data.overview.profile_state+" · Assigned work: "+data.live.assigned_work_count+" · Active work: "+data.live.active_work_count,"muted"));
+   panel.append(node("p","Capabilities: "+(data.overview.capabilities||[]).join(", "),"muted"));
+   panel.append(node("p",data.live.note,"muted"));
+   (data.recent_work||[]).forEach(w=>{panel.append(node("p",w.title+" — "+w.state,"muted"));(w.deliverables||[]).forEach(d=>panel.append(node("pre",String(d.content||"").slice(0,1600),"deliverable-preview")));});
+   if(data.workspace_sections.messages!=="available"||data.workspace_sections.agent_memory!=="available")panel.append(node("p","Messages and private agent memory are not implemented yet.","muted"));
+  }catch(e){notice(e.message,true);}finally{workspaceBtn.disabled=false;}});
   btn.addEventListener("click",async()=>{btn.disabled=true;try{await api("/agents/"+encodeURIComponent(a.id)+"/state",{method:"POST",body:{expected_revision:a.revision,target_state:a.state==="active"?"paused":"active"}});await refreshAll();}catch(e){notice(e.message,true);btn.disabled=false;}});
-  right.append(state,btn);row.append(left,right);root.append(row);
+  right.append(state,workspaceBtn,btn);row.append(left,right);root.append(row);
  });
  if(agents.length>80)root.append(node("p","Showing first 80 of "+agents.length+" profiles. Use workforce APIs for the full catalogue.","muted"));
 }
