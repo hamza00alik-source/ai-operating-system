@@ -1508,6 +1508,9 @@ def agent_workspace(agent_id:str,runtime=Depends(get_runtime),owner=Depends(_own
             "state":item.state.value,"revision":item.revision,
             "deliverables":list(runtime.store.list_deliverables(item.id)),
         })
+    agent_memory=runtime.brain_memory.list(
+        approval="approved",scope=f"agent:{agent_id}",limit=20
+    )
     instances=runtime.worker_presence.list_instances()
     now=datetime.now(timezone.utc)
     live_instances=[]
@@ -1536,10 +1539,11 @@ def agent_workspace(agent_id:str,runtime=Depends(get_runtime),owner=Depends(_own
                   "template_type":"capability_template",
                   "execution_policy":"No external actions; owner approval remains required."},
         "recent_work":recent,
+        "agent_memory":agent_memory,
         "workspace_sections":{"overview":"available","live":"available",
                               "prompt":"available","deliverables":"available",
                               "messages":"not_implemented",
-                              "agent_memory":"not_implemented"},
+                              "agent_memory":"available"},
     }
 
 @app.post("/work-items")
