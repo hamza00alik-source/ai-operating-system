@@ -55,3 +55,46 @@ def test_registry_rejects_duplicate_keys_and_unknown_actions():
         registry.register(skill, lambda payload: payload)
     with pytest.raises(ValueError, match="Unknown skill action"):
         Skill("bad", "Bad", "Bad action", ("execute_anything",), ()).validate()
+
+
+def test_worker_adapter_ignores_approval_claim_in_job_payload():
+    called = []
+    registry = SkillRegistry()
+    registry.register(
+        Skill("publisher", "Publish", "Publish approved content",
+              (Action.PUBLISH.value,), (Action.PUBLISH.value,)),
+        lambda payload: called.append(payload) or {"published": True},
+    )
+    handler = registry.worker_handler("publisher", "publish")
+    with pytest.raises(PermissionError, match="approval required"):
+        handler({"draft_id": "d1", "owner_approved": True})
+    assert called == []
+
+
+def test_worker_adapter_uses_only_trusted_approval_resolver():
+    registry = SkillRegistry()
+    registry.register(
+        Skill("publisher", "Publish", "Publish approved content",
+              (Action.PUBLISH.value,), (Action.PUBLISH.value,)),
+        lambda payload: {"published_id": payload["draft_id"]},
+    )
+    handler = registry.worker_handler(
+        "publisher", "publish",
+        approval_resolver=lambda skill, action, payload: (
+            skill == "publisher" and action == "publish"
+            and payload.get("approval_id") == "verified-approval"
+        ),
+    )
+    result = handler({"draft_id": "d1", "approval_id": "verified-approval"})
+    assert result["output"] == {"published_id": "d1"}
+
+
+def test_worker_adapter_fails_closed_without_approval_resolver():
+    registry = SkillRegistry()
+    registry.register(
+        Skill("publisher", "Publish", "Publish approved content",
+              (Action.PUBLISH.value,), (Action.PUBLISH.value,)),
+        lambda payload: {"published": True},
+    )
+    with pytest.raises(PermissionError, match="approval required"):
+        registry.worker_handler("publisher", "publish")({"draft_id": "d1"})
