@@ -140,7 +140,7 @@ button{cursor:pointer}button.primary{background:#2563eb;color:white;border-color
 form.inline{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}form.inline input,form.inline select{flex:1;min-width:130px}
 table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #8884;vertical-align:top}
 .scroll{overflow-x:auto}.pill{display:inline-block;border:1px solid #8888;border-radius:20px;padding:2px 8px;font-size:.78rem}
-.stack{display:grid;gap:8px}.rowitem{padding:9px 0;border-bottom:1px solid #8884;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.stack{display:grid;gap:8px}.rowitem{padding:9px 0;border-bottom:1px solid #8884;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center}.agent-workspace{flex-basis:100%;min-width:0;padding:12px;margin-top:10px;border:1px solid #8885;border-radius:10px}.deliverable-preview{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto}
 #login{max-width:420px;margin:12vh auto;padding:22px;border:1px solid #8885;border-radius:14px}
 #login form{display:grid;gap:12px}#login input{width:100%}
 #notice{padding:10px 12px;border-radius:9px;background:#8882;margin:12px 0;display:none}
@@ -341,7 +341,7 @@ function renderAgents(agents){
   left.append(name,meta);const right=node("div"),state=node("span",a.state,"pill"),workspaceBtn=node("button","Workspace"),btn=node("button",a.state==="active"?"Pause":a.state==="paused"?"Activate":"Activate");
   workspaceBtn.addEventListener("click",async()=>{workspaceBtn.disabled=true;try{
    const data=await api("/agents/"+encodeURIComponent(a.id)+"/workspace");
-   let panel=row.querySelector(".agent-workspace");if(!panel){panel=node("div",undefined,"agent-workspace");panel.style.gridColumn="1 / -1";panel.style.padding="12px";panel.style.marginTop="10px";panel.style.border="1px solid var(--border)";panel.style.borderRadius="10px";row.append(panel);}
+   let panel=row.querySelector(".agent-workspace");if(!panel){panel=node("div",undefined,"agent-workspace");row.append(panel);}
    panel.replaceChildren();
    panel.append(node("strong","Workspace · "+data.live.execution_status));
    panel.append(node("p","Profile: "+data.overview.profile_state+" · Assigned work: "+data.live.assigned_work_count+" · Active work: "+data.live.active_work_count,"muted"));
