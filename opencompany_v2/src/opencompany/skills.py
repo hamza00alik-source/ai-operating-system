@@ -48,6 +48,21 @@ class SkillRegistry:
             raise ValueError(f"Skill already registered: {skill.key}")
         self._skills[skill.key] = (skill, handler)
 
+    def list(self) -> list[dict[str, Any]]:
+        """Return a stable, read-only catalog view without exposing handlers."""
+        return [
+            {
+                "key": skill.key,
+                "purpose": skill.purpose,
+                "version": skill.version,
+                "allowed_actions": list(skill.allowed_actions),
+                "approval_actions": list(skill.approval_actions),
+            }
+            for skill, _handler in sorted(
+                self._skills.values(), key=lambda item: item[0].key
+            )
+        ]
+
     def execute(self, skill_key: str, action: str, payload: Any,
                 *, owner_approved: bool = False) -> SkillResult:
         if skill_key not in self._skills:
