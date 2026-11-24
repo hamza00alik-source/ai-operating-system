@@ -353,14 +353,6 @@ def get_workforce_agents(department: str | None = None, q: str | None = None):
     }
 
 
-@app.get("/company/sources", dependencies=[Depends(require_api_key)])
-def get_company_sources():
-    manifest_path = Path(__file__).resolve().parents[2] / "data" / "repository_sources.json"
-    if not manifest_path.exists():
-        raise HTTPException(status_code=503, detail="Repository source inventory is unavailable.")
-    return json.loads(manifest_path.read_text(encoding="utf-8"))
-
-
 @app.get("/company/overview", dependencies=[Depends(require_api_key)])
 def get_company_overview():
     with connect() as db:
@@ -370,7 +362,7 @@ def get_company_overview():
         candidates = db.execute("SELECT COUNT(*) AS n FROM discovery_candidates").fetchone()["n"]
         agent_runs = db.execute("SELECT status, COUNT(*) AS n FROM agent_runs GROUP BY status").fetchall()
     return {
-        "workforce": {"agents": 283, "departments": 18, "company_departments": 12, "roles_including_ceo": 284, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "shared on-demand specialist invocation plus CEO review; no external side effects"},
+        "workforce": {"agents": 0, "departments": 0, "company_departments": 10, "roles_including_ceo": 512, "runtime_ready": bool(_agent_thread and _agent_thread.is_alive()), "runtime_scope": "legacy starter has no imported workforce catalogue; use the OpenCompany-owned catalogue and supervised runtime"},
         "tasks": {r["status"]: r["n"] for r in tasks},
         "approvals": {r["status"]: r["n"] for r in approvals},
         "discovery_scans": {r["status"]: r["n"] for r in scans},
