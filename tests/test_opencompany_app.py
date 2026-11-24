@@ -2598,3 +2598,26 @@ def test_treasury_spend_request_approval_never_moves_money(owner_client):
     assert decision.json()["status"]=="approved"
     assert decision.json()["payment_executed"] is False
     assert decision.json()["funds_moved"] is False
+
+
+def test_agent_workspace_reports_profile_separately_from_real_worker_activity(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    boot=owner_client.post("/agents/bootstrap-executive",headers=headers)
+    assert boot.status_code==200
+    agent_id=boot.json()["agent"]["id"]
+    response=owner_client.get(f"/agents/{agent_id}/workspace",headers=headers)
+    assert response.status_code==200
+    payload=response.json()
+    assert payload["agent"]["id"]==agent_id
+    assert payload["live"]["execution_status"]=="not_provisioned"
+    assert payload["live"]["active_work_count"]==0
+    assert payload["live"]["worker_instances"]==[]
+    assert payload["prompt"]["source"]=="OpenCompany first-party role catalogue"
+    assert payload["workspace_sections"]["messages"]=="not_implemented"
+    assert payload["workspace_sections"]["agent_memory"]=="not_implemented"
+
+
+def test_agent_workspace_is_owner_authenticated_and_rejects_unknown_agent(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    assert owner_client.get("/agents/missing/workspace").status_code==401
+    assert owner_client.get("/agents/missing/workspace",headers=headers).status_code==404
