@@ -2615,7 +2615,8 @@ def test_agent_workspace_reports_profile_separately_from_real_worker_activity(ow
     assert payload["live"]["worker_instances"]==[]
     assert payload["prompt"]["source"]=="OpenCompany first-party role catalogue"
     assert payload["workspace_sections"]["messages"]=="not_implemented"
-    assert payload["workspace_sections"]["agent_memory"]=="not_implemented"
+    assert payload["workspace_sections"]["agent_memory"]=="available"
+    assert payload["agent_memory"]==[]
 
 
 def test_agent_workspace_is_owner_authenticated_and_rejects_unknown_agent(owner_client):
