@@ -1355,6 +1355,59 @@ def agent_state(agent_id:str,payload:dict,runtime=Depends(get_runtime),owner=Dep
     runtime.agents.save(agent)
     return {**agent,"worker_started":False}
 
+@app.get("/agents/{agent_id}/workspace")
+def agent_workspace(agent_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Owner-only, evidence-backed workspace snapshot for one provisioned agent."""
+    agent=next((a for a in runtime.agents.values() if a["id"]==agent_id),None)
+    if not agent:
+        raise HTTPException(404,"Agent not found.")
+    role=next((r for r in ROLE_CATALOGUE if r["role_key"]==agent["role_key"]),None)
+    assigned=[item for item in runtime.store.list_work_items()
+              if str(item.assigned_agent_id or "")==agent_id]
+    assigned.sort(key=lambda item:item.revision,reverse=True)
+    active=[item for item in assigned if item.state.value in {"running","in_progress"}]
+    recent=[]
+    for item in assigned[:20]:
+        recent.append({
+            "id":str(item.id),"title":item.title,"objective":item.objective,
+            "department":item.department,"business_id":item.business_id,
+            "state":item.state.value,"revision":item.revision,
+            "deliverables":list(runtime.store.list_deliverables(item.id)),
+        })
+    instances=runtime.worker_presence.list_instances()
+    now=datetime.now(timezone.utc)
+    live_instances=[]
+    for instance in instances:
+        try:
+            seen=datetime.fromisoformat(instance["last_seen_at"])
+            age_seconds=max(0,int((now-seen).total_seconds()))
+        except (TypeError,ValueError):
+            age_seconds=None
+        live_instances.append({**instance,"heartbeat_age_seconds":age_seconds,
+                               "fresh":age_seconds is not None and age_seconds<=120})
+    execution_status=("executing" if active else
+                      "idle" if agent["state"]=="active" else
+                      "paused" if agent["state"]=="paused" else "not_provisioned")
+    return {
+        "agent":agent,
+        "overview":{"role_key":agent["role_key"],"department":agent["department"],
+                    "team_key":agent["team_key"],"capabilities":agent["capabilities"],
+                    "profile_state":agent["state"],"revision":agent["revision"]},
+        "live":{"execution_status":execution_status,
+                "active_work_count":len(active),"assigned_work_count":len(assigned),
+                "worker_instances":live_instances,
+                "note":"An active profile is not proof of a running worker."},
+        "prompt":{"source":"OpenCompany first-party role catalogue",
+                  "capabilities":role["capabilities"] if role else agent["capabilities"],
+                  "playbook":role["playbook"] if role else None,
+                  "prohibited_actions":role.get("prohibited_actions",[]) if role else []},
+        "recent_work":recent,
+        "workspace_sections":{"overview":"available","live":"available",
+                              "prompt":"available","deliverables":"available",
+                              "messages":"not_implemented",
+                              "agent_memory":"not_implemented"},
+    }
+
 @app.post("/work-items")
 def create_work_item(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
     dept=payload.get("department")
