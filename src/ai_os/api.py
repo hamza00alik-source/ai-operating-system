@@ -848,7 +848,7 @@ def decide_social_content(content_id: str, payload: SocialDecisionRequest):
 # provider, allocates compute, incurs cost, or publishes generated media.
 class VideoJobCreate(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
-    provider: str = Field(default="longcat-video", pattern="^longcat-video$")
+    provider: str = Field(default="longcat-video", pattern="^(longcat-video|cinecode)$")
     idempotency_key: str = Field(min_length=1, max_length=128)
     parameters: dict = Field(default_factory=dict)
     estimated_cost_minor: int = Field(ge=0)
@@ -864,17 +864,22 @@ class VideoJobDecision(BaseModel):
 
 
 @app.get("/video/status", dependencies=[Depends(require_api_key)])
-def get_video_status():
+def get_video_status(provider: str = Query(default="longcat-video", pattern="^(longcat-video|cinecode)$")):
     video_jobs.initialize()
     return {
         "queue": "sqlite-durable",
-        **video_jobs.worker_status(),
+        **video_jobs.worker_status(provider),
         "publishing_enabled": False,
     }
 
 
 @app.post("/video/jobs", status_code=201, dependencies=[Depends(require_owner_key)])
 def post_video_job(payload: VideoJobCreate):
+    if payload.provider == "cinecode" and payload.parameters.get("music_source") not in {"none", "code"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Cinecode requires an explicit music_source choice: 'none' or 'code'.",
+        )
     try:
         return video_jobs.create_job(
             prompt=payload.prompt, provider=payload.provider,
@@ -917,7 +922,9 @@ def decide_video_job(job_id: str, payload: VideoJobDecision):
 
 class VideoWorkerClaim(BaseModel):
     worker_id: str = Field(min_length=1, max_length=100)
+    provider: str = Field(default="longcat-video", pattern="^(longcat-video|cinecode)$")
     lease_seconds: int = Field(default=120, ge=30, le=900)
+    capabilities: dict = Field(default_factory=dict)
 
 
 class VideoWorkerHeartbeat(BaseModel):
@@ -935,10 +942,18 @@ class VideoWorkerFailure(BaseModel):
     retryable: bool = True
 
 
-def require_video_worker(x_video_worker_token: str | None = Header(default=None, alias="X-Video-Worker-Token")):
-    expected = os.getenv("VIDEO_WORKER_TOKEN", "").strip()
+def require_video_worker(
+    x_video_worker_token: str | None = Header(default=None, alias="X-Video-Worker-Token"),
+    x_video_provider: str | None = Header(default=None, alias="X-Video-Provider"),
+):
+    # Separate credentials prevent a LongCat worker from impersonating Cinecode
+    # (or vice versa) by changing the provider field in a claim request.
+    if x_video_provider not in {"longcat-video", "cinecode"}:
+        raise HTTPException(status_code=401, detail="A valid X-Video-Provider header is required.")
+    variable = "VIDEO_CINECODE_WORKER_TOKEN" if x_video_provider == "cinecode" else "VIDEO_WORKER_TOKEN"
+    expected = os.getenv(variable, "").strip()
     if not expected or not x_video_worker_token or not hmac.compare_digest(expected, x_video_worker_token.strip()):
-        raise HTTPException(status_code=401, detail="Valid video worker credential required.")
+        raise HTTPException(status_code=401, detail="Valid provider-specific video worker credential required.")
 
 
 @app.get("/video/jobs/{job_id}/events", dependencies=[Depends(require_api_key)])
@@ -960,15 +975,28 @@ def post_video_job_cancel(job_id: str):
 
 
 @app.post("/video/worker/claim", dependencies=[Depends(require_video_worker)])
-def post_video_worker_claim(payload: VideoWorkerClaim):
+def post_video_worker_claim(
+    payload: VideoWorkerClaim,
+    x_video_provider: str | None = Header(default=None, alias="X-Video-Provider"),
+):
+    if payload.provider != x_video_provider:
+        raise HTTPException(status_code=403, detail="Claim provider must match the authenticated worker provider.")
     try:
-        return video_jobs.claim_job(payload.worker_id, payload.lease_seconds)
+        return video_jobs.claim_job(
+            payload.worker_id, payload.lease_seconds, payload.provider,
+            capabilities=payload.capabilities,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/video/worker/jobs/{job_id}/heartbeat", dependencies=[Depends(require_video_worker)])
-def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     try:
         return video_jobs.heartbeat(job_id, x_job_lease, progress=payload.progress, message=payload.message)
     except LookupError as exc:
@@ -980,7 +1008,17 @@ def post_video_worker_heartbeat(job_id: str, payload: VideoWorkerHeartbeat, x_jo
 
 
 @app.post("/video/worker/jobs/{job_id}/complete", dependencies=[Depends(require_video_worker)])
-def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
+    if item["provider"] == "cinecode":
+        raise HTTPException(
+            status_code=409,
+            detail="Cinecode jobs complete only through validated private MP4 artifact upload.",
+        )
     try:
         return video_jobs.complete_job(job_id, x_job_lease, result_uri=payload.result_uri, metadata=payload.metadata)
     except LookupError as exc:
@@ -992,9 +1030,19 @@ def post_video_worker_complete(job_id: str, payload: VideoWorkerComplete, x_job_
 
 
 @app.post("/video/worker/jobs/{job_id}/fail", dependencies=[Depends(require_video_worker)])
-def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     try:
-        return video_jobs.fail_job(job_id, x_job_lease, error=payload.error, retryable=payload.retryable)
+        failed = video_jobs.fail_job(job_id, x_job_lease, error=payload.error, retryable=payload.retryable)
+        if failed and failed["status"] in {"failed", "cancelled"}:
+            import uuid as _uuid
+            report_path = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve() / f"{_uuid.UUID(job_id)}.report.md"
+            report_path.unlink(missing_ok=True)
+        return failed
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -1002,12 +1050,74 @@ def post_video_worker_fail(job_id: str, payload: VideoWorkerFailure, x_job_lease
 
 
 
-@app.put("/video/worker/jobs/{job_id}/artifact", dependencies=[Depends(require_video_worker)])
-async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease")):
+def _ensure_video_artifact_capacity(directory: Path) -> None:
+    import shutil
+    limit = int(os.getenv("VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES", str(300 * 1024 * 1024)))
+    used = sum(
+        item.stat().st_size for item in directory.iterdir()
+        if item.is_file() and (item.suffix == ".mp4" or item.name.endswith(".report.md") or item.name.endswith(".tmp"))
+    )
+    if used > limit:
+        raise HTTPException(status_code=507, detail="Private video artifact storage quota is full.")
+    if shutil.disk_usage(directory).free < 64 * 1024 * 1024:
+        raise HTTPException(status_code=507, detail="Private video artifact volume must retain at least 64 MB free.")
+
+
+@app.put("/video/worker/jobs/{job_id}/report", dependencies=[Depends(require_video_worker)])
+async def put_video_worker_report(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
     import uuid as _uuid
     item = video_jobs.get_job(job_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
+    if item["provider"] != "cinecode":
+        raise HTTPException(status_code=403, detail="Production reports are only accepted for Cinecode jobs.")
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "text/markdown":
+        raise HTTPException(status_code=415, detail="Only text/markdown production reports are accepted.")
+    try:
+        lease_state = video_jobs.heartbeat(job_id, x_job_lease, progress=92, message="Uploading production report")
+        if lease_state.get("cancel_requested"):
+            raise HTTPException(status_code=409, detail="Cancellation was requested.")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    job_uuid = _uuid.UUID(job_id)
+    destination = directory / f"{job_uuid}.report.md"
+    temporary = directory / f".{job_uuid}.{_uuid.uuid4().hex}.report.tmp"
+    size = 0
+    try:
+        with temporary.open("wb") as output:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > 64 * 1024:
+                    raise HTTPException(status_code=413, detail="Production report exceeds 64 KB.")
+                output.write(chunk)
+        report_text = temporary.read_text(encoding="utf-8")
+        if not report_text.strip() or "\x00" in report_text:
+            raise HTTPException(status_code=422, detail="Production report is empty or invalid.")
+        _ensure_video_artifact_capacity(directory)
+        temporary.replace(destination)
+    except UnicodeDecodeError as exc:
+        temporary.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="Production report must be valid UTF-8.") from exc
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return {"stored": True, "size_bytes": size}
+
+
+@app.put("/video/worker/jobs/{job_id}/artifact", dependencies=[Depends(require_video_worker)])
+async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: str | None = Header(default=None, alias="X-Job-Lease"), x_video_provider: str | None = Header(default=None, alias="X-Video-Provider")):
+    import uuid as _uuid
+    item = video_jobs.get_job(job_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Video job not found.")
+    if item["provider"] != x_video_provider:
+        raise HTTPException(status_code=403, detail="Worker provider does not own this video job.")
     if request.headers.get("content-type", "").split(";")[0].strip().lower() != "video/mp4":
         raise HTTPException(status_code=415, detail="Only video/mp4 artifacts are accepted.")
     public_base = os.getenv("PUBLIC_API_BASE_URL", "").rstrip("/")
@@ -1024,6 +1134,9 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
     directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     job_uuid = _uuid.UUID(job_id)
+    report_path = directory / f"{job_uuid}.report.md"
+    if item["provider"] == "cinecode" and not report_path.is_file():
+        raise HTTPException(status_code=409, detail="Cinecode production report must be uploaded before the MP4.")
     destination = directory / f"{job_uuid}.mp4"
     temporary = directory / f".{job_uuid}.{_uuid.uuid4().hex}.tmp"
     size = 0
@@ -1033,8 +1146,11 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
             last_lease_refresh = time.monotonic()
             async for chunk in request.stream():
                 size += len(chunk)
-                if size > 300 * 1024 * 1024:
-                    raise HTTPException(status_code=413, detail="Artifact exceeds 300 MB limit.")
+                if size > 250 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Artifact exceeds 250 MiB limit.")
+                import shutil
+                if shutil.disk_usage(directory).free < 64 * 1024 * 1024:
+                    raise HTTPException(status_code=507, detail="Private video artifact volume must retain at least 64 MB free.")
                 if len(prefix) < 12:
                     prefix.extend(chunk[:12 - len(prefix)])
                 output.write(chunk)
@@ -1051,20 +1167,35 @@ async def put_video_worker_artifact(job_id: str, request: Request, x_job_lease: 
                     last_lease_refresh = time.monotonic()
         if size < 12 or bytes(prefix[4:8]) != b"ftyp":
             raise HTTPException(status_code=422, detail="Uploaded bytes are not a valid MP4 container.")
+        _ensure_video_artifact_capacity(directory)
         temporary.replace(destination)
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
     uri = f"{public_base}/video/artifacts/{job_id}"
     try:
+        metadata = {"content_type":"video/mp4","size_bytes":size,"storage":"api-artifact-volume"}
+        if item["provider"] == "cinecode":
+            metadata["production_report_uri"] = f"{public_base}/video/reports/{job_id}"
         completed = video_jobs.complete_job(
-            job_id, x_job_lease, result_uri=uri,
-            metadata={"content_type":"video/mp4","size_bytes":size,"storage":"api-artifact-volume"},
+            job_id, x_job_lease, result_uri=uri, metadata=metadata,
         )
     except Exception:
         destination.unlink(missing_ok=True)
         raise
     return completed
+
+
+@app.get("/video/reports/{job_id}", dependencies=[Depends(require_owner_key)])
+def get_video_production_report(job_id: str):
+    item = video_jobs.get_job(job_id)
+    if item is None or item["status"] != "succeeded" or item["provider"] != "cinecode":
+        raise HTTPException(status_code=404, detail="Production report not found.")
+    directory = Path(os.getenv("VIDEO_ARTIFACT_DIR", "./video_artifacts")).resolve()
+    path = directory / f"{job_id}.report.md"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Production report storage is unavailable.")
+    return FileResponse(path, media_type="text/markdown; charset=utf-8", filename=f"cinecode-{job_id}-report.md")
 
 
 @app.get("/video/artifacts/{job_id}", dependencies=[Depends(require_owner_key)])

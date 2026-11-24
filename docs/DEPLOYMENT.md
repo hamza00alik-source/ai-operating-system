@@ -1,6 +1,14 @@
-# Deployment guide (Enzonic Python hosting)
+# Deployment guide (Railway production and optional Enzonic fallback)
 
 This guide prepares the existing FastAPI starter for a small always-on Python host. It does not imply that a server has been provisioned.
+
+## Current production target verified 2026-11-16
+
+The current public API route in `vercel.json` forwards to `aios-api-production-e878.up.railway.app`. The Railway project `AI Operating System` has an `aios-api` production service in region `iad`, one replica, sourced from branch `feature/teamily-operating-system-integration`. Its existing persistent volume `aios-data` is 500 MB and mounted at `/data`.
+
+**Release boundary:** this Cinecode work is in PR #142 against the GitHub `main` branch. The live Railway service is configured to a different source branch. Do not assume merging PR #142 will deploy it automatically; align the Railway service source with the reviewed release branch and verify the deployment before enabling the worker. No Railway production variables or service configuration were changed during this implementation.
+
+For the current Railway service, configure the Cinecode artifact variables from the table below. The historical Enzonic profile that follows is a separate fallback, not the active production target.
 
 ## Hosting profile inspected
 
@@ -22,8 +30,15 @@ Set these as private environment variables in the hosting panel. Never put real 
 | `AI_OS_ENV` | `production` |
 | `AI_OS_API_KEY` | A long, randomly generated secret; keep it private |
 | `AI_OS_DATABASE_URL` | `sqlite:////absolute/path/on/persistent-storage/ai_os.db` |
+| `VIDEO_WORKER_TOKEN` | A unique random secret for the LongCat worker only; optional until that worker is deployed |
+| `VIDEO_CINECODE_WORKER_TOKEN` | A different unique random secret for the Cinecode worker only; optional until a sandboxed Cinecode worker is deployed |
+| `PUBLIC_API_BASE_URL` | `https://aios-api-production-e878.up.railway.app` for the current AIOS Railway production service; use the actual public HTTPS API origin if it changes |
+| `VIDEO_ARTIFACT_DIR` | `/data/video_artifacts` on the persistent Railway volume; required for durable MP4/report storage |
+| `VIDEO_ARTIFACT_STORAGE_LIMIT_BYTES` | `314572800` (300 MiB aggregate cap; API also preserves at least 64 MiB free) |
 
-The database path above is a template, not a confirmed Enzonic mount path. Replace it with the actual persistent writable directory documented or displayed by Enzonic. Do not deploy with SQLite on an ephemeral working directory if records must survive restarts/redeploys.
+The current AIOS Railway production service has a persistent 500 MB volume mounted at `/data`; use `/data/video_artifacts` for private MP4s and production-report sidecars. The API enforces a 300 MiB aggregate artifact cap and a 64 MiB free-space reserve so video uploads cannot silently fill the entire volume. The volume is shared with the app's persistent data, so keep the cap and database backup/retention policy under review.
+
+The Enzonic database path is a historical template only. On the current Railway service, use the existing persistent `/data` mount for the database and artifact directory; do not use an ephemeral working directory. Do not deploy with SQLite on an ephemeral working directory if records must survive restarts/redeploys.
 
 The application refuses to start outside development if `AI_OS_API_KEY` is missing. All task and approval endpoints require the `X-API-Key` header; `/health` remains public. Use HTTPS for all requests.
 

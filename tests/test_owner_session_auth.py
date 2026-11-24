@@ -1,3 +1,7 @@
+import re
+import shutil
+import subprocess
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -66,3 +70,45 @@ def test_owner_dashboard_office_uses_live_twelve_department_data():
     assert "on-demand" in html
     assert "Drag to rotate" in html or "Drag to rotate" in html
 
+
+
+def test_owner_dashboard_exposes_video_job_controls_and_status():
+    response = TestClient(app).get("/owner")
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="videoEngineStatus"' in html
+    assert 'id="videoJobRows"' in html
+    assert 'id="refreshVideoEngines"' in html
+    assert '"/video/status?provider=cinecode"' in html
+    assert '"/video/status?provider=longcat-video"' in html
+    assert '"/video/jobs"' in html
+    assert 'id="videoJobForm"' in html
+    assert "video-decision" in html
+    assert "video-cancel" in html
+    assert '/video/reports/' in html
+    assert "Submit for owner approval" in html
+    assert "Billing warning" in html
+    assert "not measured or charged against the job's estimated-cost" in html
+
+
+
+def test_owner_dashboard_inline_javascript_parses(tmp_path, monkeypatch):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is not installed in this test environment")
+    monkeypatch.setenv("AI_OS_ENV", "production")
+    monkeypatch.setenv("AI_OS_API_KEY", "owner-js-test-key")
+    monkeypatch.setenv("AI_OS_DATABASE_URL", "sqlite:///" + str(tmp_path / "owner-js.db"))
+    initialize_database()
+    with TestClient(app, base_url="https://testserver") as client:
+        response = client.get("/owner")
+    assert response.status_code == 200
+    scripts = re.findall(r"<script\b([^>]*)>(.*?)</script\s*>", response.text, re.IGNORECASE | re.DOTALL)
+    inline_scripts = [(attributes, script) for attributes, script in scripts if script.strip()]
+    assert inline_scripts
+    for index, (attributes, script) in enumerate(inline_scripts):
+        suffix = ".mjs" if 'type="module"' in attributes.lower() else ".js"
+        path = tmp_path / f"owner-inline-{index}{suffix}"
+        path.write_text(script, encoding="utf-8")
+        checked = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, check=False)
+        assert checked.returncode == 0, checked.stderr
