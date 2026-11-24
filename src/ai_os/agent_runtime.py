@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -36,20 +37,39 @@ def _record_event(run_id: str, stage: str, message: str) -> None:
         )
 
 
+def renew_run_lease(run_id: str, worker_id: str, lease_seconds: int = 1800) -> bool:
+    """Renew only the lease currently owned by this worker."""
+    now_dt = datetime.now(timezone.utc)
+    expires_at = datetime.fromtimestamp(
+        now_dt.timestamp() + max(60, min(int(lease_seconds), 86400)), timezone.utc
+    ).isoformat()
+    with connect() as db:
+        changed = db.execute(
+            "UPDATE agent_runs SET lease_expires_at=? WHERE id=? AND status='running' AND lease_owner=? AND lease_expires_at>?",
+            (expires_at, run_id, worker_id, _now()),
+        ).rowcount
+    return changed == 1
+
+
 def recover_interrupted_runs() -> int:
-    """Fail runs left in 'running' by a process restart; never silently replay paid/model work."""
+    """Fail expired/legacy unleased runs; never replay uncertain model work."""
     now = _now()
     with connect() as db:
         interrupted = db.execute(
-            "SELECT id, task_id FROM agent_runs WHERE status='running'"
+            """SELECT id, task_id FROM agent_runs
+               WHERE status='running' AND (lease_expires_at IS NULL OR lease_expires_at<=?)""",
+            (now,),
         ).fetchall()
         for row in interrupted:
             run_id, task_id = row["id"], row["task_id"]
             reason = "Execution interrupted by service restart; owner can explicitly retry."
-            db.execute(
-                "UPDATE agent_runs SET status='failed',error=?,finished_at=? WHERE id=? AND status='running'",
-                (reason, now, run_id),
-            )
+            changed = db.execute(
+                """UPDATE agent_runs SET status='failed',error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL
+                   WHERE id=? AND status='running' AND (lease_expires_at IS NULL OR lease_expires_at<=?)""",
+                (reason, now, run_id, now),
+            ).rowcount
+            if not changed:
+                continue
             if task_id:
                 db.execute(
                     "UPDATE tasks SET status='failed' WHERE id=? AND status='running'",
@@ -315,22 +335,42 @@ def _finish_step(run_id: str, sequence_no: int, output: str) -> None:
         )
 
 
-def run_pending_once() -> bool:
+def claim_next_run(worker_id: str, lease_seconds: int = 1800) -> dict | None:
+    """Atomically claim one queued run under a SQLite write lock."""
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    expires = (now_dt.timestamp() + max(60, min(int(lease_seconds), 86400)))
+    expires_at = datetime.fromtimestamp(expires, timezone.utc).isoformat()
     with connect() as db:
-        row = db.execute(
-            "SELECT * FROM agent_runs WHERE status='queued' ORDER BY created_at LIMIT 1"
-        ).fetchone()
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT id,task_id FROM agent_runs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
         if row is None:
-            return False
-        run_id, task_id = row["id"], row["task_id"]
+            return None
         changed = db.execute(
-            "UPDATE agent_runs SET status='running',started_at=? WHERE id=? AND status='queued'",
-            (_now(), run_id),
+            "UPDATE agent_runs SET status='running',started_at=?,lease_owner=?,lease_expires_at=? WHERE id=? AND status='queued'",
+            (now, worker_id, expires_at, row["id"]),
         ).rowcount
         if not changed:
-            return True
-        db.execute("UPDATE tasks SET status='running' WHERE id=?", (task_id,))
-        task_row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            return None
+        db.execute("UPDATE tasks SET status='running' WHERE id=?", (row["task_id"],))
+        task_row = db.execute("SELECT * FROM tasks WHERE id=?", (row["task_id"],)).fetchone()
+        return {"run_id": row["id"], "task_id": row["task_id"], "task": dict(task_row)}
+
+
+def run_pending_once(worker_id: str | None = None) -> bool:
+    worker_id = worker_id or "inline-" + str(uuid4())
+    claim = claim_next_run(worker_id)
+    if claim is None:
+        return False
+    run_id, task_id, task_row = claim["run_id"], claim["task_id"], claim["task"]
+    lease_stop = threading.Event()
+    def keep_lease_alive():
+        while not lease_stop.wait(60):
+            if not renew_run_lease(run_id, worker_id):
+                logger.error("Agent run %s lost its worker lease (%s).", run_id, worker_id)
+                return
+    lease_thread = threading.Thread(target=keep_lease_alive, name="aios-lease-" + run_id[:8], daemon=True)
+    lease_thread.start()
     try:
         _record_event(run_id, "claimed", "Worker claimed this run; loading task and specialist context.")
         task = dict(task_row)
@@ -377,8 +417,12 @@ def run_pending_once() -> bool:
             specialist_result = {"response": saved_specialist["output"], "provider": "previously_completed", "usage": {}, "latency_ms": 0}
             _record_event(run_id, "specialist_reused", "Reused the previously completed lead specialist deliverable; no duplicate inference request was sent.")
         else:
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lost its lease before lead-specialist inference.")
             _start_step(run_id, 1, "Lead specialist", specialist, task["title"])
             specialist_result = generate_with_fallback(context, preferred_provider="unorouter")
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lease expired during lead-specialist inference; result was not committed.")
             if specialist_result.get("fallback_used"):
                 _record_event(run_id, "provider_fallback", "Lead specialist used free fallback provider " + specialist_result["provider"] + " after preferred provider was unavailable.")
             _finish_step(run_id, 1, specialist_result["response"])
@@ -407,8 +451,12 @@ def run_pending_once() -> bool:
             collaborator_result = {"response": saved_collaborator["output"], "provider": "previously_completed", "usage": {}, "latency_ms": 0}
             _record_event(run_id, "collaborator_reused", "Reused the previously completed independent review; no duplicate inference request was sent.")
         else:
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lost its lease before collaborator inference.")
             _start_step(run_id, 2, "Independent collaboration", collaborator, "Review and extend the lead specialist's deliverable.")
             collaborator_result = generate_with_fallback(collaboration_prompt, preferred_provider="unorouter")
+            if not renew_run_lease(run_id, worker_id):
+                raise RuntimeError("Agent worker lease expired during collaborator inference; result was not committed.")
             if collaborator_result.get("fallback_used"):
                 _record_event(run_id, "provider_fallback", "Collaborator used free fallback provider " + collaborator_result["provider"] + " after preferred provider was unavailable.")
             _finish_step(run_id, 2, collaborator_result["response"])
@@ -425,8 +473,12 @@ def run_pending_once() -> bool:
             "\nLEAD SPECIALIST (" + specialist["name"] + "):\n" + specialist_result["response"][:8500] +
             "\n\nCOLLABORATING SPECIALIST (" + collaborator["name"] + "):\n" + collaborator_result["response"][:8500]
         )
+        if not renew_run_lease(run_id, worker_id):
+            raise RuntimeError("Agent worker lost its lease before CEO-review inference.")
         _start_step(run_id, 3, "CEO integration and QA", ceo_agent, "Integrate both specialist contributions into the final owner-ready deliverable.")
         ceo_result = generate_with_fallback(review_prompt, preferred_provider="unorouter")
+        if not renew_run_lease(run_id, worker_id):
+            raise RuntimeError("Agent worker lease expired during CEO-review inference; result was not committed.")
         if ceo_result.get("fallback_used"):
             _record_event(run_id, "provider_fallback", "CEO reviewer used free fallback provider " + ceo_result["provider"] + " after preferred provider was unavailable.")
         _finish_step(run_id, 3, ceo_result["response"])
@@ -448,10 +500,12 @@ def run_pending_once() -> bool:
         with connect() as db:
             db.execute(
                 """UPDATE agent_runs SET status='completed',assigned_agent_id=?,specialist_output=?,
-                ceo_review=?,usage_json=?,finished_at=?,error=NULL WHERE id=?""",
+                ceo_review=?,usage_json=?,finished_at=?,error=NULL,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=?""",
                 (specialist.get("id"), specialist_result["response"], ceo_result["response"],
-                 json.dumps(usage), _now(), run_id),
+                 json.dumps(usage), _now(), run_id, worker_id),
             )
+            if db.execute("SELECT changes()").fetchone()[0] != 1:
+                raise RuntimeError("Agent worker no longer owns this run; completion was not committed.")
             db.execute("UPDATE tasks SET status='completed' WHERE id=?", (task_id,))
             db.execute(
                 "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
@@ -470,19 +524,28 @@ def run_pending_once() -> bool:
             saved = db.execute("SELECT specialist_output FROM agent_runs WHERE id=?", (run_id,)).fetchone()
             has_partial_deliverable = bool(saved and saved["specialist_output"])
             final_status = "partial" if has_partial_deliverable else "failed"
-            db.execute("UPDATE agent_runs SET status=?,error=?,finished_at=? WHERE id=?",
-                       (final_status, str(exc)[:1000], _now(), run_id))
-            db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
-            db.execute(
-                "UPDATE agent_run_steps SET status='failed',error=?,finished_at=? WHERE run_id=? AND status='running'",
-                (str(exc)[:500], _now(), run_id),
-            )
-            db.execute(
-                "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
-                (run_id, final_status, ("Run partially completed; saved deliverables are preserved. Remaining stage failed: " if has_partial_deliverable else "Run failed before a deliverable was saved: ") + str(exc)[:350], _now()),
-            )
-        from ai_os.workflows import finish_workflow_task
-        finish_workflow_task(task_id, False)
+            changed = db.execute(
+                "UPDATE agent_runs SET status=?,error=?,finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_owner=? AND lease_expires_at>?",
+                (final_status, str(exc)[:1000], _now(), run_id, worker_id, _now()),
+            ).rowcount
+            if changed:
+                db.execute("UPDATE tasks SET status=? WHERE id=?", (final_status, task_id))
+                db.execute(
+                    "UPDATE agent_run_steps SET status='failed',error=?,finished_at=? WHERE run_id=? AND status='running'",
+                    (str(exc)[:500], _now(), run_id),
+                )
+                db.execute(
+                    "INSERT INTO agent_run_events(run_id,stage,message,created_at) VALUES(?,?,?,?)",
+                    (run_id, final_status, ("Run partially completed; saved deliverables are preserved. Remaining stage failed: " if has_partial_deliverable else "Run failed before a deliverable was saved: ") + str(exc)[:350], _now()),
+                )
+        if changed:
+            from ai_os.workflows import finish_workflow_task
+            finish_workflow_task(task_id, False)
+        else:
+            logger.warning("Agent run %s failure handling skipped because this worker no longer owns it.", run_id)
+    finally:
+        lease_stop.set()
+        lease_thread.join(timeout=2)
     return True
 
 
