@@ -1007,6 +1007,54 @@ def forget_business_memory(business_id:str,memory_key:str,payload:dict,runtime=D
     return {"forgotten":True,"historical_versions_retained":True,"agent_writes_enabled":False}
 
 
+
+@app.post("/brain/memories")
+def propose_brain_memory(payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    """Owner-submitted memory proposal; it remains unavailable to agents until reviewed."""
+    scope=str(payload.get("scope","")).strip()
+    if scope!="company" and scope.startswith("business:"):
+        _business_id(scope.split(":",1)[1])
+    elif scope.startswith("agent:"):
+        agent_id=scope.split(":",1)[1]
+        if not any(str(agent.get("id"))==agent_id for agent in runtime.agents.values()):
+            raise HTTPException(404,"Agent memory scope not found.")
+    else:
+        raise HTTPException(422,"Scope must be company, business:<business-id>, or agent:<agent-id>.")
+    try:
+        return runtime.brain_memory.propose(
+            scope, payload.get("topic",""), payload.get("content",""),
+            payload.get("source","owner"), payload.get("confidence",0.7),
+        )
+    except (TypeError,ValueError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+
+@app.get("/brain/memories")
+def list_brain_memories(approval:str|None=None,scope:str|None=None,limit:int=100,
+                        runtime=Depends(get_runtime),owner=Depends(_owner)):
+    if scope and scope.startswith("business:"):
+        _business_id(scope.split(":",1)[1])
+    try:
+        items=runtime.brain_memory.list(approval=approval,scope=scope,limit=limit)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return {"count":len(items),"memories":items,"agent_retrieval_uses_approved_only":True}
+
+
+@app.post("/brain/memories/{memory_id}/decision")
+def decide_brain_memory(memory_id:str,payload:dict,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    approve=payload.get("approve")
+    if not isinstance(approve,bool):
+        raise HTTPException(422,"A boolean approve decision is required.")
+    try:
+        record=runtime.brain_memory.review(memory_id,approve,payload.get("note",""))
+    except (TypeError,ValueError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+    if record is None:
+        raise HTTPException(404,"Memory proposal not found or already reviewed.")
+    return record
+
+
 def _public_asset(asset):
     allowed=("asset_id","business_id","asset_key","title","asset_type","filename","media_type",
              "checksum_sha256","byte_size","source","storage_state","status","file_bytes_received","created_at")
