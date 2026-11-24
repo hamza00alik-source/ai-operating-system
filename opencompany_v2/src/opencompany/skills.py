@@ -1,6 +1,6 @@
 """Versioned executable skill contracts with fail-closed action permissions."""
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 from opencompany.permissions import Action, permission_decision
 
 @dataclass(frozen=True)
@@ -11,6 +11,7 @@ class Skill:
     allowed_actions: tuple[str, ...] = ()
     approval_actions: tuple[str, ...] = ()
     version: int = 1
+    required_capabilities: tuple[str, ...] = ()
 
     def validate(self):
         if not self.key or not self.purpose or not self.procedure:
@@ -21,6 +22,11 @@ class Skill:
             raise ValueError("Skill allowed actions must be unique.")
         if set(self.approval_actions) - set(self.allowed_actions):
             raise ValueError("Approval actions must be included in allowed actions.")
+        if any(not isinstance(value, str) or not value.strip()
+               for value in self.required_capabilities):
+            raise ValueError("Required capabilities must be non-empty strings.")
+        if len(set(self.required_capabilities)) != len(self.required_capabilities):
+            raise ValueError("Required capabilities must be unique.")
         for action in self.allowed_actions:
             try:
                 Action(action)
@@ -48,19 +54,42 @@ class SkillRegistry:
             raise ValueError(f"Skill already registered: {skill.key}")
         self._skills[skill.key] = (skill, handler)
 
+    @staticmethod
+    def _public_contract(skill: Skill) -> dict[str, Any]:
+        return {
+            "key": skill.key,
+            "purpose": skill.purpose,
+            "version": skill.version,
+            "allowed_actions": list(skill.allowed_actions),
+            "approval_actions": list(skill.approval_actions),
+            "required_capabilities": list(skill.required_capabilities),
+        }
+
     def list(self) -> list[dict[str, Any]]:
         """Return a stable, read-only catalog view without exposing handlers."""
         return [
-            {
-                "key": skill.key,
-                "purpose": skill.purpose,
-                "version": skill.version,
-                "allowed_actions": list(skill.allowed_actions),
-                "approval_actions": list(skill.approval_actions),
-            }
+            self._public_contract(skill)
             for skill, _handler in sorted(
                 self._skills.values(), key=lambda item: item[0].key
             )
+        ]
+
+    def eligible_for(self, agent: Any) -> list[dict[str, Any]]:
+        """List contracts whose declared capability requirements the agent meets.
+
+        This is discovery only; it does not assign a skill or grant permission
+        to execute any action.
+        """
+        capabilities = getattr(agent, "capabilities", None)
+        if capabilities is None:
+            raise TypeError("Agent must expose a capabilities collection.")
+        available = set(capabilities)
+        return [
+            self._public_contract(skill)
+            for skill, _handler in sorted(
+                self._skills.values(), key=lambda item: item[0].key
+            )
+            if set(skill.required_capabilities).issubset(available)
         ]
 
     def execute(self, skill_key: str, action: str, payload: Any,
