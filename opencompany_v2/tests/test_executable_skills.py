@@ -16,6 +16,30 @@ def test_registered_skill_executes_only_declared_action():
     assert result.skill_version == 1
 
 
+def test_skill_catalog_is_sorted_and_does_not_expose_handlers():
+    registry = SkillRegistry()
+    registry.register(
+        Skill("zeta", "Second", "Internal procedure", (Action.READ.value,), ()),
+        lambda payload: payload,
+    )
+    registry.register(
+        Skill("alpha", "First", "Another internal procedure",
+              (Action.RESEARCH.value,), ()),
+        lambda payload: payload,
+    )
+    catalog = registry.list()
+    assert [item["key"] for item in catalog] == ["alpha", "zeta"]
+    assert catalog[0] == {
+        "key": "alpha",
+        "purpose": "First",
+        "version": 1,
+        "allowed_actions": ["research"],
+        "approval_actions": [],
+    }
+    assert "procedure" not in catalog[0]
+    assert "handler" not in catalog[0]
+
+
 def test_skill_cannot_execute_action_outside_its_scope():
     called = []
     registry = SkillRegistry()
