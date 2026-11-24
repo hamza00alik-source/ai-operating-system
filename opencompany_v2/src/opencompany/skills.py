@@ -62,3 +62,33 @@ class SkillRegistry:
             raise PermissionError(f"Owner approval required for action: {action}")
         output = handler(payload)
         return SkillResult(skill.key, skill.version, action, output)
+
+    def worker_handler(
+        self,
+        skill_key: str,
+        action: str,
+        *,
+        approval_resolver: Callable[[str, str, dict], bool] | None = None,
+    ) -> Callable[[dict], dict]:
+        """Create a Worker-compatible handler.
+
+        Approval is resolved by trusted server-side code, never by job payload
+        fields. Without a resolver, sensitive actions remain blocked.
+        """
+        def run(payload: dict) -> dict:
+            approved = bool(
+                approval_resolver(skill_key, action, payload)
+                if approval_resolver is not None else False
+            )
+            result = self.execute(
+                skill_key, action, payload, owner_approved=approved
+            )
+            if not isinstance(result.output, dict):
+                raise TypeError("Worker skill handlers must return a dictionary.")
+            return {
+                "skill_key": result.skill_key,
+                "skill_version": result.skill_version,
+                "action": result.action,
+                "output": result.output,
+            }
+        return run
