@@ -18,7 +18,7 @@ Business scope validation uses the three registered business units. Agent scopes
 
 ## Owner workflow
 
-All endpoints require owner authentication.
+All endpoints require owner authentication. The `/owner` control center includes a Brain memory panel for proposing records, filtering the review queue by approval state, and approving or rejecting proposals with an owner note. The dashboard uses the authenticated same-origin session and CSRF-protected write flow; it does not store the owner API key in browser storage.
 
 1. Create a proposal with `POST /brain/memories`.
 2. Inspect proposals with `GET /brain/memories?approval=proposed`.
@@ -73,4 +73,5 @@ The existing owner-written business context remains a separate feature. It is no
 - Retrieval uses token overlap, not embeddings or a vector database.
 - No automatic memory extraction from conversations or deliverables is enabled.
 - No automatic learning or policy changes occur.
-- Memory management is available through the owner API; a dedicated dashboard panel is still future work.
+- Memory review is available in the owner dashboard and through the owner API.
+- Dashboard filtering currently focuses on approval state; scope-specific filtering can be added later.
