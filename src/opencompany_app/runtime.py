@@ -16,6 +16,7 @@ from opencompany_core.asset_scanning import ClamAVUnixSocketScanner
 from opencompany_core.execution import AgentDeliverable
 from opencompany_core.model_gateway import ModelGateway, ProviderUnavailable
 from opencompany_core.persistence import SQLiteStore
+from opencompany_core.brain_memory import BrainMemoryRepository
 
 @dataclass(frozen=True)
 class WorkItem:
@@ -702,6 +703,16 @@ class GatewayWorkerExecutor:
                 f"- [{memory.get('category')}] {memory.get('memory_key')}: "
                 f"{str(memory.get('content',''))[:1200]} (source: {memory.get('source')})"
             )
+        # Retrieve owner-approved Brain memories scoped to this business and agent.
+        memory_query = f"{item.title} {item.objective} {role_key}"
+        brain_memories = self.runtime.brain_memory.recall(
+            memory_query, scopes=(f"business:{item.business_id}", f"agent:{agent.get('id')}")
+        )
+        brain_lines = [
+            f"- [{memory.get('scope')}] {memory.get('topic')}: "
+            f"{str(memory.get('content', ''))[:1000]} (source: {memory.get('source')})"
+            for memory in brain_memories[:12]
+        ]
         # Parent/manager tasks receive the completed prerequisite deliverables
         # so synthesis is based on actual team outputs, not just the objective.
         dependency_lines=[]
@@ -744,6 +755,7 @@ class GatewayWorkerExecutor:
             + f"Capabilities: {', '.join(str(value) for value in capabilities)}\n"
             + f"Task: {item.title}\nObjective: {item.objective}\n\n"
             + "Owner-written business memory:\n" + ("\n".join(memory_lines) or "- No saved business memory.") + "\n\n"
+            + "Approved Brain memory (reference only):\n" + ("\n".join(brain_lines) or "- No approved Brain memory.") + "\n\n"
             + "Completed prerequisite deliverables:\n" + ("\n".join(dependency_lines) or "- No prerequisites.")
         )
         result=self.runtime.gateway.generate(
@@ -913,7 +925,7 @@ class AgentRepository:
 
 class Runtime:
     def __init__(self,database_path=":memory:"):
-        self.sqlite=SQLiteStore(database_path);self.store=WorkItemRepository(self.sqlite._connection,self.sqlite._lock)
+        self.sqlite=SQLiteStore(database_path);self.store=WorkItemRepository(self.sqlite._connection,self.sqlite._lock);self.brain_memory=BrainMemoryRepository(self.sqlite._connection,self.sqlite._lock)
         self.delegations=DelegationRepository(self.sqlite._connection,self.sqlite._lock)
         self.sessions=SharedRepository(self.sqlite._connection,self.sqlite._lock)
         self.handoffs=SharedRepository(self.sqlite._connection,self.sqlite._lock)
