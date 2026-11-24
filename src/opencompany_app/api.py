@@ -264,6 +264,27 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <label><input id="order-confirm" type="checkbox" required> I confirm this creates an internal draft order only.</label>
 <button class="primary" type="submit">Create draft order</button></form>
 <div id="order-list" class="stack"></div></section>
+
+<section><h2>OpenCompany Brain · memory review</h2>
+<p class="muted">Proposals are not available to agents until you approve them. Review source and scope before approval. Business scopes remain isolated; company scope is shared.</p>
+<div class="columns">
+<div class="stack">
+<h3>Propose a memory</h3>
+<form id="brain-memory-form" class="stack">
+<select id="brain-scope-type"><option value="company">Shared company memory</option><option value="business">Business-unit memory</option><option value="agent">Specific agent memory</option></select>
+<select id="brain-business"><option value="physical-agency">Physical-products agency</option><option value="physical-brand">Own physical-products brand</option><option value="digital-products">Digital products</option></select>
+<input id="brain-agent" placeholder="Registered agent ID (agent scope only)" maxlength="180">
+<input id="brain-topic" placeholder="Memory topic" required maxlength="240">
+<textarea id="brain-content" placeholder="What should the company remember?" rows="4" required maxlength="12000"></textarea>
+<input id="brain-source" placeholder="Source / evidence reference" required maxlength="500">
+<label>Confidence (0 to 1) <input id="brain-confidence" type="number" min="0" max="1" step="0.05" value="0.7" required></label>
+<button class="primary" type="submit">Submit memory for owner review</button></form>
+</div>
+<div class="stack">
+<h3>Memory review queue</h3>
+<label>Show <select id="brain-filter"><option value="proposed">Awaiting review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="">All states</option></select></label>
+<div id="brain-memory-list" class="stack" aria-live="polite"></div>
+</div></div></section>
 </div></div></main>
 <script nonce="__NONCE__">
 (()=> {
@@ -307,12 +328,46 @@ async function refreshTreasury(){
    const actions=node("div");
    for(const [label,approve] of [["Approve request",true],["Reject request",false]]){
     const button=node("button",label);
-    button.addEventListener("click",async()=>{if(!window.confirm((approve?"Approve":"Reject")+" this request? Approval does not transfer money."))return;try{await api("/treasury/spend-requests/"+encodeURIComponent(business)+"/"+encodeURIComponent(item.id)+"/decision",{method:"POST",body:{approve,note:"Owner reviewed in Treasury panel"}});notice("Request "+(approve?"approved for planning":"rejected")+". No money was transferred.");await refreshTreasury();}catch(e){notice(e.message,true);}});
+    button.addEventListener("click",async()=>{if(!window.confirm((approve?"Approve":"Reject")+" this request? Approval does not transfer money."))return;try{await api("/treasury/spend-requests/"+encodeURIComponent(business)+"/"+encodeURIComponent(item.id)+"/decision",{method:"POST",body:{approve,note:"Owner reviewed in Treasury panel"}});notice("Request "+(approve?"approved for planning":"rejected")+". No money was transferred.");await refreshTreasury();
+   await refreshBrainMemories();}catch(e){notice(e.message,true);}});
     actions.append(button);
    }
    card.append(actions);
   }
   requestRoot.append(card);
+ });
+}
+async function refreshBrainMemories(){
+ const approval=el("brain-filter").value;
+ const query=approval?"?approval="+encodeURIComponent(approval):"";
+ const data=await api("/brain/memories"+query);
+ const root=el("brain-memory-list");root.replaceChildren();
+ const memories=data.memories||[];
+ if(!memories.length){root.append(node("p","No memories in this view.","muted"));return;}
+ memories.forEach(memory=>{
+  const card=node("div",undefined,"rowitem"),body=node("div"),title=node("strong",memory.topic+" · "+memory.approval);
+  body.append(title,node("p","Scope: "+memory.scope+" · Confidence: "+memory.confidence,"muted"));
+  body.append(node("p",memory.content,""));
+  body.append(node("p","Source: "+memory.source+" · Created: "+memory.created_at,"muted"));
+  if(memory.review_note)body.append(node("p","Review note: "+memory.review_note,"muted"));
+  card.append(body);
+  if(memory.approval==="proposed"){
+   const actions=node("div","", "actions");
+   for(const [label,approve] of [["Approve memory",true],["Reject memory",false]]){
+    const button=node("button",label);
+    button.addEventListener("click",async()=>{
+     if(!window.confirm((approve?"Approve":"Reject")+" this memory? "+(approve?"Approved content may be recalled by agents in its scope.":"It will remain excluded from agent recall.")))return;
+     const note=window.prompt("Owner review note","Reviewed by owner");
+     if(note===null)return;
+     button.disabled=true;
+     try{await api("/brain/memories/"+encodeURIComponent(memory.id)+"/decision",{method:"POST",body:{approve,note}});notice("Memory "+(approve?"approved":"rejected")+".");await refreshBrainMemories();}
+     catch(e){notice(e.message,true);button.disabled=false;}
+    });
+    actions.append(button);
+   }
+   card.append(actions);
+  }
+  root.append(card);
  });
 }
 async function refreshAll(){
@@ -551,6 +606,21 @@ el("advance-work").addEventListener("click",async()=>{try{const result=await api
 el("worker-start").addEventListener("click",async()=>{try{const result=await api("/workers/start",{method:"POST",body:{}});notice(result.running?"Worker started. It can process only owner-admitted tasks through a confirmed zero-cost provider.":"Worker did not start.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("worker-stop").addEventListener("click",async()=>{try{const result=await api("/workers/stop",{method:"POST",body:{}});notice(result.running?"Worker remains running.":"Worker stopped.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("memory-business").addEventListener("change",()=>refreshBusinessContext().catch(e=>notice(e.message,true)));
+el("brain-filter").addEventListener("change",()=>refreshBrainMemories().catch(e=>notice(e.message,true)));
+el("brain-scope-type").addEventListener("change",()=>{const mode=el("brain-scope-type").value;el("brain-business").disabled=mode!=="business";el("brain-agent").disabled=mode!=="agent";});
+el("brain-scope-type").dispatchEvent(new Event("change"));
+el("brain-memory-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ try{
+  const mode=el("brain-scope-type").value;
+  const scope=mode==="company"?"company":mode==="business"?"business:"+el("brain-business").value:"agent:"+el("brain-agent").value.trim();
+  if(mode==="agent"&&!el("brain-agent").value.trim())throw new Error("Enter a registered agent ID for agent-scoped memory.");
+  const result=await api("/brain/memories",{method:"POST",body:{scope,topic:el("brain-topic").value,content:el("brain-content").value,source:el("brain-source").value,confidence:Number(el("brain-confidence").value)}});
+  el("brain-memory-form").reset();el("brain-confidence").value="0.7";el("brain-scope-type").dispatchEvent(new Event("change"));
+  notice("Memory proposal saved as "+result.approval+". Agents cannot use it until you approve it.");
+  el("brain-filter").value="proposed";await refreshBrainMemories();
+ }catch(e){notice(e.message,true);}
+});
 el("ops-business").addEventListener("change",()=>refreshBusinessOperations().catch(e=>notice(e.message,true)));
 el("counterparty-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("ops-business").value;await api("/business-units/"+encodeURIComponent(business)+"/counterparties",{method:"POST",body:{kind:el("counterparty-kind").value,name:el("counterparty-name").value,country:el("counterparty-country").value,reference:el("counterparty-reference").value,confirm_owner_record:el("counterparty-confirm").checked}});el("counterparty-form").reset();notice("Internal supplier/customer record created. No external contact occurred.");}catch(e){notice(e.message,true);}});
 el("product-form").addEventListener("submit",async event=>{event.preventDefault();try{const business=el("ops-business").value;await api("/business-units/"+encodeURIComponent(business)+"/products",{method:"POST",body:{sku:el("product-sku").value,name:el("product-name").value,description:el("product-description").value,unit_price_minor:Number(el("product-price").value),currency:el("product-currency").value,supplier_id:el("product-supplier").value||null,confirm_owner_product:el("product-confirm").checked}});el("product-form").reset();notice("Draft product saved. It is not published.");await refreshBusinessOperations();}catch(e){notice(e.message,true);}});
