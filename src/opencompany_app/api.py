@@ -282,7 +282,8 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 </div>
 <div class="stack">
 <h3>Memory review queue</h3>
-<label>Show <select id="brain-filter"><option value="proposed">Awaiting review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="">All states</option></select></label>
+<label>Show state <select id="brain-filter"><option value="proposed">Awaiting review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="">All states</option></select></label>
+<label>Scope <select id="brain-list-scope"><option value="">All scopes</option><option value="company">Shared company</option><option value="business:physical-agency">Physical-products agency</option><option value="business:physical-brand">Own physical-products brand</option><option value="business:digital-products">Digital products</option></select></label>
 <div id="brain-memory-list" class="stack" aria-live="polite"></div>
 </div></div></section>
 </div></div></main>
@@ -338,9 +339,12 @@ async function refreshTreasury(){
  });
 }
 async function refreshBrainMemories(){
- const approval=el("brain-filter").value;
- const query=approval?"?approval="+encodeURIComponent(approval):"";
- const data=await api("/brain/memories"+query);
+ const params=new URLSearchParams();
+ const approval=el("brain-filter").value,scope=el("brain-list-scope").value;
+ if(approval)params.set("approval",approval);
+ if(scope)params.set("scope",scope);
+ const query=params.toString();
+ const data=await api("/brain/memories"+(query?"?"+query:""));
  const root=el("brain-memory-list");root.replaceChildren();
  const memories=data.memories||[];
  if(!memories.length){root.append(node("p","No memories in this view.","muted"));return;}
@@ -607,6 +611,7 @@ el("worker-start").addEventListener("click",async()=>{try{const result=await api
 el("worker-stop").addEventListener("click",async()=>{try{const result=await api("/workers/stop",{method:"POST",body:{}});notice(result.running?"Worker remains running.":"Worker stopped.");await refreshAll();}catch(e){notice(e.message,true);}});
 el("memory-business").addEventListener("change",()=>refreshBusinessContext().catch(e=>notice(e.message,true)));
 el("brain-filter").addEventListener("change",()=>refreshBrainMemories().catch(e=>notice(e.message,true)));
+el("brain-list-scope").addEventListener("change",()=>refreshBrainMemories().catch(e=>notice(e.message,true)));
 el("brain-scope-type").addEventListener("change",()=>{const mode=el("brain-scope-type").value;el("brain-business").disabled=mode!=="business";el("brain-agent").disabled=mode!=="agent";});
 el("brain-scope-type").dispatchEvent(new Event("change"));
 el("brain-memory-form").addEventListener("submit",async event=>{
