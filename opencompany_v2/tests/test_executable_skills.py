@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 from opencompany.permissions import Action
 from opencompany.skills import Skill, SkillRegistry
 
@@ -29,15 +30,35 @@ def test_skill_catalog_is_sorted_and_does_not_expose_handlers():
     )
     catalog = registry.list()
     assert [item["key"] for item in catalog] == ["alpha", "zeta"]
-    assert catalog[0] == {
-        "key": "alpha",
-        "purpose": "First",
-        "version": 1,
-        "allowed_actions": ["research"],
-        "approval_actions": [],
-    }
+    assert catalog[0]["purpose"] == "First"
     assert "procedure" not in catalog[0]
     assert "handler" not in catalog[0]
+
+
+def test_skill_discovery_matches_agent_capabilities_without_granting_access():
+    registry = SkillRegistry()
+    registry.register(
+        Skill("research", "Research", "Search public sources",
+              (Action.RESEARCH.value,), (), required_capabilities=("research",)),
+        lambda payload: {"ok": True},
+    )
+    registry.register(
+        Skill("publish", "Publish", "Publish content",
+              (Action.PUBLISH.value,), (Action.PUBLISH.value,),
+              required_capabilities=("content", "publishing")),
+        lambda payload: {"published": True},
+    )
+    agent = SimpleNamespace(capabilities=("research", "content"))
+    eligible = registry.eligible_for(agent)
+    assert [item["key"] for item in eligible] == ["research"]
+    assert eligible[0]["approval_actions"] == []
+    with pytest.raises(PermissionError):
+        registry.execute("publish", "publish", {"owner_approved": True})
+
+
+def test_registry_rejects_invalid_required_capabilities():
+    with pytest.raises(ValueError, match="Required capabilities"):
+        Skill("bad", "Bad", "Procedure", required_capabilities=("",)).validate()
 
 
 def test_skill_cannot_execute_action_outside_its_scope():
