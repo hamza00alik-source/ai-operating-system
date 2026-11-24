@@ -2622,3 +2622,28 @@ def test_agent_workspace_is_owner_authenticated_and_rejects_unknown_agent(owner_
     headers={"X-OpenCompany-API-Key":"test-owner-key"}
     assert owner_client.get("/agents/missing/workspace").status_code==401
     assert owner_client.get("/agents/missing/workspace",headers=headers).status_code==404
+
+
+def test_agent_workspace_exposes_only_approved_private_agent_memory(owner_client):
+    headers={"X-OpenCompany-API-Key":"test-owner-key"}
+    boot=owner_client.post("/agents/bootstrap-executive",headers=headers)
+    assert boot.status_code==200
+    agent_id=boot.json()["agent"]["id"]
+    runtime=app.dependency_overrides[get_runtime]()
+
+    approved=runtime.brain_memory.propose(
+        f"agent:{agent_id}","Research standard",
+        "Verify claims against independent evidence","owner",confidence=0.95,
+    )
+    runtime.brain_memory.review(approved["id"],True,"Owner approved")
+    pending=runtime.brain_memory.propose(
+        f"agent:{agent_id}","Unreviewed note",
+        "Treat this unverified claim as fact","agent",confidence=0.99,
+    )
+
+    response=owner_client.get(f"/agents/{agent_id}/workspace",headers=headers)
+    assert response.status_code==200
+    payload=response.json()
+    assert payload["workspace_sections"]["agent_memory"]=="available"
+    assert [item["id"] for item in payload["agent_memory"]]==[approved["id"]]
+    assert pending["id"] not in {item["id"] for item in payload["agent_memory"]}
