@@ -152,12 +152,15 @@ def retry_run(run_id: str) -> dict:
     return dict(updated)
 
 
-def list_runs(task_id: str | None = None) -> list[dict]:
+def list_runs(task_id: str | None = None, business_id: str = "core") -> list[dict]:
+    from ai_os.brain import BUSINESS_IDS
+    if business_id not in BUSINESS_IDS:
+        raise ValueError("Unknown business environment.")
     with connect() as db:
         if task_id:
-            rows = db.execute("SELECT * FROM agent_runs WHERE task_id=? ORDER BY created_at DESC", (task_id,)).fetchall()
+            rows = db.execute("SELECT r.* FROM agent_runs r JOIN tasks t ON t.id=r.task_id WHERE r.task_id=? AND t.business_id=? ORDER BY r.created_at DESC", (task_id, business_id)).fetchall()
         else:
-            rows = db.execute("SELECT * FROM agent_runs ORDER BY created_at DESC LIMIT 100").fetchall()
+            rows = db.execute("SELECT r.* FROM agent_runs r JOIN tasks t ON t.id=r.task_id WHERE t.business_id=? ORDER BY r.created_at DESC LIMIT 100", (business_id,)).fetchall()
     return [_public_row(row) for row in rows]
 
 
@@ -345,13 +348,13 @@ def run_pending_once() -> bool:
             specialist = next((item for item in manifest.get("agents", []) if item.get("id") == saved_specialist.get("agent_id")), specialist)
         _record_event(run_id, "specialist_selected", "Assigned specialist: " + specialist["name"] + " (" + specialist.get("department", "general") + ").")
         instructions = _load_specialist(specialist)
-        memories = retrieve_memories(task["title"] + " " + task.get("description", ""), task.get("department", "general"))
+        memories = retrieve_memories(task["title"] + " " + task.get("description", ""), task.get("department", "general"), business_id=task.get("business_id", "core"))
         memory_context = "\n".join(
             f"- [{item['category']}] {item['title']}: {item['content'][:900]}"
             for item in memories
         ) or "No owner-approved relevant memories exist yet."
-        _record_event(run_id, "brain_memory_retrieved", f"Company brain supplied {len(memories)} approved relevant memories.")
-        evidence_context = research_context(task["title"] + " " + task.get("description", ""))
+        _record_event(run_id, "brain_memory_retrieved", f"Business brain supplied {len(memories)} approved relevant memories for {task.get('business_id', 'core')}.")
+        evidence_context = research_context(task["title"] + " " + task.get("description", ""), business_id=task.get("business_id", "core"))
         evidence_count = evidence_context.count("Source URL: ")
         _record_event(run_id, "research_evidence_retrieved", f"Research evidence layer supplied {evidence_count} captured source(s) relevant to this task.")
         _record_event(run_id, "specialist_started", "Specialist is preparing the task deliverable using the configured model.")
@@ -460,7 +463,8 @@ def run_pending_once() -> bool:
         from ai_os.workflows import finish_workflow_task
         finish_workflow_task(task_id, True)
         experience_id = record_experience(
-            run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"]
+            run_id, task_id, task.get("department", "general"), task["title"], ceo_result["response"],
+            business_id=task.get("business_id", "core"),
         )
         _record_event(run_id, "brain_experience_saved", "Completed outcome saved to persistent company experience memory; a lesson awaits owner review.")
         logger.info("Agent run %s completed for task %s; brain experience %s stored", run_id, task_id, experience_id)
