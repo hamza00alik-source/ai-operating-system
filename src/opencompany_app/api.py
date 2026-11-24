@@ -1365,7 +1365,7 @@ def agent_workspace(agent_id:str,runtime=Depends(get_runtime),owner=Depends(_own
     assigned=[item for item in runtime.store.list_work_items()
               if str(item.assigned_agent_id or "")==agent_id]
     assigned.sort(key=lambda item:item.revision,reverse=True)
-    active=[item for item in assigned if item.state.value in {"running","in_progress"}]
+    active=[item for item in assigned if item.state in (TaskState.RUNNING,TaskState.IN_PROGRESS)]
     recent=[]
     for item in assigned[:20]:
         recent.append({
@@ -1399,8 +1399,8 @@ def agent_workspace(agent_id:str,runtime=Depends(get_runtime),owner=Depends(_own
                 "note":"An active profile is not proof of a running worker."},
         "prompt":{"source":"OpenCompany first-party role catalogue",
                   "capabilities":role["capabilities"] if role else agent["capabilities"],
-                  "playbook":role["playbook"] if role else None,
-                  "prohibited_actions":role.get("prohibited_actions",[]) if role else []},
+                  "template_type":"capability_template",
+                  "execution_policy":"No external actions; owner approval remains required."},
         "recent_work":recent,
         "workspace_sections":{"overview":"available","live":"available",
                               "prompt":"available","deliverables":"available",
