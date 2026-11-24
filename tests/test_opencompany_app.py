@@ -47,6 +47,7 @@ def test_owner_dashboard_is_served_without_embedded_secrets_and_with_security_he
     assert 'id="bootstrap-ceo"' in response.text
     assert 'id="bootstrap-managers"' in response.text
     assert 'id="bootstrap-specialists"' in response.text
+    assert "Workspace" in response.text
     assert 'id="task-form"' in response.text
     assert 'id="task-business"' in response.text
     assert 'id="task-department"' in response.text
