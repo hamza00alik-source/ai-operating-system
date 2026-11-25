@@ -93,3 +93,39 @@ class TaskService:
    self.store.db.commit()
   self.store.append_event(CompanyEvent("agent_result_recorded",actor,"task",str(task_id),{"job_id":job_id,"artifact_count":len(result.get("artifacts",[]))}))
   return task
+
+
+ def review_result(self,task_id,decision,reviewer="ceo",notes=""):
+  """CEO review gate: accept a completed deliverable or send it back."""
+  if decision not in {"accept","revise"}:
+   raise ValueError("decision must be accept or revise")
+  if not isinstance(notes,str) or len(notes)>2000:
+   raise ValueError("review notes must be text up to 2000 characters")
+  task=next((x for x in self.store.list_tasks() if x["id"]==str(task_id)),None)
+  if task is None:raise KeyError("task not found")
+  current=TaskStatus(task["status"])
+  if decision=="accept":
+   if current!=TaskStatus.COMPLETED:
+    raise ValueError("only COMPLETED tasks can be accepted")
+   updated=self.move(task_id,TaskStatus.VERIFIED,actor=reviewer)
+  else:
+   if current not in {TaskStatus.COMPLETED,TaskStatus.FAILED,TaskStatus.BLOCKED}:
+    raise ValueError("task is not eligible for revision")
+   updated=self.move(task_id,TaskStatus.READY,actor=reviewer)
+   updated["review_notes"]=notes
+   with self.store.lock:
+    self.store.db.execute("UPDATE tasks SET payload=? WHERE id=?",(json.dumps(updated,sort_keys=True),str(task_id)))
+    self.store.db.commit()
+  self.store.append_event(CompanyEvent("ceo_result_reviewed",reviewer,"task",str(task_id),{"decision":decision,"notes":notes[:500]}))
+  return updated
+
+ def reassign_task(self,task_id,agent_id,skill_key,actor="ceo"):
+  """Reassign only a READY task, preserving explicit skill checks."""
+  task=next((x for x in self.store.list_tasks() if x["id"]==str(task_id)),None)
+  if task is None:raise KeyError("task not found")
+  if task["status"]!=TaskStatus.READY.value:
+   raise ValueError("task must be READY before reassignment")
+  previous=task.get("assigned_agent_id")
+  updated=self.assign_to_agent(task_id,agent_id,skill_key,actor=actor)
+  self.store.append_event(CompanyEvent("task_reassigned",actor,"task",str(task_id),{"previous_agent_id":previous,"new_agent_id":agent_id,"skill_key":skill_key}))
+  return updated
