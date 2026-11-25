@@ -102,3 +102,28 @@ def test_agent_skill_assignment_rejects_missing_capability_and_prohibited_action
  with pytest.raises(KeyError,match="not found"):
   store.assign_skill("missing",needs_research)
  store.close()
+
+def test_ready_task_can_only_be_assigned_with_agent_skill(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.domain import TaskStatus
+ from opencompany.skills import Skill
+ from opencompany.store import Store
+ from opencompany.task_service import TaskService
+ store=Store(str(tmp_path/"task-assignment.sqlite"))
+ service=TaskService(store)
+ profile=AgentProfile("researcher","Collect buyer evidence",("research",),agent_id="research-2").validate()
+ store.save_agent_profile(profile)
+ skill=Skill("buyer_scan","Find buyer evidence","Search public sources",("research",),(),1,("research",)).validate()
+ store.assign_skill("research-2",skill)
+ task=service.create("Research buyers","Find evidence of demand",department="research")
+ with pytest.raises(ValueError,match="READY"):
+  service.assign_to_agent(task.id,"research-2","buyer_scan")
+ service.move(task.id,TaskStatus.READY)
+ assigned=service.assign_to_agent(task.id,"research-2","buyer_scan")
+ assert assigned["assigned_agent_id"]=="research-2"
+ assert assigned["assigned_skill_key"]=="buyer_scan"
+ assert assigned["assigned_skill_version"]==1
+ stored=next(x for x in store.list_tasks() if x["id"]==str(task.id))
+ assert stored["assigned_agent_id"]=="research-2"
+ assert store.verify_event_chain()
+ store.close()
