@@ -17,6 +17,9 @@ Read-only audit of the existing OpenCompany finance and treasury implementation 
 **Impact**
 A manually entered revenue row can appear in the finance status as revenue and contribute to the displayed net figure even if it has no payment evidence and has not been reviewed. An owner review label is not independent payment verification.
 
+**Test evidence**
+- `tests/test_opencompany_app.py`, `test_finance_budget_status_and_statement_reconciliation_are_business_scoped`, asserts `revenue_minor == 5000` after creating a revenue entry. The test does not attach payment evidence or require a review before that amount is included. This confirms the behavior is part of the current tested contract, not merely a dashboard-label concern.
+
 **Required correction before financial use**
 Separate at least these states and totals:
 1. Internal order value (never cash received).
