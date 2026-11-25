@@ -18,7 +18,7 @@ class Store:
             self.db.execute("PRAGMA foreign_keys=ON")
             self.db.executescript("""
             CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS opportunities(id TEXT PRIMARY KEY, payload TEXT NOT NULL, score REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS opportunities(id TEXT PRIMARY KEY, payload TEXT NOT NULL, score REAL NOT NULL);\n            CREATE TABLE IF NOT EXISTS agent_profiles(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL, previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL);
             """)
             self.db.commit()
@@ -52,3 +52,45 @@ class Store:
         return True
     def close(self):
         with self.lock: self.db.close()
+
+    def save_agent_profile(self, profile):
+        """Persist a validated agent profile; same-ID updates are explicit."""
+        from opencompany.agent import AgentProfile
+        profile.validate()
+        payload=json.dumps(asdict(profile), sort_keys=True, separators=(",", ":"))
+        with self.lock:
+            existing=self.db.execute("SELECT payload FROM agent_profiles WHERE id=?", (profile.agent_id,)).fetchone()
+            if existing and existing["payload"] != payload:
+                raise ValueError("Agent profile already exists; use update_agent_profile")
+            self.db.execute("INSERT OR IGNORE INTO agent_profiles(id,payload) VALUES(?,?)", (profile.agent_id,payload))
+            self.db.commit()
+        return profile
+
+    def update_agent_profile(self, profile):
+        """Replace an existing validated profile by ID, never create implicitly."""
+        from opencompany.agent import AgentProfile
+        profile.validate()
+        payload=json.dumps(asdict(profile), sort_keys=True, separators=(",", ":"))
+        with self.lock:
+            existing=self.db.execute("SELECT 1 FROM agent_profiles WHERE id=?", (profile.agent_id,)).fetchone()
+            if not existing:
+                raise KeyError("agent profile not found")
+            self.db.execute("UPDATE agent_profiles SET payload=? WHERE id=?", (payload,profile.agent_id))
+            self.db.commit()
+        return profile
+
+    def get_agent_profile(self, agent_id: str):
+        from opencompany.agent import AgentProfile
+        with self.lock:
+            row=self.db.execute("SELECT payload FROM agent_profiles WHERE id=?", (agent_id,)).fetchone()
+        if not row:
+            return None
+        profile=AgentProfile(**json.loads(row["payload"]))
+        return profile.validate()
+
+    def list_agent_profiles(self):
+        from opencompany.agent import AgentProfile
+        with self.lock:
+            rows=self.db.execute("SELECT payload FROM agent_profiles ORDER BY id").fetchall()
+        profiles=[AgentProfile(**json.loads(row["payload"])).validate() for row in rows]
+        return profiles
