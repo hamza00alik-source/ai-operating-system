@@ -46,3 +46,19 @@ def test_agent_result_enforces_bounded_integer_steps_and_artifacts():
   AgentResult("completed","Done",(),True).validate(3)
  with pytest.raises(ValueError,match="artifacts"):
   AgentResult("completed","Done",("",),1).validate(3)
+\n\ndef test_agent_profiles_persist_and_update_explicitly(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.store import Store
+ store=Store(str(tmp_path/"agents.sqlite"))
+ profile=AgentProfile("researcher","Find evidence",("research",),agent_id="agent-1").validate()
+ store.save_agent_profile(profile)
+ assert store.get_agent_profile("agent-1")==profile
+ assert store.list_agent_profiles()==[profile]
+ changed=AgentProfile("researcher","Find evidence",("research","web_read"),agent_id="agent-1").validate()
+ with pytest.raises(ValueError,match="use update_agent_profile"):
+  store.save_agent_profile(changed)
+ store.update_agent_profile(changed)
+ assert store.get_agent_profile("agent-1")==changed
+ with pytest.raises(KeyError,match="not found"):
+  store.update_agent_profile(AgentProfile("new","mission",("research",),agent_id="missing"))
+ store.close()
