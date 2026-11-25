@@ -57,3 +57,39 @@ class TaskService:
   job_id=queue.enqueue(str(task_id),job_payload,max_attempts=max_attempts)
   self.store.append_event(CompanyEvent("task_enqueued",actor,"task",str(task_id),{"job_id":job_id,"agent_id":agent_id,"skill_key":skill_key,"skill_version":skill_version}))
   return job_id
+
+
+ def record_progress(self,task_id,agent_id,job_id,progress,actor="agent"):
+  """Persist bounded, non-sensitive execution progress for owner visibility."""
+  if not isinstance(progress,str) or not progress.strip() or len(progress)>2000:
+   raise ValueError("progress must be a non-empty string up to 2000 characters")
+  task=next((x for x in self.store.list_tasks() if x["id"]==str(task_id)),None)
+  if task is None:raise KeyError("task not found")
+  if task.get("assigned_agent_id")!=agent_id:raise PermissionError("agent is not assigned to task")
+  if task["status"]!=TaskStatus.RUNNING.value:raise ValueError("task must be RUNNING to record progress")
+  entries=task.get("execution_progress",[])
+  entries.append({"agent_id":agent_id,"job_id":job_id,"message":progress,"at":utc_now()})
+  task["execution_progress"]=entries[-100:]
+  task["updated_at"]=utc_now()
+  with self.store.lock:
+   self.store.db.execute("UPDATE tasks SET payload=? WHERE id=?",(json.dumps(task,sort_keys=True),str(task_id)))
+   self.store.db.commit()
+  self.store.append_event(CompanyEvent("agent_execution_progress",actor,"task",str(task_id),{"job_id":job_id,"message":progress[:500]}))
+  return task
+
+ def record_result(self,task_id,agent_id,job_id,result,actor="agent"):
+  """Persist a completed deliverable without asserting commercial verification."""
+  task=next((x for x in self.store.list_tasks() if x["id"]==str(task_id)),None)
+  if task is None:raise KeyError("task not found")
+  if task.get("assigned_agent_id")!=agent_id:raise PermissionError("agent is not assigned to task")
+  if task["status"]!=TaskStatus.RUNNING.value:raise ValueError("task must be RUNNING to accept a result")
+  if not isinstance(result,dict) or result.get("status")!="completed":
+   raise ValueError("only a validated completed result can be recorded")
+  task["execution_result"]=dict(result)
+  task["result_recorded_at"]=utc_now()
+  task["updated_at"]=utc_now()
+  with self.store.lock:
+   self.store.db.execute("UPDATE tasks SET payload=? WHERE id=?",(json.dumps(task,sort_keys=True),str(task_id)))
+   self.store.db.commit()
+  self.store.append_event(CompanyEvent("agent_result_recorded",actor,"task",str(task_id),{"job_id":job_id,"artifact_count":len(result.get("artifacts",[]))}))
+  return task
