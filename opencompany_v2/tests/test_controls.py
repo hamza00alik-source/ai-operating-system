@@ -307,3 +307,38 @@ def test_ceo_reassignment_requires_ready_task_and_valid_agent_skill(tmp_path):
   service.reassign_task(task.id,"agent-old","scan")
  assert store.verify_event_chain()
  store.close()
+
+
+def test_sale_evidence_is_persisted_without_inventing_received_revenue(tmp_path):
+ from opencompany.revenue import SaleEvidence
+ from opencompany.store import Store
+ store=Store(str(tmp_path/"sales.sqlite"))
+ sale=SaleEvidence("ORDER-100","Marketplace",25.0,"USD","platform order receipt")
+ saved=store.record_sale_evidence(sale)
+ assert saved["received"] is False
+ assert store.list_sale_evidence(received=True)==[]
+ assert len(store.list_sale_evidence(received=False))==1
+ # Re-submitting the same order is idempotent, not a second sale.
+ again=store.record_sale_evidence(SaleEvidence("ORDER-100","Marketplace",25.0,"USD","platform order receipt"))
+ assert again["id"]==saved["id"]
+ with pytest.raises(PermissionError,match="Owner approval"):
+  store.confirm_sale_received(saved["id"],actor="ceo",payment_reference="TX-1")
+ with pytest.raises(ValueError,match="payment reference"):
+  store.confirm_sale_received(saved["id"],actor="ceo",owner_approved=True)
+ received=store.confirm_sale_received(saved["id"],actor="owner",owner_approved=True,payment_reference="TX-100")
+ assert received["received"] is True
+ assert received["payment_reference"]=="TX-100"
+ assert len(store.list_sale_evidence(received=True))==1
+ with pytest.raises(ValueError,match="already confirmed"):
+  store.confirm_sale_received(saved["id"],actor="owner",owner_approved=True,payment_reference="TX-100")
+ store.close()
+
+
+def test_sale_evidence_rejects_conflicting_duplicate_order(tmp_path):
+ from opencompany.revenue import SaleEvidence
+ from opencompany.store import Store
+ store=Store(str(tmp_path/"sales-conflict.sqlite"))
+ store.record_sale_evidence(SaleEvidence("ORDER-101","Marketplace",25.0,"USD","receipt-a"))
+ with pytest.raises(ValueError,match="different evidence"):
+  store.record_sale_evidence(SaleEvidence("ORDER-101","Marketplace",30.0,"USD","receipt-b"))
+ store.close()
