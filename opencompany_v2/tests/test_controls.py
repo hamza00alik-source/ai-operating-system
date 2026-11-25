@@ -266,6 +266,8 @@ def test_ceo_can_accept_or_return_completed_deliverable(tmp_path):
  service.move(task.id,TaskStatus.READY)
  service.move(task.id,TaskStatus.RUNNING)
  service.move(task.id,TaskStatus.COMPLETED,actor="research-agent")
+ with pytest.raises(PermissionError,match="only the CEO"):
+  service.review_result(task.id,"accept",reviewer="research-agent")
  accepted=service.review_result(task.id,"accept",notes="Evidence checked")
  assert accepted["status"]=="verified"
  task2=service.create("Prepare product brief","Draft product brief")
