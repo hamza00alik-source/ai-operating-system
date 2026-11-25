@@ -21,7 +21,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS opportunities(id TEXT PRIMARY KEY, payload TEXT NOT NULL, score REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS agent_profiles(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS agent_skill_assignments(agent_id TEXT NOT NULL, skill_key TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(agent_id,skill_key));
-            CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL, previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL, previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL);\n            CREATE TABLE IF NOT EXISTS sale_evidence(id TEXT PRIMARY KEY, platform TEXT NOT NULL, order_reference TEXT NOT NULL, currency TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(platform, order_reference));
             """)
             self.db.commit()
     def save_task(self, task: Task):
@@ -158,3 +158,67 @@ class Store:
             )
             self.db.commit()
         return cursor.rowcount == 1
+
+    def record_sale_evidence(self, sale):
+        """Persist an observed order without implying payment was received."""
+        from opencompany.revenue import SaleEvidence
+        if not isinstance(sale, SaleEvidence):
+            raise TypeError("sale must be SaleEvidence")
+        payload = json.dumps({
+            "id": str(sale.id), "order_reference": sale.order_reference,
+            "platform": sale.platform, "gross_amount": sale.gross_amount,
+            "currency": sale.currency.upper(), "verified_source": sale.verified_source,
+            "received": False, "recorded_at": sale.recorded_at,
+        }, sort_keys=True, separators=(",", ":"))
+        with self.lock:
+            existing = self.db.execute(
+                "SELECT payload FROM sale_evidence WHERE platform=? AND order_reference=?",
+                (sale.platform.strip().lower(), sale.order_reference.strip()),
+            ).fetchone()
+            if existing:
+                if existing["payload"] != payload:
+                    raise ValueError("Order already recorded with different evidence; reconcile instead of overwriting")
+                return json.loads(existing["payload"])
+            self.db.execute(
+                "INSERT INTO sale_evidence(id,platform,order_reference,currency,payload) VALUES(?,?,?,?,?)",
+                (str(sale.id), sale.platform.strip().lower(), sale.order_reference.strip(), sale.currency.upper(), payload),
+            )
+            self.db.commit()
+        return json.loads(payload)
+
+    def list_sale_evidence(self, *, received=None):
+        """List recorded orders; received status is explicit and never inferred."""
+        query = "SELECT payload FROM sale_evidence"
+        params = ()
+        if received is not None:
+            query += " WHERE json_extract(payload, '$.received') = ?"
+            params = (1 if received else 0,)
+        query += " ORDER BY rowid"
+        with self.lock:
+            rows = self.db.execute(query, params).fetchall()
+        return [json.loads(row["payload"]) for row in rows]
+
+    def confirm_sale_received(self, sale_id, *, actor, owner_approved=False, payment_reference=None):
+        """Record explicit owner-approved receipt confirmation; caller auth is external."""
+        if not owner_approved:
+            raise PermissionError("Owner approval is required to confirm received funds")
+        if not isinstance(actor, str) or not actor.strip():
+            raise ValueError("A confirming actor is required")
+        if not isinstance(payment_reference, str) or not payment_reference.strip():
+            raise ValueError("A payment reference or transaction evidence is required")
+        with self.lock:
+            row = self.db.execute("SELECT payload FROM sale_evidence WHERE id=?", (str(sale_id),)).fetchone()
+            if not row:
+                raise KeyError("sale evidence not found")
+            data = json.loads(row["payload"])
+            if data["received"]:
+                raise ValueError("Sale receipt is already confirmed")
+            data["received"] = True
+            data["payment_reference"] = payment_reference.strip()
+            data["received_confirmed_by"] = actor.strip()
+            from datetime import datetime, timezone
+            data["received_confirmed_at"] = datetime.now(timezone.utc).isoformat()
+            payload = json.dumps(data, sort_keys=True, separators=(",", ":"))
+            self.db.execute("UPDATE sale_evidence SET payload=? WHERE id=?", (payload, str(sale_id)))
+            self.db.commit()
+        return data
