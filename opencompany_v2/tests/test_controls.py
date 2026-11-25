@@ -158,6 +158,10 @@ def test_assigned_task_dispatch_is_agent_scoped_and_audited(tmp_path):
  assert claimed["lease_owner"]=="worker-a"
  assert queue.complete(job_id,"worker-a",{"summary":"Evidence collected"})
  assert queue.get(job_id)["state"]=="completed"
+ saved_task=next(x for x in store.list_tasks() if x["id"]==str(task.id))
+ assert saved_task["status"]=="completed"
+ assert saved_task["execution_result"]["summary"]=="Found three relevant buyer signals"
+ assert [x["message"] for x in saved_task["execution_progress"]]==["Collected public signals","Compared buyer evidence"]
  assert store.verify_event_chain()
  store.close()
 
@@ -205,13 +209,13 @@ def test_agent_worker_executes_only_registered_assigned_skill(tmp_path):
  registry=SkillRegistry()
  registry.register(skill,lambda payload: {
   "status":"completed","summary":"Found three relevant buyer signals",
-  "artifacts":["evidence-1","evidence-2"],"steps_used":2})
+  "artifacts":["evidence-1","evidence-2"],"steps_used":2,"progress":["Collected public signals","Compared buyer evidence"]})
  task=service.create("Research buyers","Find buyer demand")
  service.move(task.id,TaskStatus.READY)
  service.assign_to_agent(task.id,"worker-agent","buyer_scan")
  queue=ExecutionQueue(store.db,store.lock)
  job_id=service.enqueue_assigned(task.id,queue,{"objective":"Find buyer signals"})
- worker=AgentWorker("worker-agent",store,queue,registry,{"buyer_scan":"research"})
+ worker=AgentWorker("worker-agent",store,queue,registry,{"buyer_scan":"research"},task_service=service)
  report=worker.run_once()
  assert report["status"]=="completed"
  assert report["steps_used"]==2
