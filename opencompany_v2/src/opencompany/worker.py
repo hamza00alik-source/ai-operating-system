@@ -31,11 +31,11 @@ class Worker:
             result = handler(data.get("input", {}))
             if not isinstance(result, dict):
                 raise TypeError("Worker handlers must return a dictionary")
-            if not self.queue.complete(job["id"], self.worker_id, result):
+            if not self.queue.complete(job["id"], self.worker_id, result, job["attempts"]):
                 return {"job_id": job["id"], "status": "lease_lost"}
             return {"job_id": job["id"], "status": "completed", "result": result}
         except Exception as exc:
-            self.queue.fail(job["id"], self.worker_id, f"{type(exc).__name__}: {exc}")
+            self.queue.fail(job["id"], self.worker_id, f"{type(exc).__name__}: {exc}", job["attempts"])
             return {"job_id": job["id"], "status": "failed", "error": str(exc)}
 
 
@@ -115,7 +115,7 @@ class AgentWorker:
                 for message in output.get("progress", []):
                     self.task_service.record_progress(task_id, self.agent_id, job_id, message)
                 self.task_service.record_result(task_id, self.agent_id, job_id, report)
-            if not self.queue.complete(job_id, worker_id, report):
+            if not self.queue.complete(job_id, worker_id, report, job["attempts"]):
                 raise RuntimeError("Execution lease was lost before result acknowledgement")
             if self.task_service is not None:
                 from opencompany.domain import TaskStatus
@@ -130,7 +130,7 @@ class AgentWorker:
                 "task", task_id, {"job_id": job_id, **report}))
             return report
         except Exception as exc:
-            self.queue.fail(job_id, worker_id, f"{type(exc).__name__}: {exc}")
+            self.queue.fail(job_id, worker_id, f"{type(exc).__name__}: {exc}", job["attempts"])
             self.store.append_event(CompanyEvent("agent_execution_failed", self.agent_id,
                 "task", task_id, {"job_id": job_id, "error": f"{type(exc).__name__}: {exc}"[:2000]}))
             raise
