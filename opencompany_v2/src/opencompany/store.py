@@ -19,7 +19,8 @@ class Store:
             self.db.executescript("""
             CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS opportunities(id TEXT PRIMARY KEY, payload TEXT NOT NULL, score REAL NOT NULL);
-            CREATE TABLE IF NOT EXISTS agent_profiles(id TEXT PRIMARY KEY, payload TEXT NOT NULL);\n            CREATE TABLE IF NOT EXISTS agent_skill_assignments(agent_id TEXT NOT NULL, skill_key TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(agent_id,skill_key));
+            CREATE TABLE IF NOT EXISTS agent_profiles(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS agent_skill_assignments(agent_id TEXT NOT NULL, skill_key TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(agent_id,skill_key));
             CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL, previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL);
             """)
             self.db.commit()
