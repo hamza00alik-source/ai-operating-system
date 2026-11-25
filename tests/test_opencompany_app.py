@@ -23,7 +23,9 @@ client = TestClient(app)
 def owner_client(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
     database = tmp_path / "owner-api.sqlite3"
+    monkeypatch.setenv("OPENCOMPANY_DATABASE_PATH", str(database))
     runtime = create_runtime(str(database))
+    monkeypatch.setattr(api_module, "_default_runtime_instance", runtime)
     store = runtime.store
     delegations = runtime.delegations
     app.dependency_overrides[get_runtime] = lambda: runtime
@@ -1446,6 +1448,15 @@ def test_readiness_requires_owner_runtime_configuration(monkeypatch):
     monkeypatch.delenv("OPENCOMPANY_OWNER_API_KEY", raising=False)
     response = client.get("/ready")
     assert response.status_code == 503
+
+
+def test_readiness_rejects_missing_or_nonpersistent_database_path(monkeypatch):
+    monkeypatch.setenv("OPENCOMPANY_OWNER_API_KEY", "test-owner-key")
+    for path in ("", ":memory:", "relative/opencompany.sqlite3"):
+        monkeypatch.setenv("OPENCOMPANY_DATABASE_PATH", path)
+        response = client.get("/ready")
+        assert response.status_code == 503
+        assert "persistent database path" in response.json()["detail"].lower()
 
 
 
