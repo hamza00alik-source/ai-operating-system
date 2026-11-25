@@ -127,3 +127,61 @@ def test_ready_task_can_only_be_assigned_with_agent_skill(tmp_path):
  assert stored["assigned_agent_id"]=="research-2"
  assert store.verify_event_chain()
  store.close()
+
+
+def test_assigned_task_dispatch_is_agent_scoped_and_audited(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.domain import TaskStatus
+ from opencompany.queue import ExecutionQueue
+ from opencompany.skills import Skill
+ from opencompany.store import Store
+ from opencompany.task_service import TaskService
+ store=Store(str(tmp_path/"dispatch.sqlite"))
+ service=TaskService(store)
+ store.save_agent_profile(AgentProfile("researcher","Collect buyer evidence",("research",),agent_id="agent-a").validate())
+ skill=Skill("buyer_scan","Find buyer evidence","Search public sources",("research",),(),1,("research",)).validate()
+ store.assign_skill("agent-a",skill)
+ task=service.create("Research buyers","Find evidence",department="research")
+ service.move(task.id,TaskStatus.READY)
+ service.assign_to_agent(task.id,"agent-a","buyer_scan")
+ queue=ExecutionQueue(store.db,store.lock)
+ job_id=service.enqueue_assigned(task.id,queue,{"objective":"Find public evidence"})
+ job=queue.get(job_id)
+ assert job["state"]=="queued"
+ assert __import__("json").loads(job["payload"])=={
+  "agent_id":"agent-a","objective":"Find public evidence","skill_key":"buyer_scan",
+  "skill_version":1,"task_id":str(task.id)}
+ assert queue.claim("agent-b",agent_id="agent-b") is None
+ claimed=queue.claim("worker-a",agent_id="agent-a")
+ assert claimed["id"]==job_id
+ assert claimed["lease_owner"]=="worker-a"
+ assert queue.complete(job_id,"worker-a",{"summary":"Evidence collected"})
+ assert queue.get(job_id)["state"]=="completed"
+ assert store.verify_event_chain()
+ store.close()
+
+
+def test_dispatch_requires_live_assignment_and_cannot_override_identity(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.domain import TaskStatus
+ from opencompany.queue import ExecutionQueue
+ from opencompany.skills import Skill
+ from opencompany.store import Store
+ from opencompany.task_service import TaskService
+ store=Store(str(tmp_path/"dispatch-guard.sqlite"))
+ service=TaskService(store)
+ store.save_agent_profile(AgentProfile("researcher","Collect evidence",("research",),agent_id="agent-a").validate())
+ skill=Skill("scan","Scan","Search",("research",),(),1,("research",)).validate()
+ store.assign_skill("agent-a",skill)
+ task=service.create("Scan market","Find evidence")
+ service.move(task.id,TaskStatus.READY)
+ service.assign_to_agent(task.id,"agent-a","scan")
+ queue=ExecutionQueue(store.db,store.lock)
+ with pytest.raises(ValueError,match="override"):
+  service.enqueue_assigned(task.id,queue,{"agent_id":"agent-b"})
+ assert queue.list()==[]
+ store.unassign_skill("agent-a","scan")
+ with pytest.raises(ValueError,match="no longer active"):
+  service.enqueue_assigned(task.id,queue)
+ assert queue.list()==[]
+ store.close()
