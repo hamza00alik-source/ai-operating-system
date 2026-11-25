@@ -152,6 +152,7 @@ def test_assigned_task_dispatch_is_agent_scoped_and_audited(tmp_path):
   "agent_id":"agent-a","objective":"Find public evidence","skill_key":"buyer_scan",
   "skill_version":1,"task_id":str(task.id)}
  assert queue.claim("agent-b",agent_id="agent-b") is None
+ assert queue.claim("unscoped-worker") is None
  claimed=queue.claim("worker-a",agent_id="agent-a")
  assert claimed["id"]==job_id
  assert claimed["lease_owner"]=="worker-a"
