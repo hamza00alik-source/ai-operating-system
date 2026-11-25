@@ -262,19 +262,22 @@ def test_ceo_can_accept_or_return_completed_deliverable(tmp_path):
  from opencompany.task_service import TaskService
  store=Store(str(tmp_path/"ceo-review.sqlite"))
  service=TaskService(store)
+ from opencompany.agent import AgentProfile
+ store.save_agent_profile(AgentProfile("ceo","Review agent deliverables",("review",),agent_id="ceo-agent").validate())
+ store.save_agent_profile(AgentProfile("researcher","Research",("research",),agent_id="research-agent").validate())
  task=service.create("Prepare buyer report","Research demand")
  service.move(task.id,TaskStatus.READY)
  service.move(task.id,TaskStatus.RUNNING)
  service.move(task.id,TaskStatus.COMPLETED,actor="research-agent")
  with pytest.raises(PermissionError,match="only the CEO"):
   service.review_result(task.id,"accept",reviewer="research-agent")
- accepted=service.review_result(task.id,"accept",notes="Evidence checked")
+ accepted=service.review_result(task.id,"accept",reviewer="ceo-agent",notes="Evidence checked")
  assert accepted["status"]=="verified"
  task2=service.create("Prepare product brief","Draft product brief")
  service.move(task2.id,TaskStatus.READY)
  service.move(task2.id,TaskStatus.RUNNING)
  service.move(task2.id,TaskStatus.COMPLETED,actor="writer-agent")
- revised=service.review_result(task2.id,"revise",notes="Add source citations")
+ revised=service.review_result(task2.id,"revise",reviewer="ceo-agent",notes="Add source citations")
  assert revised["status"]=="ready"
  assert revised["review_notes"]=="Add source citations"
  assert store.verify_event_chain()
