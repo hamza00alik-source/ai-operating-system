@@ -168,7 +168,7 @@ class Store:
             "id": str(sale.id), "order_reference": sale.order_reference,
             "platform": sale.platform, "gross_amount": sale.gross_amount,
             "currency": sale.currency.upper(), "verified_source": sale.verified_source,
-            "received": False, "recorded_at": sale.recorded_at,
+            "business_line": sale.business_line, "received": False, "recorded_at": sale.recorded_at,
         }, sort_keys=True, separators=(",", ":"))
         with self.lock:
             existing = self.db.execute(
@@ -177,7 +177,7 @@ class Store:
             ).fetchone()
             if existing:
                 prior = json.loads(existing["payload"])
-                comparable = ("order_reference", "platform", "gross_amount", "currency", "verified_source")
+                comparable = ("order_reference", "platform", "gross_amount", "currency", "verified_source", "business_line")
                 candidate = json.loads(payload)
                 if any(prior[key] != candidate[key] for key in comparable):
                     raise ValueError("Order already recorded with different evidence; reconcile instead of overwriting")
@@ -189,7 +189,7 @@ class Store:
             self.db.commit()
         return json.loads(payload)
 
-    def list_sale_evidence(self, *, received=None):
+    def list_sale_evidence(self, *, received=None, business_line=None):
         """List recorded orders; received status is explicit and never inferred."""
         query = "SELECT payload FROM sale_evidence"
         params = ()
