@@ -109,6 +109,9 @@ def health():return {"status":"ok","mode":"owner-authenticated","service":"openc
 @app.get("/ready")
 def ready():
     if not os.getenv("OPENCOMPANY_OWNER_API_KEY"):raise HTTPException(503,"Owner runtime configuration is required.")
+    database_path=os.getenv("OPENCOMPANY_DATABASE_PATH","").strip()
+    if not database_path or database_path == ":memory:" or not os.path.isabs(database_path):
+        raise HTTPException(503,"An absolute persistent database path is required.")
     runtime=get_runtime()
     try:
         runtime.sqlite._connection.execute("SELECT 1").fetchone()
