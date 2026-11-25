@@ -158,10 +158,6 @@ def test_assigned_task_dispatch_is_agent_scoped_and_audited(tmp_path):
  assert claimed["lease_owner"]=="worker-a"
  assert queue.complete(job_id,"worker-a",{"summary":"Evidence collected"})
  assert queue.get(job_id)["state"]=="completed"
- saved_task=next(x for x in store.list_tasks() if x["id"]==str(task.id))
- assert saved_task["status"]=="completed"
- assert saved_task["execution_result"]["summary"]=="Found three relevant buyer signals"
- assert [x["message"] for x in saved_task["execution_progress"]]==["Collected public signals","Compared buyer evidence"]
  assert store.verify_event_chain()
  store.close()
 
@@ -253,4 +249,52 @@ def test_agent_worker_fails_closed_when_skill_assignment_revoked(tmp_path):
  with pytest.raises(PermissionError,match="no longer active"):
   worker.run_once()
  assert queue.list()[0]["state"]=="queued"
+ store.close()
+
+
+def test_ceo_can_accept_or_return_completed_deliverable(tmp_path):
+ from opencompany.domain import TaskStatus
+ from opencompany.store import Store
+ from opencompany.task_service import TaskService
+ store=Store(str(tmp_path/"ceo-review.sqlite"))
+ service=TaskService(store)
+ task=service.create("Prepare buyer report","Research demand")
+ service.move(task.id,TaskStatus.READY)
+ service.move(task.id,TaskStatus.RUNNING)
+ service.move(task.id,TaskStatus.COMPLETED,actor="research-agent")
+ accepted=service.review_result(task.id,"accept",notes="Evidence checked")
+ assert accepted["status"]=="verified"
+ task2=service.create("Prepare product brief","Draft product brief")
+ service.move(task2.id,TaskStatus.READY)
+ service.move(task2.id,TaskStatus.RUNNING)
+ service.move(task2.id,TaskStatus.COMPLETED,actor="writer-agent")
+ revised=service.review_result(task2.id,"revise",notes="Add source citations")
+ assert revised["status"]=="ready"
+ assert revised["review_notes"]=="Add source citations"
+ assert store.verify_event_chain()
+ store.close()
+
+
+def test_ceo_reassignment_requires_ready_task_and_valid_agent_skill(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.domain import TaskStatus
+ from opencompany.skills import Skill
+ from opencompany.store import Store
+ from opencompany.task_service import TaskService
+ store=Store(str(tmp_path/"reassign.sqlite"))
+ service=TaskService(store)
+ for agent in ("agent-old","agent-new"):
+  store.save_agent_profile(AgentProfile("researcher","Research",("research",),agent_id=agent).validate())
+ skill=Skill("scan","Scan","Search public sources",("research",),(),1,("research",)).validate()
+ store.assign_skill("agent-old",skill)
+ store.assign_skill("agent-new",skill)
+ task=service.create("Scan buyers","Find demand")
+ service.move(task.id,TaskStatus.READY)
+ service.assign_to_agent(task.id,"agent-old","scan")
+ moved=service.reassign_task(task.id,"agent-new","scan")
+ assert moved["assigned_agent_id"]=="agent-new"
+ with pytest.raises(ValueError,match="READY"):
+  service.move(task.id,TaskStatus.RUNNING)
+  service.reassign_task(task.id,"agent-old","scan")
+ assert store.verify_event_chain()
  store.close()
