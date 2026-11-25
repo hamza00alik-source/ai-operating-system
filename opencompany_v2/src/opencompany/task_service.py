@@ -83,8 +83,8 @@ class TaskService:
   if task is None:raise KeyError("task not found")
   if task.get("assigned_agent_id")!=agent_id:raise PermissionError("agent is not assigned to task")
   if task["status"]!=TaskStatus.RUNNING.value:raise ValueError("task must be RUNNING to accept a result")
-  if not isinstance(result,dict) or result.get("status")!="completed":
-   raise ValueError("only a validated completed result can be recorded")
+  if not isinstance(result,dict) or result.get("status") not in {"completed","failed","blocked","approval_required"}:
+   raise ValueError("result status is not recognized")
   task["execution_result"]=dict(result)
   task["result_recorded_at"]=utc_now()
   task["updated_at"]=utc_now()
