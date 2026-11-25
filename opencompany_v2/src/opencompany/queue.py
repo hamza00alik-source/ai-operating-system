@@ -100,6 +100,8 @@ class ExecutionQueue:
                 raise
 
     def heartbeat(self, job_id: str, worker_id: str, lease_seconds: int = 60) -> bool:
+        if lease_seconds < 1:
+            raise ValueError("lease_seconds must be positive")
         now_dt = _now()
         with self.lock:
             cur = self.db.execute("""UPDATE execution_jobs SET lease_until=?,updated_at=?
@@ -110,11 +112,12 @@ class ExecutionQueue:
             return cur.rowcount == 1
 
     def complete(self, job_id: str, worker_id: str, result: dict) -> bool:
+        now = _stamp(_now())
         with self.lock:
             cur = self.db.execute("""UPDATE execution_jobs SET state='completed',
                 result=?,lease_owner=NULL,lease_until=NULL,updated_at=?
-                WHERE id=? AND state='leased' AND lease_owner=?""",
-                (json.dumps(result, sort_keys=True), _stamp(_now()), job_id, worker_id))
+                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
+                (json.dumps(result, sort_keys=True), now, job_id, worker_id, now))
             self.db.commit()
             return cur.rowcount == 1
 
@@ -122,9 +125,11 @@ class ExecutionQueue:
         if retry_delay_seconds < 0:
             raise ValueError("retry delay cannot be negative")
         now_dt = _now()
+        now = _stamp(now_dt)
         with self.lock:
             row = self.db.execute("""SELECT attempts,max_attempts FROM execution_jobs
-                WHERE id=? AND state='leased' AND lease_owner=?""", (job_id, worker_id)).fetchone()
+                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
+                (job_id, worker_id, now)).fetchone()
             if row is None:
                 return False
             exhausted = row["attempts"] >= row["max_attempts"]
