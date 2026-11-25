@@ -176,9 +176,12 @@ class Store:
                 (sale.platform.strip().lower(), sale.order_reference.strip()),
             ).fetchone()
             if existing:
-                if existing["payload"] != payload:
+                prior = json.loads(existing["payload"])
+                comparable = ("order_reference", "platform", "gross_amount", "currency", "verified_source")
+                candidate = json.loads(payload)
+                if any(prior[key] != candidate[key] for key in comparable):
                     raise ValueError("Order already recorded with different evidence; reconcile instead of overwriting")
-                return json.loads(existing["payload"])
+                return prior
             self.db.execute(
                 "INSERT INTO sale_evidence(id,platform,order_reference,currency,payload) VALUES(?,?,?,?,?)",
                 (str(sale.id), sale.platform.strip().lower(), sale.order_reference.strip(), sale.currency.upper(), payload),
