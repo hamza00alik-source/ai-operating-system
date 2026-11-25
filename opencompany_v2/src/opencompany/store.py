@@ -199,7 +199,28 @@ class Store:
         query += " ORDER BY rowid"
         with self.lock:
             rows = self.db.execute(query, params).fetchall()
-        return [json.loads(row["payload"]) for row in rows]
+        records = [json.loads(row["payload"]) for row in rows]
+        if business_line is not None:
+            records = [item for item in records if item.get("business_line", "unclassified") == business_line]
+        return records
+
+    def revenue_totals(self, *, business_line, currency):
+        """Aggregate confirmed receipts only; never mix currencies or business lines."""
+        allowed = {"physical_agency", "own_physical_brand", "digital_products"}
+        if business_line not in allowed:
+            raise ValueError("A specific recognized business line is required")
+        if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
+            raise ValueError("Currency must be a 3-letter code")
+        records = self.list_sale_evidence(received=True, business_line=business_line)
+        matching = [item for item in records if item["currency"].upper() == currency.upper()]
+        return {
+            "business_line": business_line,
+            "currency": currency.upper(),
+            "confirmed_receipts_count": len(matching),
+            "gross_received": round(sum(float(item["gross_amount"]) for item in matching), 2),
+            "includes_unclassified": False,
+            "net_profit": None,
+        }
 
     def confirm_sale_received(self, sale_id, *, actor, owner_approved=False, payment_reference=None):
         """Record explicit owner-approved receipt confirmation; caller auth is external."""
