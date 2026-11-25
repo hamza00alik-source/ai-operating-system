@@ -114,13 +114,18 @@ class AgentWorker:
             if self.task_service is not None:
                 for message in output.get("progress", []):
                     self.task_service.record_progress(task_id, self.agent_id, job_id, message)
-                if result.status == "completed":
-                    self.task_service.record_result(task_id, self.agent_id, job_id, report)
+                self.task_service.record_result(task_id, self.agent_id, job_id, report)
             if not self.queue.complete(job_id, worker_id, report):
                 raise RuntimeError("Execution lease was lost before result acknowledgement")
-            if self.task_service is not None and result.status == "completed":
+            if self.task_service is not None:
                 from opencompany.domain import TaskStatus
-                self.task_service.move(task_id, TaskStatus.COMPLETED, actor=self.agent_id)
+                target = {
+                    "completed": TaskStatus.COMPLETED,
+                    "failed": TaskStatus.FAILED,
+                    "blocked": TaskStatus.BLOCKED,
+                    "approval_required": TaskStatus.WAITING_APPROVAL,
+                }[result.status]
+                self.task_service.move(task_id, target, actor=self.agent_id)
             self.store.append_event(CompanyEvent("agent_execution_result", self.agent_id,
                 "task", task_id, {"job_id": job_id, **report}))
             return report
