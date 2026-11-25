@@ -37,5 +37,29 @@ class ExecutionQueueTests(unittest.TestCase):
         self.assertEqual(self.queue.get(job)["state"], "dead")
 
 
+    def test_expired_lease_cannot_heartbeat_complete_or_fail(self):
+        from datetime import datetime, timedelta, timezone
+
+        job = self.queue.enqueue("task-expired-lease", {}, max_attempts=3)
+        claimed = self.queue.claim("worker-old", lease_seconds=60)
+        self.assertEqual(claimed["id"], job)
+        expired = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        self.db.execute(
+            "UPDATE execution_jobs SET lease_until=? WHERE id=?",
+            (expired, job),
+        )
+        self.db.commit()
+
+        self.assertFalse(self.queue.heartbeat(job, "worker-old"))
+        self.assertFalse(self.queue.complete(job, "worker-old", {"ok": True}))
+        self.assertFalse(self.queue.fail(job, "worker-old", "late failure"))
+        self.assertEqual(self.queue.get(job)["state"], "leased")
+
+        reclaimed = self.queue.claim("worker-new", lease_seconds=60)
+        self.assertEqual(reclaimed["id"], job)
+        self.assertEqual(reclaimed["attempts"], 2)
+        self.assertTrue(self.queue.complete(job, "worker-new", {"ok": True}))
+
+
 if __name__ == "__main__":
     unittest.main()
