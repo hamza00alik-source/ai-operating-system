@@ -28,6 +28,17 @@ class ExecutionQueueTests(unittest.TestCase):
         self.assertTrue(self.queue.complete(job, "worker-a", {"ok": True}))
         self.assertEqual(self.queue.get(job)["state"], "completed")
 
+    def test_expired_lease_cannot_complete(self):
+        job = self.queue.enqueue("task-expired", {})
+        self.assertIsNotNone(self.queue.claim("worker-a"))
+        self.db.execute(
+            "UPDATE execution_jobs SET lease_until=? WHERE id=?",
+            ("2000-01-01T00:00:00+00:00", job),
+        )
+        self.db.commit()
+        self.assertFalse(self.queue.complete(job, "worker-a", {"ok": True}))
+        self.assertEqual(self.queue.get(job)["state"], "leased")
+
     def test_failure_retries_then_dead_letters(self):
         job = self.queue.enqueue("task-3", {}, max_attempts=2)
         self.assertEqual(self.queue.claim("worker-a")["attempts"], 1)
