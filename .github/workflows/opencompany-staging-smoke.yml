@@ -2,7 +2,7 @@ name: OpenCompany isolated staging smoke test
 
 on:
   pull_request:
-    branches: [main, opencompany-merged-clean]
+    branches: [main, opencompany-merged-clean, "chore/**", "fix/**"]
     paths:
       - "Dockerfile.opencompany"
       - "compose.staging.yml"
