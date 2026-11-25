@@ -217,6 +217,10 @@ def test_agent_worker_executes_only_registered_assigned_skill(tmp_path):
  assert report["steps_used"]==2
  assert report["artifacts"]==["evidence-1","evidence-2"]
  assert queue.get(job_id)["state"]=="completed"
+ saved=next(x for x in store.list_tasks() if x["id"]==str(task.id))
+ assert saved["status"]=="completed"
+ assert saved["execution_result"]["summary"]=="Found three relevant buyer signals"
+ assert [x["message"] for x in saved["execution_progress"]]==["Collected public signals","Compared buyer evidence"]
  assert store.verify_event_chain()
  event_kinds=[__import__("json").loads(x["payload"])["kind"] for x in store.db.execute("SELECT payload FROM events ORDER BY seq")]
  assert "agent_execution_started" in event_kinds
