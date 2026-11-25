@@ -34,3 +34,26 @@ class TaskService:
    self.store.db.commit()
   self.store.append_event(CompanyEvent("task_assigned",actor,"task",str(task_id),{"agent_id":agent_id,"skill_key":skill_key,"skill_version":assignment["skill_version"]}))
   return task
+
+
+ def enqueue_assigned(self,task_id,queue,payload=None,max_attempts=3,actor="ceo"):
+  """Queue only a READY task with a persisted agent and skill assignment."""
+  task=next((x for x in self.store.list_tasks() if x["id"]==str(task_id)),None)
+  if task is None:raise KeyError("task not found")
+  if task["status"]!=TaskStatus.READY.value:raise ValueError("task must be READY before enqueue")
+  agent_id=task.get("assigned_agent_id")
+  skill_key=task.get("assigned_skill_key")
+  skill_version=task.get("assigned_skill_version")
+  if not agent_id or not skill_key or not skill_version:
+   raise ValueError("task must have an explicit agent and skill assignment")
+  # Revalidate assignment at enqueue time; unassignment revokes future dispatch.
+  assignment=next((x for x in self.store.list_skill_assignments(agent_id) if x["skill_key"]==skill_key and x["skill_version"]==skill_version),None)
+  if assignment is None:raise ValueError("agent skill assignment is no longer active")
+  job_payload=dict(payload or {})
+  reserved={"task_id":str(task_id),"agent_id":agent_id,"skill_key":skill_key,"skill_version":skill_version}
+  if any(key in job_payload and job_payload[key]!=value for key,value in reserved.items()):
+   raise ValueError("payload cannot override assignment metadata")
+  job_payload.update(reserved)
+  job_id=queue.enqueue(str(task_id),job_payload,max_attempts=max_attempts)
+  self.store.append_event(CompanyEvent("task_enqueued",actor,"task",str(task_id),{"job_id":job_id,"agent_id":agent_id,"skill_key":skill_key,"skill_version":skill_version}))
+  return job_id
