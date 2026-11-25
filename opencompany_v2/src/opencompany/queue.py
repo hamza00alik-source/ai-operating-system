@@ -99,37 +99,37 @@ class ExecutionQueue:
                 self.db.rollback()
                 raise
 
-    def heartbeat(self, job_id: str, worker_id: str, lease_seconds: int = 60) -> bool:
+    def heartbeat(self, job_id: str, worker_id: str, claim_attempt: int, lease_seconds: int = 60) -> bool:
         if lease_seconds < 1:
             raise ValueError("lease_seconds must be positive")
         now_dt = _now()
         with self.lock:
             cur = self.db.execute("""UPDATE execution_jobs SET lease_until=?,updated_at=?
-                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
+                WHERE id=? AND state='leased' AND lease_owner=? AND attempts=? AND lease_until>?""",
                 (_stamp(now_dt + timedelta(seconds=lease_seconds)), _stamp(now_dt),
-                 job_id, worker_id, _stamp(now_dt)))
+                 job_id, worker_id, claim_attempt, _stamp(now_dt)))
             self.db.commit()
             return cur.rowcount == 1
 
-    def complete(self, job_id: str, worker_id: str, result: dict) -> bool:
+    def complete(self, job_id: str, worker_id: str, result: dict, claim_attempt: int) -> bool:
         now = _stamp(_now())
         with self.lock:
             cur = self.db.execute("""UPDATE execution_jobs SET state='completed',
                 result=?,lease_owner=NULL,lease_until=NULL,updated_at=?
-                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
-                (json.dumps(result, sort_keys=True), now, job_id, worker_id, now))
+                WHERE id=? AND state='leased' AND lease_owner=? AND attempts=? AND lease_until>?""",
+                (json.dumps(result, sort_keys=True), now, job_id, worker_id, claim_attempt, now))
             self.db.commit()
             return cur.rowcount == 1
 
-    def fail(self, job_id: str, worker_id: str, error: str, retry_delay_seconds: int = 0) -> bool:
+    def fail(self, job_id: str, worker_id: str, error: str, claim_attempt: int, retry_delay_seconds: int = 0) -> bool:
         if retry_delay_seconds < 0:
             raise ValueError("retry delay cannot be negative")
         now_dt = _now()
         now = _stamp(now_dt)
         with self.lock:
             row = self.db.execute("""SELECT attempts,max_attempts FROM execution_jobs
-                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
-                (job_id, worker_id, now)).fetchone()
+                WHERE id=? AND state='leased' AND lease_owner=? AND attempts=? AND lease_until>?""",
+                (job_id, worker_id, claim_attempt, now)).fetchone()
             if row is None:
                 return False
             exhausted = row["attempts"] >= row["max_attempts"]
@@ -137,8 +137,8 @@ class ExecutionQueue:
             available = _stamp(now_dt + timedelta(seconds=retry_delay_seconds))
             cur = self.db.execute("""UPDATE execution_jobs SET state=?,available_at=?,
                 last_error=?,lease_owner=NULL,lease_until=NULL,updated_at=?
-                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
-                (state, available, str(error)[:2000], _stamp(now_dt), job_id, worker_id, now))
+                WHERE id=? AND state='leased' AND lease_owner=? AND attempts=? AND lease_until>?""",
+                (state, available, str(error)[:2000], _stamp(now_dt), job_id, worker_id, claim_attempt, now))
             self.db.commit()
             return cur.rowcount == 1
 
