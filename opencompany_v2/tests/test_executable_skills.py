@@ -143,3 +143,12 @@ def test_worker_adapter_fails_closed_without_approval_resolver():
     )
     with pytest.raises(PermissionError, match="approval required"):
         registry.worker_handler("publisher", "publish")({"draft_id": "d1"})
+
+
+def test_skill_discovery_rejects_invalid_agent_capability_collection():
+ registry=SkillRegistry()
+ registry.register(Skill("scan","Scan","Research",(),(),required_capabilities=("research",)),lambda p:p)
+ with pytest.raises(TypeError,match="capability strings"):
+  registry.eligible_for(SimpleNamespace(capabilities="research"))
+ with pytest.raises(TypeError,match="capability strings"):
+  registry.eligible_for(SimpleNamespace(capabilities=("research",1)))
