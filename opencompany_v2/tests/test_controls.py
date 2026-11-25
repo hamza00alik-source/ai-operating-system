@@ -342,3 +342,41 @@ def test_sale_evidence_rejects_conflicting_duplicate_order(tmp_path):
  with pytest.raises(ValueError,match="different evidence"):
   store.record_sale_evidence(SaleEvidence("ORDER-101","Marketplace",30.0,"USD","receipt-b"))
  store.close()
+
+
+def test_revenue_totals_are_separated_and_only_count_confirmed_receipts(tmp_path):
+ from opencompany.revenue import SaleEvidence
+ from opencompany.store import Store
+ path=str(tmp_path/"revenue-lines.sqlite")
+ store=Store(path)
+ agency=store.record_sale_evidence(SaleEvidence(
+  "AG-1","AgencyPlatform",100.0,"USD","order receipt",
+  business_line="physical_agency"))
+ own=store.record_sale_evidence(SaleEvidence(
+  "OWN-1","OwnStore",50.0,"USD","order receipt",
+  business_line="own_physical_brand"))
+ digital=store.record_sale_evidence(SaleEvidence(
+  "DIG-1","DigitalStore",20.0,"EUR","order receipt",
+  business_line="digital_products"))
+ unclassified=store.record_sale_evidence(SaleEvidence(
+  "UNK-1","OtherStore",999.0,"USD","order receipt"))
+ store.confirm_sale_received(agency["id"],actor="owner",owner_approved=True,payment_reference="PAY-AG")
+ store.confirm_sale_received(digital["id"],actor="owner",owner_approved=True,payment_reference="PAY-DIG")
+ assert store.revenue_totals(business_line="physical_agency",currency="USD")["gross_received"]==100.0
+ assert store.revenue_totals(business_line="own_physical_brand",currency="USD")["gross_received"]==0
+ assert store.revenue_totals(business_line="digital_products",currency="EUR")["gross_received"]==20.0
+ assert store.revenue_totals(business_line="physical_agency",currency="USD")["confirmed_receipts_count"]==1
+ assert store.revenue_totals(business_line="physical_agency",currency="USD")["net_profit"] is None
+ assert store.list_sale_evidence(business_line="unclassified")[0]["id"]==unclassified["id"]
+ store.close()
+ # Evidence and classification survive a database restart.
+ reopened=Store(path)
+ assert reopened.revenue_totals(business_line="physical_agency",currency="USD")["gross_received"]==100.0
+ assert reopened.revenue_totals(business_line="own_physical_brand",currency="USD")["gross_received"]==0
+ reopened.close()
+
+
+def test_sale_evidence_rejects_unknown_business_line():
+ from opencompany.revenue import SaleEvidence
+ with pytest.raises(ValueError,match="business line"):
+  SaleEvidence("ORDER-X","Store",10.0,"USD","receipt",business_line="mixed")
