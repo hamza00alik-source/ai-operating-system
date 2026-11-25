@@ -97,6 +97,7 @@ class TaskService:
   if not isinstance(result,dict) or result.get("status") not in {"completed","failed","blocked","approval_required"}:
    raise ValueError("result status is not recognized")
   task["execution_result"]=dict(result)
+  task["execution_result_job_id"]=str(job_id)
   task["result_recorded_at"]=utc_now()
   task["updated_at"]=utc_now()
   with self.store.lock:
@@ -104,6 +105,33 @@ class TaskService:
    self.store.db.commit()
   self.store.append_event(CompanyEvent("agent_result_recorded",actor,"task",str(task_id),{"job_id":job_id,"artifact_count":len(result.get("artifacts",[]))}))
   return task
+
+
+
+ def reconcile_completed_jobs(self,queue):
+  """Repair task state when a worker acknowledged a result before crashing."""
+  reconciled=[]
+  for job in queue.list("completed"):
+   task_id=str(job["task_id"])
+   task=next((x for x in self.store.list_tasks() if x["id"]==task_id),None)
+   if task is None or task.get("status")!=TaskStatus.RUNNING.value:
+    continue
+   if task.get("execution_result_job_id")!=str(job["id"]):
+    continue
+   result=task.get("execution_result")
+   if not isinstance(result,dict):
+    continue
+   target={
+    "completed":TaskStatus.COMPLETED,
+    "failed":TaskStatus.FAILED,
+    "blocked":TaskStatus.BLOCKED,
+    "approval_required":TaskStatus.WAITING_APPROVAL,
+   }.get(result.get("status"))
+   if target is None:
+    continue
+   self.move(task_id,target,actor="execution-reconciler")
+   reconciled.append(task_id)
+  return reconciled
 
 
  def review_result(self,task_id,decision,reviewer,notes=""):
