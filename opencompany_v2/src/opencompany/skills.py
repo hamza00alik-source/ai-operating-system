@@ -80,9 +80,14 @@ class SkillRegistry:
         This is discovery only; it does not assign a skill or grant permission
         to execute any action.
         """
+        validator = getattr(agent, "validate", None)
+        if callable(validator):
+            validator()
         capabilities = getattr(agent, "capabilities", None)
-        if capabilities is None:
-            raise TypeError("Agent must expose a capabilities collection.")
+        if (not isinstance(capabilities, (tuple, list, set, frozenset))
+                or any(not isinstance(value, str) or not value.strip()
+                       for value in capabilities)):
+            raise TypeError("Agent must expose a collection of non-empty capability strings.")
         available = set(capabilities)
         return [
             self._public_contract(skill)
