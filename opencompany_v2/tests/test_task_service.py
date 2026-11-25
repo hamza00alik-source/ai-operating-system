@@ -74,3 +74,67 @@ def test_reconcile_completed_job_repairs_task_after_worker_crash(tmp_path):
     assert persisted["status"] == TaskStatus.COMPLETED.value
     assert service.reconcile_completed_jobs(queue) == []
     store.close()
+
+
+
+def test_agent_worker_reuses_persisted_result_after_ack_failure(tmp_path):
+    from opencompany.agent import AgentProfile
+    from opencompany.permissions import Action
+    from opencompany.skills import Skill, SkillRegistry
+    from opencompany.worker import AgentWorker
+
+    store = Store(str(tmp_path / "agent-recovery.db"))
+    service = TaskService(store)
+    queue = ExecutionQueue(store.db, store.lock)
+    profile = AgentProfile(
+        role_key="researcher", mission="Research assigned tasks",
+        capabilities=("research",), agent_id="agent-recovery",
+    )
+    store.save_agent_profile(profile)
+
+    calls = []
+    registry = SkillRegistry()
+    registry.register(
+        Skill("research", "Research", "Perform bounded research",
+              (Action.RESEARCH.value,), (), required_capabilities=("research",)),
+        lambda payload: calls.append(payload) or {
+            "status": "completed", "summary": "recovered result",
+            "artifacts": [], "steps_used": 1,
+        },
+    )
+    store.assign_skill(profile.agent_id, registry._skills["research"][0])
+
+    task = service.create("Agent crash recovery", "Do not execute the handler twice")
+    service.move(task.id, TaskStatus.READY, actor="test")
+    service.assign_to_agent(task.id, profile.agent_id, "research")
+    job_id = service.enqueue_assigned(task.id, queue)
+
+    original_complete = queue.complete
+    complete_calls = []
+
+    def fail_first_ack(job, worker, result, attempt):
+        complete_calls.append(attempt)
+        if len(complete_calls) == 1:
+            return False
+        return original_complete(job, worker, result, attempt)
+
+    queue.complete = fail_first_ack
+    worker = AgentWorker(
+        profile.agent_id, store, queue, registry, {"research": Action.RESEARCH.value},
+        task_service=service,
+    )
+
+    with pytest.raises(RuntimeError, match="lease was lost"):
+        worker.run_once()
+
+    assert queue.get(job_id)["state"] == "queued"
+    assert len(calls) == 1
+
+    recovered = worker.run_once()
+    assert recovered["status"] == "completed"
+    assert queue.get(job_id)["state"] == "completed"
+    persisted = next(item for item in store.list_tasks() if item["id"] == str(task.id))
+    assert persisted["status"] == TaskStatus.COMPLETED.value
+    assert len(calls) == 1
+    assert complete_calls == [1, 2]
+    store.close()
