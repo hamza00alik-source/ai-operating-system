@@ -58,7 +58,7 @@ class ExecutionQueue:
             self.db.commit()
             return job_id
 
-    def claim(self, worker_id: str, lease_seconds: int = 60):
+    def claim(self, worker_id: str, lease_seconds: int = 60, agent_id: str | None = None):
         if not worker_id or lease_seconds < 1:
             raise ValueError("worker_id and positive lease_seconds are required")
         now_dt = _now()
@@ -72,9 +72,16 @@ class ExecutionQueue:
                     state=CASE WHEN attempts>=max_attempts THEN 'dead' ELSE 'queued' END,
                     lease_owner=NULL, lease_until=NULL, updated_at=?
                     WHERE state='leased' AND lease_until<=?""", (now, now))
-                row = self.db.execute("""SELECT id FROM execution_jobs
-                    WHERE state='queued' AND available_at<=?
-                    ORDER BY created_at,id LIMIT 1""", (now,)).fetchone()
+                if agent_id is None:
+                    row = self.db.execute("""SELECT id FROM execution_jobs
+                        WHERE state='queued' AND available_at<=?
+                        ORDER BY created_at,id LIMIT 1""", (now,)).fetchone()
+                else:
+                    # Agent-scoped workers may only claim jobs explicitly assigned to them.
+                    row = self.db.execute("""SELECT id FROM execution_jobs
+                        WHERE state='queued' AND available_at<=?
+                          AND json_extract(payload, '$.agent_id')=?
+                        ORDER BY created_at,id LIMIT 1""", (now, agent_id)).fetchone()
                 if row is None:
                     self.db.commit()
                     return None
