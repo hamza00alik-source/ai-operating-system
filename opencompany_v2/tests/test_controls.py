@@ -380,3 +380,43 @@ def test_sale_evidence_rejects_unknown_business_line():
  from opencompany.revenue import SaleEvidence
  with pytest.raises(ValueError,match="business line"):
   SaleEvidence("ORDER-X","Store",10.0,"USD","receipt",business_line="mixed")
+
+
+def test_revenue_dashboard_keeps_lines_currencies_and_unreceived_orders_separate(tmp_path):
+ from opencompany.revenue import SaleEvidence
+ from opencompany.revenue_dashboard import RevenueDashboard
+ from opencompany.store import Store
+ store=Store(str(tmp_path/"dashboard.sqlite"))
+ agency=store.record_sale_evidence(SaleEvidence(
+  "AG-DASH","Agency",120.0,"USD","order proof",business_line="physical_agency"))
+ store.record_sale_evidence(SaleEvidence(
+  "OWN-DASH","OwnStore",80.0,"USD","order proof",business_line="own_physical_brand"))
+ digital=store.record_sale_evidence(SaleEvidence(
+  "DIG-DASH","Digital",30.0,"EUR","order proof",business_line="digital_products"))
+ store.record_sale_evidence(SaleEvidence("PENDING","Agency",500.0,"USD","order proof",business_line="physical_agency"))
+ store.record_sale_evidence(SaleEvidence("UNKNOWN","Other",700.0,"USD","order proof"))
+ store.confirm_sale_received(agency["id"],actor="owner",owner_approved=True,payment_reference="PAY-A")
+ store.confirm_sale_received(digital["id"],actor="owner",owner_approved=True,payment_reference="PAY-D")
+ report=RevenueDashboard(store).snapshot(currencies=("usd","EUR","USD"))
+ assert [line["business_line"] for line in report["business_lines"]]==[
+  "physical_agency","own_physical_brand","digital_products"]
+ agency_report=report["business_lines"][0]["currencies"]
+ assert len(agency_report)==2
+ assert agency_report[0]["gross_received"]==120.0
+ assert agency_report[1]["gross_received"]==0
+ assert report["business_lines"][1]["currencies"][0]["gross_received"]==0
+ assert report["business_lines"][2]["currencies"][1]["gross_received"]==30.0
+ assert report["pending_order_count"]==3
+ assert report["unclassified_order_count"]==1
+ assert report["net_profit"] is None
+ assert report["fees"] is None and report["refunds"] is None and report["expenses"] is None
+ store.close()
+
+
+def test_revenue_dashboard_rejects_invalid_currency(tmp_path):
+ from opencompany.revenue_dashboard import RevenueDashboard
+ from opencompany.store import Store
+ store=Store(str(tmp_path/"dashboard-currency.sqlite"))
+ with pytest.raises(ValueError,match="three-letter"):
+  RevenueDashboard(store).snapshot(currencies=("US",))
+ store.close()
