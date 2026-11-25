@@ -73,8 +73,10 @@ class ExecutionQueue:
                     lease_owner=NULL, lease_until=NULL, updated_at=?
                     WHERE state='leased' AND lease_until<=?""", (now, now))
                 if agent_id is None:
+                    # General workers may only claim jobs without an agent assignment.
                     row = self.db.execute("""SELECT id FROM execution_jobs
                         WHERE state='queued' AND available_at<=?
+                          AND json_extract(payload, '$.agent_id') IS NULL
                         ORDER BY created_at,id LIMIT 1""", (now,)).fetchone()
                 else:
                     # Agent-scoped workers may only claim jobs explicitly assigned to them.
