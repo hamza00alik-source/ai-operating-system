@@ -263,6 +263,9 @@ table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{text-align:left;
 <input id="order-currency" value="USD" maxlength="3" required>
 <label><input id="order-confirm" type="checkbox" required> I confirm this creates an internal draft order only.</label>
 <button class="primary" type="submit">Create draft order</button></form>
+<h3>Sales pipeline · internal orders, not revenue</h3>
+<p class="muted">Totals are internal order values grouped by currency and workflow status. They are not cash receipts, recognized revenue, profit, or independently verified payments.</p>
+<div id="sales-pipeline" class="stack"></div>
 <div id="order-list" class="stack"></div></section>
 
 <section><h2>OpenCompany Brain · memory review</h2>
@@ -566,11 +569,17 @@ async function refreshBusinessContext(){
 }
 async function refreshBusinessOperations(){
  const business=el("ops-business").value;
- const [products,counterparties,orders]=await Promise.all([
+ const [products,counterparties,orders,pipeline]=await Promise.all([
   api("/business-units/"+encodeURIComponent(business)+"/products"),
   api("/business-units/"+encodeURIComponent(business)+"/counterparties"),
-  api("/business-units/"+encodeURIComponent(business)+"/orders")
+  api("/business-units/"+encodeURIComponent(business)+"/orders"),
+  api("/business-units/"+encodeURIComponent(business)+"/sales-pipeline")
  ]);
+ const pipelineRoot=el("sales-pipeline");pipelineRoot.replaceChildren();
+ if(!pipeline.groups.length)pipelineRoot.append(node("p","No internal order values recorded.","muted"));
+ pipeline.groups.forEach(group=>pipelineRoot.append(node("div",
+  group.currency+" · "+group.status.replaceAll("_"," ")+" · "+group.order_count+" order(s) · "+group.total_minor+" minor units",
+  "rowitem")));
  const productRoot=el("product-list");productRoot.replaceChildren();
  if(!products.products.length)productRoot.append(node("p","No products recorded.","muted"));
  products.products.forEach(item=>{
@@ -1019,6 +1028,28 @@ def list_business_orders(business_id:str,status:str|None=None,runtime=Depends(ge
     business_id=_business_id(business_id)
     records=runtime.business_ops.list_orders(business_id,status)
     return {"count":len(records),"orders":records,"external_customer_contact":False}
+
+
+@app.get("/business-units/{business_id}/sales-pipeline")
+def business_sales_pipeline(business_id:str,runtime=Depends(get_runtime),owner=Depends(_owner)):
+    business_id=_business_id(business_id)
+    orders=runtime.business_ops.list_orders(business_id)
+    totals={}
+    for order in orders:
+        key=(order["currency"],order["status"])
+        item=totals.setdefault(key,{"currency":order["currency"],"status":order["status"],
+                                    "order_count":0,"total_minor":0})
+        item["order_count"]+=1
+        item["total_minor"]+=int(order["total_minor"])
+    groups=sorted(totals.values(),key=lambda item:(item["currency"],item["status"]))
+    return {
+        "business_id":business_id,"order_count":len(orders),"groups":groups,
+        "revenue_recognized":False,"confirmed_receipts_available":False,
+        "payment_attestation_is_independent_verification":False,
+        "limitations":["Internal order values are not cash receipts or recognized revenue.",
+                       "Owner-attested payment status is not independently verified.",
+                       "Fees, refunds, expenses, and profit are not calculated."]
+    }
 
 
 @app.post("/business-units/{business_id}/orders/{order_id}/transition")
