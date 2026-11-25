@@ -133,10 +133,15 @@ class Store:
                 "SELECT payload FROM agent_skill_assignments WHERE agent_id=? AND skill_key=?",
                 (agent_id, skill.key),
             ).fetchone()
-            if existing and json.loads(existing["payload"])["skill_version"] != skill.version:
-                raise ValueError("Skill assignment exists at another version; unassign before reassignment")
+            if existing:
+                stored = json.loads(existing["payload"])
+                if stored["skill_version"] != skill.version:
+                    raise ValueError("Skill assignment exists at another version; unassign before reassignment")
+                if stored["required_capabilities"] != list(skill.required_capabilities):
+                    raise ValueError("Skill contract changed without a version increment")
+                return stored
             self.db.execute(
-                "INSERT OR IGNORE INTO agent_skill_assignments(agent_id,skill_key,payload) VALUES(?,?,?)",
+                "INSERT INTO agent_skill_assignments(agent_id,skill_key,payload) VALUES(?,?,?)",
                 (agent_id, skill.key, payload),
             )
             self.db.commit()
