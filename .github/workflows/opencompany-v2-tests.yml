@@ -1,0 +1,24 @@
+name: OpenCompany v2 tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencompany-merged-clean
+      - chore/opencompany-v2-ci-coverage
+  pull_request:
+    branches:
+      - opencompany-merged-clean
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run clean-room OpenCompany tests
+        env:
+          PYTHONPATH: opencompany_v2/src
+        run: python -m unittest discover -s opencompany_v2/tests -v
