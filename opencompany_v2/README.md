@@ -21,6 +21,7 @@ This directory contains a ground-up implementation of OpenCompany. It is origina
 - Durable SQLite execution queue with idempotent enqueue, worker leases, heartbeat, retries, and dead-letter state.
 - Bounded worker dispatch through explicitly registered handlers.
 - Read-only skill catalog and capability-based discovery against agent profile capabilities; discovery does not assign skills or grant execution permission.
+- Persisted agent-to-skill assignments with capability and prohibited-action validation.
 
 ## Execution semantics
 The queue provides at-least-once delivery, not exactly-once side effects. A process can crash after a handler performs work but before the job is acknowledged. Therefore handlers must be idempotent and external side effects must still pass the relevant owner-approval policy. Leases are not a substitute for approval or security controls.
@@ -37,4 +38,4 @@ python -m opencompany
 python -m unittest discover -s tests -v
 ```
 
-The runtime currently uses only Python's standard library. Skill discovery is an in-process registry capability; it is not yet exposed in the owner dashboard or backed by persistent skill assignments. Worker execution remains limited to explicitly configured routes, and owner approval is independently resolved server-side for sensitive actions.
+The runtime currently uses only Python's standard library. Skill discovery is an in-process registry capability; the clean-room package supports persisted skill assignments, but those assignments and its worker runtime are not yet exposed through or integrated into the primary `opencompany_app` owner dashboard/API. Worker execution remains limited to explicitly configured routes, and owner approval is independently resolved server-side for sensitive actions. This clean-room package is not proof of a running or deployed autonomous workforce.
