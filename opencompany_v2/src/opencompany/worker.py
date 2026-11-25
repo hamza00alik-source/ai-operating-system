@@ -98,6 +98,25 @@ class AgentWorker:
                     self.task_service.move(task_id, TaskStatus.RUNNING, actor=self.agent_id)
                 elif task["status"] != TaskStatus.RUNNING.value:
                     raise ValueError("task must be READY or RUNNING to execute")
+                elif task.get("execution_result_job_id") == str(job_id):
+                    # A previous attempt persisted its result but crashed before
+                    # queue acknowledgement. Reuse that durable result; never rerun
+                    # the handler for this task/job pair.
+                    saved = task.get("execution_result")
+                    if not isinstance(saved, dict):
+                        raise ValueError("persisted execution result is invalid")
+                    if not self.queue.complete(job_id, worker_id, saved, job["attempts"]):
+                        return {"job_id": job_id, "status": "lease_lost"}
+                    target = {
+                        "completed": TaskStatus.COMPLETED,
+                        "failed": TaskStatus.FAILED,
+                        "blocked": TaskStatus.BLOCKED,
+                        "approval_required": TaskStatus.WAITING_APPROVAL,
+                    }.get(saved.get("status"))
+                    if target is None:
+                        raise ValueError("persisted execution result status is invalid")
+                    self.task_service.move(task_id, target, actor=self.agent_id)
+                    return saved
             self.store.append_event(CompanyEvent("agent_execution_started", self.agent_id,
                 "task", task_id, {"job_id": job_id, "skill_key": skill_key, "skill_version": skill_version}))
             raw = handler(payload)
