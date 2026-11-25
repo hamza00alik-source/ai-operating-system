@@ -86,12 +86,20 @@ class Store:
             row=self.db.execute("SELECT payload FROM agent_profiles WHERE id=?", (agent_id,)).fetchone()
         if not row:
             return None
-        data=json.loads(row["payload"])\n        data["capabilities"]=tuple(data["capabilities"])\n        data["prohibited_actions"]=tuple(data["prohibited_actions"])\n        profile=AgentProfile(**data)
+        data=json.loads(row["payload"])
+        data["capabilities"]=tuple(data["capabilities"])
+        data["prohibited_actions"]=tuple(data["prohibited_actions"])
+        profile=AgentProfile(**data)
         return profile.validate()
 
     def list_agent_profiles(self):
         from opencompany.agent import AgentProfile
         with self.lock:
             rows=self.db.execute("SELECT payload FROM agent_profiles ORDER BY id").fetchall()
-        profiles=[]\n        for row in rows:\n            data=json.loads(row["payload"])\n            data["capabilities"]=tuple(data["capabilities"])\n            data["prohibited_actions"]=tuple(data["prohibited_actions"])\n            profiles.append(AgentProfile(**data).validate())
+        profiles=[]
+        for row in rows:
+            data=json.loads(row["payload"])
+            data["capabilities"]=tuple(data["capabilities"])
+            data["prohibited_actions"]=tuple(data["prohibited_actions"])
+            profiles.append(AgentProfile(**data).validate())
         return profiles
