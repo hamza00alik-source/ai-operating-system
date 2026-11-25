@@ -1,4 +1,6 @@
 """Versioned executable skill contracts with fail-closed action permissions."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 from opencompany.permissions import Action, permission_decision

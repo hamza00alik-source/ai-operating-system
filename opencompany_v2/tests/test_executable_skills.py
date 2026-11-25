@@ -152,3 +152,22 @@ def test_skill_discovery_rejects_invalid_agent_capability_collection():
   registry.eligible_for(SimpleNamespace(capabilities="research"))
  with pytest.raises(TypeError,match="capability strings"):
   registry.eligible_for(SimpleNamespace(capabilities=("research",1)))
+
+
+def test_customer_contact_requires_owner_approval():
+    called = []
+    registry = SkillRegistry()
+    registry.register(
+        Skill("buyer_contact", "Contact a buyer", "Send an approved message",
+              (Action.CONTACT_CUSTOMER.value,), (Action.CONTACT_CUSTOMER.value,)),
+        lambda payload: called.append(payload) or {"sent": True},
+    )
+    with pytest.raises(PermissionError, match="approval required"):
+        registry.execute("buyer_contact", Action.CONTACT_CUSTOMER.value, {"buyer": "buyer-1"})
+    assert called == []
+    result = registry.execute(
+        "buyer_contact", Action.CONTACT_CUSTOMER.value,
+        {"buyer": "buyer-1"}, owner_approved=True
+    )
+    assert result.output == {"sent": True}
+    assert called == [{"buyer": "buyer-1"}]

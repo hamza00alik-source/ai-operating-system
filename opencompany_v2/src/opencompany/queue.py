@@ -110,11 +110,13 @@ class ExecutionQueue:
             return cur.rowcount == 1
 
     def complete(self, job_id: str, worker_id: str, result: dict) -> bool:
+        now = _now()
         with self.lock:
             cur = self.db.execute("""UPDATE execution_jobs SET state='completed',
                 result=?,lease_owner=NULL,lease_until=NULL,updated_at=?
-                WHERE id=? AND state='leased' AND lease_owner=?""",
-                (json.dumps(result, sort_keys=True), _stamp(_now()), job_id, worker_id))
+                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
+                (json.dumps(result, sort_keys=True), _stamp(now), job_id,
+                 worker_id, _stamp(now)))
             self.db.commit()
             return cur.rowcount == 1
 
