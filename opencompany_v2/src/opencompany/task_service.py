@@ -97,6 +97,8 @@ class TaskService:
 
  def review_result(self,task_id,decision,reviewer="ceo",notes=""):
   """CEO review gate: accept a completed deliverable or send it back."""
+  if reviewer!="ceo":
+   raise PermissionError("only the CEO review authority can approve or return deliverables")
   if decision not in {"accept","revise"}:
    raise ValueError("decision must be accept or revise")
   if not isinstance(notes,str) or len(notes)>2000:
