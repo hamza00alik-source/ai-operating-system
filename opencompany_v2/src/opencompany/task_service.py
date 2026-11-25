@@ -95,10 +95,11 @@ class TaskService:
   return task
 
 
- def review_result(self,task_id,decision,reviewer="ceo",notes=""):
+ def review_result(self,task_id,decision,reviewer,notes=""):
   """CEO review gate: accept a completed deliverable or send it back."""
-  if reviewer!="ceo":
-   raise PermissionError("only the CEO review authority can approve or return deliverables")
+  reviewer_profile=self.store.get_agent_profile(reviewer) if isinstance(reviewer,str) else None
+  if reviewer_profile is None or reviewer_profile.role_key.strip().lower()!="ceo":
+   raise PermissionError("reviewer must be a registered CEO agent profile")
   if decision not in {"accept","revise"}:
    raise ValueError("decision must be accept or revise")
   if not isinstance(notes,str) or len(notes)>2000:
