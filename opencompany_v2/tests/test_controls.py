@@ -46,7 +46,9 @@ def test_agent_result_enforces_bounded_integer_steps_and_artifacts():
   AgentResult("completed","Done",(),True).validate(3)
  with pytest.raises(ValueError,match="artifacts"):
   AgentResult("completed","Done",("",),1).validate(3)
-\n\ndef test_agent_profiles_persist_and_update_explicitly(tmp_path):
+
+
+def test_agent_profiles_persist_and_update_explicitly(tmp_path):
  from opencompany.agent import AgentProfile
  from opencompany.store import Store
  store=Store(str(tmp_path/"agents.sqlite"))
