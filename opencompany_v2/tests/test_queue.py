@@ -23,17 +23,17 @@ class ExecutionQueueTests(unittest.TestCase):
         claimed = self.queue.claim("worker-a")
         self.assertEqual(claimed["id"], job)
         self.assertIsNone(self.queue.claim("worker-b"))
-        self.assertFalse(self.queue.complete(job, "worker-b", {"ok": True}))
-        self.assertTrue(self.queue.heartbeat(job, "worker-a"))
-        self.assertTrue(self.queue.complete(job, "worker-a", {"ok": True}))
+        self.assertFalse(self.queue.complete(job, "worker-b", {"ok": True}, claimed["attempts"]))
+        self.assertTrue(self.queue.heartbeat(job, "worker-a", claimed["attempts"]))
+        self.assertTrue(self.queue.complete(job, "worker-a", {"ok": True}, claimed["attempts"]))
         self.assertEqual(self.queue.get(job)["state"], "completed")
 
     def test_failure_retries_then_dead_letters(self):
         job = self.queue.enqueue("task-3", {}, max_attempts=2)
         self.assertEqual(self.queue.claim("worker-a")["attempts"], 1)
-        self.assertTrue(self.queue.fail(job, "worker-a", "temporary"))
+        self.assertTrue(self.queue.fail(job, "worker-a", "temporary", 1))
         self.assertEqual(self.queue.claim("worker-b")["attempts"], 2)
-        self.assertTrue(self.queue.fail(job, "worker-b", "permanent"))
+        self.assertTrue(self.queue.fail(job, "worker-b", "permanent", 2))
         self.assertEqual(self.queue.get(job)["state"], "dead")
 
 
@@ -50,15 +50,15 @@ class ExecutionQueueTests(unittest.TestCase):
         )
         self.db.commit()
 
-        self.assertFalse(self.queue.heartbeat(job, "worker-old"))
-        self.assertFalse(self.queue.complete(job, "worker-old", {"ok": True}))
-        self.assertFalse(self.queue.fail(job, "worker-old", "late failure"))
+        self.assertFalse(self.queue.heartbeat(job, "worker-old", claimed["attempts"]))
+        self.assertFalse(self.queue.complete(job, "worker-old", {"ok": True}, claimed["attempts"]))
+        self.assertFalse(self.queue.fail(job, "worker-old", "late failure", claimed["attempts"]))
         self.assertEqual(self.queue.get(job)["state"], "leased")
 
         reclaimed = self.queue.claim("worker-new", lease_seconds=60)
         self.assertEqual(reclaimed["id"], job)
         self.assertEqual(reclaimed["attempts"], 2)
-        self.assertTrue(self.queue.complete(job, "worker-new", {"ok": True}))
+        self.assertTrue(self.queue.complete(job, "worker-new", {"ok": True}, reclaimed["attempts"]))
 
 
 if __name__ == "__main__":
