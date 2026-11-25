@@ -186,3 +186,67 @@ def test_dispatch_requires_live_assignment_and_cannot_override_identity(tmp_path
   service.enqueue_assigned(task.id,queue)
  assert queue.list()==[]
  store.close()
+
+
+def test_agent_worker_executes_only_registered_assigned_skill(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.domain import TaskStatus
+ from opencompany.queue import ExecutionQueue
+ from opencompany.skills import Skill, SkillRegistry
+ from opencompany.store import Store
+ from opencompany.task_service import TaskService
+ from opencompany.worker import AgentWorker
+ store=Store(str(tmp_path/"agent-worker.sqlite"))
+ service=TaskService(store)
+ profile=AgentProfile("researcher","Collect buyer evidence",("research",),agent_id="worker-agent").validate()
+ store.save_agent_profile(profile)
+ skill=Skill("buyer_scan","Find buyer evidence","Search public sources",("research",),(),1,("research",)).validate()
+ store.assign_skill("worker-agent",skill)
+ registry=SkillRegistry()
+ registry.register(skill,lambda payload: {
+  "status":"completed","summary":"Found three relevant buyer signals",
+  "artifacts":["evidence-1","evidence-2"],"steps_used":2})
+ task=service.create("Research buyers","Find buyer demand")
+ service.move(task.id,TaskStatus.READY)
+ service.assign_to_agent(task.id,"worker-agent","buyer_scan")
+ queue=ExecutionQueue(store.db,store.lock)
+ job_id=service.enqueue_assigned(task.id,queue,{"objective":"Find buyer signals"})
+ worker=AgentWorker("worker-agent",store,queue,registry,{"buyer_scan":"research"})
+ report=worker.run_once()
+ assert report["status"]=="completed"
+ assert report["steps_used"]==2
+ assert report["artifacts"]==["evidence-1","evidence-2"]
+ assert queue.get(job_id)["state"]=="completed"
+ assert store.verify_event_chain()
+ event_kinds=[__import__("json").loads(x["payload"])["kind"] for x in store.db.execute("SELECT payload FROM events ORDER BY seq")]
+ assert "agent_execution_started" in event_kinds
+ assert "agent_execution_result" in event_kinds
+ store.close()
+
+
+def test_agent_worker_fails_closed_when_skill_assignment_revoked(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.domain import TaskStatus
+ from opencompany.queue import ExecutionQueue
+ from opencompany.skills import Skill, SkillRegistry
+ from opencompany.store import Store
+ from opencompany.task_service import TaskService
+ from opencompany.worker import AgentWorker
+ store=Store(str(tmp_path/"agent-worker-revoked.sqlite"))
+ service=TaskService(store)
+ store.save_agent_profile(AgentProfile("researcher","Collect evidence",("research",),agent_id="worker-agent").validate())
+ skill=Skill("scan","Scan","Search",("research",),(),1,("research",)).validate()
+ store.assign_skill("worker-agent",skill)
+ registry=SkillRegistry()
+ registry.register(skill,lambda payload: {"status":"completed","summary":"Should not run","steps_used":1})
+ task=service.create("Scan market","Find evidence")
+ service.move(task.id,TaskStatus.READY)
+ service.assign_to_agent(task.id,"worker-agent","scan")
+ queue=ExecutionQueue(store.db,store.lock)
+ service.enqueue_assigned(task.id,queue)
+ store.unassign_skill("worker-agent","scan")
+ worker=AgentWorker("worker-agent",store,queue,registry,{"scan":"research"})
+ with pytest.raises(PermissionError,match="no longer active"):
+  worker.run_once()
+ assert queue.list()[0]["state"]=="queued"
+ store.close()
