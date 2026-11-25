@@ -2572,7 +2572,7 @@ def test_sales_pipeline_is_owner_authenticated_currency_and_business_scoped_and_
         "reference":"pipeline-test","confirm_owner_record":True})
     assert customer.status_code==200
     product=owner_client.post("/business-units/physical-agency/products",headers=headers,json={
-        "sku":"PIPELINE-USD-01","name":"Pipeline test item","description":"Synthetic test only",
+        "sku":"PIPELINE-USD-01","name":"Pipeline USD test item","description":"Synthetic test only",
         "unit_price_minor":1250,"currency":"USD","confirm_owner_product":True})
     assert product.status_code==200
     product_id=product.json()["id"]
@@ -2584,12 +2584,36 @@ def test_sales_pipeline_is_owner_authenticated_currency_and_business_scoped_and_
         "customer_id":customer.json()["id"],"currency":"USD",
         "items":[{"product_id":product_id,"quantity":3}],"confirm_owner_order":True})
     assert order.status_code==200
+    order_id=order.json()["id"]
+
+    euro_product=owner_client.post("/business-units/physical-agency/products",headers=headers,json={
+        "sku":"PIPELINE-EUR-01","name":"Pipeline EUR test item","description":"Synthetic test only",
+        "unit_price_minor":900,"currency":"EUR","confirm_owner_product":True})
+    assert euro_product.status_code==200
+    euro_id=euro_product.json()["id"]
+    assert owner_client.post(
+        f"/business-units/physical-agency/products/{euro_id}/activate",headers=headers,
+        json={"confirm_owner_decision":True,"rationale":"Synthetic currency-isolation test."}
+    ).status_code==200
+    euro_order=owner_client.post("/business-units/physical-agency/orders",headers=headers,json={
+        "customer_id":customer.json()["id"],"currency":"EUR",
+        "items":[{"product_id":euro_id,"quantity":2}],"confirm_owner_order":True})
+    assert euro_order.status_code==200
+
+    approved=owner_client.post(
+        f"/business-units/physical-agency/orders/{order_id}/transition",headers=headers,
+        json={"target_status":"owner_approved","confirm_owner_decision":True,
+              "rationale":"Synthetic status grouping test."})
+    assert approved.status_code==200
 
     summary=owner_client.get("/business-units/physical-agency/sales-pipeline",headers=headers)
     assert summary.status_code==200
     payload=summary.json()
-    assert payload["order_count"]==1
-    assert payload["groups"]==[{"currency":"USD","status":"draft","order_count":1,"total_minor":3750}]
+    assert payload["order_count"]==2
+    assert payload["groups"]==[
+        {"currency":"EUR","status":"draft","order_count":1,"total_minor":1800},
+        {"currency":"USD","status":"owner_approved","order_count":1,"total_minor":3750},
+    ]
     assert payload["revenue_recognized"] is False
     assert payload["confirmed_receipts_available"] is False
     assert payload["payment_attestation_is_independent_verification"] is False
