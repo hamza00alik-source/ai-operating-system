@@ -19,7 +19,7 @@ class Store:
             self.db.executescript("""
             CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS opportunities(id TEXT PRIMARY KEY, payload TEXT NOT NULL, score REAL NOT NULL);
-            CREATE TABLE IF NOT EXISTS agent_profiles(id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS agent_profiles(id TEXT PRIMARY KEY, payload TEXT NOT NULL);\n            CREATE TABLE IF NOT EXISTS agent_skill_assignments(agent_id TEXT NOT NULL, skill_key TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(agent_id,skill_key));
             CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, payload TEXT NOT NULL, previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL);
             """)
             self.db.commit()
@@ -103,3 +103,57 @@ class Store:
             data["prohibited_actions"]=tuple(data["prohibited_actions"])
             profiles.append(AgentProfile(**data).validate())
         return profiles
+
+    def assign_skill(self, agent_id: str, skill):
+        """Persist an explicit skill assignment after profile capability checks.
+
+        Assignment records are metadata only; they do not create runtime handlers
+        or grant permission to execute external actions.
+        """
+        from datetime import datetime, timezone
+        skill.validate()
+        profile = self.get_agent_profile(agent_id)
+        if profile is None:
+            raise KeyError("agent profile not found")
+        missing = set(skill.required_capabilities) - set(profile.capabilities)
+        if missing:
+            raise ValueError("Agent lacks required skill capabilities: " + ", ".join(sorted(missing)))
+        prohibited = set(profile.prohibited_actions) & set(skill.allowed_actions)
+        if prohibited:
+            raise ValueError("Skill includes prohibited agent actions: " + ", ".join(sorted(prohibited)))
+        payload = json.dumps({
+            "skill_key": skill.key,
+            "skill_version": skill.version,
+            "required_capabilities": list(skill.required_capabilities),
+            "assigned_at": datetime.now(timezone.utc).isoformat(),
+        }, sort_keys=True, separators=(",", ":"))
+        with self.lock:
+            existing = self.db.execute(
+                "SELECT payload FROM agent_skill_assignments WHERE agent_id=? AND skill_key=?",
+                (agent_id, skill.key),
+            ).fetchone()
+            if existing and json.loads(existing["payload"])["skill_version"] != skill.version:
+                raise ValueError("Skill assignment exists at another version; unassign before reassignment")
+            self.db.execute(
+                "INSERT OR IGNORE INTO agent_skill_assignments(agent_id,skill_key,payload) VALUES(?,?,?)",
+                (agent_id, skill.key, payload),
+            )
+            self.db.commit()
+        return json.loads(payload)
+
+    def list_skill_assignments(self, agent_id: str):
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT payload FROM agent_skill_assignments WHERE agent_id=? ORDER BY skill_key",
+                (agent_id,),
+            ).fetchall()
+        return [json.loads(row["payload"]) for row in rows]
+
+    def unassign_skill(self, agent_id: str, skill_key: str):
+        with self.lock:
+            cursor = self.db.execute(
+                "DELETE FROM agent_skill_assignments WHERE agent_id=? AND skill_key=?",
+                (agent_id, skill_key),
+            )
+            self.db.commit()
+        return cursor.rowcount == 1
