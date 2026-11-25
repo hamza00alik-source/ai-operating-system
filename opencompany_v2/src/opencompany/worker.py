@@ -37,3 +37,77 @@ class Worker:
         except Exception as exc:
             self.queue.fail(job["id"], self.worker_id, f"{type(exc).__name__}: {exc}")
             return {"job_id": job["id"], "status": "failed", "error": str(exc)}
+
+
+class AgentWorker:
+    """Run one job for one agent, enforcing persisted skill assignment.
+
+    Only handlers registered in SkillRegistry are executable. Job payloads are
+    untrusted; identity, skill version, and capabilities are rechecked before
+    the handler is invoked.
+    """
+    def __init__(self, agent_id: str, store, queue, registry,
+                 actions: dict[str, str], lease_seconds: int = 60,
+                 approval_resolver=None):
+        if not agent_id or lease_seconds < 1:
+            raise ValueError("agent_id and positive lease_seconds are required")
+        self.agent_id, self.store, self.queue = agent_id, store, queue
+        self.registry, self.actions = registry, dict(actions)
+        self.lease_seconds = lease_seconds
+        self.approval_resolver = approval_resolver
+
+    def run_once(self):
+        import json
+        from opencompany.agent import AgentResult
+        from opencompany.domain import CompanyEvent
+        profile = self.store.get_agent_profile(self.agent_id)
+        if profile is None:
+            raise KeyError("agent profile not found")
+        worker_id = f"agent-worker:{self.agent_id}"
+        job = self.queue.claim(worker_id, self.lease_seconds, agent_id=self.agent_id)
+        if job is None:
+            return None
+        job_id, task_id = job["id"], job["task_id"]
+        try:
+            payload = json.loads(job["payload"])
+            if payload.get("agent_id") != self.agent_id or payload.get("task_id") != task_id:
+                raise PermissionError("Job identity does not match leased task")
+            skill_key, skill_version = payload.get("skill_key"), payload.get("skill_version")
+            assignment = next((x for x in self.store.list_skill_assignments(self.agent_id)
+                               if x["skill_key"] == skill_key and x["skill_version"] == skill_version), None)
+            if assignment is None:
+                raise PermissionError("Assigned skill is no longer active")
+            contract = next((x for x in self.registry.list()
+                             if x["key"] == skill_key and x["version"] == skill_version), None)
+            if contract is None:
+                raise PermissionError("Registered skill version is unavailable")
+            if not set(contract["required_capabilities"]).issubset(profile.capabilities):
+                raise PermissionError("Agent no longer meets skill capabilities")
+            action = self.actions.get(skill_key)
+            if action is None:
+                raise PermissionError("No worker action is configured for this skill")
+            handler = self.registry.worker_handler(skill_key, action,
+                        approval_resolver=self.approval_resolver)
+            self.store.append_event(CompanyEvent("agent_execution_started", self.agent_id,
+                "task", task_id, {"job_id": job_id, "skill_key": skill_key, "skill_version": skill_version}))
+            raw = handler(payload)
+            output = raw["output"]
+            result = AgentResult(
+                status=output.get("status", "completed"),
+                summary=output.get("summary", ""),
+                artifacts=tuple(output.get("artifacts", ())),
+                steps_used=output.get("steps_used", 0),
+            ).validate(profile.max_steps)
+            report = {"status": result.status, "summary": result.summary,
+                "artifacts": list(result.artifacts), "steps_used": result.steps_used,
+                "agent_id": self.agent_id, "skill_key": skill_key, "skill_version": skill_version}
+            if not self.queue.complete(job_id, worker_id, report):
+                raise RuntimeError("Execution lease was lost before result acknowledgement")
+            self.store.append_event(CompanyEvent("agent_execution_result", self.agent_id,
+                "task", task_id, {"job_id": job_id, **report}))
+            return report
+        except Exception as exc:
+            self.queue.fail(job_id, worker_id, f"{type(exc).__name__}: {exc}")
+            self.store.append_event(CompanyEvent("agent_execution_failed", self.agent_id,
+                "task", task_id, {"job_id": job_id, "error": f"{type(exc).__name__}: {exc}"[:2000]}))
+            raise
