@@ -64,6 +64,11 @@ class AgentWorker:
         profile = self.store.get_agent_profile(self.agent_id)
         if profile is None:
             raise KeyError("agent profile not found")
+        # Repair the durable-result/queue-ack crash window before claiming
+        # new work. This is idempotent and only advances RUNNING tasks whose
+        # completed queue job matches the task's persisted result identity.
+        if self.task_service is not None:
+            self.task_service.reconcile_completed_jobs(self.queue)
         worker_id = f"agent-worker:{self.agent_id}"
         job = self.queue.claim(worker_id, self.lease_seconds, agent_id=self.agent_id)
         if job is None:
