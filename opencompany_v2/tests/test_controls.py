@@ -64,3 +64,41 @@ def test_agent_profiles_persist_and_update_explicitly(tmp_path):
  with pytest.raises(KeyError,match="not found"):
   store.update_agent_profile(AgentProfile("new","mission",("research",),agent_id="missing"))
  store.close()
+
+def test_agent_skill_assignment_persists_and_checks_capabilities(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.skills import Skill
+ from opencompany.store import Store
+ store=Store(str(tmp_path/"skills.sqlite"))
+ profile=AgentProfile("researcher","Collect buyer evidence",("research",),agent_id="research-1").validate()
+ store.save_agent_profile(profile)
+ skill=Skill("buyer_scan","Find buyer evidence","Search public sources",("research",),(),1,("research",)).validate()
+ assignment=store.assign_skill("research-1",skill)
+ assert assignment["skill_key"]=="buyer_scan"
+ assert store.list_skill_assignments("research-1")[0]["skill_version"]==1
+ assert store.assign_skill("research-1",skill)==assignment
+ newer=Skill("buyer_scan","Find buyer evidence","Search public sources",("research",),(),2,("research",)).validate()
+ with pytest.raises(ValueError,match="another version"):
+  store.assign_skill("research-1",newer)
+ assert store.unassign_skill("research-1","buyer_scan") is True
+ assert store.list_skill_assignments("research-1")==[]
+ assert store.unassign_skill("research-1","buyer_scan") is False
+ store.close()
+
+
+def test_agent_skill_assignment_rejects_missing_capability_and_prohibited_actions(tmp_path):
+ from opencompany.agent import AgentProfile
+ from opencompany.skills import Skill
+ from opencompany.store import Store
+ store=Store(str(tmp_path/"skills-reject.sqlite"))
+ store.save_agent_profile(AgentProfile("writer","Draft content",("draft",),agent_id="writer-1").validate())
+ needs_research=Skill("research_skill","Research","Search",("research",),(),1,("research",)).validate()
+ with pytest.raises(ValueError,match="lacks required"):
+  store.assign_skill("writer-1",needs_research)
+ store.save_agent_profile(AgentProfile("guarded","No external contact",("research",),("contact_customer",),agent_id="guarded-1").validate())
+ contact_skill=Skill("contact","Contact buyer","Send contact",("contact_customer",),(),1,("research",)).validate()
+ with pytest.raises(ValueError,match="prohibited agent actions"):
+  store.assign_skill("guarded-1",contact_skill)
+ with pytest.raises(KeyError,match="not found"):
+  store.assign_skill("missing",needs_research)
+ store.close()
