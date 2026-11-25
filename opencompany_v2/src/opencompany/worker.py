@@ -48,13 +48,14 @@ class AgentWorker:
     """
     def __init__(self, agent_id: str, store, queue, registry,
                  actions: dict[str, str], lease_seconds: int = 60,
-                 approval_resolver=None):
+                 approval_resolver=None, task_service=None):
         if not agent_id or lease_seconds < 1:
             raise ValueError("agent_id and positive lease_seconds are required")
         self.agent_id, self.store, self.queue = agent_id, store, queue
         self.registry, self.actions = registry, dict(actions)
         self.lease_seconds = lease_seconds
         self.approval_resolver = approval_resolver
+        self.task_service = task_service
 
     def run_once(self):
         import json
@@ -88,6 +89,15 @@ class AgentWorker:
                 raise PermissionError("No worker action is configured for this skill")
             handler = self.registry.worker_handler(skill_key, action,
                         approval_resolver=self.approval_resolver)
+            if self.task_service is not None:
+                from opencompany.domain import TaskStatus
+                task = next((x for x in self.store.list_tasks() if x["id"] == task_id), None)
+                if task is None:
+                    raise KeyError("task not found")
+                if task["status"] == TaskStatus.READY.value:
+                    self.task_service.move(task_id, TaskStatus.RUNNING, actor=self.agent_id)
+                elif task["status"] != TaskStatus.RUNNING.value:
+                    raise ValueError("task must be READY or RUNNING to execute")
             self.store.append_event(CompanyEvent("agent_execution_started", self.agent_id,
                 "task", task_id, {"job_id": job_id, "skill_key": skill_key, "skill_version": skill_version}))
             raw = handler(payload)
@@ -101,8 +111,16 @@ class AgentWorker:
             report = {"status": result.status, "summary": result.summary,
                 "artifacts": list(result.artifacts), "steps_used": result.steps_used,
                 "agent_id": self.agent_id, "skill_key": skill_key, "skill_version": skill_version}
+            if self.task_service is not None:
+                for message in output.get("progress", []):
+                    self.task_service.record_progress(task_id, self.agent_id, job_id, message)
+                if result.status == "completed":
+                    self.task_service.record_result(task_id, self.agent_id, job_id, report)
             if not self.queue.complete(job_id, worker_id, report):
                 raise RuntimeError("Execution lease was lost before result acknowledgement")
+            if self.task_service is not None and result.status == "completed":
+                from opencompany.domain import TaskStatus
+                self.task_service.move(task_id, TaskStatus.COMPLETED, actor=self.agent_id)
             self.store.append_event(CompanyEvent("agent_execution_result", self.agent_id,
                 "task", task_id, {"job_id": job_id, **report}))
             return report
