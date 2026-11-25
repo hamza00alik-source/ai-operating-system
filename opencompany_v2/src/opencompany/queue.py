@@ -137,8 +137,8 @@ class ExecutionQueue:
             available = _stamp(now_dt + timedelta(seconds=retry_delay_seconds))
             cur = self.db.execute("""UPDATE execution_jobs SET state=?,available_at=?,
                 last_error=?,lease_owner=NULL,lease_until=NULL,updated_at=?
-                WHERE id=? AND state='leased' AND lease_owner=?""",
-                (state, available, str(error)[:2000], _stamp(now_dt), job_id, worker_id))
+                WHERE id=? AND state='leased' AND lease_owner=? AND lease_until>?""",
+                (state, available, str(error)[:2000], _stamp(now_dt), job_id, worker_id, now))
             self.db.commit()
             return cur.rowcount == 1
 
