@@ -18,6 +18,15 @@ class ExecutionQueueTests(unittest.TestCase):
         self.assertEqual(a, b)
         self.assertEqual(len(self.queue.list()), 1)
 
+    def test_list_by_task_returns_task_execution_history(self):
+        first = self.queue.enqueue("history-task", {"version": 1})
+        second_task = self.queue.enqueue("other-task", {})
+        self.assertEqual(self.queue.list_by_task("history-task"), [self.queue.get(first)])
+        self.assertEqual(self.queue.list_by_task("other-task"), [self.queue.get(second_task)])
+        self.assertEqual(self.queue.list_by_task("missing-task"), [])
+        with self.assertRaises(ValueError):
+            self.queue.list_by_task("")
+
     def test_claim_complete_and_worker_ownership(self):
         job = self.queue.enqueue("task-2", {"work": "draft"})
         claimed = self.queue.claim("worker-a")
