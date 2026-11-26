@@ -147,6 +147,18 @@ class ExecutionQueue:
             row = self.db.execute("SELECT * FROM execution_jobs WHERE id=?", (job_id,)).fetchone()
             return dict(row) if row else None
 
+    def list_by_task(self, task_id: str):
+        """Return all execution records for one task, oldest first."""
+        if not task_id:
+            raise ValueError("task_id is required")
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT * FROM execution_jobs WHERE task_id=? ORDER BY created_at,id",
+                (str(task_id),),
+            )
+            return [dict(row) for row in rows]
+
+
     def list(self, state: str | None = None):
         with self.lock:
             if state:
