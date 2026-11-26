@@ -11,7 +11,25 @@ A modular, human-supervised foundation for running an AI-powered company.
 - Local-first development; SQLite is the default.
 - Never commit secrets or customer data.
 
-## Quick start
+## OpenCompany API quick start
+
+Requires Python 3.11+. This starts OpenCompany's owner-controlled FastAPI
+application, not the separate legacy AIOS starter.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+export OPENCOMPANY_DATABASE_PATH=./opencompany.sqlite3
+export OPENCOMPANY_OWNER_API_KEY="replace-with-a-long-random-local-key"
+opencompany-api
+```
+
+Open http://127.0.0.1:8000/owner for the OpenCompany owner console, or
+http://127.0.0.1:8000/docs for its API. For a separate persistent worker,
+follow [docs/OPENCOMPANY_WORKER.md](docs/OPENCOMPANY_WORKER.md).
+
+## Legacy AIOS starter
 Requires Python 3.11+.
 
 \`\`\`bash
@@ -47,16 +65,9 @@ The production API starts the discovery polling worker in its FastAPI lifespan a
 
 The worker searches public GitHub repository metadata. The Technology Discovery panel includes **Test GitHub API** and reports connectivity, quota, and worker status without exposing credentials. Set \`GITHUB_TOKEN\` as a private environment variable only if higher authenticated API limits are needed; never commit it. Public repository discovery works without a token, subject to GitHub's lower unauthenticated limits. Scans are queued by the API and processed by the worker. This is a GitHub-metadata discovery MVP, not a complete vendor/API price, security, or commercial-terms audit. Those fields remain explicitly unverified. See [docs/RESEARCH_DISCOVERY_PIPELINE.md](docs/RESEARCH_DISCOVERY_PIPELINE.md).
 
-## Free API research catalog
+## Independent implementation policy
 
-The Technology Discovery panel can sync the structured public dataset from [IdoY12/awesome-free-ai-apis](https://github.com/IdoY12/awesome-free-ai-apis). AIOS imports provider descriptions, free-tier claims, policy notes (including prompt training and commercial-use caveats), confidence labels, primary-source URLs, and upstream probe status into its own SQLite catalog. The source dataset is CC0-1.0 and publishes a daily status file. This is research evidence, not a guarantee: provider quotas and terms can change, and upstream status checks do not prove that an AIOS account has access.
-
-- `GET /discovery/provider-catalog` — read imported provider evidence.
-- `POST /discovery/provider-catalog/sync` — owner-triggered, read-only catalog import.
-- `bradAGI/awesome-free-inference` is retained as a secondary manual research lead; its visible verification badge is dated March 2026 and it has no structured provider dataset in the inspected repository.
-- `dhaulagani/awesome-free-ai-apis` is excluded pending stronger evidence: the inspected README makes broad uptime/quota claims, but a repository LICENSE file was not found and per-provider primary-source evidence was not established.
-
-The catalog sync never saves provider credentials, makes inference calls, enables a provider, or spends money. A provider must still be checked against official pricing, terms, region availability, privacy/training rules, and a live $0 account test before an owner may configure it in the LLM gateway. Unknown stays unknown.
+OpenCompany architecture, role definitions, prompts, execution logic, and application code are developed as first-party work. Third-party repositories are not used as implementation templates, dependencies, or agent catalogues. External services may be connected only through their official APIs and documented protocols after owner review.
 
 ## Guarded live LLM gateway
 
@@ -75,9 +86,11 @@ Secrets are not stored in SQLite, returned by status endpoints, or meant to be p
 
 The gateway is an inference transport layer; it does not yet constitute a full multi-agent planner or MCP execution runtime.
 
-## Agency workforce catalog and owner console
+## OpenCompany workforce catalogue and owner console
 
-The Owner Console includes a catalog of 283 specialist definitions across 18 departments from the MIT-licensed \`hamza00alik-source/agency-agents\` repository, plus a 12-repository source inventory including the separate Automaton runtime reference and ten company/platform comparison repositories. These are source catalogs and architecture references, not 283 running processes. Each specialist prompt is inspectable from its source link. The current general-purpose agent execution runtime is still under development.
+OpenCompany's active workforce is defined by its own local catalogue: 10 departments, 10 department-manager roles, one CEO orchestrator role, and 500 specialist positions (511 role entries total). The first team in each department has five original named specialist templates (50 total); the other 450 positions are generated from department-specific capability templates and are not yet individually authored playbooks. Catalogue entries are role definitions, not 511 running processes.
+
+The historical `hamza00alik-source/agency-agents` repository is now recorded only as a provenance reference; its copied 283-role manifest has been removed from the active repository. The task execution path, workforce API, and owner-console workforce view use OpenCompany-owned role definitions and do not download or execute third-party specialist prompts.
 
 The Owner Console supports a secure browser session: sign in once with \`AI_OS_API_KEY\`, then use the HttpOnly, Secure, SameSite=Strict session cookie for up to 14 days (or until logout/cookie clearing). The raw owner key is not saved in browser storage. API-key header authentication remains available for external clients.
 
@@ -85,6 +98,8 @@ The Owner Console supports a secure browser session: sign in once with \`AI_OS_A
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Enzonic Python hosting setup. Use a persistent writable data directory for SQLite; the default relative database path is suitable only when the working directory is persistent.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+For the separate OpenCompany worker process, see [docs/OPENCOMPANY_WORKER.md](docs/OPENCOMPANY_WORKER.md).
 
 
 ## Private provider credential vault
@@ -96,9 +111,9 @@ The first route is hard-pinned to OpenRouter's `openrouter/free` free-model rout
 
 ## Bounded AI task execution
 
-The Owner Console can queue a task for the in-service agent worker. The worker selects a specialist definition from the 283-role Agency Agents catalogue, retrieves that role's Markdown instructions from the public source repository as untrusted prompt context, asks the configured free-confirmed OpenRouter model for a deliverable, then performs a separate CEO-style quality review call. Results and token/latency metadata are persisted in SQLite and shown in the task panel.
+The Owner Console queues tasks for the shared in-service worker. The worker selects a role from OpenCompany's local 511-entry catalogue, builds its role brief locally from OpenCompany-owned department guidance, retrieves approved company memories and captured research context, requests a deliverable from the configured free-confirmed model, then performs a separate CEO-style quality review. Completed stages and run metadata are persisted in SQLite and shown in the task panel.
 
-This is deliberately a bounded first execution runtime. It performs text-only research, planning and drafting. It has no shell, filesystem, browser, MCP, email, payment, store, publishing or customer-contact tools. It cannot perform external side effects. Free-model availability and rate limits are controlled by the provider; if the configured free model is unavailable, the run fails and reports the error rather than using a paid fallback. Do not classify the catalogue as 283 concurrently running agents: one selected specialist plus one CEO review are invoked per task run.
+This remains a bounded text-only runtime for research, planning and drafting. It has no shell, filesystem, browser, MCP, email, payment, store, publishing or customer-contact tools. It cannot perform external side effects. Free-model availability and rate limits are controlled by the provider; if the configured free model is unavailable, the run fails rather than using a paid fallback. A task invokes one selected specialist and one reviewer; the 511 role entries are not concurrently running agents.
 
 
 ## Persistent company AI brain (initial implementation)
@@ -178,3 +193,28 @@ The LongCat-Video fork is tracked as an optional upstream video engine, not as O
 ## Optional LongCat GPU worker
 
 OpenCompany's video queue remains operational without a GPU worker. The optional separate LongCat worker uses authenticated claims, per-job leases, heartbeats, bounded retries, cancellation signals, and private MP4 artifact reporting. The first adapter supports single-GPU text-to-video; no hosted GPU is provisioned automatically. See [worker deployment instructions](workers/README_LONGCAT.md) and the [integration design](docs/LONGCAT_VIDEO_INTEGRATION.md). Configure a persistent artifact volume and HTTPS API origin before accepting generated videos.
+
+
+## OpenCompany persistent specialist worker
+
+The OpenCompany task executor can run as a separate process from the API. Both
+processes must point to the exact same persistent SQLite file using
+`OPENCOMPANY_DATABASE_PATH`. Install the project, configure the owner-approved
+provider variables below, then start one worker with `opencompany-worker`.
+The worker is opt-in (`OPENCOMPANY_WORKER_ENABLED=true`), exits without making
+requests if no confirmed-free provider is configured, and only claims work
+already admitted to the owner-controlled queue for an active specialist.
+
+For UnoRouter, set `OPENCOMPANY_UNOROUTER_API_KEY`,
+`OPENCOMPANY_UNOROUTER_FREE_MODEL` to a currently callable model ID ending
+in `:free`, and `OPENCOMPANY_CONFIRM_UNOROUTER_FREE=true` only after checking
+your own account's current model pricing, quota and billing settings. The
+adapter calls the fixed HTTPS UnoRouter chat-completions endpoint; it does not
+discover or silently select paid models. A `:free` model ID and owner
+confirmation are safeguards, not a guarantee of provider availability or
+unchanging terms. No paid fallback exists.
+
+Run a single worker instance only. Queue leases expire after 15 minutes; the
+current provider request timeout is at most 60 seconds. Multi-replica worker
+operation, lease heartbeats, and production service supervision still require
+separate validation. The owner-only `GET /workers/service-status` endpoint reports durable process heartbeats, last-seen age, stale status, and processed-task counts. A recent heartbeat prevents a second worker from starting; a stale process can be replaced after 120 seconds. The API's `/workers/run-once` endpoint remains a separate owner-triggered execution path; this process does not mark the API's in-memory worker-fleet flag as running.

@@ -92,7 +92,7 @@ class BusinessAssetRegistry:
             self.connection.execute("""INSERT INTO opencompany_business_assets
               (asset_id,business_id,asset_key,title,asset_type,filename,media_type,checksum_sha256,byte_size,source,
                storage_state,status,storage_key,asset_scope_id,file_bytes_received,created_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?, 'metadata_only','declared',NULL,?,0,?)""",
+              VALUES(?,?,?,?,?,?,?,?,?,?, 'metadata_only','pending_storage',NULL,?,0,?)""",
               (asset_id,business_id,asset_key,title.strip(),asset_type,filename,media_type,checksum_sha256,byte_size,source,scope,payload["occurred_at"]))
             self._event(business_id,asset_id,"declared",audit); self.connection.commit()
             result=self._get(business_id,asset_id)
@@ -127,6 +127,16 @@ class BusinessAssetRegistry:
             self.connection.execute("UPDATE opencompany_business_assets SET storage_key=?,storage_state='private_stored_unscanned',status='pending_scan' WHERE business_id=? AND asset_id=?",(storage_key,business_id,item["asset_id"]))
             self._event(business_id,item["asset_id"],"stored_unscanned",audit); self.connection.commit()
             return {**self._get(business_id,item["asset_id"]),"download_enabled":False}
+
+    def scan_events(self,business_id,asset_id):
+        with self.lock:
+            self._get(business_id,asset_id)
+            rows=self.connection.execute(
+                "SELECT scanner_key,status,checksum_sha256,byte_size,verdict,occurred_at,audit_json "
+                "FROM opencompany_business_asset_scan_events WHERE business_id=? AND asset_id=? ORDER BY rowid",
+                (business_id,str(asset_id)),
+            ).fetchall()
+        return tuple({**dict(row),"audit":json.loads(row["audit_json"])} for row in rows)
 
     def scan_declaration(self,business_id,asset_id):
         with self.lock:
